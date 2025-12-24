@@ -239,6 +239,50 @@ func NewOryClient(cfg OryClientConfig) (*OryClient, error) {
 			{URL: cfg.ConsoleAPIURL},
 		}
 		consoleCfg.AddDefaultHeader("Authorization", "Bearer "+cfg.WorkspaceAPIKey)
+
+		// CRITICAL: The SDK has hardcoded operation-specific server URLs for all
+		// console API operations (ProjectAPI, WorkspaceAPI, EventsAPI). These override
+		// the main Servers config. We must override each operation to use our custom URL.
+		consoleServer := ory.ServerConfigurations{{URL: cfg.ConsoleAPIURL}}
+		consoleCfg.OperationServers = map[string]ory.ServerConfigurations{
+			// ProjectAPI operations
+			"ProjectAPIService.CreateProject":                          consoleServer,
+			"ProjectAPIService.GetProject":                             consoleServer,
+			"ProjectAPIService.ListProjects":                           consoleServer,
+			"ProjectAPIService.PatchProject":                           consoleServer,
+			"ProjectAPIService.PatchProjectWithRevision":               consoleServer,
+			"ProjectAPIService.PurgeProject":                           consoleServer,
+			"ProjectAPIService.SetProject":                             consoleServer,
+			"ProjectAPIService.GetProjectMembers":                      consoleServer,
+			"ProjectAPIService.RemoveProjectMember":                    consoleServer,
+			"ProjectAPIService.CreateProjectApiKey":                    consoleServer,
+			"ProjectAPIService.DeleteProjectApiKey":                    consoleServer,
+			"ProjectAPIService.ListProjectApiKeys":                     consoleServer,
+			"ProjectAPIService.CreateOrganization":                     consoleServer,
+			"ProjectAPIService.DeleteOrganization":                     consoleServer,
+			"ProjectAPIService.GetOrganization":                        consoleServer,
+			"ProjectAPIService.ListOrganizations":                      consoleServer,
+			"ProjectAPIService.UpdateOrganization":                     consoleServer,
+			"ProjectAPIService.CreateOrganizationOnboardingPortalLink": consoleServer,
+			"ProjectAPIService.DeleteOrganizationOnboardingPortalLink": consoleServer,
+			"ProjectAPIService.GetOrganizationOnboardingPortalLinks":   consoleServer,
+			"ProjectAPIService.UpdateOrganizationOnboardingPortalLink": consoleServer,
+			// WorkspaceAPI operations
+			"WorkspaceAPIService.CreateWorkspace":       consoleServer,
+			"WorkspaceAPIService.GetWorkspace":          consoleServer,
+			"WorkspaceAPIService.ListWorkspaces":        consoleServer,
+			"WorkspaceAPIService.UpdateWorkspace":       consoleServer,
+			"WorkspaceAPIService.CreateWorkspaceApiKey": consoleServer,
+			"WorkspaceAPIService.DeleteWorkspaceApiKey": consoleServer,
+			"WorkspaceAPIService.ListWorkspaceApiKeys":  consoleServer,
+			"WorkspaceAPIService.ListWorkspaceProjects": consoleServer,
+			// EventsAPI operations
+			"EventsAPIService.CreateEventStream": consoleServer,
+			"EventsAPIService.DeleteEventStream": consoleServer,
+			"EventsAPIService.ListEventStreams":  consoleServer,
+			"EventsAPIService.SetEventStream":    consoleServer,
+		}
+
 		client.consoleClient = ory.NewAPIClient(consoleCfg)
 	}
 
