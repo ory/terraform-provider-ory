@@ -211,6 +211,7 @@ type OryClientConfig struct {
 	ProjectSlug     string
 	WorkspaceID     string
 	ConsoleAPIURL   string
+	ProjectAPIURL   string // URL template with %s placeholder for slug (e.g., "https://%s.projects.oryapis.com")
 }
 
 // OryClient wraps the Ory SDK clients.
@@ -244,8 +245,13 @@ func NewOryClient(cfg OryClientConfig) (*OryClient, error) {
 	// Initialize project client if project API key and slug are provided
 	if cfg.ProjectAPIKey != "" && cfg.ProjectSlug != "" {
 		projectCfg := ory.NewConfiguration()
+		// Use configurable URL template, defaulting to production
+		projectAPIURL := cfg.ProjectAPIURL
+		if projectAPIURL == "" {
+			projectAPIURL = "https://%s.projects.oryapis.com"
+		}
 		projectCfg.Servers = ory.ServerConfigurations{
-			{URL: fmt.Sprintf("https://%s.projects.oryapis.com", cfg.ProjectSlug)},
+			{URL: fmt.Sprintf(projectAPIURL, cfg.ProjectSlug)},
 		}
 		projectCfg.AddDefaultHeader("Authorization", "Bearer "+cfg.ProjectAPIKey)
 		client.projectClient = ory.NewAPIClient(projectCfg)

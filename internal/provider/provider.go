@@ -50,8 +50,9 @@ type OryProviderModel struct {
 	ProjectSlug types.String `tfsdk:"project_slug"`
 	WorkspaceID types.String `tfsdk:"workspace_id"`
 
-	// Optional: Override API URLs (for testing)
+	// Optional: Override API URLs (for testing/staging)
 	ConsoleAPIURL types.String `tfsdk:"console_api_url"`
+	ProjectAPIURL types.String `tfsdk:"project_api_url"`
 }
 
 // New returns a new provider instance.
@@ -125,6 +126,11 @@ provider "ory" {
 				MarkdownDescription: "Override the console API URL (default: `https://api.console.ory.sh`). Mainly for testing.",
 				Optional:            true,
 			},
+			"project_api_url": schema.StringAttribute{
+				Description:         "Override the project API URL template (default: https://%s.projects.oryapis.com). Use %s as placeholder for the project slug. For staging, use https://%s.projects.custom.example.com.",
+				MarkdownDescription: "Override the project API URL template (default: `https://%s.projects.oryapis.com`). Use `%s` as placeholder for the project slug. For staging, use `https://%s.projects.custom.example.com`.",
+				Optional:            true,
+			},
 		},
 	}
 }
@@ -144,6 +150,7 @@ func (p *OryProvider) Configure(ctx context.Context, req provider.ConfigureReque
 	projectSlug := resolveString(config.ProjectSlug, "ORY_PROJECT_SLUG")
 	workspaceID := resolveString(config.WorkspaceID, "ORY_WORKSPACE_ID")
 	consoleAPIURL := resolveStringDefault(config.ConsoleAPIURL, "ORY_CONSOLE_API_URL", "https://api.console.ory.sh")
+	projectAPIURL := resolveString(config.ProjectAPIURL, "ORY_PROJECT_API_URL")
 
 	// Validate required configuration
 	if workspaceAPIKey == "" && projectAPIKey == "" {
@@ -164,6 +171,7 @@ func (p *OryProvider) Configure(ctx context.Context, req provider.ConfigureReque
 		ProjectSlug:     projectSlug,
 		WorkspaceID:     workspaceID,
 		ConsoleAPIURL:   consoleAPIURL,
+		ProjectAPIURL:   projectAPIURL,
 	})
 	if err != nil {
 		resp.Diagnostics.AddError(
