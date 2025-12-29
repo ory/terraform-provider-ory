@@ -30,9 +30,10 @@ func TestNewOryClient_DefaultURLs(t *testing.T) {
 }
 
 func TestNewOryClient_CustomConsoleURL(t *testing.T) {
+	// Using example.com to demonstrate custom URL configuration
 	cfg := OryClientConfig{
 		WorkspaceAPIKey: "ory_wak_test",
-		ConsoleAPIURL:   "https://custom.console.example.com",
+		ConsoleAPIURL:   "https://api.console.example.com",
 	}
 
 	client, err := NewOryClient(cfg)
@@ -41,14 +42,14 @@ func TestNewOryClient_CustomConsoleURL(t *testing.T) {
 	}
 
 	servers := client.consoleClient.GetConfig().Servers
-	if servers[0].URL != "https://custom.console.example.com" {
+	if servers[0].URL != "https://api.console.example.com" {
 		t.Errorf("expected custom console URL, got '%s'", servers[0].URL)
 	}
 
 	// Verify operation servers are also configured with custom URL
 	opServers := client.consoleClient.GetConfig().OperationServers
 	if createProjectServers, ok := opServers["ProjectAPIService.CreateProject"]; ok {
-		if createProjectServers[0].URL != "https://custom.console.example.com" {
+		if createProjectServers[0].URL != "https://api.console.example.com" {
 			t.Errorf("expected operation server URL to be custom, got '%s'", createProjectServers[0].URL)
 		}
 	} else {
@@ -57,10 +58,11 @@ func TestNewOryClient_CustomConsoleURL(t *testing.T) {
 }
 
 func TestNewOryClient_CustomProjectURL(t *testing.T) {
+	// Using example.com to demonstrate custom URL configuration
 	cfg := OryClientConfig{
 		ProjectAPIKey: "ory_pat_test",
 		ProjectSlug:   "my-project-slug",
-		ProjectAPIURL: "https://%s.projects.custom.example.com",
+		ProjectAPIURL: "https://%s.projects.example.com",
 	}
 
 	client, err := NewOryClient(cfg)
@@ -73,7 +75,7 @@ func TestNewOryClient_CustomProjectURL(t *testing.T) {
 	}
 
 	servers := client.projectClient.GetConfig().Servers
-	expectedURL := "https://my-project-slug.projects.custom.example.com"
+	expectedURL := "https://my-project-slug.projects.example.com"
 	if servers[0].URL != expectedURL {
 		t.Errorf("expected project URL '%s', got '%s'", expectedURL, servers[0].URL)
 	}

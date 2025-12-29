@@ -154,21 +154,22 @@ func TestResolveStringDefault(t *testing.T) {
 
 func TestProviderModelAttributes(t *testing.T) {
 	// Verify the OryProviderModel has all expected fields
+	// Using example URLs to demonstrate custom URL configuration
 	model := OryProviderModel{
 		WorkspaceAPIKey: types.StringValue("ory_wak_test"),
 		ProjectAPIKey:   types.StringValue("ory_pat_test"),
 		ProjectID:       types.StringValue("project-id"),
 		ProjectSlug:     types.StringValue("project-slug"),
 		WorkspaceID:     types.StringValue("workspace-id"),
-		ConsoleAPIURL:   types.StringValue("https://custom.console.example.com"),
-		ProjectAPIURL:   types.StringValue("https://%s.projects.custom.example.com"),
+		ConsoleAPIURL:   types.StringValue("https://api.console.example.com"),
+		ProjectAPIURL:   types.StringValue("https://%s.projects.example.com"),
 	}
 
 	// Verify values can be retrieved
-	if model.ConsoleAPIURL.ValueString() != "https://custom.console.example.com" {
+	if model.ConsoleAPIURL.ValueString() != "https://api.console.example.com" {
 		t.Error("ConsoleAPIURL not set correctly")
 	}
-	if model.ProjectAPIURL.ValueString() != "https://%s.projects.custom.example.com" {
+	if model.ProjectAPIURL.ValueString() != "https://%s.projects.example.com" {
 		t.Error("ProjectAPIURL not set correctly")
 	}
 }
