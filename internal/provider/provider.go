@@ -50,7 +50,7 @@ type OryProviderModel struct {
 	ProjectSlug types.String `tfsdk:"project_slug"`
 	WorkspaceID types.String `tfsdk:"workspace_id"`
 
-	// Optional: Override API URLs (for testing/staging)
+	// Optional: Override API URLs (for testing)
 	ConsoleAPIURL types.String `tfsdk:"console_api_url"`
 	ProjectAPIURL types.String `tfsdk:"project_api_url"`
 }
@@ -127,8 +127,8 @@ provider "ory" {
 				Optional:            true,
 			},
 			"project_api_url": schema.StringAttribute{
-				Description:         "Override the project API URL template (default: https://%s.projects.oryapis.com). Use %s as placeholder for the project slug. For staging, use https://%s.projects.custom.example.com.",
-				MarkdownDescription: "Override the project API URL template (default: `https://%s.projects.oryapis.com`). Use `%s` as placeholder for the project slug. For staging, use `https://%s.projects.custom.example.com`.",
+				Description:         "Override the project API URL template (default: https://%s.projects.oryapis.com).",
+				MarkdownDescription: "Override the project API URL template (default: `https://%s.projects.oryapis.com`).",
 				Optional:            true,
 			},
 		},
