@@ -8,6 +8,15 @@ import (
 	"strings"
 
 	ory "github.com/ory/client-go"
+	"github.com/ory/x/urlx"
+)
+
+const (
+	// DefaultConsoleAPIURL is the default Ory Console API URL.
+	DefaultConsoleAPIURL = "https://api.console.ory.sh"
+	// DefaultProjectAPIURL is the default Ory Project API URL template.
+	// The %s placeholder is replaced with the project slug.
+	DefaultProjectAPIURL = "https://%s.projects.oryapis.com"
 )
 
 // oryAPIError represents the error structure returned by Ory APIs.
@@ -234,6 +243,15 @@ func NewOryClient(cfg OryClientConfig) (*OryClient, error) {
 
 	// Initialize console client if workspace API key is provided
 	if cfg.WorkspaceAPIKey != "" {
+		// Validate the console API URL
+		parsedURL, err := urlx.Parse(cfg.ConsoleAPIURL)
+		if err != nil {
+			return nil, fmt.Errorf("invalid console API URL %q: %w", cfg.ConsoleAPIURL, err)
+		}
+		if parsedURL.Scheme != "https" && parsedURL.Scheme != "http" {
+			return nil, fmt.Errorf("invalid console API URL %q: must use http or https scheme", cfg.ConsoleAPIURL)
+		}
+
 		consoleCfg := ory.NewConfiguration()
 		consoleCfg.Servers = ory.ServerConfigurations{
 			{URL: cfg.ConsoleAPIURL},
@@ -292,10 +310,19 @@ func NewOryClient(cfg OryClientConfig) (*OryClient, error) {
 		// Use configurable URL template, defaulting to production
 		projectAPIURL := cfg.ProjectAPIURL
 		if projectAPIURL == "" {
-			projectAPIURL = "https://%s.projects.oryapis.com"
+			projectAPIURL = DefaultProjectAPIURL
+		}
+		// Format the URL template with the project slug and validate it
+		formattedURL := fmt.Sprintf(projectAPIURL, cfg.ProjectSlug)
+		parsedURL, err := urlx.Parse(formattedURL)
+		if err != nil {
+			return nil, fmt.Errorf("invalid project API URL %q: %w", formattedURL, err)
+		}
+		if parsedURL.Scheme != "https" && parsedURL.Scheme != "http" {
+			return nil, fmt.Errorf("invalid project API URL %q: must use http or https scheme", formattedURL)
 		}
 		projectCfg.Servers = ory.ServerConfigurations{
-			{URL: fmt.Sprintf(projectAPIURL, cfg.ProjectSlug)},
+			{URL: formattedURL},
 		}
 		projectCfg.AddDefaultHeader("Authorization", "Bearer "+cfg.ProjectAPIKey)
 		client.projectClient = ory.NewAPIClient(projectCfg)

@@ -236,3 +236,34 @@ func containsHelper(s, substr string) bool {
 	}
 	return false
 }
+
+func TestNewOryClient_InvalidConsoleURL(t *testing.T) {
+	cfg := OryClientConfig{
+		WorkspaceAPIKey: "ory_wak_test",
+		ConsoleAPIURL:   "not-a-valid-url",
+	}
+
+	_, err := NewOryClient(cfg)
+	if err == nil {
+		t.Error("expected error for invalid console URL")
+	}
+	if !contains(err.Error(), "invalid console API URL") {
+		t.Errorf("expected error message to contain 'invalid console API URL', got: %s", err.Error())
+	}
+}
+
+func TestNewOryClient_InvalidProjectURL(t *testing.T) {
+	cfg := OryClientConfig{
+		ProjectAPIKey: "ory_pat_test",
+		ProjectSlug:   "my-project",
+		ProjectAPIURL: "://invalid-url-template",
+	}
+
+	_, err := NewOryClient(cfg)
+	if err == nil {
+		t.Error("expected error for invalid project URL")
+	}
+	if !contains(err.Error(), "invalid project API URL") {
+		t.Errorf("expected error message to contain 'invalid project API URL', got: %s", err.Error())
+	}
+}

@@ -28,6 +28,12 @@ import (
 	"github.com/ory/terraform-provider-orynetwork/internal/resources/workspace"
 )
 
+// Re-export client defaults for use in tests
+const (
+	DefaultConsoleAPIURL = client.DefaultConsoleAPIURL
+	DefaultProjectAPIURL = client.DefaultProjectAPIURL
+)
+
 // Ensure OryProvider satisfies various provider interfaces.
 var _ provider.Provider = &OryProvider{}
 
@@ -149,8 +155,8 @@ func (p *OryProvider) Configure(ctx context.Context, req provider.ConfigureReque
 	projectID := resolveString(config.ProjectID, "ORY_PROJECT_ID")
 	projectSlug := resolveString(config.ProjectSlug, "ORY_PROJECT_SLUG")
 	workspaceID := resolveString(config.WorkspaceID, "ORY_WORKSPACE_ID")
-	consoleAPIURL := resolveStringDefault(config.ConsoleAPIURL, "ORY_CONSOLE_API_URL", "https://api.console.ory.sh")
-	projectAPIURL := resolveString(config.ProjectAPIURL, "ORY_PROJECT_API_URL")
+	consoleAPIURL := resolveStringDefault(config.ConsoleAPIURL, "ORY_CONSOLE_API_URL", DefaultConsoleAPIURL)
+	projectAPIURL := resolveStringDefault(config.ProjectAPIURL, "ORY_PROJECT_API_URL", DefaultProjectAPIURL)
 
 	// Validate required configuration
 	if workspaceAPIKey == "" && projectAPIKey == "" {

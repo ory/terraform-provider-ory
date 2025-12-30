@@ -132,8 +132,8 @@ func TestResolveStringDefault(t *testing.T) {
 			tfValue:      types.StringUnknown(),
 			envVar:       "TEST_VAR_UNSET",
 			envValue:     "",
-			defaultValue: "https://api.console.ory.sh",
-			expected:     "https://api.console.ory.sh",
+			defaultValue: DefaultConsoleAPIURL,
+			expected:     DefaultConsoleAPIURL,
 		},
 	}
 
