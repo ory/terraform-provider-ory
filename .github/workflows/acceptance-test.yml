@@ -38,8 +38,8 @@ permissions:
 
 jobs:
   acceptance-test:
-    name: Acceptance Tests
-    runs-on: ubuntu-latest
+    name: Build & Acceptance Test
+    runs-on: ubuntu-slim
     timeout-minutes: 30
 
     env:
@@ -51,6 +51,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Setup Go
         uses: actions/setup-go@v5

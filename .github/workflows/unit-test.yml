@@ -22,7 +22,7 @@ permissions:
 jobs:
   unit-test:
     name: Build & Unit Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
 
     steps:
       - name: Checkout

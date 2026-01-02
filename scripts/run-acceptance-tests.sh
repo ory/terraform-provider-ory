@@ -19,6 +19,17 @@
 
 set -euo pipefail
 
+# Check for required tools
+if ! command -v jq &> /dev/null; then
+    echo "Error: jq is required but not installed"
+    exit 1
+fi
+
+if ! command -v curl &> /dev/null; then
+    echo "Error: curl is required but not installed"
+    exit 1
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
