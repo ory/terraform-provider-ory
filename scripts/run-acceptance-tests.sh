@@ -1,12 +1,6 @@
 #!/bin/bash
 # run-acceptance-tests.sh - Creates a shared test project, runs all acceptance tests, and cleans up
 #
-# This script ensures all test packages share a single Ory project by:
-# 1. Creating a project before tests run
-# 2. Passing project details via environment variables
-# 3. Running all tests against that project
-# 4. Cleaning up the project after tests complete (even on failure)
-#
 # Usage:
 #   ./scripts/run-acceptance-tests.sh [go test flags...]
 #
@@ -29,10 +23,8 @@ set -euo pipefail
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Helper function to extract HTTP response body and code
-# Works on both macOS BSD and Linux GNU tools
 parse_curl_response() {
     local response="$1"
     local http_code
