@@ -96,9 +96,10 @@ cleanup() {
 trap cleanup EXIT
 
 echo -e "${GREEN}Creating shared test project: ${PROJECT_NAME}${NC}"
+echo "  Console API URL: ${CONSOLE_API_URL}"
 
 # Create the project
-create_response=$(curl -s -w "\n%{http_code}" -X POST \
+create_response=$(curl -sS -w "\n%{http_code}" -X POST \
     "${CONSOLE_API_URL}/projects" \
     -H "Authorization: Bearer ${ORY_WORKSPACE_API_KEY}" \
     -H "Content-Type: application/json" \
