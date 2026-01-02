@@ -34,8 +34,5 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Build provider
-        run: go build -o terraform-provider-ory
-
       - name: Run Unit Tests
         run: go test -short -v ./...

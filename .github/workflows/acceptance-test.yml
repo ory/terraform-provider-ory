@@ -61,9 +61,6 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Build provider
-        run: go build -o terraform-provider-ory
-
       - name: Run Acceptance Tests
         env:
           ORY_KETO_TESTS_ENABLED: ${{ github.event.inputs.enable_keto_tests || 'true' }}
