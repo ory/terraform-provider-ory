@@ -1,3 +1,4 @@
+//go:build acceptance
 package identity_test
 
 import (

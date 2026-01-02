@@ -193,5 +193,5 @@ if [[ ${#TEST_FLAGS[@]} -eq 0 ]]; then
     TEST_FLAGS=(-p 1 -v -timeout 30m ./...)
 fi
 
-# Run the tests
-go test "${TEST_FLAGS[@]}"
+# Run the tests with acceptance build tag
+go test -tags acceptance "${TEST_FLAGS[@]}"

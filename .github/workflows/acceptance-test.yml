@@ -1,10 +1,3 @@
-# Acceptance Tests - runs Go tests with TF_ACC=1 against real Ory API
-#
-# The Go tests are self-contained:
-# - Each test run creates a temporary project via the Ory API
-# - Tests run against that project
-# - The project is automatically cleaned up after tests complete
-
 name: Acceptance Tests
 
 on:
@@ -46,7 +39,7 @@ permissions:
 jobs:
   acceptance-test:
     name: Acceptance Tests
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     timeout-minutes: 30
 
     env:
@@ -68,21 +61,9 @@ jobs:
       - name: Build provider
         run: go build -o terraform-provider-ory
 
-      - name: Run Unit Tests
-        run: go test -short -v ./...
-
       - name: Run Acceptance Tests
         env:
-          # Enable feature flags based on workflow inputs or defaults
           ORY_KETO_TESTS_ENABLED: ${{ github.event.inputs.enable_keto_tests || 'true' }}
           ORY_B2B_ENABLED: ${{ github.event.inputs.enable_b2b_tests || 'true' }}
           ORY_SOCIAL_PROVIDER_TESTS_ENABLED: ${{ github.event.inputs.enable_social_provider_tests || 'true' }}
-        run: |
-          echo "Running acceptance tests..."
-          echo "  ORY_KETO_TESTS_ENABLED: $ORY_KETO_TESTS_ENABLED"
-          echo "  ORY_B2B_ENABLED: $ORY_B2B_ENABLED"
-          echo "  ORY_SOCIAL_PROVIDER_TESTS_ENABLED: $ORY_SOCIAL_PROVIDER_TESTS_ENABLED"
-          echo ""
-          echo "Using wrapper script to create a single shared project for all test packages."
-          echo ""
-          ./scripts/run-acceptance-tests.sh -p 1 -v -timeout 20m ./...
+        run: ./scripts/run-acceptance-tests.sh -v -timeout 20m ./...

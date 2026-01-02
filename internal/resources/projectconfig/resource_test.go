@@ -1,3 +1,4 @@
+//go:build acceptance
 package projectconfig_test
 
 import (
