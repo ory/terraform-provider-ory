@@ -101,7 +101,7 @@ func TestResolveStringDefault(t *testing.T) {
 			tfValue:      types.StringValue("tf-value"),
 			envVar:       "TEST_VAR",
 			envValue:     "env-value",
-			defaultValue: "default-value",
+			defaultValue: DefaultConsoleAPIURL,
 			expected:     "tf-value",
 		},
 		{
@@ -109,7 +109,7 @@ func TestResolveStringDefault(t *testing.T) {
 			tfValue:      types.StringNull(),
 			envVar:       "TEST_VAR",
 			envValue:     "env-value",
-			defaultValue: "default-value",
+			defaultValue: DefaultConsoleAPIURL,
 			expected:     "env-value",
 		},
 		{
@@ -117,15 +117,15 @@ func TestResolveStringDefault(t *testing.T) {
 			tfValue:      types.StringNull(),
 			envVar:       "TEST_VAR_UNSET",
 			envValue:     "",
-			defaultValue: "default-value",
-			expected:     "default-value",
+			defaultValue: DefaultConsoleAPIURL,
+			expected:     DefaultConsoleAPIURL,
 		},
 		{
 			name:         "returns env value when terraform value is unknown",
 			tfValue:      types.StringUnknown(),
 			envVar:       "TEST_VAR",
 			envValue:     "env-value",
-			defaultValue: "default-value",
+			defaultValue: DefaultProjectAPIURL,
 			expected:     "env-value",
 		},
 		{
@@ -133,8 +133,8 @@ func TestResolveStringDefault(t *testing.T) {
 			tfValue:      types.StringUnknown(),
 			envVar:       "TEST_VAR_UNSET",
 			envValue:     "",
-			defaultValue: DefaultConsoleAPIURL,
-			expected:     DefaultConsoleAPIURL,
+			defaultValue: DefaultProjectAPIURL,
+			expected:     DefaultProjectAPIURL,
 		},
 	}
 
