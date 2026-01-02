@@ -1,9 +1,5 @@
 # Acceptance Tests - runs Go tests with TF_ACC=1 against real Ory API
 #
-# This workflow:
-# 1. Builds the provider locally
-# 2. Runs Go acceptance tests (tests create their own projects and clean up)
-#
 # The Go tests are self-contained:
 # - Each test run creates a temporary project via the Ory API
 # - Tests run against that project
@@ -52,8 +48,6 @@ jobs:
     name: Acceptance Tests
     runs-on: ubuntu-slim
     timeout-minutes: 30
-    # Only run if secrets are available (not on forks)
-    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
 
     env:
       ORY_WORKSPACE_API_KEY: ${{ secrets.ORY_WORKSPACE_API_KEY }}
