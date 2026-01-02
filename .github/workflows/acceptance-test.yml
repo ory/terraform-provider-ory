@@ -32,6 +32,16 @@ on:
         required: false
         default: true
         type: boolean
+      enable_schema_tests:
+        description: 'Enable identity schema tests'
+        required: false
+        default: true
+        type: boolean
+      enable_project_tests:
+        description: 'Enable project create/delete tests'
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -66,4 +76,6 @@ jobs:
           ORY_KETO_TESTS_ENABLED: ${{ github.event.inputs.enable_keto_tests || 'true' }}
           ORY_B2B_ENABLED: ${{ github.event.inputs.enable_b2b_tests || 'true' }}
           ORY_SOCIAL_PROVIDER_TESTS_ENABLED: ${{ github.event.inputs.enable_social_provider_tests || 'true' }}
+          ORY_SCHEMA_TESTS_ENABLED: ${{ github.event.inputs.enable_schema_tests || 'true' }}
+          ORY_PROJECT_TESTS_ENABLED: ${{ github.event.inputs.enable_project_tests || 'true' }}
         run: ./scripts/run-acceptance-tests.sh -v -timeout 20m ./...
