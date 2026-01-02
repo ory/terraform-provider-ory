@@ -2,36 +2,18 @@ package oauth2client_test
 
 import (
 	"fmt"
-	"os"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
-	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 
-	"github.com/ory/terraform-provider-orynetwork/internal/provider"
+	"github.com/ory/terraform-provider-orynetwork/internal/acctest"
+	"github.com/ory/terraform-provider-orynetwork/internal/testutil"
 )
-
-var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
-	"ory": providerserver.NewProtocol6WithError(provider.New("test")()),
-}
-
-func testAccPreCheck(t *testing.T) {
-	if v := os.Getenv("ORY_PROJECT_API_KEY"); v == "" {
-		t.Skip("ORY_PROJECT_API_KEY must be set for acceptance tests")
-	}
-	if v := os.Getenv("ORY_PROJECT_ID"); v == "" {
-		t.Skip("ORY_PROJECT_ID must be set for acceptance tests")
-	}
-	if v := os.Getenv("ORY_PROJECT_SLUG"); v == "" {
-		t.Skip("ORY_PROJECT_SLUG must be set for acceptance tests")
-	}
-}
 
 func TestAccOAuth2ClientResource_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
@@ -67,8 +49,8 @@ func TestAccOAuth2ClientResource_basic(t *testing.T) {
 
 func TestAccOAuth2ClientResource_withAudience(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccOAuth2ClientResourceConfigWithAudience("Test Client with Audience"),
@@ -84,8 +66,8 @@ func TestAccOAuth2ClientResource_withAudience(t *testing.T) {
 
 func TestAccOAuth2ClientResource_withRedirectURIs(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccOAuth2ClientResourceConfigWithRedirectURIs("Test Client with Redirects"),
@@ -137,9 +119,9 @@ resource "ory_oauth2_client" "test" {
   grant_types    = ["client_credentials"]
   response_types = ["token"]
   scope          = "api:read"
-  audience       = ["https://api.example.com", "https://api2.example.com"]
+  audience       = ["%[2]s", "%[2]s/v2"]
 }
-`, name)
+`, name, testutil.ExampleAPIURL)
 }
 
 func testAccOAuth2ClientResourceConfigWithRedirectURIs(name string) string {
@@ -152,7 +134,7 @@ resource "ory_oauth2_client" "test" {
   grant_types    = ["authorization_code", "refresh_token"]
   response_types = ["code"]
   scope          = "openid profile email"
-  redirect_uris  = ["https://app.example.com/callback", "http://localhost:3000/callback"]
+  redirect_uris  = ["%[2]s/callback", "http://localhost:3000/callback"]
 }
-`, name)
+`, name, testutil.ExampleAppURL)
 }

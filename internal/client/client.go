@@ -6,9 +6,17 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	ory "github.com/ory/client-go"
 	"github.com/ory/x/urlx"
+)
+
+const (
+	// maxRetries is the maximum number of retry attempts for rate-limited requests.
+	maxRetries = 3
+	// initialBackoff is the initial backoff duration before first retry.
+	initialBackoff = 1 * time.Second
 )
 
 const (
@@ -212,6 +220,47 @@ func wrapAPIError(err error, operation string) error {
 	return err
 }
 
+// isRateLimitError checks if the error is a rate limit (429) error.
+func isRateLimitError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "429") || strings.Contains(errStr, "Too Many Requests")
+}
+
+// retryWithBackoff executes a function with exponential backoff on rate limit errors.
+func retryWithBackoff[T any](ctx context.Context, operation string, fn func() (T, error)) (T, error) {
+	var result T
+	var err error
+	backoff := initialBackoff
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		result, err = fn()
+		if err == nil {
+			return result, nil
+		}
+
+		if !isRateLimitError(err) {
+			return result, err
+		}
+
+		if attempt == maxRetries {
+			return result, fmt.Errorf("%s: rate limit exceeded after %d retries: %w", operation, maxRetries, err)
+		}
+
+		// Wait before retrying
+		select {
+		case <-ctx.Done():
+			return result, ctx.Err()
+		case <-time.After(backoff):
+			backoff *= 2 // Exponential backoff
+		}
+	}
+
+	return result, err
+}
+
 // OryClientConfig holds configuration for the Ory API client.
 type OryClientConfig struct {
 	WorkspaceAPIKey string
@@ -408,9 +457,30 @@ func (c *OryClient) CreateWorkspace(ctx context.Context, name string) (*ory.Work
 }
 
 // GetWorkspace retrieves a workspace by ID.
+// Note: Due to Ory API permission limitations, some API keys can list workspaces
+// but not get a specific workspace. We fall back to listing and filtering if
+// the direct GET fails with 403.
 func (c *OryClient) GetWorkspace(ctx context.Context, workspaceID string) (*ory.Workspace, error) {
 	workspace, _, err := c.consoleClient.WorkspaceAPI.GetWorkspace(ctx, workspaceID).Execute()
-	return workspace, err
+	if err != nil {
+		// Check if it's a 403 error - try fallback to list
+		errStr := err.Error()
+		if strings.Contains(errStr, "403") || strings.Contains(errStr, "Forbidden") {
+			// Fall back to listing workspaces and finding by ID
+			listResp, _, listErr := c.consoleClient.WorkspaceAPI.ListWorkspaces(ctx).Execute()
+			if listErr != nil {
+				return nil, err // Return original error
+			}
+			for _, w := range listResp.Workspaces {
+				if w.GetId() == workspaceID {
+					return &w, nil
+				}
+			}
+			return nil, fmt.Errorf("workspace %s not found", workspaceID)
+		}
+		return nil, err
+	}
+	return workspace, nil
 }
 
 // UpdateWorkspace updates a workspace.
@@ -467,16 +537,41 @@ func (c *OryClient) CreateOrganization(ctx context.Context, projectID, label str
 }
 
 // GetOrganization retrieves an organization by ID.
+// Includes retry logic to handle eventual consistency after organization creation.
 func (c *OryClient) GetOrganization(ctx context.Context, projectID, orgID string) (*ory.Organization, error) {
 	if c.consoleClient == nil {
 		return nil, fmt.Errorf("reading organization: console API client not configured. " +
 			"Set workspace_api_key (ORY_WORKSPACE_API_KEY)")
 	}
-	resp, _, err := c.consoleClient.ProjectAPI.GetOrganization(ctx, projectID, orgID).Execute()
-	if err != nil {
-		return nil, wrapAPIError(err, "reading organization")
+
+	// Retry with backoff for 404 errors (eventual consistency)
+	// Use 5 attempts with delays: 1s, 2s, 4s, 8s to handle slow propagation
+	var lastErr error
+	for attempt := 0; attempt < 5; attempt++ {
+		resp, _, err := c.consoleClient.ProjectAPI.GetOrganization(ctx, projectID, orgID).Execute()
+		if err == nil {
+			return &resp.Organization, nil
+		}
+
+		lastErr = err
+		errStr := err.Error()
+
+		// Only retry on 404 errors (eventual consistency)
+		if !strings.Contains(errStr, "404") && !strings.Contains(errStr, "Not Found") {
+			return nil, wrapAPIError(err, "reading organization")
+		}
+
+		// Wait before retry (exponential backoff: 1s, 2s, 4s, 8s)
+		if attempt < 4 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(1<<attempt) * time.Second):
+			}
+		}
 	}
-	return &resp.Organization, nil
+
+	return nil, wrapAPIError(lastErr, "reading organization")
 }
 
 // UpdateOrganization updates an organization.
@@ -496,11 +591,34 @@ func (c *OryClient) UpdateOrganization(ctx context.Context, projectID, orgID, la
 		Domains: domains,
 	}
 
-	org, _, err := c.consoleClient.ProjectAPI.UpdateOrganization(ctx, projectID, orgID).OrganizationBody(body).Execute()
-	if err != nil {
-		return nil, wrapAPIError(err, "updating organization")
+	// Retry with backoff for 404 errors (eventual consistency)
+	// Use 5 attempts with delays: 1s, 2s, 4s, 8s to handle slow propagation
+	var lastErr error
+	for attempt := 0; attempt < 5; attempt++ {
+		org, _, err := c.consoleClient.ProjectAPI.UpdateOrganization(ctx, projectID, orgID).OrganizationBody(body).Execute()
+		if err == nil {
+			return org, nil
+		}
+
+		lastErr = err
+		errStr := err.Error()
+
+		// Only retry on 404 errors (eventual consistency)
+		if !strings.Contains(errStr, "404") && !strings.Contains(errStr, "Not Found") {
+			return nil, wrapAPIError(err, "updating organization")
+		}
+
+		// Wait before retry (exponential backoff: 1s, 2s, 4s, 8s)
+		if attempt < 4 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(1<<attempt) * time.Second):
+			}
+		}
 	}
-	return org, nil
+
+	return nil, wrapAPIError(lastErr, "updating organization")
 }
 
 // DeleteOrganization deletes an organization.
@@ -517,27 +635,36 @@ func (c *OryClient) DeleteOrganization(ctx context.Context, projectID, orgID str
 // Identity Operations (Project API)
 // =============================================================================
 
-// CreateIdentity creates a new identity.
+// CreateIdentity creates a new identity with retry on rate limit.
 func (c *OryClient) CreateIdentity(ctx context.Context, body ory.CreateIdentityBody) (*ory.Identity, error) {
-	identity, _, err := c.projectClient.IdentityAPI.CreateIdentity(ctx).CreateIdentityBody(body).Execute()
-	return identity, err
+	return retryWithBackoff(ctx, "creating identity", func() (*ory.Identity, error) {
+		identity, _, err := c.projectClient.IdentityAPI.CreateIdentity(ctx).CreateIdentityBody(body).Execute()
+		return identity, err
+	})
 }
 
-// GetIdentity retrieves an identity by ID.
+// GetIdentity retrieves an identity by ID with retry on rate limit.
 func (c *OryClient) GetIdentity(ctx context.Context, identityID string) (*ory.Identity, error) {
-	identity, _, err := c.projectClient.IdentityAPI.GetIdentity(ctx, identityID).Execute()
-	return identity, err
+	return retryWithBackoff(ctx, "getting identity", func() (*ory.Identity, error) {
+		identity, _, err := c.projectClient.IdentityAPI.GetIdentity(ctx, identityID).Execute()
+		return identity, err
+	})
 }
 
-// UpdateIdentity updates an identity.
+// UpdateIdentity updates an identity with retry on rate limit.
 func (c *OryClient) UpdateIdentity(ctx context.Context, identityID string, body ory.UpdateIdentityBody) (*ory.Identity, error) {
-	identity, _, err := c.projectClient.IdentityAPI.UpdateIdentity(ctx, identityID).UpdateIdentityBody(body).Execute()
-	return identity, err
+	return retryWithBackoff(ctx, "updating identity", func() (*ory.Identity, error) {
+		identity, _, err := c.projectClient.IdentityAPI.UpdateIdentity(ctx, identityID).UpdateIdentityBody(body).Execute()
+		return identity, err
+	})
 }
 
-// DeleteIdentity deletes an identity.
+// DeleteIdentity deletes an identity with retry on rate limit.
 func (c *OryClient) DeleteIdentity(ctx context.Context, identityID string) error {
-	_, err := c.projectClient.IdentityAPI.DeleteIdentity(ctx, identityID).Execute()
+	_, err := retryWithBackoff(ctx, "deleting identity", func() (struct{}, error) {
+		_, err := c.projectClient.IdentityAPI.DeleteIdentity(ctx, identityID).Execute()
+		return struct{}{}, err
+	})
 	return err
 }
 

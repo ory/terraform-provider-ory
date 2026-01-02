@@ -30,16 +30,37 @@ make install
 
 ### Running Tests
 
+Acceptance tests are **self-contained** - they automatically create a temporary Ory project, run tests against it, and clean up when done.
+
 ```bash
 # Unit tests (no credentials needed)
 make test
 
 # Acceptance tests (requires Ory credentials)
 export ORY_WORKSPACE_API_KEY="ory_wak_..."
-export ORY_PROJECT_API_KEY="ory_pat_..."
-export ORY_PROJECT_ID="..."
-export ORY_PROJECT_SLUG="..."
-make testacc
+export ORY_WORKSPACE_ID="..."
+make test-acc
+
+# Acceptance tests with debug logging
+make test-acc-verbose
+
+# Run all tests with all features enabled
+make test-acc-all
+```
+
+#### Optional Feature Flags
+
+Some tests require specific Ory plan features. Enable them with environment variables:
+
+```bash
+# Run relationship/Keto tests
+ORY_KETO_TESTS_ENABLED=true make test-acc
+
+# Run B2B/organization tests (requires B2B plan)
+ORY_B2B_ENABLED=true make test-acc
+
+# Run social provider tests
+ORY_SOCIAL_PROVIDER_TESTS_ENABLED=true make test-acc
 ```
 
 ### Using Local Provider

@@ -2,6 +2,7 @@ package projectconfig
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -12,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-orynetwork/internal/client"
@@ -34,6 +36,9 @@ type ProjectConfigResource struct {
 type ProjectConfigResourceModel struct {
 	ID        types.String `tfsdk:"id"`
 	ProjectID types.String `tfsdk:"project_id"`
+
+	// Keto/Permissions Namespaces
+	KetoNamespaces types.List `tfsdk:"keto_namespaces"`
 
 	// CORS
 	CorsEnabled types.Bool `tfsdk:"cors_enabled"`
@@ -118,6 +123,15 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
+			},
+
+			// Keto/Permissions Namespaces
+			"keto_namespaces": schema.ListAttribute{
+				Description: "List of Keto namespace names to configure for Ory Permissions. " +
+					"Namespaces define the types of resources in your permission model (e.g., 'documents', 'folders'). " +
+					"Each namespace name must be unique.",
+				Optional:    true,
+				ElementType: types.StringType,
 			},
 
 			// CORS
@@ -333,6 +347,25 @@ func (r *ProjectConfigResource) Configure(ctx context.Context, req resource.Conf
 
 func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectConfigResourceModel) []ory.JsonPatch {
 	var patches []ory.JsonPatch
+
+	// Keto/Permissions Namespaces
+	if !plan.KetoNamespaces.IsNull() && !plan.KetoNamespaces.IsUnknown() {
+		var namespaceNames []string
+		plan.KetoNamespaces.ElementsAs(ctx, &namespaceNames, false)
+		// Convert to the format expected by Ory API: [{name: "...", id: N}, ...]
+		namespaces := make([]map[string]interface{}, len(namespaceNames))
+		for i, name := range namespaceNames {
+			namespaces[i] = map[string]interface{}{
+				"name": name,
+				"id":   i + 1, // IDs are 1-indexed
+			}
+		}
+		patches = append(patches, ory.JsonPatch{
+			Op:    "add",
+			Path:  "/services/permission/config/namespaces",
+			Value: namespaces,
+		})
+	}
 
 	// CORS
 	if !plan.CorsEnabled.IsNull() && !plan.CorsEnabled.IsUnknown() {
@@ -619,12 +652,20 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 	}
 
 	patches := r.buildPatches(ctx, &plan)
+
+	// Debug: Log the patches being built
+	patchesJSON, _ := json.Marshal(patches)
+	tflog.Warn(ctx, fmt.Sprintf("Building project config patches: project_id=%s patch_count=%d patches=%s",
+		projectID, len(patches), string(patchesJSON)))
+
 	if len(patches) > 0 {
 		_, err := r.client.PatchProject(ctx, projectID, patches)
 		if err != nil {
 			resp.Diagnostics.AddError("Error Applying Project Config", err.Error())
 			return
 		}
+		tflog.Warn(ctx, fmt.Sprintf("Successfully applied project config patches: project_id=%s patch_count=%d",
+			projectID, len(patches)))
 	}
 
 	plan.ID = types.StringValue(projectID)

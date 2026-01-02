@@ -1,13 +1,16 @@
 package client
 
 import (
+	"fmt"
 	"testing"
+
+	"github.com/ory/terraform-provider-orynetwork/internal/testutil"
 )
 
 func TestNewOryClient_DefaultURLs(t *testing.T) {
 	cfg := OryClientConfig{
-		WorkspaceAPIKey: "ory_wak_test",
-		ConsoleAPIURL:   "https://api.console.ory.sh",
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   DefaultConsoleAPIURL,
 	}
 
 	client, err := NewOryClient(cfg)
@@ -24,16 +27,16 @@ func TestNewOryClient_DefaultURLs(t *testing.T) {
 	if len(servers) == 0 {
 		t.Error("console client should have servers configured")
 	}
-	if servers[0].URL != "https://api.console.ory.sh" {
-		t.Errorf("expected console URL 'https://api.console.ory.sh', got '%s'", servers[0].URL)
+	if servers[0].URL != DefaultConsoleAPIURL {
+		t.Errorf("expected console URL '%s', got '%s'", DefaultConsoleAPIURL, servers[0].URL)
 	}
 }
 
 func TestNewOryClient_CustomConsoleURL(t *testing.T) {
 	// Using example.com to demonstrate custom URL configuration
 	cfg := OryClientConfig{
-		WorkspaceAPIKey: "ory_wak_test",
-		ConsoleAPIURL:   "https://api.console.example.com",
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   testutil.ExampleConsoleAPIURL,
 	}
 
 	client, err := NewOryClient(cfg)
@@ -42,14 +45,14 @@ func TestNewOryClient_CustomConsoleURL(t *testing.T) {
 	}
 
 	servers := client.consoleClient.GetConfig().Servers
-	if servers[0].URL != "https://api.console.example.com" {
+	if servers[0].URL != testutil.ExampleConsoleAPIURL {
 		t.Errorf("expected custom console URL, got '%s'", servers[0].URL)
 	}
 
 	// Verify operation servers are also configured with custom URL
 	opServers := client.consoleClient.GetConfig().OperationServers
 	if createProjectServers, ok := opServers["ProjectAPIService.CreateProject"]; ok {
-		if createProjectServers[0].URL != "https://api.console.example.com" {
+		if createProjectServers[0].URL != testutil.ExampleConsoleAPIURL {
 			t.Errorf("expected operation server URL to be custom, got '%s'", createProjectServers[0].URL)
 		}
 	} else {
@@ -60,9 +63,9 @@ func TestNewOryClient_CustomConsoleURL(t *testing.T) {
 func TestNewOryClient_CustomProjectURL(t *testing.T) {
 	// Using example.com to demonstrate custom URL configuration
 	cfg := OryClientConfig{
-		ProjectAPIKey: "ory_pat_test",
-		ProjectSlug:   "my-project-slug",
-		ProjectAPIURL: "https://%s.projects.example.com",
+		ProjectAPIKey: testutil.TestProjectAPIKey,
+		ProjectSlug:   testutil.TestProjectSlug,
+		ProjectAPIURL: testutil.ExampleProjectAPIURL,
 	}
 
 	client, err := NewOryClient(cfg)
@@ -75,7 +78,7 @@ func TestNewOryClient_CustomProjectURL(t *testing.T) {
 	}
 
 	servers := client.projectClient.GetConfig().Servers
-	expectedURL := "https://my-project-slug.projects.example.com"
+	expectedURL := fmt.Sprintf(testutil.ExampleProjectAPIURL, testutil.TestProjectSlug)
 	if servers[0].URL != expectedURL {
 		t.Errorf("expected project URL '%s', got '%s'", expectedURL, servers[0].URL)
 	}
@@ -83,8 +86,8 @@ func TestNewOryClient_CustomProjectURL(t *testing.T) {
 
 func TestNewOryClient_DefaultProjectURL(t *testing.T) {
 	cfg := OryClientConfig{
-		ProjectAPIKey: "ory_pat_test",
-		ProjectSlug:   "my-project-slug",
+		ProjectAPIKey: testutil.TestProjectAPIKey,
+		ProjectSlug:   testutil.TestProjectSlug,
 		// ProjectAPIURL is empty, should use default
 	}
 
@@ -94,7 +97,7 @@ func TestNewOryClient_DefaultProjectURL(t *testing.T) {
 	}
 
 	servers := client.projectClient.GetConfig().Servers
-	expectedURL := "https://my-project-slug.projects.oryapis.com"
+	expectedURL := fmt.Sprintf(DefaultProjectAPIURL, testutil.TestProjectSlug)
 	if servers[0].URL != expectedURL {
 		t.Errorf("expected default project URL '%s', got '%s'", expectedURL, servers[0].URL)
 	}
@@ -102,7 +105,7 @@ func TestNewOryClient_DefaultProjectURL(t *testing.T) {
 
 func TestNewOryClient_NoProjectClientWithoutSlug(t *testing.T) {
 	cfg := OryClientConfig{
-		ProjectAPIKey: "ory_pat_test",
+		ProjectAPIKey: testutil.TestProjectAPIKey,
 		// ProjectSlug is empty
 	}
 
@@ -118,8 +121,8 @@ func TestNewOryClient_NoProjectClientWithoutSlug(t *testing.T) {
 
 func TestNewOryClient_NoConsoleClientWithoutWorkspaceKey(t *testing.T) {
 	cfg := OryClientConfig{
-		ProjectAPIKey: "ory_pat_test",
-		ProjectSlug:   "my-project",
+		ProjectAPIKey: testutil.TestProjectAPIKey,
+		ProjectSlug:   testutil.TestProjectSlug,
 	}
 
 	client, err := NewOryClient(cfg)
@@ -134,13 +137,13 @@ func TestNewOryClient_NoConsoleClientWithoutWorkspaceKey(t *testing.T) {
 
 func TestOryClient_Config(t *testing.T) {
 	cfg := OryClientConfig{
-		WorkspaceAPIKey: "ory_wak_test",
-		ProjectAPIKey:   "ory_pat_test",
-		ProjectID:       "project-123",
-		ProjectSlug:     "my-project",
-		WorkspaceID:     "workspace-456",
-		ConsoleAPIURL:   "https://custom.console.url",
-		ProjectAPIURL:   "https://%s.custom.project.url",
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ProjectAPIKey:   testutil.TestProjectAPIKey,
+		ProjectID:       testutil.TestProjectID,
+		ProjectSlug:     testutil.TestProjectSlug,
+		WorkspaceID:     testutil.TestWorkspaceID,
+		ConsoleAPIURL:   testutil.ExampleConsoleAPIURL,
+		ProjectAPIURL:   testutil.ExampleProjectAPIURL,
 	}
 
 	client, err := NewOryClient(cfg)
@@ -239,7 +242,7 @@ func containsHelper(s, substr string) bool {
 
 func TestNewOryClient_InvalidConsoleURL(t *testing.T) {
 	cfg := OryClientConfig{
-		WorkspaceAPIKey: "ory_wak_test",
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
 		ConsoleAPIURL:   "not-a-valid-url",
 	}
 
@@ -254,8 +257,8 @@ func TestNewOryClient_InvalidConsoleURL(t *testing.T) {
 
 func TestNewOryClient_InvalidProjectURL(t *testing.T) {
 	cfg := OryClientConfig{
-		ProjectAPIKey: "ory_pat_test",
-		ProjectSlug:   "my-project",
+		ProjectAPIKey: testutil.TestProjectAPIKey,
+		ProjectSlug:   testutil.TestProjectSlug,
 		ProjectAPIURL: "://invalid-url-template",
 	}
 

@@ -253,7 +253,11 @@ func (r *OrganizationResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
+	// Use state's project_id if plan doesn't have one (e.g., after import)
 	projectID := r.resolveProjectID(plan.ProjectID)
+	if projectID == "" {
+		projectID = r.resolveProjectID(state.ProjectID)
+	}
 
 	var domains []string
 	if !plan.Domains.IsNull() && !plan.Domains.IsUnknown() {
@@ -275,7 +279,8 @@ func (r *OrganizationResource) Update(ctx context.Context, req resource.UpdateRe
 	plan.ID = state.ID
 	plan.ProjectID = types.StringValue(projectID)
 	plan.Label = types.StringValue(org.GetLabel())
-	plan.CreatedAt = types.StringValue(org.CreatedAt.String())
+	// Preserve created_at from state - the API may return a slightly different timestamp format
+	plan.CreatedAt = state.CreatedAt
 
 	// Preserve null state for domains if it was null in the plan
 	if plan.Domains.IsNull() {

@@ -5,46 +5,28 @@ import (
 	"os"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
-	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 
-	"github.com/ory/terraform-provider-orynetwork/internal/provider"
+	"github.com/ory/terraform-provider-orynetwork/internal/acctest"
+	"github.com/ory/terraform-provider-orynetwork/internal/testutil"
 )
 
-var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
-	"ory": providerserver.NewProtocol6WithError(provider.New("test")()),
-}
-
-func testAccPreCheck(t *testing.T) {
-	if v := os.Getenv("ORY_PROJECT_API_KEY"); v == "" {
-		t.Skip("ORY_PROJECT_API_KEY must be set for acceptance tests")
-	}
-	if v := os.Getenv("ORY_PROJECT_ID"); v == "" {
-		t.Skip("ORY_PROJECT_ID must be set for acceptance tests")
-	}
-	if v := os.Getenv("ORY_PROJECT_SLUG"); v == "" {
-		t.Skip("ORY_PROJECT_SLUG must be set for acceptance tests")
-	}
-	// Organization operations require workspace API key
-	if v := os.Getenv("ORY_WORKSPACE_API_KEY"); v == "" {
-		t.Skip("ORY_WORKSPACE_API_KEY must be set for organization acceptance tests")
-	}
-}
-
 func testAccPreCheckB2B(t *testing.T) {
-	testAccPreCheck(t)
-	// Organizations require B2B features which are only available on paid plans
-	// Set ORY_B2B_ENABLED=true if your plan supports organizations
-	if os.Getenv("ORY_B2B_ENABLED") != "true" {
-		t.Skip("ORY_B2B_ENABLED must be set to 'true' for organization tests (requires paid Ory plan)")
+	acctest.AccPreCheck(t)
+	acctest.RequireB2BTests(t)
+
+	// Organizations are not available in development (dev) projects
+	// They require 'prod' or 'stage' environment
+	env := os.Getenv("ORY_PROJECT_ENVIRONMENT")
+	if env == "dev" || env == "" {
+		t.Skip("Organization tests require ORY_PROJECT_ENVIRONMENT to be 'prod' or 'stage' (not 'dev')")
 	}
 }
 
 func TestAccOrganizationResource_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheckB2B(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
@@ -76,10 +58,10 @@ func TestAccOrganizationResource_basic(t *testing.T) {
 func TestAccOrganizationResource_withDomains(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheckB2B(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccOrganizationResourceConfigWithDomains("Org with Domains", []string{"example.com", "test.example.com"}),
+				Config: testAccOrganizationResourceConfigWithDomains("Org with Domains", []string{testutil.ExampleEmailDomain, fmt.Sprintf("test.%s", testutil.ExampleEmailDomain)}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_organization.test", "id"),
 					resource.TestCheckResourceAttr("ory_organization.test", "label", "Org with Domains"),
@@ -88,7 +70,7 @@ func TestAccOrganizationResource_withDomains(t *testing.T) {
 			},
 			// Update domains
 			{
-				Config: testAccOrganizationResourceConfigWithDomains("Org with Domains", []string{"example.com", "test.example.com", "new.example.com"}),
+				Config: testAccOrganizationResourceConfigWithDomains("Org with Domains", []string{testutil.ExampleEmailDomain, fmt.Sprintf("test.%s", testutil.ExampleEmailDomain), fmt.Sprintf("new.%s", testutil.ExampleEmailDomain)}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("ory_organization.test", "domains.#", "3"),
 				),

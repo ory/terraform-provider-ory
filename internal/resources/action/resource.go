@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -195,28 +196,46 @@ func (r *ActionResource) buildHookValue(plan *ActionResourceModel) map[string]in
 func (r *ActionResource) getHooks(ctx context.Context, projectID, flow, timing, authMethod string) ([]map[string]interface{}, error) {
 	project, err := r.client.GetProject(ctx, projectID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get project %s: %w", projectID, err)
 	}
 
 	if project.Services.Identity == nil {
-		return nil, nil
+		return []map[string]interface{}{}, nil
 	}
 
 	configMap := project.Services.Identity.Config
 	if configMap == nil {
-		return nil, nil
+		return []map[string]interface{}{}, nil
 	}
 
-	selfservice, _ := configMap["selfservice"].(map[string]interface{})
-	flows, _ := selfservice["flows"].(map[string]interface{})
-	flowConfig, _ := flows[flow].(map[string]interface{})
-	timingConfig, _ := flowConfig[timing].(map[string]interface{})
+	selfservice, ok := configMap["selfservice"].(map[string]interface{})
+	if !ok {
+		return []map[string]interface{}{}, nil
+	}
+
+	flows, ok := selfservice["flows"].(map[string]interface{})
+	if !ok {
+		return []map[string]interface{}{}, nil
+	}
+
+	flowConfig, ok := flows[flow].(map[string]interface{})
+	if !ok {
+		return []map[string]interface{}{}, nil
+	}
+
+	timingConfig, ok := flowConfig[timing].(map[string]interface{})
+	if !ok {
+		return []map[string]interface{}{}, nil
+	}
 
 	// For 'after' timing, hooks are nested under the auth method
 	// For 'before' timing, hooks are directly under timing
 	var hooks []interface{}
 	if timing == "after" {
-		authMethodConfig, _ := timingConfig[authMethod].(map[string]interface{})
+		authMethodConfig, ok := timingConfig[authMethod].(map[string]interface{})
+		if !ok {
+			return []map[string]interface{}{}, nil
+		}
 		hooks, _ = authMethodConfig["hooks"].([]interface{})
 	} else {
 		hooks, _ = timingConfig["hooks"].([]interface{})
@@ -329,16 +348,86 @@ func (r *ActionResource) Read(ctx context.Context, req resource.ReadRequest, res
 	url := state.URL.ValueString()
 	httpMethod := state.HTTPMethod.ValueString()
 
-	hooks, err := r.getHooks(ctx, projectID, flow, timing, authMethod)
-	if err != nil {
-		resp.Diagnostics.AddError("Error Reading Action", err.Error())
-		return
+	// Retry logic for eventual consistency after create/update
+	var hooks []map[string]interface{}
+	var index int
+	var err error
+
+	for attempt := 0; attempt < 5; attempt++ {
+		hooks, err = r.getHooks(ctx, projectID, flow, timing, authMethod)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Reading Action", err.Error())
+			return
+		}
+
+		index = r.findHookIndex(hooks, url, httpMethod)
+		if index >= 0 {
+			break
+		}
+
+		// Wait before retry (exponential backoff: 1s, 2s, 4s, 8s)
+		if attempt < 4 {
+			select {
+			case <-ctx.Done():
+				resp.State.RemoveResource(ctx)
+				return
+			case <-time.After(time.Duration(1<<attempt) * time.Second):
+			}
+		}
 	}
 
-	index := r.findHookIndex(hooks, url, httpMethod)
 	if index < 0 {
 		resp.State.RemoveResource(ctx)
 		return
+	}
+
+	// Read the actual values from the hook configuration
+	hook := hooks[index]
+	config, _ := hook["config"].(map[string]interface{})
+
+	// Read method (default to POST if not set)
+	if method, ok := config["method"].(string); ok && method != "" {
+		state.HTTPMethod = types.StringValue(method)
+	} else {
+		state.HTTPMethod = types.StringValue("POST")
+	}
+
+	// Read body - decode from base64 if needed
+	if body, ok := config["body"].(string); ok && body != "" {
+		if strings.HasPrefix(body, "base64://") {
+			decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(body, "base64://"))
+			if err == nil {
+				state.Body = types.StringValue(string(decoded))
+			} else {
+				state.Body = types.StringValue(body)
+			}
+		} else {
+			state.Body = types.StringValue(body)
+		}
+	}
+
+	// Read response settings
+	if response, ok := config["response"].(map[string]interface{}); ok {
+		if ignore, ok := response["ignore"].(bool); ok {
+			state.ResponseIgnore = types.BoolValue(ignore)
+		} else {
+			state.ResponseIgnore = types.BoolValue(false)
+		}
+		if parse, ok := response["parse"].(bool); ok {
+			state.ResponseParse = types.BoolValue(parse)
+		} else {
+			state.ResponseParse = types.BoolValue(false)
+		}
+	} else {
+		state.ResponseIgnore = types.BoolValue(false)
+		state.ResponseParse = types.BoolValue(false)
+	}
+
+	// Read can_interrupt
+	if canInterrupt, ok := config["can_interrupt"].(bool); ok {
+		state.CanInterrupt = types.BoolValue(canInterrupt)
+	} else {
+		state.CanInterrupt = types.BoolValue(false)
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)

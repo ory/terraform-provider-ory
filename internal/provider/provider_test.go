@@ -7,6 +7,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/ory/terraform-provider-orynetwork/internal/testutil"
 )
 
 func TestProvider(t *testing.T) {
@@ -156,20 +157,20 @@ func TestProviderModelAttributes(t *testing.T) {
 	// Verify the OryProviderModel has all expected fields
 	// Using example URLs to demonstrate custom URL configuration
 	model := OryProviderModel{
-		WorkspaceAPIKey: types.StringValue("ory_wak_test"),
-		ProjectAPIKey:   types.StringValue("ory_pat_test"),
-		ProjectID:       types.StringValue("project-id"),
-		ProjectSlug:     types.StringValue("project-slug"),
-		WorkspaceID:     types.StringValue("workspace-id"),
-		ConsoleAPIURL:   types.StringValue("https://api.console.example.com"),
-		ProjectAPIURL:   types.StringValue("https://%s.projects.example.com"),
+		WorkspaceAPIKey: types.StringValue(testutil.TestWorkspaceAPIKey),
+		ProjectAPIKey:   types.StringValue(testutil.TestProjectAPIKey),
+		ProjectID:       types.StringValue(testutil.TestProjectID),
+		ProjectSlug:     types.StringValue(testutil.TestProjectSlug),
+		WorkspaceID:     types.StringValue(testutil.TestWorkspaceID),
+		ConsoleAPIURL:   types.StringValue(testutil.ExampleConsoleAPIURL),
+		ProjectAPIURL:   types.StringValue(testutil.ExampleProjectAPIURL),
 	}
 
 	// Verify values can be retrieved
-	if model.ConsoleAPIURL.ValueString() != "https://api.console.example.com" {
+	if model.ConsoleAPIURL.ValueString() != testutil.ExampleConsoleAPIURL {
 		t.Error("ConsoleAPIURL not set correctly")
 	}
-	if model.ProjectAPIURL.ValueString() != "https://%s.projects.example.com" {
+	if model.ProjectAPIURL.ValueString() != testutil.ExampleProjectAPIURL {
 		t.Error("ProjectAPIURL not set correctly")
 	}
 }

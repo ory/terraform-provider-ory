@@ -1,0 +1,94 @@
+# Acceptance Tests - runs Go tests with TF_ACC=1 against real Ory API
+#
+# This workflow:
+# 1. Builds the provider locally
+# 2. Runs Go acceptance tests (tests create their own projects and clean up)
+#
+# The Go tests are self-contained:
+# - Each test run creates a temporary project via the Ory API
+# - Tests run against that project
+# - The project is automatically cleaned up after tests complete
+
+name: Acceptance Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/acceptance-test.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/acceptance-test.yml'
+  workflow_dispatch:
+    inputs:
+      enable_keto_tests:
+        description: 'Enable Keto/relationship tests'
+        required: false
+        default: true
+        type: boolean
+      enable_b2b_tests:
+        description: 'Enable B2B/organization tests'
+        required: false
+        default: true
+        type: boolean
+      enable_social_provider_tests:
+        description: 'Enable social provider tests'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance-test:
+    name: Acceptance Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Only run if secrets are available (not on forks)
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+
+    env:
+      ORY_WORKSPACE_API_KEY: ${{ secrets.ORY_WORKSPACE_API_KEY }}
+      ORY_WORKSPACE_ID: ${{ secrets.ORY_WORKSPACE_ID }}
+      ORY_CONSOLE_API_URL: ${{ secrets.ORY_CONSOLE_API_URL }}
+      ORY_PROJECT_API_URL: ${{ secrets.ORY_PROJECT_API_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Build provider
+        run: go build -o terraform-provider-ory
+
+      - name: Run Unit Tests
+        run: go test -short -v ./...
+
+      - name: Run Acceptance Tests
+        env:
+          # Enable feature flags based on workflow inputs or defaults
+          ORY_KETO_TESTS_ENABLED: ${{ github.event.inputs.enable_keto_tests || 'true' }}
+          ORY_B2B_ENABLED: ${{ github.event.inputs.enable_b2b_tests || 'true' }}
+          ORY_SOCIAL_PROVIDER_TESTS_ENABLED: ${{ github.event.inputs.enable_social_provider_tests || 'true' }}
+        run: |
+          echo "Running acceptance tests..."
+          echo "  ORY_KETO_TESTS_ENABLED: $ORY_KETO_TESTS_ENABLED"
+          echo "  ORY_B2B_ENABLED: $ORY_B2B_ENABLED"
+          echo "  ORY_SOCIAL_PROVIDER_TESTS_ENABLED: $ORY_SOCIAL_PROVIDER_TESTS_ENABLED"
+          echo ""
+          echo "Using wrapper script to create a single shared project for all test packages."
+          echo ""
+          ./scripts/run-acceptance-tests.sh -p 1 -v -timeout 20m ./...

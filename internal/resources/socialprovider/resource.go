@@ -100,7 +100,7 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				ElementType: types.StringType,
 			},
 			"mapper_url": schema.StringAttribute{
-				Description: "Jsonnet mapper URL for claims mapping.",
+				Description: "Jsonnet mapper URL for claims mapping. Can be a URL or base64-encoded Jsonnet (base64://...). If not set, a default mapper that extracts email from claims will be used.",
 				Optional:    true,
 			},
 			"auth_url": schema.StringAttribute{
@@ -132,6 +132,11 @@ func (r *SocialProviderResource) Configure(ctx context.Context, req resource.Con
 	r.client = oryClient
 }
 
+// defaultMapperURL returns the default Jsonnet mapper for common providers.
+// This is a simple mapper that extracts email and subject from the claims.
+// The base64-encoded Jsonnet maps claims to identity traits.
+const defaultMapperURL = "base64://bG9jYWwgY2xhaW1zID0gc3RkLmV4dFZhcignY2xhaW1zJyk7CnsKICBpZGVudGl0eTogewogICAgdHJhaXRzOiB7CiAgICAgIGVtYWlsOiBjbGFpbXMuZW1haWwsCiAgICB9LAogIH0sCn0="
+
 func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *SocialProviderResourceModel) map[string]interface{} {
 	config := map[string]interface{}{
 		"id":            plan.ProviderID.ValueString(),
@@ -148,8 +153,11 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 		plan.Scope.ElementsAs(ctx, &scope, false)
 		config["scope"] = scope
 	}
-	if !plan.MapperURL.IsNull() && !plan.MapperURL.IsUnknown() {
+	// mapper_url is required by the Ory API - use default if not provided
+	if !plan.MapperURL.IsNull() && !plan.MapperURL.IsUnknown() && plan.MapperURL.ValueString() != "" {
 		config["mapper_url"] = plan.MapperURL.ValueString()
+	} else {
+		config["mapper_url"] = defaultMapperURL
 	}
 	if !plan.AuthURL.IsNull() && !plan.AuthURL.IsUnknown() {
 		config["auth_url"] = plan.AuthURL.ValueString()
@@ -167,23 +175,45 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 func (r *SocialProviderResource) getProviders(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
 	project, err := r.client.GetProject(ctx, projectID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get project %s: %w", projectID, err)
 	}
 
 	if project.Services.Identity == nil {
-		return nil, nil
+		// No identity service configured yet - this is valid, return empty list
+		return []map[string]interface{}{}, nil
 	}
 
 	configMap := project.Services.Identity.Config
 	if configMap == nil {
-		return nil, nil
+		// No config yet - return empty list
+		return []map[string]interface{}{}, nil
 	}
 
-	selfservice, _ := configMap["selfservice"].(map[string]interface{})
-	methods, _ := selfservice["methods"].(map[string]interface{})
-	oidc, _ := methods["oidc"].(map[string]interface{})
-	oidcConfig, _ := oidc["config"].(map[string]interface{})
-	providers, _ := oidcConfig["providers"].([]interface{})
+	// Navigate through the config structure - return empty list if any level is missing
+	selfservice, ok := configMap["selfservice"].(map[string]interface{})
+	if !ok {
+		return []map[string]interface{}{}, nil
+	}
+
+	methods, ok := selfservice["methods"].(map[string]interface{})
+	if !ok {
+		return []map[string]interface{}{}, nil
+	}
+
+	oidc, ok := methods["oidc"].(map[string]interface{})
+	if !ok {
+		return []map[string]interface{}{}, nil
+	}
+
+	oidcConfig, ok := oidc["config"].(map[string]interface{})
+	if !ok {
+		return []map[string]interface{}{}, nil
+	}
+
+	providers, ok := oidcConfig["providers"].([]interface{})
+	if !ok {
+		return []map[string]interface{}{}, nil
+	}
 
 	result := make([]map[string]interface{}, 0, len(providers))
 	for _, p := range providers {
@@ -235,20 +265,27 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 			Value: providerConfig,
 		})
 	} else {
-		// Enable OIDC if not already
+		// When adding the first provider, we need to initialize the entire OIDC config structure
 		if len(providers) == 0 {
+			// Initialize OIDC config with the provider in one operation
+			patches = append(patches, ory.JsonPatch{
+				Op:   "add",
+				Path: "/services/identity/config/selfservice/methods/oidc",
+				Value: map[string]interface{}{
+					"enabled": true,
+					"config": map[string]interface{}{
+						"providers": []interface{}{providerConfig},
+					},
+				},
+			})
+		} else {
+			// Add new provider to existing list
 			patches = append(patches, ory.JsonPatch{
 				Op:    "add",
-				Path:  "/services/identity/config/selfservice/methods/oidc/enabled",
-				Value: true,
+				Path:  "/services/identity/config/selfservice/methods/oidc/config/providers/-",
+				Value: providerConfig,
 			})
 		}
-		// Add new provider
-		patches = append(patches, ory.JsonPatch{
-			Op:    "add",
-			Path:  "/services/identity/config/selfservice/methods/oidc/config/providers/-",
-			Value: providerConfig,
-		})
 	}
 
 	_, err = r.client.PatchProject(ctx, projectID, patches)
@@ -271,14 +308,38 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 	}
 
 	projectID := state.ProjectID.ValueString()
-	providers, err := r.getProviders(ctx, projectID)
-	if err != nil {
-		resp.Diagnostics.AddError("Error Reading Social Provider", err.Error())
+	if projectID == "" {
+		projectID = r.client.ProjectID()
+	}
+
+	// Validate we have a project ID
+	if projectID == "" {
+		resp.Diagnostics.AddError(
+			"Missing Project ID",
+			"Could not determine project ID. Set project_id in the resource or configure ORY_PROJECT_ID environment variable.",
+		)
 		return
 	}
 
-	index := r.findProviderIndex(providers, state.ProviderID.ValueString())
+	providers, err := r.getProviders(ctx, projectID)
+	if err != nil {
+		resp.Diagnostics.AddError("Error Reading Social Provider",
+			fmt.Sprintf("Failed to get providers for project %s: %v", projectID, err))
+		return
+	}
+
+	providerID := state.ProviderID.ValueString()
+	if providerID == "" {
+		resp.Diagnostics.AddError(
+			"Missing Provider ID",
+			"provider_id is empty in state. This is a bug - please report it.",
+		)
+		return
+	}
+
+	index := r.findProviderIndex(providers, providerID)
 	if index < 0 {
+		// Provider not found - it may have been deleted outside of Terraform
 		resp.State.RemoveResource(ctx)
 		return
 	}
@@ -291,6 +352,10 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 	if issuer, ok := provider["issuer_url"].(string); ok {
 		state.IssuerURL = types.StringValue(issuer)
 	}
+
+	// Always ensure ID and ProjectID are set in state
+	state.ID = types.StringValue(providerID)
+	state.ProjectID = types.StringValue(projectID)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -347,6 +412,10 @@ func (r *SocialProviderResource) Delete(ctx context.Context, req resource.Delete
 	}
 
 	projectID := state.ProjectID.ValueString()
+	if projectID == "" {
+		projectID = r.client.ProjectID()
+	}
+
 	providers, err := r.getProviders(ctx, projectID)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Getting Providers", err.Error())
@@ -358,10 +427,29 @@ func (r *SocialProviderResource) Delete(ctx context.Context, req resource.Delete
 		return // Already deleted
 	}
 
-	patches := []ory.JsonPatch{{
-		Op:   "remove",
-		Path: fmt.Sprintf("/services/identity/config/selfservice/methods/oidc/config/providers/%d", index),
-	}}
+	var patches []ory.JsonPatch
+
+	// If this is the last provider, we need to reset the entire OIDC config
+	// to avoid leaving an invalid state with an empty providers array
+	if len(providers) == 1 {
+		// Reset the entire OIDC method configuration
+		patches = append(patches, ory.JsonPatch{
+			Op:   "replace",
+			Path: "/services/identity/config/selfservice/methods/oidc",
+			Value: map[string]interface{}{
+				"enabled": false,
+				"config": map[string]interface{}{
+					"providers": []interface{}{},
+				},
+			},
+		})
+	} else {
+		// Remove the specific provider by index
+		patches = append(patches, ory.JsonPatch{
+			Op:   "remove",
+			Path: fmt.Sprintf("/services/identity/config/selfservice/methods/oidc/config/providers/%d", index),
+		})
+	}
 
 	_, err = r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {

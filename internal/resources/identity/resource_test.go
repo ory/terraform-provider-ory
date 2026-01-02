@@ -2,43 +2,24 @@ package identity_test
 
 import (
 	"fmt"
-	"os"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
-	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 
-	"github.com/ory/terraform-provider-orynetwork/internal/provider"
+	"github.com/ory/terraform-provider-orynetwork/internal/acctest"
 )
-
-var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
-	"ory": providerserver.NewProtocol6WithError(provider.New("test")()),
-}
-
-func testAccPreCheck(t *testing.T) {
-	if v := os.Getenv("ORY_PROJECT_API_KEY"); v == "" {
-		t.Skip("ORY_PROJECT_API_KEY must be set for acceptance tests")
-	}
-	if v := os.Getenv("ORY_PROJECT_ID"); v == "" {
-		t.Skip("ORY_PROJECT_ID must be set for acceptance tests")
-	}
-	if v := os.Getenv("ORY_PROJECT_SLUG"); v == "" {
-		t.Skip("ORY_PROJECT_SLUG must be set for acceptance tests")
-	}
-}
 
 func TestAccIdentityResource_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
-				Config: testAccIdentityResourceConfig("test-basic@example.com"),
+				Config: testAccIdentityResourceConfig("test-basic-user"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_identity.test", "id"),
-					resource.TestCheckResourceAttr("ory_identity.test", "schema_id", "preset://email"),
+					resource.TestCheckResourceAttr("ory_identity.test", "schema_id", "preset://username"),
 					resource.TestCheckResourceAttr("ory_identity.test", "state", "active"),
 				),
 			},
@@ -52,7 +33,7 @@ func TestAccIdentityResource_basic(t *testing.T) {
 			},
 			// Update
 			{
-				Config: testAccIdentityResourceConfig("test-updated@example.com"),
+				Config: testAccIdentityResourceConfig("test-updated-user"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_identity.test", "id"),
 					resource.TestCheckResourceAttr("ory_identity.test", "state", "active"),
@@ -64,11 +45,11 @@ func TestAccIdentityResource_basic(t *testing.T) {
 
 func TestAccIdentityResource_withMetadata(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccIdentityResourceConfigWithMetadata("test-metadata@example.com"),
+				Config: testAccIdentityResourceConfigWithMetadata("test-metadata-user"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_identity.test", "id"),
 					resource.TestCheckResourceAttr("ory_identity.test", "state", "active"),
@@ -81,11 +62,11 @@ func TestAccIdentityResource_withMetadata(t *testing.T) {
 
 func TestAccIdentityResource_inactive(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccIdentityResourceConfigInactive("test-inactive@example.com"),
+				Config: testAccIdentityResourceConfigInactive("test-inactive-user"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_identity.test", "id"),
 					resource.TestCheckResourceAttr("ory_identity.test", "state", "inactive"),
@@ -95,31 +76,31 @@ func TestAccIdentityResource_inactive(t *testing.T) {
 	})
 }
 
-func testAccIdentityResourceConfig(email string) string {
+func testAccIdentityResourceConfig(username string) string {
 	return fmt.Sprintf(`
 provider "ory" {}
 
 resource "ory_identity" "test" {
-  schema_id = "preset://email"
+  schema_id = "preset://username"
 
   traits = jsonencode({
-    email = %[1]q
+    username = %[1]q
   })
 
   state = "active"
 }
-`, email)
+`, username)
 }
 
-func testAccIdentityResourceConfigWithMetadata(email string) string {
+func testAccIdentityResourceConfigWithMetadata(username string) string {
 	return fmt.Sprintf(`
 provider "ory" {}
 
 resource "ory_identity" "test" {
-  schema_id = "preset://email"
+  schema_id = "preset://username"
 
   traits = jsonencode({
-    email = %[1]q
+    username = %[1]q
   })
 
   state = "active"
@@ -129,21 +110,21 @@ resource "ory_identity" "test" {
     created_by  = "terraform"
   })
 }
-`, email)
+`, username)
 }
 
-func testAccIdentityResourceConfigInactive(email string) string {
+func testAccIdentityResourceConfigInactive(username string) string {
 	return fmt.Sprintf(`
 provider "ory" {}
 
 resource "ory_identity" "test" {
-  schema_id = "preset://email"
+  schema_id = "preset://username"
 
   traits = jsonencode({
-    email = %[1]q
+    username = %[1]q
   })
 
   state = "inactive"
 }
-`, email)
+`, username)
 }
