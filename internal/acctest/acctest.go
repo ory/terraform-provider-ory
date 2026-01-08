@@ -269,12 +269,6 @@ func getOryClient() (*client.OryClient, error) {
 	return oryClient, err
 }
 
-// GetOryClient returns a shared Ory client for use in tests.
-// This is an exported version for use in custom CheckDestroy functions.
-func GetOryClient() (*client.OryClient, error) {
-	return getOryClient()
-}
-
 // SkipIfFeatureDisabled skips the test if the specified feature flag is not set to "true".
 func SkipIfFeatureDisabled(t *testing.T, envVar, featureName string) {
 	t.Helper()

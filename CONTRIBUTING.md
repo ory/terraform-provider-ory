@@ -92,23 +92,6 @@ export ORY_CONSOLE_API_URL="https://api.console.ory.sh"      # Console API
 export ORY_PROJECT_API_URL="https://%s.projects.oryapis.com" # Project API template
 ```
 
-### Cleaning Up Dangling Resources
-
-If tests fail and leave resources behind, use the sweepers to clean up:
-
-```bash
-# Sweep all test resources
-go test -v ./internal/acctest -sweep=all -timeout 30m
-
-# Sweep specific resource types
-go test -v ./internal/acctest -sweep=ory_oauth2_client -timeout 30m
-
-# Enable project deletion (use with caution!)
-ORY_SWEEP_PROJECTS=true go test -v ./internal/acctest -sweep=ory_project -timeout 30m
-```
-
-Sweepers only delete resources with names starting with `tf-acc-test` or `Test`.
-
 ### Writing Acceptance Tests
 
 Follow these guidelines when writing acceptance tests:
@@ -127,20 +110,16 @@ import (
 )
 
 func TestAccMyResource_basic(t *testing.T) {
-    // Use acctest.RunTest for consistent test execution
     acctest.RunTest(t, resource.TestCase{
         PreCheck:                 func() { acctest.AccPreCheck(t) },
         ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
-        CheckDestroy:             acctest.CheckDestroy("ory_myresource", myResourceExists),
         Steps: []resource.TestStep{
-            // Create and Read
             {
                 Config: testAccMyResourceConfig(),
                 Check: resource.ComposeAggregateTestCheckFunc(
                     resource.TestCheckResourceAttrSet("ory_myresource.test", "id"),
                 ),
             },
-            // ImportState
             {
                 ResourceName:      "ory_myresource.test",
                 ImportState:       true,
@@ -151,38 +130,9 @@ func TestAccMyResource_basic(t *testing.T) {
 }
 ```
 
-#### 2. Implement CheckDestroy
-
-Every acceptance test should verify resources are properly deleted:
-
-```go
-// Use existing check functions
-CheckDestroy: acctest.CheckDestroy("ory_identity", acctest.IdentityExists),
-CheckDestroy: acctest.CheckDestroy("ory_oauth2_client", acctest.OAuth2ClientExists),
-CheckDestroy: acctest.CheckDestroy("ory_organization", acctest.OrganizationExists),
-CheckDestroy: acctest.CheckDestroy("ory_project", acctest.ProjectExists),
-
-// Or implement a custom existence check
-func myResourceExists(ctx context.Context, id string) (bool, error) {
-    c, err := acctest.GetOryClient()
-    if err != nil {
-        return false, err
-    }
-    _, err = c.GetMyResource(ctx, id)
-    if err != nil {
-        if strings.Contains(err.Error(), "404") {
-            return false, nil
-        }
-        return false, err
-    }
-    return true, nil
-}
-```
-
-#### 3. Test Configuration Best Practices
+#### 2. Test Configuration Best Practices
 
 - Use `fmt.Sprintf()` for variable injection in HCL configs
-- Prefix test resource names with `tf-acc-test` or `Test` for sweeper compatibility
 - Include the `provider "ory" {}` declaration in each config
 - Test create, read, update, import, and delete operations
 
@@ -198,7 +148,7 @@ resource "ory_myresource" "test" {
 }
 ```
 
-#### 4. Feature-Gated Tests
+#### 3. Feature-Gated Tests
 
 For tests requiring specific Ory plan features:
 
@@ -244,14 +194,13 @@ provider_installation {
 3. Register the resource in `internal/provider/provider.go`
 4. Add documentation in `docs/resources/`
 5. Add examples in `examples/resources/`
-6. Write acceptance tests with CheckDestroy
+6. Write acceptance tests
 
 ### Resource Contribution Checklist
 
 - [ ] Resource implements all CRUD operations
 - [ ] Resource supports import via `ImportState()`
 - [ ] Acceptance tests cover create, read, update, import, delete
-- [ ] Tests use `acctest.CheckDestroy()` to verify cleanup
 - [ ] Tests use `acctest.RunTest()` for consistent test execution
 - [ ] Documentation added to `docs/resources/`
 - [ ] Examples added to `examples/resources/`
@@ -272,7 +221,7 @@ Use clear, descriptive commit messages:
 Add ory_foo resource for managing foos
 
 - Implement CRUD operations
-- Add acceptance tests with CheckDestroy
+- Add acceptance tests
 - Add documentation
 ```
 
