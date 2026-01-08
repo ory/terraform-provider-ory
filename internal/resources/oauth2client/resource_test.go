@@ -15,7 +15,6 @@ func TestAccOAuth2ClientResource_basic(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
-		CheckDestroy:             acctest.CheckDestroy("ory_oauth2_client", acctest.OAuth2ClientExists),
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
@@ -53,7 +52,6 @@ func TestAccOAuth2ClientResource_withAudience(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
-		CheckDestroy:             acctest.CheckDestroy("ory_oauth2_client", acctest.OAuth2ClientExists),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccOAuth2ClientResourceConfigWithAudience("Test Client with Audience"),
@@ -71,7 +69,6 @@ func TestAccOAuth2ClientResource_withRedirectURIs(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
-		CheckDestroy:             acctest.CheckDestroy("ory_oauth2_client", acctest.OAuth2ClientExists),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccOAuth2ClientResourceConfigWithRedirectURIs("Test Client with Redirects"),

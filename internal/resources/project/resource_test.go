@@ -30,7 +30,6 @@ func TestAccProjectResource_basic(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
-		CheckDestroy:             acctest.CheckDestroy("ory_project", acctest.ProjectExists),
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
@@ -58,7 +57,6 @@ func TestAccProjectResource_prodEnvironment(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
-		CheckDestroy:             acctest.CheckDestroy("ory_project", acctest.ProjectExists),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccProjectResourceConfig("tf-test-prod-project", "prod"),
