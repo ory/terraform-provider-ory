@@ -3,25 +3,33 @@ name: Unit Tests
 on:
   push:
     branches: [main]
-    paths:
-      - '**.go'
-      - 'go.mod'
-      - 'go.sum'
-      - '.github/workflows/unit-test.yml'
   pull_request:
     branches: [main]
-    paths:
-      - '**.go'
-      - 'go.mod'
-      - 'go.sum'
-      - '.github/workflows/unit-test.yml'
 
 permissions:
   contents: read
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.filter.outputs.go == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            go:
+              - '**.go'
+              - 'go.mod'
+              - 'go.sum'
+              - '.github/workflows/unit-test.yml'
+
   unit-test:
     name: Build & Unit Test
+    needs: changes
+    if: needs.changes.outputs.should_run == 'true'
     runs-on: ubuntu-slim
 
     steps:
@@ -35,4 +43,4 @@ jobs:
           cache: true
 
       - name: Run Unit Tests
-        run: go test -short -v ./...
+        run: go test -short -v -cover ./...

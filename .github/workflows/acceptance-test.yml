@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       run_all:
-        description: 'Run all tests (uncheck to select specific test suites below)'
+        description: 'Run all tests'
         required: false
         default: true
         type: boolean
@@ -40,7 +40,6 @@ permissions:
   contents: read
 
 jobs:
-  # Filter paths to determine if we should run tests (only for push events)
   changes:
     runs-on: ubuntu-latest
     outputs:
