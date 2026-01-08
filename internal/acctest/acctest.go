@@ -11,6 +11,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-orynetwork/internal/client"
@@ -251,9 +252,27 @@ func getOryClient() (*client.OryClient, error) {
 		ProjectAPIURL:   projectURL,
 	}
 
+	// Also set project credentials if available
+	if sharedTestProject != nil {
+		cfg.ProjectAPIKey = sharedTestProject.APIKey
+		cfg.ProjectSlug = sharedTestProject.Slug
+		cfg.ProjectID = sharedTestProject.ID
+	} else {
+		// Fall back to environment variables
+		cfg.ProjectAPIKey = os.Getenv("ORY_PROJECT_API_KEY")
+		cfg.ProjectSlug = os.Getenv("ORY_PROJECT_SLUG")
+		cfg.ProjectID = os.Getenv("ORY_PROJECT_ID")
+	}
+
 	var err error
 	oryClient, err = client.NewOryClient(cfg)
 	return oryClient, err
+}
+
+// GetOryClient returns a shared Ory client for use in tests.
+// This is an exported version for use in custom CheckDestroy functions.
+func GetOryClient() (*client.OryClient, error) {
+	return getOryClient()
 }
 
 // SkipIfFeatureDisabled skips the test if the specified feature flag is not set to "true".
@@ -292,4 +311,12 @@ func RequireSocialProviderTests(t *testing.T) {
 func RequireProjectTests(t *testing.T) {
 	t.Helper()
 	SkipIfFeatureDisabled(t, "ORY_PROJECT_TESTS_ENABLED", "project")
+}
+
+// RunTest runs an acceptance test.
+// This is a convenience wrapper around resource.Test() that follows
+// provider conventions and can be extended in the future.
+func RunTest(t *testing.T, tc resource.TestCase) {
+	t.Helper()
+	resource.Test(t, tc)
 }

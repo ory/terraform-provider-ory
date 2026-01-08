@@ -28,39 +28,190 @@ make build
 make install
 ```
 
-### Running Tests
+## Testing
+
+### Test Types
+
+The provider has two types of tests:
+
+1. **Unit Tests** - Fast, isolated tests that don't require API access
+2. **Acceptance Tests** - Integration tests that create real resources in Ory Network
+
+### Unit Tests
+
+Unit tests can be run without any credentials:
+
+```bash
+make test           # Run all unit tests
+make test-short     # Run unit tests in short mode
+```
+
+### Acceptance Tests
 
 Acceptance tests are **self-contained** - they automatically create a temporary Ory project, run tests against it, and clean up when done.
 
-```bash
-# Unit tests (no credentials needed)
-make test
+#### Required Environment Variables
 
-# Acceptance tests (requires Ory credentials)
-export ORY_WORKSPACE_API_KEY="ory_wak_..."
-export ORY_WORKSPACE_ID="..."
+```bash
+export ORY_WORKSPACE_API_KEY="ory_wak_..."  # Workspace API key
+export ORY_WORKSPACE_ID="..."               # Workspace ID
+```
+
+#### Running Acceptance Tests
+
+```bash
+# Standard acceptance tests
 make test-acc
 
-# Acceptance tests with debug logging
+# With debug logging
 make test-acc-verbose
 
 # Run all tests with all features enabled
 make test-acc-all
+
+# Run specific resource tests
+ORY_KETO_TESTS_ENABLED=true make test-acc-keto
 ```
 
 #### Optional Feature Flags
 
 Some tests require specific Ory plan features. Enable them with environment variables:
 
+| Environment Variable | Description |
+|---------------------|-------------|
+| `ORY_KETO_TESTS_ENABLED=true` | Run relationship/Keto tests |
+| `ORY_B2B_ENABLED=true` | Run B2B/organization tests (requires B2B plan) |
+| `ORY_SOCIAL_PROVIDER_TESTS_ENABLED=true` | Run social provider tests |
+| `ORY_SCHEMA_TESTS_ENABLED=true` | Run identity schema tests |
+| `ORY_PROJECT_TESTS_ENABLED=true` | Run project creation/deletion tests |
+
+#### API URL Overrides (for local development)
+
 ```bash
-# Run relationship/Keto tests
-ORY_KETO_TESTS_ENABLED=true make test-acc
+export ORY_CONSOLE_API_URL="https://api.console.ory.sh"      # Console API
+export ORY_PROJECT_API_URL="https://%s.projects.oryapis.com" # Project API template
+```
 
-# Run B2B/organization tests (requires B2B plan)
-ORY_B2B_ENABLED=true make test-acc
+### Cleaning Up Dangling Resources
 
-# Run social provider tests
-ORY_SOCIAL_PROVIDER_TESTS_ENABLED=true make test-acc
+If tests fail and leave resources behind, use the sweepers to clean up:
+
+```bash
+# Sweep all test resources
+go test -v ./internal/acctest -sweep=all -timeout 30m
+
+# Sweep specific resource types
+go test -v ./internal/acctest -sweep=ory_oauth2_client -timeout 30m
+
+# Enable project deletion (use with caution!)
+ORY_SWEEP_PROJECTS=true go test -v ./internal/acctest -sweep=ory_project -timeout 30m
+```
+
+Sweepers only delete resources with names starting with `tf-acc-test` or `Test`.
+
+### Writing Acceptance Tests
+
+Follow these guidelines when writing acceptance tests:
+
+#### 1. Use the Test Utilities
+
+```go
+//go:build acceptance
+
+package myresource_test
+
+import (
+    "testing"
+    "github.com/hashicorp/terraform-plugin-testing/helper/resource"
+    "github.com/ory/terraform-provider-orynetwork/internal/acctest"
+)
+
+func TestAccMyResource_basic(t *testing.T) {
+    // Use acctest.RunTest for consistent test execution
+    acctest.RunTest(t, resource.TestCase{
+        PreCheck:                 func() { acctest.AccPreCheck(t) },
+        ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+        CheckDestroy:             acctest.CheckDestroy("ory_myresource", myResourceExists),
+        Steps: []resource.TestStep{
+            // Create and Read
+            {
+                Config: testAccMyResourceConfig(),
+                Check: resource.ComposeAggregateTestCheckFunc(
+                    resource.TestCheckResourceAttrSet("ory_myresource.test", "id"),
+                ),
+            },
+            // ImportState
+            {
+                ResourceName:      "ory_myresource.test",
+                ImportState:       true,
+                ImportStateVerify: true,
+            },
+        },
+    })
+}
+```
+
+#### 2. Implement CheckDestroy
+
+Every acceptance test should verify resources are properly deleted:
+
+```go
+// Use existing check functions
+CheckDestroy: acctest.CheckDestroy("ory_identity", acctest.IdentityExists),
+CheckDestroy: acctest.CheckDestroy("ory_oauth2_client", acctest.OAuth2ClientExists),
+CheckDestroy: acctest.CheckDestroy("ory_organization", acctest.OrganizationExists),
+CheckDestroy: acctest.CheckDestroy("ory_project", acctest.ProjectExists),
+
+// Or implement a custom existence check
+func myResourceExists(ctx context.Context, id string) (bool, error) {
+    c, err := acctest.GetOryClient()
+    if err != nil {
+        return false, err
+    }
+    _, err = c.GetMyResource(ctx, id)
+    if err != nil {
+        if strings.Contains(err.Error(), "404") {
+            return false, nil
+        }
+        return false, err
+    }
+    return true, nil
+}
+```
+
+#### 3. Test Configuration Best Practices
+
+- Use `fmt.Sprintf()` for variable injection in HCL configs
+- Prefix test resource names with `tf-acc-test` or `Test` for sweeper compatibility
+- Include the `provider "ory" {}` declaration in each config
+- Test create, read, update, import, and delete operations
+
+```go
+func testAccMyResourceConfig(name string) string {
+    return fmt.Sprintf(`
+provider "ory" {}
+
+resource "ory_myresource" "test" {
+  name = %[1]q
+}
+`, name)
+}
+```
+
+#### 4. Feature-Gated Tests
+
+For tests requiring specific Ory plan features:
+
+```go
+func TestAccOrganizationResource_basic(t *testing.T) {
+    acctest.RequireB2BTests(t)  // Skips if ORY_B2B_ENABLED != "true"
+    // ... test implementation
+}
+
+func TestAccRelationshipResource_basic(t *testing.T) {
+    acctest.RequireKetoTests(t)  // Skips if ORY_KETO_TESTS_ENABLED != "true"
+    // ... test implementation
+}
 ```
 
 ### Using Local Provider
@@ -93,7 +244,18 @@ provider_installation {
 3. Register the resource in `internal/provider/provider.go`
 4. Add documentation in `docs/resources/`
 5. Add examples in `examples/resources/`
-6. Write acceptance tests
+6. Write acceptance tests with CheckDestroy
+
+### Resource Contribution Checklist
+
+- [ ] Resource implements all CRUD operations
+- [ ] Resource supports import via `ImportState()`
+- [ ] Acceptance tests cover create, read, update, import, delete
+- [ ] Tests use `acctest.CheckDestroy()` to verify cleanup
+- [ ] Tests use `acctest.RunTest()` for consistent test execution
+- [ ] Documentation added to `docs/resources/`
+- [ ] Examples added to `examples/resources/`
+- [ ] Code passes `make lint` and `make fmt`
 
 ### Code Style
 
@@ -110,7 +272,7 @@ Use clear, descriptive commit messages:
 Add ory_foo resource for managing foos
 
 - Implement CRUD operations
-- Add acceptance tests
+- Add acceptance tests with CheckDestroy
 - Add documentation
 ```
 

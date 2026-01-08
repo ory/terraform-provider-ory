@@ -1,4 +1,5 @@
 //go:build acceptance
+
 package identity_test
 
 import (
@@ -11,9 +12,10 @@ import (
 )
 
 func TestAccIdentityResource_basic(t *testing.T) {
-	resource.Test(t, resource.TestCase{
+	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		CheckDestroy:             acctest.CheckDestroy("ory_identity", acctest.IdentityExists),
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
@@ -45,9 +47,10 @@ func TestAccIdentityResource_basic(t *testing.T) {
 }
 
 func TestAccIdentityResource_withMetadata(t *testing.T) {
-	resource.Test(t, resource.TestCase{
+	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		CheckDestroy:             acctest.CheckDestroy("ory_identity", acctest.IdentityExists),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIdentityResourceConfigWithMetadata("test-metadata-user"),
@@ -62,9 +65,10 @@ func TestAccIdentityResource_withMetadata(t *testing.T) {
 }
 
 func TestAccIdentityResource_inactive(t *testing.T) {
-	resource.Test(t, resource.TestCase{
+	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		CheckDestroy:             acctest.CheckDestroy("ory_identity", acctest.IdentityExists),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIdentityResourceConfigInactive("test-inactive-user"),

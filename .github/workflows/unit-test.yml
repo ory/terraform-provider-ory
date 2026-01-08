@@ -13,7 +13,7 @@ permissions:
 jobs:
   detect-changes:
     name: Detect Changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     outputs:
       source-changed: ${{ steps.filter.outputs.source }}
     steps:
@@ -34,7 +34,7 @@ jobs:
     name: Build & Unit Test
     needs: detect-changes
     if: ${{ needs.detect-changes.outputs.source-changed == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
 
     steps:
       - name: Checkout

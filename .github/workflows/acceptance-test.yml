@@ -43,7 +43,7 @@ permissions:
 jobs:
   detect-changes:
     name: Detect Changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     outputs:
       source-changed: ${{ steps.filter.outputs.source }}
     steps:
@@ -64,7 +64,7 @@ jobs:
     name: Build & Acceptance Test
     needs: detect-changes
     if: ${{ needs.detect-changes.outputs.source-changed == 'true' || github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     timeout-minutes: 30
 
     env:
@@ -88,8 +88,6 @@ jobs:
 
       - name: Run Acceptance Tests
         env:
-          # For push to main: run all tests
-          # For manual dispatch: run_all=true runs all, otherwise use individual toggles
           ORY_KETO_TESTS_ENABLED: ${{ github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_keto_tests == 'true' }}
           ORY_B2B_ENABLED: ${{ github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_b2b_tests == 'true' }}
           ORY_SOCIAL_PROVIDER_TESTS_ENABLED: ${{ github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_social_provider_tests == 'true' }}
