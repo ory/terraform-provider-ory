@@ -19,6 +19,22 @@ help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 # ==============================================================================
+# DEPENDENCIES
+# ==============================================================================
+
+.PHONY: deps
+deps: ## Install all dependencies (Go modules, tools)
+	go mod download
+	@command -v golangci-lint >/dev/null 2>&1 || { echo "Installing golangci-lint..."; go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; }
+	@command -v jq >/dev/null 2>&1 || { echo "jq not found. Please install: brew install jq (macOS) or apt-get install jq (Linux)"; }
+
+.PHONY: deps-ci
+deps-ci: ## Install dependencies for CI environment
+	go mod download
+	@echo "Installing jq..."
+	@if command -v apt-get >/dev/null 2>&1; then sudo apt-get update && sudo apt-get install -y jq; fi
+
+# ==============================================================================
 # BUILD
 # ==============================================================================
 

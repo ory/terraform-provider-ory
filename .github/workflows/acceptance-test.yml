@@ -3,52 +3,65 @@ name: Acceptance Tests
 on:
   push:
     branches: [main]
-    paths:
-      - '**.go'
-      - 'go.mod'
-      - 'go.sum'
-      - '.github/workflows/acceptance-test.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - '**.go'
-      - 'go.mod'
-      - 'go.sum'
-      - '.github/workflows/acceptance-test.yml'
   workflow_dispatch:
     inputs:
-      enable_keto_tests:
-        description: 'Enable Keto/relationship tests'
+      run_all:
+        description: 'Run all tests (uncheck to select specific test suites below)'
         required: false
         default: true
+        type: boolean
+      enable_keto_tests:
+        description: 'Keto/relationship tests'
+        required: false
+        default: false
         type: boolean
       enable_b2b_tests:
-        description: 'Enable B2B/organization tests'
+        description: 'B2B/organization tests'
         required: false
-        default: true
+        default: false
         type: boolean
       enable_social_provider_tests:
-        description: 'Enable social provider tests'
+        description: 'Social provider tests'
         required: false
-        default: true
+        default: false
         type: boolean
       enable_schema_tests:
-        description: 'Enable identity schema tests'
+        description: 'Identity schema tests'
         required: false
-        default: true
+        default: false
         type: boolean
       enable_project_tests:
-        description: 'Enable project create/delete tests'
+        description: 'Project create/delete tests'
         required: false
-        default: true
+        default: false
         type: boolean
 
 permissions:
   contents: read
 
 jobs:
+  # Filter paths to determine if we should run tests (only for push events)
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.go == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'push'
+        with:
+          filters: |
+            go:
+              - '**.go'
+              - 'go.mod'
+              - 'go.sum'
+              - '.github/workflows/acceptance-test.yml'
+
   acceptance-test:
     name: Build & Acceptance Test
+    needs: changes
+    if: needs.changes.outputs.should_run == 'true'
     runs-on: ubuntu-slim
     timeout-minutes: 30
 
@@ -62,20 +75,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
           cache: true
 
+      - name: Install dependencies
+        run: make deps-ci
+
       - name: Run Acceptance Tests
         env:
-          ORY_KETO_TESTS_ENABLED: ${{ github.event.inputs.enable_keto_tests || 'true' }}
-          ORY_B2B_ENABLED: ${{ github.event.inputs.enable_b2b_tests || 'true' }}
-          ORY_SOCIAL_PROVIDER_TESTS_ENABLED: ${{ github.event.inputs.enable_social_provider_tests || 'true' }}
-          ORY_SCHEMA_TESTS_ENABLED: ${{ github.event.inputs.enable_schema_tests || 'true' }}
-          ORY_PROJECT_TESTS_ENABLED: ${{ github.event.inputs.enable_project_tests || 'true' }}
+          # For push to main: run all tests
+          # For manual dispatch: run_all=true runs all, otherwise use individual toggles
+          ORY_KETO_TESTS_ENABLED: ${{ github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_keto_tests == 'true' }}
+          ORY_B2B_ENABLED: ${{ github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_b2b_tests == 'true' }}
+          ORY_SOCIAL_PROVIDER_TESTS_ENABLED: ${{ github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_social_provider_tests == 'true' }}
+          ORY_SCHEMA_TESTS_ENABLED: ${{ github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_schema_tests == 'true' }}
+          ORY_PROJECT_TESTS_ENABLED: ${{ github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_project_tests == 'true' }}
         run: ./scripts/run-acceptance-tests.sh -v -timeout 20m ./...
