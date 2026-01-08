@@ -23,7 +23,7 @@ resource "ory_social_provider" "microsoft" {
   scopes        = ["openid", "profile", "email"]
 }
 
-# Generic OIDC Provider (e.g., Okta, Auth0)
+# Generic OIDC Provider
 resource "ory_social_provider" "corporate_sso" {
   provider_id    = "generic"
   provider_label = "Corporate SSO"

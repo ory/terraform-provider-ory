@@ -1,0 +1,96 @@
+name: Acceptance Tests
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_all:
+        description: 'Run all tests'
+        required: false
+        default: true
+        type: boolean
+      enable_keto_tests:
+        description: 'Keto/relationship tests'
+        required: false
+        default: false
+        type: boolean
+      enable_b2b_tests:
+        description: 'B2B/organization tests'
+        required: false
+        default: false
+        type: boolean
+      enable_social_provider_tests:
+        description: 'Social provider tests'
+        required: false
+        default: false
+        type: boolean
+      enable_schema_tests:
+        description: 'Identity schema tests'
+        required: false
+        default: false
+        type: boolean
+      enable_project_tests:
+        description: 'Project create/delete tests'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-slim
+    outputs:
+      source-changed: ${{ steps.filter.outputs.source }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            source:
+              - '**.go'
+              - 'go.mod'
+              - 'go.sum'
+              - '.github/workflows/acceptance-test.yml'
+
+  acceptance-test:
+    name: Build & Acceptance Test
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.source-changed == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 30
+
+    env:
+      ORY_WORKSPACE_API_KEY: ${{ secrets.ORY_WORKSPACE_API_KEY }}
+      ORY_WORKSPACE_ID: ${{ secrets.ORY_WORKSPACE_ID }}
+      ORY_CONSOLE_API_URL: ${{ secrets.ORY_CONSOLE_API_URL }}
+      ORY_PROJECT_API_URL: ${{ secrets.ORY_PROJECT_API_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Install dependencies
+        run: make deps-ci
+
+      - name: Run Acceptance Tests
+        env:
+          ORY_KETO_TESTS_ENABLED: ${{ github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_keto_tests == 'true' }}
+          ORY_B2B_ENABLED: ${{ github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_b2b_tests == 'true' }}
+          ORY_SOCIAL_PROVIDER_TESTS_ENABLED: ${{ github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_social_provider_tests == 'true' }}
+          ORY_SCHEMA_TESTS_ENABLED: ${{ github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_schema_tests == 'true' }}
+          ORY_PROJECT_TESTS_ENABLED: ${{ github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_project_tests == 'true' }}
+        run: ./scripts/run-acceptance-tests.sh -v -timeout 20m ./...

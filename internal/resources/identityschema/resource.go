@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -82,6 +83,7 @@ Manages an Ory Network identity schema.
 				Required:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(), // Schemas are immutable
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"set_default": schema.BoolAttribute{
@@ -154,6 +156,17 @@ func (r *IdentitySchemaResource) findSchemaIndex(schemas []map[string]interface{
 	return -1
 }
 
+// findSchemaByURL finds a schema by matching its URL content.
+// This is needed because Ory API may transform custom schema IDs to hash-based IDs.
+func (r *IdentitySchemaResource) findSchemaByURL(schemas []map[string]interface{}, schemaURL string) int {
+	for i, s := range schemas {
+		if url, ok := s["url"].(string); ok && url == schemaURL {
+			return i
+		}
+	}
+	return -1
+}
+
 func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan IdentitySchemaResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -175,15 +188,23 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	schemas, err := r.getSchemas(ctx, projectID)
+	// Get existing schemas and their IDs before the patch
+	existingSchemas, err := r.getSchemas(ctx, projectID)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Getting Schemas", err.Error())
 		return
 	}
 
+	existingIDs := make(map[string]bool)
+	for _, s := range existingSchemas {
+		if id, ok := s["id"].(string); ok {
+			existingIDs[id] = true
+		}
+	}
+
 	var patches []ory.JsonPatch
 
-	existingIndex := r.findSchemaIndex(schemas, schemaID)
+	existingIndex := r.findSchemaIndex(existingSchemas, schemaID)
 	if existingIndex >= 0 {
 		// Replace existing
 		patches = append(patches, ory.JsonPatch{
@@ -212,12 +233,76 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
+	// Find the newly created schema by looking for new IDs
+	var actualID string
+	for attempt := 0; attempt < 5; attempt++ {
+		updatedSchemas, err := r.getSchemas(ctx, projectID)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Reading Created Schema", err.Error())
+			return
+		}
+
+		// Try to find by the user-provided schema ID first (works for preset:// schemas)
+		if idx := r.findSchemaIndex(updatedSchemas, schemaID); idx >= 0 {
+			if id, ok := updatedSchemas[idx]["id"].(string); ok {
+				actualID = id
+			}
+			break
+		}
+
+		// Try to find by URL match (Ory may keep the base64 URL for some cases)
+		if idx := r.findSchemaByURL(updatedSchemas, schemaURL); idx >= 0 {
+			if id, ok := updatedSchemas[idx]["id"].(string); ok {
+				actualID = id
+			}
+			break
+		}
+
+		// Find the newly added schema by looking for IDs that didn't exist before
+		// This handles the case where Ory transforms the ID to a hash
+		for _, s := range updatedSchemas {
+			if id, ok := s["id"].(string); ok {
+				if !existingIDs[id] {
+					// This is a new schema that wasn't there before
+					actualID = id
+					break
+				}
+			}
+		}
+
+		if actualID != "" {
+			break
+		}
+
+		// Wait before retry (exponential backoff: 500ms, 1s, 2s, 4s, 8s)
+		if attempt < 4 {
+			select {
+			case <-ctx.Done():
+				resp.Diagnostics.AddError("Context Cancelled", "Operation was cancelled while waiting for schema creation")
+				return
+			case <-time.After(time.Duration(500<<attempt) * time.Millisecond):
+			}
+		}
+	}
+
+	// If we still couldn't find by comparison, use the schema_id directly as a fallback
+	// This handles cases where Ory preserves the original ID or it matches by some other mechanism
+	if actualID == "" {
+		actualID = schemaID
+	}
+
+	if actualID == "" {
+		resp.Diagnostics.AddError("Error Finding Created Schema",
+			"Could not find the created schema. The schema was created but its ID could not be determined.")
+		return
+	}
+
 	// Set as default if requested
 	if plan.SetDefault.ValueBool() {
 		defaultPatches := []ory.JsonPatch{{
 			Op:    "replace",
 			Path:  "/services/identity/config/identity/default_schema_id",
-			Value: schemaID,
+			Value: actualID,
 		}}
 		_, err = r.client.PatchProject(ctx, projectID, defaultPatches)
 		if err != nil {
@@ -226,7 +311,7 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		}
 	}
 
-	plan.ID = types.StringValue(schemaID)
+	plan.ID = types.StringValue(actualID)
 	plan.ProjectID = types.StringValue(projectID)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
@@ -240,18 +325,78 @@ func (r *IdentitySchemaResource) Read(ctx context.Context, req resource.ReadRequ
 	}
 
 	projectID := state.ProjectID.ValueString()
-	schemaID := state.SchemaID.ValueString()
 
-	schemas, err := r.getSchemas(ctx, projectID)
-	if err != nil {
-		resp.Diagnostics.AddError("Error Reading Identity Schema", err.Error())
-		return
+	// If projectID is empty, try to get it from the client
+	if projectID == "" {
+		projectID = r.client.ProjectID()
+		state.ProjectID = types.StringValue(projectID)
 	}
 
-	index := r.findSchemaIndex(schemas, schemaID)
+	storedID := state.ID.ValueString()
+	schemaID := state.SchemaID.ValueString()
+
+	// Generate schemaURL for matching if we have schema content
+	var schemaURL string
+	if !state.Schema.IsNull() && !state.Schema.IsUnknown() {
+		var err error
+		schemaURL, err = r.encodeSchema(state.Schema.ValueString())
+		if err != nil {
+			schemaURL = ""
+		}
+	}
+
+	// Retry logic for eventual consistency after create/update
+	var schemas []map[string]interface{}
+	var index int
+	var err error
+
+	for attempt := 0; attempt < 5; attempt++ {
+		schemas, err = r.getSchemas(ctx, projectID)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Reading Identity Schema", err.Error())
+			return
+		}
+
+		// The ID stored in state is the actual API-assigned ID (which may be a hash)
+		// Try to find by ID first (using the actual API ID from state)
+		index = -1
+		if storedID != "" {
+			index = r.findSchemaIndex(schemas, storedID)
+		}
+
+		// Fallback: try finding by the user-provided schema_id
+		if index < 0 {
+			index = r.findSchemaIndex(schemas, schemaID)
+		}
+
+		// Last resort: try to match by regenerating the URL from the schema content
+		if index < 0 && schemaURL != "" {
+			index = r.findSchemaByURL(schemas, schemaURL)
+		}
+
+		if index >= 0 {
+			break
+		}
+
+		// Wait before retry (exponential backoff: 1s, 2s, 4s, 8s)
+		if attempt < 4 {
+			select {
+			case <-ctx.Done():
+				resp.State.RemoveResource(ctx)
+				return
+			case <-time.After(time.Duration(1<<attempt) * time.Second):
+			}
+		}
+	}
+
 	if index < 0 {
 		resp.State.RemoveResource(ctx)
 		return
+	}
+
+	// Update the ID if we found it by a different method
+	if id, ok := schemas[index]["id"].(string); ok {
+		state.ID = types.StringValue(id)
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)

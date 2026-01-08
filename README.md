@@ -293,45 +293,61 @@ go build -o terraform-provider-orynetwork
 
 ### Testing
 
+Acceptance tests are **self-contained** - they automatically create a temporary Ory project, run tests against it, and clean up when done.
+
 #### Required Environment Variables
 
 ```bash
-# Required for all acceptance tests
+# Required for acceptance tests
 export ORY_WORKSPACE_API_KEY="ory_wak_..."  # Workspace API key
-export ORY_PROJECT_API_KEY="ory_pat_..."    # Project API key
-export ORY_PROJECT_ID="..."                  # Project UUID
-export ORY_PROJECT_SLUG="..."                # Project slug (e.g., "vibrant-moore-abc123")
+export ORY_WORKSPACE_ID="..."                # Workspace ID
 ```
 
 #### Running Tests
 
 ```bash
 # Unit tests only (no credentials needed)
-go test ./... -short
+make test
 
-# All acceptance tests
-TF_ACC=1 go test ./... -v -timeout 30m
+# All acceptance tests (creates temp project, runs tests, cleans up)
+make test-acc
 
-# Specific resource tests
-TF_ACC=1 go test ./internal/resources/identity/... -v
-TF_ACC=1 go test ./internal/resources/oauth2client/... -v
-TF_ACC=1 go test ./internal/resources/projectconfig/... -v
+# Acceptance tests with debug logging
+make test-acc-verbose
+
+# Only Keto/relationship tests
+make test-acc-keto
+
+# All tests with all features enabled
+make test-acc-all
 ```
 
-#### Optional Test Flags
+Or run directly with go test:
 
-Some tests require additional environment variables or specific Ory plan features:
+```bash
+# Unit tests
+go test -short ./...
+
+# Acceptance tests
+TF_ACC=1 go test -p 1 -v -timeout 30m ./...
+
+# Specific resource tests
+TF_ACC=1 go test -p 1 -v ./internal/resources/identity/...
+TF_ACC=1 go test -p 1 -v ./internal/resources/oauth2client/...
+```
+
+#### Optional Test Feature Flags
+
+Some tests require additional feature flags or specific Ory plan features:
 
 | Environment Variable                     | Purpose                                             | Default  |
 | ---------------------------------------- | --------------------------------------------------- | -------- |
 | `TF_ACC=1`                               | Enable acceptance tests                             | Required |
+| `ORY_KETO_TESTS_ENABLED=true`            | Run Relationship tests (requires Keto)              | Skipped  |
 | `ORY_B2B_ENABLED=true`                   | Run Organization tests (requires B2B plan)          | Skipped  |
+| `ORY_SOCIAL_PROVIDER_TESTS_ENABLED=true` | Run social provider tests                           | Skipped  |
 | `ORY_SCHEMA_TESTS_ENABLED=true`          | Run IdentitySchema tests (schemas can't be deleted) | Skipped  |
 | `ORY_PROJECT_TESTS_ENABLED=true`         | Run Project create/delete tests                     | Skipped  |
-| `ORY_WORKSPACE_TESTS_ENABLED=true`       | Run Workspace tests (can't be deleted)              | Skipped  |
-| `ORY_WORKSPACE_ID=...`                   | Workspace ID for import tests                       | Skipped  |
-| `ORY_KETO_TESTS_ENABLED=true`            | Run Relationship tests (requires Keto)              | Skipped  |
-| `ORY_SOCIAL_PROVIDER_TESTS_ENABLED=true` | Run social provider tests                           | Skipped  |
 
 #### Test Coverage by Plan
 

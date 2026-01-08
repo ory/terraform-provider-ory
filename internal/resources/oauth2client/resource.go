@@ -260,6 +260,9 @@ func (r *OAuth2ClientResource) Create(ctx context.Context, req resource.CreateRe
 
 	if created.ClientSecret != nil && *created.ClientSecret != "" {
 		plan.ClientSecret = types.StringValue(*created.ClientSecret)
+	} else {
+		// Public clients (token_endpoint_auth_method = "none") don't have a secret
+		plan.ClientSecret = types.StringValue("")
 	}
 
 	if created.TokenEndpointAuthMethod != nil {

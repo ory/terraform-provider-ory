@@ -1,3 +1,4 @@
+//go:build acceptance
 package workspace_test
 
 import (
@@ -5,91 +6,36 @@ import (
 	"os"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
-	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 
-	"github.com/ory/terraform-provider-orynetwork/internal/provider"
+	"github.com/ory/terraform-provider-orynetwork/internal/acctest"
 )
 
-var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
-	"ory": providerserver.NewProtocol6WithError(provider.New("test")()),
-}
-
-func testAccPreCheck(t *testing.T) {
-	if v := os.Getenv("ORY_WORKSPACE_API_KEY"); v == "" {
+func testAccPreCheckImport(t *testing.T) {
+	if os.Getenv("TF_ACC") == "" {
+		t.Skip("TF_ACC must be set for acceptance tests")
+	}
+	if os.Getenv("ORY_WORKSPACE_API_KEY") == "" {
 		t.Skip("ORY_WORKSPACE_API_KEY must be set for workspace acceptance tests")
 	}
-	// Workspace creation may have quotas, and deletion is NOT supported by Ory API.
-	// Created workspaces will remain in your Ory account!
-	if os.Getenv("ORY_WORKSPACE_TESTS_ENABLED") != "true" {
-		t.Skip("ORY_WORKSPACE_TESTS_ENABLED must be 'true' to run workspace tests (creates real workspaces that CANNOT be deleted)")
+	if os.Getenv("ORY_WORKSPACE_ID") == "" {
+		t.Skip("ORY_WORKSPACE_ID must be set for workspace import tests")
 	}
 }
 
-func testAccPreCheckReadOnly(t *testing.T) {
-	if v := os.Getenv("ORY_WORKSPACE_API_KEY"); v == "" {
-		t.Skip("ORY_WORKSPACE_API_KEY must be set for workspace acceptance tests")
-	}
-	if v := os.Getenv("ORY_WORKSPACE_ID"); v == "" {
-		t.Skip("ORY_WORKSPACE_ID must be set for read-only workspace tests")
-	}
-}
-
-// TestAccWorkspaceResource_basic tests the CRUD lifecycle of a workspace.
-// WARNING: Ory API does NOT support workspace deletion!
-// Workspaces created by this test will remain in your Ory account.
-// Only run this test if you understand the implications.
-func TestAccWorkspaceResource_basic(t *testing.T) {
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			// Create and Read
-			{
-				Config: testAccWorkspaceResourceConfig("tf-test-workspace"),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet("ory_workspace.test", "id"),
-					resource.TestCheckResourceAttr("ory_workspace.test", "name", "tf-test-workspace"),
-					resource.TestCheckResourceAttrSet("ory_workspace.test", "created_at"),
-					resource.TestCheckResourceAttrSet("ory_workspace.test", "updated_at"),
-				),
-			},
-			// ImportState
-			{
-				ResourceName:      "ory_workspace.test",
-				ImportState:       true,
-				ImportStateVerify: true,
-			},
-			// Update
-			{
-				Config: testAccWorkspaceResourceConfig("tf-test-workspace-updated"),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet("ory_workspace.test", "id"),
-					resource.TestCheckResourceAttr("ory_workspace.test", "name", "tf-test-workspace-updated"),
-				),
-			},
-		},
-	})
-}
-
-// TestAccWorkspaceDataSource_existing tests reading an existing workspace.
-// This test uses an existing workspace ID and doesn't create new resources.
 func TestAccWorkspaceResource_import(t *testing.T) {
 	workspaceID := os.Getenv("ORY_WORKSPACE_ID")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheckReadOnly(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { testAccPreCheckImport(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
-			// Import existing workspace
 			{
-				Config:        testAccWorkspaceResourceConfigEmpty(),
+				Config:        testAccWorkspaceResourceConfig("placeholder"),
 				ImportState:   true,
 				ImportStateId: workspaceID,
 				ResourceName:  "ory_workspace.test",
-				// After import, we can verify basic attributes
 				ImportStateCheck: func(states []*terraform.InstanceState) error {
 					if len(states) != 1 {
 						return fmt.Errorf("expected 1 state, got %d", len(states))
@@ -116,14 +62,4 @@ resource "ory_workspace" "test" {
   name = %[1]q
 }
 `, name)
-}
-
-func testAccWorkspaceResourceConfigEmpty() string {
-	return `
-provider "ory" {}
-
-resource "ory_workspace" "test" {
-  name = "placeholder"
-}
-`
 }

@@ -28,6 +28,12 @@ import (
 	"github.com/ory/terraform-provider-orynetwork/internal/resources/workspace"
 )
 
+// Re-export client defaults for use in tests
+const (
+	DefaultConsoleAPIURL = client.DefaultConsoleAPIURL
+	DefaultProjectAPIURL = client.DefaultProjectAPIURL
+)
+
 // Ensure OryProvider satisfies various provider interfaces.
 var _ provider.Provider = &OryProvider{}
 
@@ -52,6 +58,7 @@ type OryProviderModel struct {
 
 	// Optional: Override API URLs (for testing)
 	ConsoleAPIURL types.String `tfsdk:"console_api_url"`
+	ProjectAPIURL types.String `tfsdk:"project_api_url"`
 }
 
 // New returns a new provider instance.
@@ -125,6 +132,11 @@ provider "ory" {
 				MarkdownDescription: "Override the console API URL (default: `https://api.console.ory.sh`). Mainly for testing.",
 				Optional:            true,
 			},
+			"project_api_url": schema.StringAttribute{
+				Description:         "Override the project API URL template (default: https://%s.projects.oryapis.com).",
+				MarkdownDescription: "Override the project API URL template (default: `https://%s.projects.oryapis.com`).",
+				Optional:            true,
+			},
 		},
 	}
 }
@@ -143,7 +155,8 @@ func (p *OryProvider) Configure(ctx context.Context, req provider.ConfigureReque
 	projectID := resolveString(config.ProjectID, "ORY_PROJECT_ID")
 	projectSlug := resolveString(config.ProjectSlug, "ORY_PROJECT_SLUG")
 	workspaceID := resolveString(config.WorkspaceID, "ORY_WORKSPACE_ID")
-	consoleAPIURL := resolveStringDefault(config.ConsoleAPIURL, "ORY_CONSOLE_API_URL", "https://api.console.ory.sh")
+	consoleAPIURL := resolveStringDefault(config.ConsoleAPIURL, "ORY_CONSOLE_API_URL", DefaultConsoleAPIURL)
+	projectAPIURL := resolveStringDefault(config.ProjectAPIURL, "ORY_PROJECT_API_URL", DefaultProjectAPIURL)
 
 	// Validate required configuration
 	if workspaceAPIKey == "" && projectAPIKey == "" {
@@ -164,6 +177,7 @@ func (p *OryProvider) Configure(ctx context.Context, req provider.ConfigureReque
 		ProjectSlug:     projectSlug,
 		WorkspaceID:     workspaceID,
 		ConsoleAPIURL:   consoleAPIURL,
+		ProjectAPIURL:   projectAPIURL,
 	})
 	if err != nil {
 		resp.Diagnostics.AddError(

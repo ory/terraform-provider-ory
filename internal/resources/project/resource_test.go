@@ -1,3 +1,5 @@
+//go:build acceptance
+
 package project_test
 
 import (
@@ -5,16 +7,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
-	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 
-	"github.com/ory/terraform-provider-orynetwork/internal/provider"
+	"github.com/ory/terraform-provider-orynetwork/internal/acctest"
 )
-
-var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
-	"ory": providerserver.NewProtocol6WithError(provider.New("test")()),
-}
 
 func testAccPreCheck(t *testing.T) {
 	if v := os.Getenv("ORY_WORKSPACE_API_KEY"); v == "" {
@@ -31,9 +27,10 @@ func testAccPreCheck(t *testing.T) {
 // WARNING: This test creates and deletes a real Ory project.
 // Only run this test if you have quota available and understand the implications.
 func TestAccProjectResource_basic(t *testing.T) {
-	resource.Test(t, resource.TestCase{
+	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		CheckDestroy:             acctest.CheckDestroy("ory_project", acctest.ProjectExists),
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
@@ -58,9 +55,10 @@ func TestAccProjectResource_basic(t *testing.T) {
 
 // TestAccProjectResource_prodEnvironment tests creating a production project.
 func TestAccProjectResource_prodEnvironment(t *testing.T) {
-	resource.Test(t, resource.TestCase{
+	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		CheckDestroy:             acctest.CheckDestroy("ory_project", acctest.ProjectExists),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccProjectResourceConfig("tf-test-prod-project", "prod"),
