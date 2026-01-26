@@ -45,11 +45,7 @@ linters:
     gocritic:
       disabled-checks:
         # These are too noisy for Terraform providers
-        - hugeParam          # Framework requires value receivers
-        - paramTypeCombine   # Stylistic preference
         - ifElseChain        # Sometimes clearer than switch
-        - nestingReduce      # Sometimes clearer with nesting
-        - emptyStringTest    # Stylistic preference
 
     gosec:
       excludes:
