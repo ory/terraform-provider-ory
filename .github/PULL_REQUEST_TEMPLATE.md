@@ -15,7 +15,7 @@ Fixes #(issue number)
 
 ## Checklist
 
-- [ ] I have read the [CONTRIBUTING](../CONTRIBUTING.md) guide
+- [ ] I have read the [CONTRIBUTING](CONTRIBUTING.md) guide
 - [ ] My code follows the existing code style
 - [ ] I have added tests that prove my fix/feature works
 - [ ] I have updated documentation as needed
