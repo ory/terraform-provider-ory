@@ -44,14 +44,7 @@ linters:
 
     gocritic:
       disabled-checks:
-        # These are too noisy for Terraform providers
         - ifElseChain        # Sometimes clearer than switch
-
-    gosec:
-      excludes:
-        - G101 # Hardcoded credentials (false positives on test constants)
-        - G104 # Unhandled errors (too noisy for terraform providers)
-        - G304 # File path from variable (needed for terraform)
 
     misspell:
       locale: US
@@ -61,20 +54,17 @@ linters:
       - std-error-handling
       - common-false-positives
     rules:
-      # Exclude some linters from running on test files
+      # Test files have repetitive patterns and don't need strict error handling
       - path: _test\.go
         linters:
           - dupl
-          - gosec
           - goconst
           - errorlint
 
-      # Terraform provider resources often have similar structure
       - path: internal/resources/
         linters:
           - dupl
 
-      # Terraform provider datasources often have similar structure
       - path: internal/datasources/
         linters:
           - dupl
