@@ -28,7 +28,6 @@ linters:
 
   disable:
     # Disabled for Terraform providers - these implement framework interfaces
-    # and don't need comments on every exported method
     - revive
 
   settings:
