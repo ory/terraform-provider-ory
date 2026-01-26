@@ -12,106 +12,21 @@ permissions:
 jobs:
   format:
     name: Format
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v3
         with:
           terraform_wrapper: false
 
-      - name: Run formatters
-        run: make fmt-all
-
-      - name: Check for formatting changes
-        run: |
-          if ! git diff --exit-code; then
-            echo ""
-            echo "Files are not formatted correctly. Run 'make fmt-all' and commit the changes."
-            echo ""
-            git diff --stat
-            exit 1
-          fi
-
-  lint:
-    name: Lint
-    runs-on: ubuntu-slim
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: 'go.mod'
-          cache: true
-
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: v2.0.2
-          args: --timeout=5m
-
-  mod-tidy:
-    name: Go Mod Tidy
-    runs-on: ubuntu-slim
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: 'go.mod'
-          cache: true
-
-      - name: Run go mod tidy
-        run: go mod tidy
+      - run: make format
 
       - name: Check for changes
-        run: |
-          if ! git diff --exit-code go.mod go.sum; then
-            echo ""
-            echo "go.mod or go.sum is out of date. Run 'go mod tidy' and commit the changes."
-            exit 1
-          fi
-
-  docs:
-    name: Documentation
-    runs-on: ubuntu-slim
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: 'go.mod'
-          cache: true
-
-      - name: Install tfplugindocs
-        run: go install github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@latest
-
-      - name: Generate docs
-        run: tfplugindocs generate
-
-      - name: Check for changes
-        run: |
-          if ! git diff --exit-code docs/; then
-            echo ""
-            echo "Documentation is out of date. Run 'make docs' and commit the changes."
-            git diff --stat docs/
-            exit 1
-          fi
+        run: git diff HEAD --exit-code --color

@@ -20,7 +20,7 @@ Fixes #(issue number)
 - [ ] I have added tests that prove my fix/feature works
 - [ ] I have updated documentation as needed
 - [ ] All new and existing tests pass (`make test`)
-- [ ] I have run the linter (`make lint`)
+- [ ] I have run the linter (`make format`)
 
 ## Testing
 

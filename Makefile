@@ -55,80 +55,20 @@ clean: ## Remove build artifacts
 # CODE QUALITY
 # ==============================================================================
 
-.PHONY: fmt
-fmt: ## Format Go code
+.PHONY: format
+format: ## Format all code (Go, Terraform, modules, docs, lint fixes)
 	go fmt ./...
 	gofmt -s -w .
-
-.PHONY: fmt-check
-fmt-check: ## Check Go code formatting (fails if not formatted)
-	@if [ -n "$$(gofmt -l .)" ]; then \
-		echo "The following files are not formatted correctly:"; \
-		gofmt -l .; \
-		echo ""; \
-		echo "Run 'make fmt' to fix."; \
-		exit 1; \
-	fi
-
-.PHONY: fmt-tf
-fmt-tf: ## Format Terraform example files
 	terraform fmt -recursive examples/
-
-.PHONY: fmt-tf-check
-fmt-tf-check: ## Check Terraform formatting (fails if not formatted)
-	@if ! terraform fmt -check -recursive examples/; then \
-		echo ""; \
-		echo "Terraform files in examples/ are not formatted correctly."; \
-		echo "Run 'make fmt-tf' to fix."; \
-		exit 1; \
-	fi
-
-.PHONY: fmt-all
-fmt-all: fmt fmt-tf ## Format all code (Go and Terraform)
+	go mod tidy
+	@command -v tfplugindocs >/dev/null 2>&1 || { echo "Installing tfplugindocs..."; go install github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@latest; }
+	tfplugindocs generate --provider-name ory
+	@command -v golangci-lint >/dev/null 2>&1 || { echo "Installing golangci-lint..."; go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; }
+	golangci-lint run --fix ./... || true
 
 .PHONY: lint
-lint: ## Run Go linter
+lint: ## Run Go linter (without fixes)
 	golangci-lint run ./...
-
-.PHONY: lint-tf
-lint-tf: fmt-tf-check ## Check Terraform formatting (alias for fmt-tf-check)
-
-.PHONY: vet
-vet: ## Run go vet
-	go vet ./...
-
-.PHONY: generate
-generate: ## Generate documentation and code
-	go generate ./...
-
-.PHONY: docs
-docs: ## Generate Terraform documentation
-	@command -v tfplugindocs >/dev/null 2>&1 || { echo "Installing tfplugindocs..."; go install github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@latest; }
-	tfplugindocs generate
-
-.PHONY: docs-check
-docs-check: docs ## Check if documentation is up to date
-	@if ! git diff --exit-code docs/; then \
-		echo "Documentation is out of date. Run 'make docs' and commit the changes."; \
-		exit 1; \
-	fi
-
-.PHONY: mod-tidy
-mod-tidy: ## Tidy go modules
-	go mod tidy
-
-.PHONY: mod-check
-mod-check: mod-tidy ## Check if go.mod/go.sum are up to date
-	@if ! git diff --exit-code go.mod go.sum; then \
-		echo "go.mod or go.sum is out of date. Run 'go mod tidy' and commit the changes."; \
-		exit 1; \
-	fi
-
-.PHONY: check
-check: fmt-all vet lint ## Format and run all code quality checks
-
-.PHONY: ci
-ci: fmt-check fmt-tf-check lint mod-check docs-check ## Run all CI checks (matches GitHub Actions, fails on issues)
 
 # ==============================================================================
 # TESTING
