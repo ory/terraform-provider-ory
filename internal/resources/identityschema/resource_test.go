@@ -1,4 +1,5 @@
 //go:build acceptance
+
 package identityschema_test
 
 import (

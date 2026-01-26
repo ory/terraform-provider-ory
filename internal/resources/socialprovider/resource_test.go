@@ -1,4 +1,5 @@
 //go:build acceptance
+
 package socialprovider_test
 
 import (

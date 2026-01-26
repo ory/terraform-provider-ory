@@ -1,0 +1,124 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  golangci-lint:
+    name: Go Lint
+    runs-on: ubuntu-slim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
+  go-fmt:
+    name: Go Format
+    runs-on: ubuntu-slim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Check formatting
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "The following files are not formatted correctly:"
+            gofmt -l .
+            echo ""
+            echo "Run 'gofmt -w .' to fix."
+            exit 1
+          fi
+
+  go-mod-tidy:
+    name: Go Mod Tidy
+    runs-on: ubuntu-slim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Check go.mod and go.sum
+        run: |
+          go mod tidy
+          if ! git diff --exit-code go.mod go.sum; then
+            echo ""
+            echo "go.mod or go.sum is out of date. Run 'go mod tidy' and commit the changes."
+            exit 1
+          fi
+
+  terraform-fmt:
+    name: Terraform Format
+    runs-on: ubuntu-slim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Check Terraform formatting
+        run: |
+          if ! terraform fmt -check -recursive examples/; then
+            echo ""
+            echo "Terraform files in examples/ are not formatted correctly."
+            echo "Run 'terraform fmt -recursive examples/' to fix."
+            exit 1
+          fi
+
+  docs-check:
+    name: Documentation
+    runs-on: ubuntu-slim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Install tfplugindocs
+        run: go install github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@latest
+
+      - name: Generate docs
+        run: tfplugindocs generate
+
+      - name: Check for changes
+        run: |
+          if ! git diff --exit-code docs/; then
+            echo ""
+            echo "Documentation is out of date. Run 'tfplugindocs generate' and commit the changes."
+            git diff docs/
+            exit 1
+          fi

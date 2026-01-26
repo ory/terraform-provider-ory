@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -89,7 +90,8 @@ func extractDebugInfo(err error) OryErrorDebugInfo {
 
 	// Try to extract the error body from GenericOpenAPIError
 	var bodyStr string
-	if apiErr, isAPIErr := err.(*ory.GenericOpenAPIError); isAPIErr {
+	var apiErr *ory.GenericOpenAPIError
+	if errors.As(err, &apiErr) {
 		bodyStr = string(apiErr.Body())
 		info.RawBody = bodyStr
 	} else {
@@ -127,7 +129,8 @@ func parseFeatureError(err error) (feature string, reason string, requestID stri
 
 	// Try to extract the error body from GenericOpenAPIError
 	var bodyStr string
-	if apiErr, isAPIErr := err.(*ory.GenericOpenAPIError); isAPIErr {
+	var apiErr *ory.GenericOpenAPIError
+	if errors.As(err, &apiErr) {
 		bodyStr = string(apiErr.Body())
 	} else {
 		// Try to find JSON in the error string
@@ -176,7 +179,7 @@ func wrapAPIError(err error, operation string) error {
 
 	// EOF errors typically mean the API closed the connection without a response.
 	// This often happens when a feature requires an enterprise plan.
-	if err == io.EOF || strings.Contains(errStr, "EOF") || strings.Contains(errStr, "error reading from server") {
+	if errors.Is(err, io.EOF) || strings.Contains(errStr, "EOF") || strings.Contains(errStr, "error reading from server") {
 		return fmt.Errorf("%s: connection closed by server (EOF). This may indicate:\n"+
 			"  - The feature requires an Ory Network enterprise plan (e.g., B2B Organizations)\n"+
 			"  - Invalid or expired API credentials\n"+

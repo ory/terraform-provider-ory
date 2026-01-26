@@ -1,4 +1,5 @@
 //go:build acceptance
+
 package relationship_test
 
 import (

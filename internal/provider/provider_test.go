@@ -7,6 +7,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+
 	"github.com/ory/terraform-provider-orynetwork/internal/testutil"
 )
 
