@@ -63,8 +63,8 @@ format: ## Format all code (Go, Terraform, modules, docs, lint fixes)
 	go mod tidy
 	@command -v tfplugindocs >/dev/null 2>&1 || { echo "Installing tfplugindocs..."; go install github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@latest; }
 	tfplugindocs generate --provider-name ory
-	@command -v golangci-lint >/dev/null 2>&1 || { echo "Installing golangci-lint..."; go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; }
-	golangci-lint run --fix ./... || true
+	@command -v golangci-lint >/dev/null 2>&1 || { echo "Installing golangci-lint v2..."; go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest; }
+	golangci-lint run --fix ./...
 
 .PHONY: lint
 lint: ## Run Go linter (without fixes)
