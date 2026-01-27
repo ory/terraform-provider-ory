@@ -53,9 +53,7 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
       - name: Run govulncheck
-        # Note: Stdlib vulnerabilities require Go version upgrade, not code changes
         run: govulncheck ./...
-        continue-on-error: true
 
   # Secret scanning - Gitleaks
   gitleaks:
