@@ -3,6 +3,8 @@ name: Acceptance Tests
 on:
   pull_request:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       run_all:
@@ -52,7 +54,7 @@ jobs:
       source-changed: ${{ steps.filter.outputs.source }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - uses: dorny/paths-filter@v3
         id: filter
@@ -79,10 +81,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
           cache: true
