@@ -10,13 +10,11 @@ on:
 
 permissions:
   contents: read
-  security-events: write
-  actions: read
 
 jobs:
-  # Static Application Security Testing (SAST) - CodeQL
-  codeql:
-    name: CodeQL Analysis
+  # Static Application Security Testing (SAST) - gosec
+  gosec:
+    name: Go Security Check
     runs-on: ubuntu-slim
     steps:
       - name: Checkout
@@ -28,18 +26,11 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: go
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
 
-      - name: Build
-        run: go build ./...
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: "/language:go"
+      - name: Run gosec
+        run: gosec ./...
 
   # Software Composition Analysis (SCA) - Go vulnerability check
   govulncheck:
@@ -102,19 +93,13 @@ jobs:
         with:
           scan-type: 'fs'
           scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
+          format: 'table'
+          exit-code: '1'
           severity: 'CRITICAL,HIGH'
           scanners: 'vuln,secret,misconfig'
         env:
           TRIVY_SKIP_JAVA_DB_UPDATE: 'true'
           TRIVY_DISABLE_VEX_NOTICE: 'true'
-
-      - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
 
   # Dependency license compliance
   licenses:
