@@ -54,7 +54,12 @@ parse_curl_response() {
 # Configuration
 CONSOLE_API_URL="${ORY_CONSOLE_API_URL:-https://api.console.ory.sh}"
 PROJECT_API_URL="${ORY_PROJECT_API_URL:-https://%s.projects.oryapis.com}"
-PROJECT_NAME="tf-acc-test-$(date +%s)"
+
+# Magic prefix that triggers hard deletion in the Ory Cloud backend.
+# Projects with names starting with this prefix are automatically purged by the automated cleanup job.
+# DO NOT CHANGE THIS PREFIX - it must match the pattern in internal cleanup patterns
+PROJECT_NAME_PREFIX="ory-cy-e2e-da2f162d-af61-42dd-90dc-e3fcfa7c84a0"
+PROJECT_NAME="${PROJECT_NAME_PREFIX}-tf-$(date +%s)"
 
 # Validate required environment variables
 if [[ -z "${ORY_WORKSPACE_API_KEY:-}" ]]; then
