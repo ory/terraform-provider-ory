@@ -112,6 +112,33 @@ test-acc-all: env-check ## Run all acceptance tests including optional ones
 		./scripts/run-acceptance-tests.sh -p 1 -v -timeout 30m ./...
 
 # ==============================================================================
+# SECURITY SCANNING
+# ==============================================================================
+
+.PHONY: sec
+sec: sec-vuln sec-gosec sec-gitleaks ## Run all security scans
+
+.PHONY: sec-vuln
+sec-vuln: ## Run govulncheck for Go vulnerability scanning
+	@command -v govulncheck >/dev/null 2>&1 || { echo "Installing govulncheck..."; go install golang.org/x/vuln/cmd/govulncheck@latest; }
+	govulncheck ./...
+
+.PHONY: sec-gosec
+sec-gosec: ## Run gosec for Go security analysis
+	@command -v gosec >/dev/null 2>&1 || { echo "Installing gosec..."; go install github.com/securego/gosec/v2/cmd/gosec@latest; }
+	gosec ./...
+
+.PHONY: sec-gitleaks
+sec-gitleaks: ## Run gitleaks for secret detection
+	@command -v gitleaks >/dev/null 2>&1 || { echo "gitleaks not found. Install: brew install gitleaks (macOS) or download from https://github.com/gitleaks/gitleaks/releases"; exit 1; }
+	gitleaks detect --source . --verbose
+
+.PHONY: sec-trivy
+sec-trivy: build ## Run trivy vulnerability scan on built binary
+	@command -v trivy >/dev/null 2>&1 || { echo "trivy not found. Install: brew install trivy (macOS) or see https://aquasecurity.github.io/trivy/"; exit 1; }
+	trivy fs --scanners vuln,secret,misconfig --severity CRITICAL,HIGH .
+
+# ==============================================================================
 # ENVIRONMENT HELPERS
 # ==============================================================================
 
