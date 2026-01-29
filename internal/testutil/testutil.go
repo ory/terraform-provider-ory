@@ -23,7 +23,7 @@ const (
 )
 
 // Test API key constants - fake keys for unit tests
-// #nosec G101 -- These are intentionally fake test credentials, not real secrets
+// #nosec G101
 const (
 	// TestWorkspaceAPIKey is a fake workspace API key for tests.
 	TestWorkspaceAPIKey = "ory_wak_test"
