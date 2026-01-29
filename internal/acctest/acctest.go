@@ -18,10 +18,6 @@ import (
 	"github.com/ory/terraform-provider-orynetwork/internal/provider"
 )
 
-// Projects with names starting with this prefix are automatically purged by the automated cleanup job.
-// DO NOT CHANGE THIS PREFIX - it must match the pattern in internal cleanup patterns
-const TestProjectNamePrefix = "ory-cy-e2e-da2f162d-af61-42dd-90dc-e3fcfa7c84a0"
-
 // TestProject holds information about a test project created for acceptance tests.
 type TestProject struct {
 	ID          string
@@ -156,7 +152,7 @@ func createSharedProject(t *testing.T) {
 		return
 	}
 
-	projectName := fmt.Sprintf("%s-tf-%d", TestProjectNamePrefix, time.Now().UnixNano())
+	projectName := fmt.Sprintf("tf-acc-test-%d", time.Now().UnixNano())
 	t.Logf("Creating test project: %s (environment: prod)", projectName)
 
 	// Create as "prod" environment to support all features including organizations

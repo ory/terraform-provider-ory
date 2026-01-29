@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 
@@ -28,17 +27,16 @@ func testAccPreCheck(t *testing.T) {
 // WARNING: This test creates and deletes a real Ory project.
 // Only run this test if you have quota available and understand the implications.
 func TestAccProjectResource_basic(t *testing.T) {
-	projectName := testProjectName("basic")
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
-				Config: testAccProjectResourceConfig(projectName, "dev"),
+				Config: testAccProjectResourceConfig("tf-test-project", "dev"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project.test", "id"),
-					resource.TestCheckResourceAttr("ory_project.test", "name", projectName),
+					resource.TestCheckResourceAttr("ory_project.test", "name", "tf-test-project"),
 					resource.TestCheckResourceAttr("ory_project.test", "environment", "dev"),
 					resource.TestCheckResourceAttrSet("ory_project.test", "slug"),
 					resource.TestCheckResourceAttr("ory_project.test", "state", "running"),
@@ -56,13 +54,12 @@ func TestAccProjectResource_basic(t *testing.T) {
 
 // TestAccProjectResource_prodEnvironment tests creating a production project.
 func TestAccProjectResource_prodEnvironment(t *testing.T) {
-	projectName := testProjectName("prod")
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccProjectResourceConfig(projectName, "prod"),
+				Config: testAccProjectResourceConfig("tf-test-prod-project", "prod"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project.test", "id"),
 					resource.TestCheckResourceAttr("ory_project.test", "environment", "prod"),
@@ -70,11 +67,6 @@ func TestAccProjectResource_prodEnvironment(t *testing.T) {
 			},
 		},
 	})
-}
-
-// testProjectName generates a project name with the e2e prefix for hard deletion support.
-func testProjectName(suffix string) string {
-	return fmt.Sprintf("%s-tf-%s-%d", acctest.TestProjectNamePrefix, suffix, time.Now().UnixNano())
 }
 
 func testAccProjectResourceConfig(name, environment string) string {
