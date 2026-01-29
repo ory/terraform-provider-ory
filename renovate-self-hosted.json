@@ -1,0 +1,8 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "branchPrefix": "renovate/",
+  "onboarding": false,
+  "platform": "github",
+  "repositories": ["ory/terraform-provider-orynetwork"],
+  "requireConfig": "required"
+}
