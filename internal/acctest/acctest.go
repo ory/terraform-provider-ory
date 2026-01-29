@@ -71,10 +71,11 @@ func AccPreCheck(t *testing.T) {
 	}
 
 	// Set environment variables for the provider to use
-	os.Setenv("ORY_PROJECT_ID", project.ID)
-	os.Setenv("ORY_PROJECT_SLUG", project.Slug)
-	os.Setenv("ORY_PROJECT_API_KEY", project.APIKey)
-	os.Setenv("ORY_PROJECT_ENVIRONMENT", project.Environment)
+	// Errors are intentionally ignored as os.Setenv only fails on invalid key names
+	_ = os.Setenv("ORY_PROJECT_ID", project.ID)
+	_ = os.Setenv("ORY_PROJECT_SLUG", project.Slug)
+	_ = os.Setenv("ORY_PROJECT_API_KEY", project.APIKey)
+	_ = os.Setenv("ORY_PROJECT_ENVIRONMENT", project.Environment)
 }
 
 // GetTestProject returns the shared test project, loading from env vars or creating if necessary.

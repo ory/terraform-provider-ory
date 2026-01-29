@@ -1,6 +1,6 @@
 module github.com/ory/terraform-provider-orynetwork
 
-go 1.24.11
+go 1.24.12
 
 require (
 	github.com/hashicorp/terraform-plugin-framework v1.16.1
