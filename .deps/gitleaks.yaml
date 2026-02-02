@@ -1,0 +1,9 @@
+version: 8.21.2
+url: https://github.com/gitleaks/gitleaks/releases/download/v{{.Version}}/gitleaks_{{.Version}}_{{.Os}}_{{.Architecture}}.tar.gz
+mappings:
+  architecture:
+    amd64: x64
+    arm64: arm64
+  os:
+    darwin: darwin
+    linux: linux

@@ -26,11 +26,8 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
-
       - name: Run gosec
-        run: gosec ./...
+        run: make sec-gosec
 
   # Software Composition Analysis (SCA) - Go vulnerability check
   govulncheck:
@@ -46,11 +43,8 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
-
       - name: Run govulncheck
-        run: govulncheck ./...
+        run: make sec-vuln
 
   # Secret scanning - Gitleaks
   gitleaks:
@@ -62,14 +56,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install gitleaks
-        run: |
-          GITLEAKS_VERSION=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep tag_name | cut -d '"' -f 4 | sed 's/v//')
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz
-          sudo mv gitleaks /usr/local/bin/
-
       - name: Run Gitleaks
-        run: gitleaks detect --source . --verbose
+        run: make sec-gitleaks
 
   # Binary artifact scanning - Trivy on built binary
   trivy:
@@ -85,22 +73,8 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Build binary
-        run: go build -o terraform-provider-orynetwork .
-
-      - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'table'
-          exit-code: '1'
-          severity: 'CRITICAL,HIGH'
-          scanners: 'vuln,secret,misconfig'
-          ignore-unfixed: true
-        env:
-          TRIVY_SKIP_JAVA_DB_UPDATE: 'true'
-          TRIVY_DISABLE_VEX_NOTICE: 'true'
+      - name: Run Trivy
+        run: make sec-trivy
 
   # Dependency license compliance
   licenses:

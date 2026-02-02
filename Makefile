@@ -14,6 +14,16 @@
 BINARY_NAME := terraform-provider-orynetwork
 INSTALL_DIR := ~/.terraform.d/plugins/registry.terraform.io/ory/orynetwork/0.0.1/$(shell go env GOOS)_$(shell go env GOARCH)
 
+# Platform detection for tool downloads
+OS := $(shell uname -s | tr '[:upper:]' '[:lower:]')
+ARCH := $(shell uname -m)
+ifeq ($(ARCH),x86_64)
+	ARCH := amd64
+endif
+ifeq ($(ARCH),aarch64)
+	ARCH := arm64
+endif
+
 .PHONY: help
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -33,6 +43,12 @@ deps-ci: ## Install dependencies for CI environment
 	go mod download
 	@echo "Installing jq..."
 	@if command -v apt-get >/dev/null 2>&1; then sudo apt-get update && sudo apt-get install -y jq; fi
+
+# Ory CLI for dependency management
+.bin/ory:
+	@mkdir -p .bin
+	@bash <(curl --retry 7 --retry-connrefused https://raw.githubusercontent.com/ory/meta/master/install.sh) -d -b .bin ory v0.3.4
+	@touch -a -m .bin/ory
 
 # ==============================================================================
 # BUILD
@@ -113,25 +129,48 @@ test-acc-all: env-check ## Run all acceptance tests including optional ones
 .PHONY: sec
 sec: sec-vuln sec-gosec sec-gitleaks ## Run all security scans
 
+# Security tool binaries
+.bin/govulncheck: .deps/govulncheck.yaml .bin/ory
+	@VERSION=$$(.bin/ory dev ci deps url -o $(OS) -a $(ARCH) -c .deps/govulncheck.yaml); \
+	echo "Installing govulncheck $${VERSION}..."; \
+	GOBIN=$(PWD)/.bin go install golang.org/x/vuln/cmd/govulncheck@$${VERSION}
+
+.bin/gosec: .deps/gosec.yaml .bin/ory
+	@mkdir -p .bin
+	@URL=$$(.bin/ory dev ci deps url -o $(OS) -a $(ARCH) -c .deps/gosec.yaml); \
+	echo "Downloading gosec from $${URL}..."; \
+	curl -sSfL "$${URL}" | tar -xz -C .bin gosec; \
+	chmod +x .bin/gosec
+
+.bin/gitleaks: .deps/gitleaks.yaml .bin/ory
+	@mkdir -p .bin
+	@URL=$$(.bin/ory dev ci deps url -o $(OS) -a $(ARCH) -c .deps/gitleaks.yaml); \
+	echo "Downloading gitleaks from $${URL}..."; \
+	curl -sSfL "$${URL}" | tar -xz -C .bin gitleaks; \
+	chmod +x .bin/gitleaks
+
+.bin/trivy: .deps/trivy.yaml .bin/ory
+	@mkdir -p .bin
+	@URL=$$(.bin/ory dev ci deps url -o $(OS) -a $(ARCH) -c .deps/trivy.yaml); \
+	echo "Downloading trivy from $${URL}..."; \
+	curl -sSfL "$${URL}" | tar -xz -C .bin trivy; \
+	chmod +x .bin/trivy
+
 .PHONY: sec-vuln
-sec-vuln: ## Run govulncheck for Go vulnerability scanning
-	@command -v govulncheck >/dev/null 2>&1 || { echo "Installing govulncheck..."; go install golang.org/x/vuln/cmd/govulncheck@latest; }
-	govulncheck ./...
+sec-vuln: .bin/govulncheck ## Run govulncheck for Go vulnerability scanning
+	.bin/govulncheck ./...
 
 .PHONY: sec-gosec
-sec-gosec: ## Run gosec for Go security analysis
-	@command -v gosec >/dev/null 2>&1 || { echo "Installing gosec..."; go install github.com/securego/gosec/v2/cmd/gosec@latest; }
-	gosec ./...
+sec-gosec: .bin/gosec ## Run gosec for Go security analysis
+	.bin/gosec ./...
 
 .PHONY: sec-gitleaks
-sec-gitleaks: ## Run gitleaks for secret detection
-	@command -v gitleaks >/dev/null 2>&1 || { echo "gitleaks not found. Install: brew install gitleaks (macOS) or download from https://github.com/gitleaks/gitleaks/releases"; exit 1; }
-	gitleaks detect --source . --verbose
+sec-gitleaks: .bin/gitleaks ## Run gitleaks for secret detection
+	.bin/gitleaks detect --source . --verbose
 
 .PHONY: sec-trivy
-sec-trivy: build ## Run trivy vulnerability scan on built binary
-	@command -v trivy >/dev/null 2>&1 || { echo "trivy not found. Install: brew install trivy (macOS) or see https://aquasecurity.github.io/trivy/"; exit 1; }
-	trivy fs --scanners vuln,secret,misconfig --severity CRITICAL,HIGH .
+sec-trivy: .bin/trivy build ## Run trivy vulnerability scan on built binary
+	.bin/trivy fs --scanners vuln,secret,misconfig --severity CRITICAL,HIGH .
 
 # ==============================================================================
 # ENVIRONMENT HELPERS

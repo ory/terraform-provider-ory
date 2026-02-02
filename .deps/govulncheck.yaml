@@ -1,0 +1,3 @@
+version: v1.1.4
+# govulncheck is installed via go install
+url: "{{.Version}}"

@@ -5,6 +5,9 @@ terraform-provider-orynetwork
 *.so
 *.dylib
 
+# Local tool binaries (managed by Makefile)
+.bin/
+
 # Test binary
 *.test
 
