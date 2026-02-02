@@ -1,0 +1,83 @@
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  default: standard
+  enable:
+    # Additional recommended linters
+    - bodyclose      # Check HTTP response body is closed
+    - dogsled        # Check for too many blank identifiers
+    - dupl           # Check for duplicated code
+    - errorlint      # Check error wrapping
+    - exhaustive     # Check exhaustiveness of enum switch statements
+    - gochecknoinits # Check for init functions
+    - goconst        # Find repeated strings that could be constants
+    - gocritic       # Opinionated linter
+    - goprintffuncname # Check printf-like function names
+    - gosec          # Security checks
+    - misspell       # Check for misspelled English words
+    - nilerr         # Check for nil error returns
+    - noctx          # Check for HTTP requests without context
+    - prealloc       # Find slice declarations that could be preallocated
+    - unconvert      # Remove unnecessary type conversions
+    - unparam        # Find unused function parameters
+    - whitespace     # Check for unnecessary whitespace
+
+  disable:
+    # Disabled for Terraform providers - these implement framework interfaces
+    - revive
+
+  settings:
+    dupl:
+      threshold: 150
+
+    exhaustive:
+      default-signifies-exhaustive: true
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+
+    gocritic:
+      disabled-checks:
+        - ifElseChain        # Sometimes clearer than switch
+
+    misspell:
+      locale: US
+
+  exclusions:
+    presets:
+      - std-error-handling
+      - common-false-positives
+    rules:
+      # Test files have repetitive patterns and don't need strict error handling
+      - path: _test\.go
+        linters:
+          - dupl
+          - goconst
+          - errorlint
+
+      - path: internal/resources/
+        linters:
+          - dupl
+
+      - path: internal/datasources/
+        linters:
+          - dupl
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - github.com/ory/terraform-provider-orynetwork
+
+output:
+  show-stats: true

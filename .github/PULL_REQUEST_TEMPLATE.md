@@ -15,12 +15,12 @@ Fixes #(issue number)
 
 ## Checklist
 
-- [ ] I have read the [CONTRIBUTING](../CONTRIBUTING.md) guide
+- [ ] I have read the [CONTRIBUTING](CONTRIBUTING.md) guide
 - [ ] My code follows the existing code style
 - [ ] I have added tests that prove my fix/feature works
 - [ ] I have updated documentation as needed
 - [ ] All new and existing tests pass (`make test`)
-- [ ] I have run the linter (`make lint`)
+- [ ] I have run the linter (`make format`)
 
 ## Testing
 

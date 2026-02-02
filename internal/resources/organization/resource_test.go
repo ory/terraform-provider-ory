@@ -1,4 +1,5 @@
 //go:build acceptance
+
 package organization_test
 
 import (

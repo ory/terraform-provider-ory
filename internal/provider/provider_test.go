@@ -7,6 +7,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+
 	"github.com/ory/terraform-provider-orynetwork/internal/testutil"
 )
 
@@ -75,8 +76,8 @@ func TestResolveString(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.envValue != "" {
-				os.Setenv(tt.envVar, tt.envValue)
-				defer os.Unsetenv(tt.envVar)
+				_ = os.Setenv(tt.envVar, tt.envValue)
+				defer func() { _ = os.Unsetenv(tt.envVar) }()
 			}
 
 			result := resolveString(tt.tfValue, tt.envVar)
@@ -141,8 +142,8 @@ func TestResolveStringDefault(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.envValue != "" {
-				os.Setenv(tt.envVar, tt.envValue)
-				defer os.Unsetenv(tt.envVar)
+				_ = os.Setenv(tt.envVar, tt.envValue)
+				defer func() { _ = os.Unsetenv(tt.envVar) }()
 			}
 
 			result := resolveStringDefault(tt.tfValue, tt.envVar, tt.defaultValue)

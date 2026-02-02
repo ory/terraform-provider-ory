@@ -1,4 +1,5 @@
 //go:build acceptance
+
 package projectapikey_test
 
 import (

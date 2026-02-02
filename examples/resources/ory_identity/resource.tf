@@ -30,8 +30,8 @@ resource "ory_identity" "customer" {
     tier = "premium"
   })
   metadata_admin = jsonencode({
-    internal_id    = "cust-12345"
-    sales_rep      = "jane@company.com"
+    internal_id = "cust-12345"
+    sales_rep   = "jane@company.com"
   })
 }
 

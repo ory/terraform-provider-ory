@@ -55,25 +55,20 @@ clean: ## Remove build artifacts
 # CODE QUALITY
 # ==============================================================================
 
-.PHONY: fmt
-fmt: ## Format Go code
+.PHONY: format
+format: ## Format all code (Go, Terraform, modules, docs, lint fixes)
 	go fmt ./...
 	gofmt -s -w .
+	terraform fmt -recursive examples/
+	go mod tidy
+	@command -v tfplugindocs >/dev/null 2>&1 || { echo "Installing tfplugindocs..."; go install github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@latest; }
+	tfplugindocs generate --provider-name ory
+	@command -v golangci-lint >/dev/null 2>&1 || { echo "Installing golangci-lint v2..."; go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest; }
+	golangci-lint run --fix ./...
 
 .PHONY: lint
-lint: ## Run linter
+lint: ## Run Go linter (without fixes)
 	golangci-lint run ./...
-
-.PHONY: vet
-vet: ## Run go vet
-	go vet ./...
-
-.PHONY: generate
-generate: ## Generate documentation and code
-	go generate ./...
-
-.PHONY: check
-check: fmt vet lint ## Run all code quality checks
 
 # ==============================================================================
 # TESTING

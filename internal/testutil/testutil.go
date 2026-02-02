@@ -25,10 +25,10 @@ const (
 // Test API key constants - fake keys for unit tests
 const (
 	// TestWorkspaceAPIKey is a fake workspace API key for tests.
-	TestWorkspaceAPIKey = "ory_wak_test"
+	TestWorkspaceAPIKey = "ory_wak_test" //nolint:gosec // G101 false positive - this is a fake test constant
 
 	// TestProjectAPIKey is a fake project API key for tests.
-	TestProjectAPIKey = "ory_pat_test"
+	TestProjectAPIKey = "ory_pat_test" //nolint:gosec // G101 false positive - this is a fake test constant
 
 	// TestProjectSlug is a test project slug.
 	TestProjectSlug = "test-project-slug"

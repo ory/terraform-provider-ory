@@ -1,4 +1,5 @@
 //go:build acceptance
+
 package workspace_test
 
 import (

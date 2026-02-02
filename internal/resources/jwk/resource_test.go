@@ -1,4 +1,5 @@
 //go:build acceptance
+
 package jwk_test
 
 import (

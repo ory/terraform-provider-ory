@@ -1,4 +1,5 @@
 //go:build acceptance
+
 package action_test
 
 import (
