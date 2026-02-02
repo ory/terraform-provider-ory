@@ -73,8 +73,13 @@ func TestAccProjectResource_prodEnvironment(t *testing.T) {
 }
 
 // testProjectName generates a project name with the e2e prefix for hard deletion support.
+// The prefix is read from ORY_TEST_PROJECT_PREFIX env var (set by scripts/run-acceptance-tests.sh).
 func testProjectName(suffix string) string {
-	return fmt.Sprintf("%s-tf-%s-%d", acctest.TestProjectNamePrefix, suffix, time.Now().UnixNano())
+	prefix := os.Getenv("ORY_TEST_PROJECT_PREFIX")
+	if prefix != "" {
+		return fmt.Sprintf("%s-tf-%s-%d", prefix, suffix, time.Now().UnixNano())
+	}
+	return fmt.Sprintf("tf-acc-test-%s-%d", suffix, time.Now().UnixNano())
 }
 
 func testAccProjectResourceConfig(name, environment string) string {
