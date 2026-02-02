@@ -74,11 +74,9 @@ clean: ## Remove build artifacts
 
 # Code quality tool binaries
 .bin/golangci-lint: .deps/golangci-lint.yaml .bin/ory
-	@mkdir -p .bin
-	@URL=$$(.bin/ory dev ci deps url -o $(OS) -a $(ARCH) -c .deps/golangci-lint.yaml); \
-	echo "Downloading golangci-lint from $${URL}..."; \
-	curl -sSfL "$${URL}" | tar -xz -C .bin --strip-components=1 --wildcards '*/golangci-lint'; \
-	chmod +x .bin/golangci-lint
+	@VERSION=$$(.bin/ory dev ci deps url -o $(OS) -a $(ARCH) -c .deps/golangci-lint.yaml); \
+	echo "Installing golangci-lint $${VERSION}..."; \
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b .bin $${VERSION}
 
 .bin/tfplugindocs: .deps/tfplugindocs.yaml .bin/ory
 	@mkdir -p .bin
