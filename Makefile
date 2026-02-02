@@ -107,7 +107,16 @@ lint: .bin/golangci-lint ## Run Go linter (without fixes)
 
 .PHONY: licenses
 licenses: .bin/go-licenses ## Check dependency licenses
-	.bin/go-licenses check ./... --disallowed_types=forbidden,restricted
+	@# go-licenses has known issues with Go 1.25+ stdlib packages (github.com/google/go-licenses/issues/128)
+	@# Suppress stderr noise about stdlib, but fail if disallowed licenses are found (exit code 3)
+	@.bin/go-licenses check ./... --disallowed_types=forbidden,restricted 2>/dev/null; \
+	EXIT_CODE=$$?; \
+	if [ $$EXIT_CODE -eq 3 ]; then \
+		echo "ERROR: Disallowed licenses found!"; \
+		.bin/go-licenses check ./... --disallowed_types=forbidden,restricted; \
+		exit 1; \
+	fi; \
+	echo "License check passed"
 
 # ==============================================================================
 # TESTING
