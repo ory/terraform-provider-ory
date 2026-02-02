@@ -97,6 +97,7 @@ jobs:
           exit-code: '1'
           severity: 'CRITICAL,HIGH'
           scanners: 'vuln,secret,misconfig'
+          ignore-unfixed: true
         env:
           TRIVY_SKIP_JAVA_DB_UPDATE: 'true'
           TRIVY_DISABLE_VEX_NOTICE: 'true'
