@@ -23,4 +23,5 @@ jobs:
         uses: renovatebot/github-action@v44.2.5
         with:
           configurationFile: 'renovate-self-hosted.json'
-          token: '${{ secrets.GH_TOKEN_BOT }}'
+          env-regex: "^(?:RENOVATE_\\w+|LOG_LEVEL|GITHUB_COM_TOKEN|NODE_OPTIONS|AWS_TOKEN)$"
+          token: '${{ secrets.ORY_BOT_PAT }}'
