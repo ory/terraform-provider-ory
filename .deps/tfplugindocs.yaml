@@ -1,0 +1,10 @@
+# renovate: datasource=github-releases depName=hashicorp/terraform-plugin-docs
+version: 0.24.0
+url: https://github.com/hashicorp/terraform-plugin-docs/releases/download/v{{.Version}}/tfplugindocs_{{.Version}}_{{.Os}}_{{.Architecture}}.zip
+mappings:
+  architecture:
+    amd64: amd64
+    arm64: arm64
+  os:
+    darwin: darwin
+    linux: linux

@@ -1,0 +1,3 @@
+# renovate: datasource=github-releases depName=google/go-licenses extractVersion=^v(?<version>.*)$
+version: v1.6.0
+url: "{{.Version}}"

@@ -1,0 +1,100 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '26 21 * * 3'
+
+permissions:
+  contents: read
+
+jobs:
+  # Static Application Security Testing (SAST) - gosec
+  gosec:
+    name: Go Security Check
+    runs-on: ubuntu-slim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run gosec
+        run: make sec-gosec
+
+  # Software Composition Analysis (SCA) - Go vulnerability check
+  govulncheck:
+    name: Go Vulnerability Check
+    runs-on: ubuntu-slim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run govulncheck
+        run: make sec-vuln
+
+  # Secret scanning - Gitleaks
+  gitleaks:
+    name: Secret Scanning
+    runs-on: ubuntu-slim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run Gitleaks
+        run: make sec-gitleaks
+
+  # Binary artifact scanning - Trivy on built binary
+  trivy:
+    name: Binary Vulnerability Scan
+    runs-on: ubuntu-slim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run Trivy
+        run: make sec-trivy
+
+  # Dependency license compliance
+  licenses:
+    name: License Check
+    runs-on: ubuntu-slim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Check licenses
+        run: make licenses
