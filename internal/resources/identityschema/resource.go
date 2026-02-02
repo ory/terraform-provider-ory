@@ -278,7 +278,7 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		if attempt < 4 {
 			select {
 			case <-ctx.Done():
-				resp.Diagnostics.AddError("Context Cancelled", "Operation was cancelled while waiting for schema creation")
+				resp.Diagnostics.AddError("Context Canceled", "Operation was canceled while waiting for schema creation")
 				return
 			case <-time.After(time.Duration(500<<attempt) * time.Millisecond):
 			}

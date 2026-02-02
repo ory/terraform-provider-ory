@@ -71,7 +71,6 @@ func AccPreCheck(t *testing.T) {
 	}
 
 	// Set environment variables for the provider to use
-	// Errors are intentionally ignored as os.Setenv only fails on invalid key names
 	_ = os.Setenv("ORY_PROJECT_ID", project.ID)
 	_ = os.Setenv("ORY_PROJECT_SLUG", project.Slug)
 	_ = os.Setenv("ORY_PROJECT_API_KEY", project.APIKey)
@@ -153,7 +152,14 @@ func createSharedProject(t *testing.T) {
 		return
 	}
 
-	projectName := fmt.Sprintf("tf-acc-test-%d", time.Now().UnixNano())
+	// Use prefix from env var (set by scripts/run-acceptance-tests.sh) for auto-cleanup support
+	prefix := os.Getenv("ORY_TEST_PROJECT_PREFIX")
+	var projectName string
+	if prefix != "" {
+		projectName = fmt.Sprintf("%s-tf-%d", prefix, time.Now().UnixNano())
+	} else {
+		projectName = fmt.Sprintf("tf-acc-test-%d", time.Now().UnixNano())
+	}
 	t.Logf("Creating test project: %s (environment: prod)", projectName)
 
 	// Create as "prod" environment to support all features including organizations

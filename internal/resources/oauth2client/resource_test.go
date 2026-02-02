@@ -1,4 +1,5 @@
 //go:build acceptance
+
 package oauth2client_test
 
 import (

@@ -37,8 +37,8 @@ resource "ory_identity_schema" "customer" {
             }
           }
           phone = {
-            type   = "string"
-            title  = "Phone Number"
+            type  = "string"
+            title = "Phone Number"
             "ory.sh/kratos" = {
               credentials = {
                 code = { identifier = true, via = "sms" }
