@@ -2,6 +2,7 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:best-practices"],
   "labels": ["dependencies"],
+  "includePaths": [".github/**", ".deps/**", "go.mod"],
   "packageRules": [
     {
       "description": "Group all Go module updates",
@@ -12,6 +13,21 @@
       "description": "Group all GitHub Actions updates",
       "matchManagers": ["github-actions"],
       "groupName": "github actions"
+    },
+    {
+      "description": "Group all tool dependency updates",
+      "matchFileNames": [".deps/**"],
+      "groupName": "tool dependencies"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track tool versions in .deps yaml files",
+      "managerFilePatterns": ["^.deps/.*.yaml$"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>[^\\s]+)\\nversion: (?<currentValue>.*)"
+      ]
     }
   ]
 }

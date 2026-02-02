@@ -1,0 +1,3 @@
+# renovate: datasource=go depName=github.com/google/go-licenses
+version: v2.0.1
+url: "{{.Version}}"

@@ -1,3 +1,4 @@
+# renovate: datasource=github-releases depName=gitleaks/gitleaks
 version: 8.21.2
 url: https://github.com/gitleaks/gitleaks/releases/download/v{{.Version}}/gitleaks_{{.Version}}_{{.Os}}_{{.Architecture}}.tar.gz
 mappings:

@@ -1,3 +1,4 @@
+# renovate: datasource=github-releases depName=securego/gosec
 version: 2.22.0
 url: https://github.com/securego/gosec/releases/download/v{{.Version}}/gosec_{{.Version}}_{{.Os}}_{{.Architecture}}.tar.gz
 mappings:

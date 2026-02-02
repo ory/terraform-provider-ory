@@ -56,6 +56,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
       - name: Run Gitleaks
         run: make sec-gitleaks
 
@@ -90,8 +96,5 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Install go-licenses
-        run: go install github.com/google/go-licenses@latest
-
       - name: Check licenses
-        run: go-licenses check ./... --disallowed_types=forbidden,restricted
+        run: make licenses

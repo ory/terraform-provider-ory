@@ -11,6 +11,7 @@
 #   ORY_CONSOLE_API_URL   - Console API URL (default: https://api.console.ory.sh)
 #   ORY_PROJECT_API_URL   - Project API URL template (default: https://%s.projects.oryapis.com)
 
+SHELL := /bin/bash -o pipefail
 BINARY_NAME := terraform-provider-orynetwork
 INSTALL_DIR := ~/.terraform.d/plugins/registry.terraform.io/ory/orynetwork/0.0.1/$(shell go env GOOS)_$(shell go env GOARCH)
 
@@ -47,7 +48,7 @@ deps-ci: ## Install dependencies for CI environment
 # Ory CLI for dependency management
 .bin/ory:
 	@mkdir -p .bin
-	@bash <(curl --retry 7 --retry-connrefused https://raw.githubusercontent.com/ory/meta/master/install.sh) -d -b .bin ory v0.3.4
+	@curl --retry 7 --retry-connrefused -sSfL https://raw.githubusercontent.com/ory/meta/master/install.sh | bash -s -- -d -b .bin ory v0.3.4
 	@touch -a -m .bin/ory
 
 # ==============================================================================
@@ -71,20 +72,44 @@ clean: ## Remove build artifacts
 # CODE QUALITY
 # ==============================================================================
 
+# Code quality tool binaries
+.bin/golangci-lint: .deps/golangci-lint.yaml .bin/ory
+	@mkdir -p .bin
+	@URL=$$(.bin/ory dev ci deps url -o $(OS) -a $(ARCH) -c .deps/golangci-lint.yaml); \
+	echo "Downloading golangci-lint from $${URL}..."; \
+	curl -sSfL "$${URL}" | tar -xz -C .bin --strip-components=1 --wildcards '*/golangci-lint'; \
+	chmod +x .bin/golangci-lint
+
+.bin/tfplugindocs: .deps/tfplugindocs.yaml .bin/ory
+	@mkdir -p .bin
+	@URL=$$(.bin/ory dev ci deps url -o $(OS) -a $(ARCH) -c .deps/tfplugindocs.yaml); \
+	echo "Downloading tfplugindocs from $${URL}..."; \
+	curl -sSfL "$${URL}" -o /tmp/tfplugindocs.zip; \
+	unzip -q -o /tmp/tfplugindocs.zip -d .bin tfplugindocs; \
+	rm /tmp/tfplugindocs.zip; \
+	chmod +x .bin/tfplugindocs
+
+.bin/go-licenses: .deps/go-licenses.yaml .bin/ory
+	@VERSION=$$(.bin/ory dev ci deps url -o $(OS) -a $(ARCH) -c .deps/go-licenses.yaml); \
+	echo "Installing go-licenses $${VERSION}..."; \
+	GOBIN=$(PWD)/.bin go install github.com/google/go-licenses@$${VERSION}
+
 .PHONY: format
-format: ## Format all code (Go, Terraform, modules, docs, lint fixes)
+format: .bin/tfplugindocs .bin/golangci-lint ## Format all code (Go, Terraform, modules, docs, lint fixes)
 	go fmt ./...
 	gofmt -s -w .
 	terraform fmt -recursive examples/
 	go mod tidy
-	@command -v tfplugindocs >/dev/null 2>&1 || { echo "Installing tfplugindocs..."; go install github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@latest; }
-	tfplugindocs generate --provider-name ory
-	@command -v golangci-lint >/dev/null 2>&1 || { echo "Installing golangci-lint v2..."; go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest; }
-	golangci-lint run --fix ./...
+	.bin/tfplugindocs generate --provider-name ory
+	.bin/golangci-lint run --fix ./...
 
 .PHONY: lint
-lint: ## Run Go linter (without fixes)
-	golangci-lint run ./...
+lint: .bin/golangci-lint ## Run Go linter (without fixes)
+	.bin/golangci-lint run ./...
+
+.PHONY: licenses
+licenses: .bin/go-licenses ## Check dependency licenses
+	.bin/go-licenses check ./... --disallowed_types=forbidden,restricted
 
 # ==============================================================================
 # TESTING
