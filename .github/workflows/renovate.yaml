@@ -24,4 +24,4 @@ jobs:
         with:
           configurationFile: 'renovate-self-hosted.json'
           env-regex: "^(?:RENOVATE_\\w+|LOG_LEVEL|GITHUB_COM_TOKEN|NODE_OPTIONS|AWS_TOKEN)$"
-          token: '${{ secrets.GH_TOKEN_BOT }}'
+          token: '${{ secrets.ORY_BOT_PAT }}'
