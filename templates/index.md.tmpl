@@ -1,0 +1,51 @@
+---
+page_title: "{{.ProviderShortName}} Provider"
+description: |-
+  The Ory provider enables Terraform to manage Ory Network resources.
+---
+
+# {{.ProviderShortName}} Provider
+
+The Ory provider enables Terraform to manage [Ory Network](https://www.ory.sh/) resources.
+
+## Authentication
+
+Ory Network uses two types of API keys:
+
+| API Key Type | Prefix | Used For |
+|--------------|--------|----------|
+| **Workspace API Key** | `ory_wak_...` | Projects, organizations, workspace management, project config, actions |
+| **Project API Key** | `ory_pat_...` | Identities, OAuth2 clients, relationships |
+
+## Configuration Options
+
+```bash
+export ORY_WORKSPACE_API_KEY="ory_wak_..."
+export ORY_WORKSPACE_ID="..."           # Required for creating new projects
+export ORY_PROJECT_API_KEY="ory_pat_..."
+export ORY_PROJECT_ID="..."
+export ORY_PROJECT_SLUG="..."
+```
+
+```hcl
+provider "ory" {}  # Picks up from ORY_* environment variables
+```
+
+## Which Credentials Do You Need?
+
+| Resource | Required Credentials |
+|----------|---------------------|
+| `ory_project`, `ory_workspace` | `workspace_api_key`, `workspace_id` |
+| `ory_organization` | `workspace_api_key`, `project_id` |
+| `ory_project_config`, `ory_action`, `ory_social_provider`, `ory_email_template` | `workspace_api_key`, `project_id` |
+| `ory_identity`, `ory_oauth2_client`, `ory_relationship` | `project_api_key`, `project_slug` |
+
+## Import Requirements
+
+When importing existing resources, ensure you have the appropriate credentials configured **before** running `terraform import`.
+
+## Example Usage
+
+{{ tffile "examples/provider/provider.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}

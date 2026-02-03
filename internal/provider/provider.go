@@ -85,19 +85,60 @@ The Ory provider enables Terraform to manage [Ory Network](https://www.ory.sh/) 
 
 Ory Network uses two types of API keys:
 
-1. **Workspace API Key** (` + "`ory_wak_...`" + `): For organizations, projects, and workspace management
-2. **Project API Key** (` + "`ory_pat_...`" + `): For identities, OAuth2 clients, and sessions
+| API Key Type | Prefix | Used For |
+|--------------|--------|----------|
+| **Workspace API Key** | ` + "`ory_wak_...`" + ` | Projects, organizations, workspace management, project config, actions |
+| **Project API Key** | ` + "`ory_pat_...`" + ` | Identities, OAuth2 clients, relationships |
 
-Configure via environment variables or provider block:
+### Configuration Options
+
+You can configure the provider using **either** approach:
+
+#### Option 1: Environment Variables (Recommended for CI/CD)
+
+` + "```bash" + `
+export ORY_WORKSPACE_API_KEY="ory_wak_..."
+export ORY_WORKSPACE_ID="..."           # Required for creating new projects
+export ORY_PROJECT_API_KEY="ory_pat_..."
+export ORY_PROJECT_ID="..."
+export ORY_PROJECT_SLUG="..."
+` + "```" + `
+
+` + "```hcl" + `
+provider "ory" {}  # Uses environment variables
+` + "```" + `
+
+#### Option 2: Provider Block (with Terraform variables)
 
 ` + "```hcl" + `
 provider "ory" {
   workspace_api_key = var.ory_workspace_key  # or ORY_WORKSPACE_API_KEY env var
+  workspace_id      = var.ory_workspace_id   # or ORY_WORKSPACE_ID env var
   project_api_key   = var.ory_project_key    # or ORY_PROJECT_API_KEY env var
   project_id        = var.ory_project_id     # or ORY_PROJECT_ID env var
   project_slug      = var.ory_project_slug   # or ORY_PROJECT_SLUG env var
 }
 ` + "```" + `
+
+When using Terraform variables, you can set them via ` + "`TF_VAR_*`" + ` environment variables:
+
+` + "```bash" + `
+export TF_VAR_ory_workspace_key="ory_wak_..."
+export TF_VAR_ory_project_key="ory_pat_..."
+` + "```" + `
+
+## Which Credentials Do You Need?
+
+| Resource | Required Credentials |
+|----------|---------------------|
+| ` + "`ory_project`" + `, ` + "`ory_workspace`" + ` | ` + "`workspace_api_key`" + `, ` + "`workspace_id`" + ` |
+| ` + "`ory_organization`" + ` | ` + "`workspace_api_key`" + `, ` + "`project_id`" + ` |
+| ` + "`ory_project_config`" + `, ` + "`ory_action`" + `, ` + "`ory_social_provider`" + `, ` + "`ory_email_template`" + ` | ` + "`workspace_api_key`" + `, ` + "`project_id`" + ` |
+| ` + "`ory_identity`" + `, ` + "`ory_oauth2_client`" + `, ` + "`ory_relationship`" + ` | ` + "`project_api_key`" + `, ` + "`project_slug`" + ` |
+
+## Import Requirements
+
+When importing existing resources, ensure you have the appropriate credentials configured **before** running ` + "`terraform import`" + `.
 `,
 		Attributes: map[string]schema.Attribute{
 			"workspace_api_key": schema.StringAttribute{
@@ -162,9 +203,26 @@ func (p *OryProvider) Configure(ctx context.Context, req provider.ConfigureReque
 	if workspaceAPIKey == "" && projectAPIKey == "" {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("workspace_api_key"),
-			"Missing Ory API Key",
-			"At least one of workspace_api_key or project_api_key must be configured. "+
-				"Set via provider configuration or environment variables (ORY_WORKSPACE_API_KEY, ORY_PROJECT_API_KEY).",
+			"Missing Ory API Configuration",
+			`At least one of workspace_api_key or project_api_key must be configured.
+
+Configure via provider block:
+
+  provider "ory" {
+    workspace_api_key = var.ory_workspace_key  # For project/workspace/org operations
+    project_api_key   = var.ory_project_key    # For identity/OAuth2 operations
+  }
+
+Or via environment variables:
+
+  export ORY_WORKSPACE_API_KEY="ory_wak_..."
+  export ORY_PROJECT_API_KEY="ory_pat_..."
+
+Which API key do you need?
+  - Workspace API Key (ory_wak_...): For ory_project, ory_workspace, ory_organization, ory_project_config, ory_action
+  - Project API Key (ory_pat_...): For ory_identity, ory_oauth2_client, ory_relationship
+
+For more information: https://www.ory.sh/docs/guides/api-keys`,
 		)
 		return
 	}

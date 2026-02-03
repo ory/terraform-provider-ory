@@ -108,6 +108,61 @@ func (r *ProjectConfigResource) Metadata(ctx context.Context, req resource.Metad
 func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "Configures an Ory Network project's settings.",
+		MarkdownDescription: `
+Configures an Ory Network project's settings.
+
+This resource manages the configuration of an Ory Network project, including authentication methods,
+password policies, session settings, CORS, and more.
+
+## Example Usage
+
+` + "```hcl" + `
+resource "ory_project_config" "main" {
+  cors_enabled        = true
+  cors_origins        = ["https://app.example.com"]
+  password_min_length = 10
+  session_lifespan    = "720h"  # 30 days
+}
+` + "```" + `
+
+## Import
+
+Import using the project ID:
+
+` + "```shell" + `
+terraform import ory_project_config.main <project-id>
+` + "```" + `
+
+### Avoiding "Forces Replacement" After Import
+
+After importing, if Terraform shows ` + "`project_id forces replacement`" + `, ensure your configuration matches:
+
+**Option 1: Explicit project_id**
+` + "```hcl" + `
+resource "ory_project_config" "main" {
+  project_id = "the-exact-project-id-you-imported"
+  # ... other settings
+}
+` + "```" + `
+
+**Option 2: Use provider default** (recommended)
+` + "```hcl" + `
+provider "ory" {
+  project_id = "the-exact-project-id-you-imported"
+}
+
+resource "ory_project_config" "main" {
+  # project_id inherits from provider
+  # ... other settings
+}
+` + "```" + `
+
+## Notes
+
+- Project config cannot be deleted - it always exists for a project
+- Deleting this resource from Terraform state does not reset the project configuration
+- The ` + "`project_id`" + ` attribute forces replacement if changed (you cannot move config to a different project)
+`,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "Resource ID (same as project_id).",
@@ -717,6 +772,28 @@ func (r *ProjectConfigResource) Delete(ctx context.Context, req resource.DeleteR
 }
 
 func (r *ProjectConfigResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), req.ID)...)
+	projectID := req.ID
+
+	// Set both id and project_id from the import ID
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), projectID)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), projectID)...)
+
+	// Add a warning to help users understand how import works for this resource
+	resp.Diagnostics.AddWarning(
+		"Project Config Import - Read Your Existing Config",
+		"The project config has been imported with project_id: "+projectID+".\n\n"+
+			"IMPORTANT: After import, you must ensure your Terraform configuration matches the imported project:\n\n"+
+			"Option 1 - Set project_id explicitly:\n"+
+			"  resource \"ory_project_config\" \"main\" {\n"+
+			"    project_id = \""+projectID+"\"\n"+
+			"    # ... your config\n"+
+			"  }\n\n"+
+			"Option 2 - Use provider default:\n"+
+			"  provider \"ory\" {\n"+
+			"    project_id = \""+projectID+"\"\n"+
+			"  }\n\n"+
+			"  resource \"ory_project_config\" \"main\" {\n"+
+			"    # project_id inherits from provider\n"+
+			"  }\n\n"+
+			"If you see 'project_id forces replacement', the project_id in your config doesn't match the imported project.")
 }

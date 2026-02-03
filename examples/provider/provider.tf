@@ -12,6 +12,9 @@ provider "ory" {
   # Workspace API key for project/organization management
   workspace_api_key = var.ory_workspace_api_key # or set ORY_WORKSPACE_API_KEY env var
 
+  # Workspace ID (required for creating new projects)
+  workspace_id = var.ory_workspace_id # or set ORY_WORKSPACE_ID env var
+
   # Project API key for identity/OAuth2 operations
   project_api_key = var.ory_project_api_key # or set ORY_PROJECT_API_KEY env var
 
@@ -34,20 +37,30 @@ variable "ory_workspace_api_key" {
   type        = string
   sensitive   = true
   description = "Ory Workspace API Key (ory_wak_...)"
+  default     = null
+}
+
+variable "ory_workspace_id" {
+  type        = string
+  description = "Ory Workspace ID (UUID)"
+  default     = null
 }
 
 variable "ory_project_api_key" {
   type        = string
   sensitive   = true
   description = "Ory Project API Key (ory_pat_...)"
+  default     = null
 }
 
 variable "ory_project_id" {
   type        = string
   description = "Ory Project ID (UUID)"
+  default     = null
 }
 
 variable "ory_project_slug" {
   type        = string
   description = "Ory Project Slug (e.g., vibrant-moore-abc123)"
+  default     = null
 }
