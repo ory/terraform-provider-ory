@@ -6,20 +6,42 @@ description: |-
   Manages an Ory Network identity (user).
   Identities represent users in your application. Each identity has traits
   (profile data) defined by an identity schema.
+  Required Provider Configuration
+  This resource requires the following provider configuration:
+  
+  provider "ory" {
+    project_api_key = var.ory_project_api_key  # or ORY_PROJECT_API_KEY env var
+    project_slug    = var.ory_project_slug     # or ORY_PROJECT_SLUG env var
+  }
+  
+  Or via environment variables:
+  
+  export ORY_PROJECT_API_KEY="ory_pat_..."
+  export ORY_PROJECT_SLUG="your-project-slug"
+  
   Example Usage
   
+  # Basic identity with email
   resource "ory_identity" "user" {
     schema_id = "preset://email"
   
     traits = jsonencode({
       email = "user@example.com"
-      name  = "John Doe"
+    })
+  }
+  
+  # Identity with password (for password-based authentication)
+  resource "ory_identity" "user_with_password" {
+    schema_id = "preset://email"
+  
+    traits = jsonencode({
+      email = "user@example.com"
     })
   
-    state = "active"
+    password = var.user_password  # Use a variable, never hardcode
   
     metadata_public = jsonencode({
-      role = "admin"
+      role = "user"
     })
   }
   
@@ -27,6 +49,9 @@ description: |-
   Identities can be imported using their ID:
   
   terraform import ory_identity.user <identity-id>
+  
+  Note: If the identity is deleted outside of Terraform (e.g., via UI or API),
+  the next terraform plan will detect this and remove it from state.
 ---
 
 # ory_identity (Resource)
@@ -36,21 +61,48 @@ Manages an Ory Network identity (user).
 Identities represent users in your application. Each identity has traits
 (profile data) defined by an identity schema.
 
+## Required Provider Configuration
+
+This resource requires the following provider configuration:
+
+```hcl
+provider "ory" {
+  project_api_key = var.ory_project_api_key  # or ORY_PROJECT_API_KEY env var
+  project_slug    = var.ory_project_slug     # or ORY_PROJECT_SLUG env var
+}
+```
+
+Or via environment variables:
+
+```bash
+export ORY_PROJECT_API_KEY="ory_pat_..."
+export ORY_PROJECT_SLUG="your-project-slug"
+```
+
 ## Example Usage
 
 ```hcl
+# Basic identity with email
 resource "ory_identity" "user" {
   schema_id = "preset://email"
 
   traits = jsonencode({
     email = "user@example.com"
-    name  = "John Doe"
+  })
+}
+
+# Identity with password (for password-based authentication)
+resource "ory_identity" "user_with_password" {
+  schema_id = "preset://email"
+
+  traits = jsonencode({
+    email = "user@example.com"
   })
 
-  state = "active"
+  password = var.user_password  # Use a variable, never hardcode
 
   metadata_public = jsonencode({
-    role = "admin"
+    role = "user"
   })
 }
 ```
@@ -62,6 +114,9 @@ Identities can be imported using their ID:
 ```shell
 terraform import ory_identity.user <identity-id>
 ```
+
+**Note**: If the identity is deleted outside of Terraform (e.g., via UI or API),
+the next `terraform plan` will detect this and remove it from state.
 
 ## Example Usage
 

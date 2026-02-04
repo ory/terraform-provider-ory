@@ -4,11 +4,75 @@ page_title: "ory_email_template Resource - ory"
 subcategory: ""
 description: |-
   Manages an Ory Network email template.
+  Template Types
+  | Template Type | UI Name | Description |
+  |---------------|---------|-------------|
+  | `registration_code_valid` | Registration via Code | Sent when user registers with a valid code |
+  | `registration_code_invalid` | - | Sent when registration code is invalid/expired |
+  | `login_code_valid` | Login via Code | Sent when user logs in with a valid code |
+  | `login_code_invalid` | - | Sent when login code is invalid/expired |
+  | `verification_code_valid` | Verification via Code (Valid) | Sent for email verification with valid code |
+  | `verification_code_invalid` | - | Sent when verification code is invalid/expired |
+  | `recovery_code_valid` | Recovery via Code (Valid) | Sent for account recovery with valid code |
+  | `recovery_code_invalid` | - | Sent when recovery code is invalid/expired |
+  | `verification_valid` | - | Legacy verification email (link-based) |
+  | `verification_invalid` | - | Legacy verification invalid |
+  | `recovery_valid` | - | Legacy recovery email (link-based) |
+  | `recovery_invalid` | - | Legacy recovery invalid |
+  Note: The "_invalid" templates are sent when a code has expired or is incorrect. The non-code variants (recovery_valid, verification_valid) are for legacy link-based flows.
+  Example Usage
+  
+  resource "ory_email_template" "welcome" {
+    template_type  = "registration_code_valid"
+    subject        = "Welcome to {{ .Flow.OrganizationName }}!"
+    body_html      = "<h1>Welcome!</h1><p>Your code is: {{ .VerificationCode }}</p>"
+    body_plaintext = "Welcome! Your code is: {{ .VerificationCode }}"
+  }
+  
+  Import
+  
+  terraform import ory_email_template.welcome registration_code_valid
 ---
 
 # ory_email_template (Resource)
 
 Manages an Ory Network email template.
+
+## Template Types
+
+| Template Type | UI Name | Description |
+|---------------|---------|-------------|
+| `registration_code_valid` | Registration via Code | Sent when user registers with a valid code |
+| `registration_code_invalid` | - | Sent when registration code is invalid/expired |
+| `login_code_valid` | Login via Code | Sent when user logs in with a valid code |
+| `login_code_invalid` | - | Sent when login code is invalid/expired |
+| `verification_code_valid` | Verification via Code (Valid) | Sent for email verification with valid code |
+| `verification_code_invalid` | - | Sent when verification code is invalid/expired |
+| `recovery_code_valid` | Recovery via Code (Valid) | Sent for account recovery with valid code |
+| `recovery_code_invalid` | - | Sent when recovery code is invalid/expired |
+| `verification_valid` | - | Legacy verification email (link-based) |
+| `verification_invalid` | - | Legacy verification invalid |
+| `recovery_valid` | - | Legacy recovery email (link-based) |
+| `recovery_invalid` | - | Legacy recovery invalid |
+
+**Note:** The "_invalid" templates are sent when a code has expired or is incorrect. The non-code variants (recovery_valid, verification_valid) are for legacy link-based flows.
+
+## Example Usage
+
+```hcl
+resource "ory_email_template" "welcome" {
+  template_type  = "registration_code_valid"
+  subject        = "Welcome to {{ .Flow.OrganizationName }}!"
+  body_html      = "<h1>Welcome!</h1><p>Your code is: {{ .VerificationCode }}</p>"
+  body_plaintext = "Welcome! Your code is: {{ .VerificationCode }}"
+}
+```
+
+## Import
+
+```shell
+terraform import ory_email_template.welcome registration_code_valid
+```
 
 ## Example Usage
 
@@ -112,7 +176,7 @@ resource "ory_email_template" "login_code" {
 
 - `body_html` (String) HTML body template (Go template syntax).
 - `body_plaintext` (String) Plaintext body template (Go template syntax).
-- `template_type` (String) Template type (e.g., recovery_code_valid, verification_valid).
+- `template_type` (String) The email template type. See the Template Types table above for valid values and their UI equivalents. Common values: `registration_code_valid`, `login_code_valid`, `verification_code_valid`, `recovery_code_valid`.
 
 ### Optional
 

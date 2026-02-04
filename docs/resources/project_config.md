@@ -131,6 +131,8 @@ resource "ory_project_config" "main" {
 - `keto_namespaces` (List of String) List of Keto namespace names to configure for Ory Permissions. Namespaces define the types of resources in your permission model (e.g., 'documents', 'folders'). Each namespace name must be unique.
 - `login_ui_url` (String) URL for the login UI.
 - `mfa_enforcement` (String) MFA enforcement level: 'none', 'optional', or 'required'.
+- `oauth2_access_token_lifespan` (String) OAuth2 access token lifespan (e.g., '1h', '30m'). Requires Hydra service.
+- `oauth2_refresh_token_lifespan` (String) OAuth2 refresh token lifespan (e.g., '720h' for 30 days). Requires Hydra service.
 - `password_check_haveibeenpwned` (Boolean) Check passwords against HaveIBeenPwned.
 - `password_identifier_similarity` (Boolean) Check password similarity to identifier.
 - `password_max_breaches` (Number) Maximum allowed breaches in HaveIBeenPwned.
@@ -139,6 +141,7 @@ resource "ory_project_config" "main" {
 - `recovery_ui_url` (String) URL for the password recovery UI.
 - `registration_ui_url` (String) URL for the registration UI.
 - `required_aal` (String) Required Authenticator Assurance Level for protected resources: 'aal1' or 'aal2'.
+- `session_cookie_persistent` (Boolean) Enable persistent session cookies (survive browser close).
 - `session_cookie_same_site` (String) SameSite cookie attribute (Lax, Strict, None).
 - `session_lifespan` (String) Session duration (e.g., '24h0m0s').
 - `session_whoami_required_aal` (String) Required AAL for session whoami endpoint: 'aal1', 'aal2', or 'highest_available'.

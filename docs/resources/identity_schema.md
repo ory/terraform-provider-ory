@@ -4,17 +4,132 @@ page_title: "ory_identity_schema Resource - ory"
 subcategory: ""
 description: |-
   Manages an Ory Network identity schema.
-  Note: Identity schemas are immutable in Ory Network. Any changes to the schema content will require resource replacement.
-  Note: Ory Network does not support deleting identity schemas. When this resource is destroyed, the schema will remain in Ory but will no longer be managed by Terraform.
+  Important Notes
+  Schemas are immutable: Any changes to the schema content will require resource replacement.Schemas cannot be deleted: When this resource is destroyed, the schema remains in Ory but is no longer managed by Terraform.
+  Understanding IDs
+  This resource has two ID-related attributes:
+  | Attribute | Description |
+  |-----------|-------------|
+  | `id` | The API-assigned identifier (may be a hash like `abc123def456...`). Read-only. |
+  | `schema_id` | Your chosen identifier (e.g., `customer`, `employee_v2`). You define this. |
+  When you create a schema with schema_id = "customer", Ory may internally store it with a different ID (hash).
+  The id attribute tracks the API's internal ID, while schema_id tracks your chosen name.
+  Example Usage
+  
+  resource "ory_identity_schema" "customer" {
+    schema_id   = "customer"
+    set_default = true
+    schema = jsonencode({
+      "$id"     = "https://example.com/customer.schema.json"
+      "$schema" = "http://json-schema.org/draft-07/schema#"
+      title     = "Customer"
+      type      = "object"
+      properties = {
+        traits = {
+          type = "object"
+          properties = {
+            email = {
+              type   = "string"
+              format = "email"
+              "ory.sh/kratos" = {
+                credentials = { password = { identifier = true } }
+                verification = { via = "email" }
+                recovery     = { via = "email" }
+              }
+            }
+          }
+          required = ["email"]
+        }
+      }
+    })
+  }
+  
+  Import
+  Import using the API-assigned ID (found in Ory Console → Identity Schemas):
+  
+  terraform import ory_identity_schema.customer <api-assigned-id>
+  
+  Important: After import, you must set schema_id in your config to match your desired identifier.
+  The schema content must also be provided (Terraform cannot read it back from the API).
+  
+  # After import, your config should look like:
+  resource "ory_identity_schema" "customer" {
+    schema_id = "customer"  # Your chosen name
+    schema    = jsonencode({ ... })  # Must provide the schema content
+  }
 ---
 
 # ory_identity_schema (Resource)
 
 Manages an Ory Network identity schema.
 
-**Note:** Identity schemas are immutable in Ory Network. Any changes to the schema content will require resource replacement.
+## Important Notes
 
-**Note:** Ory Network does not support deleting identity schemas. When this resource is destroyed, the schema will remain in Ory but will no longer be managed by Terraform.
+- **Schemas are immutable**: Any changes to the schema content will require resource replacement.
+- **Schemas cannot be deleted**: When this resource is destroyed, the schema remains in Ory but is no longer managed by Terraform.
+
+## Understanding IDs
+
+This resource has two ID-related attributes:
+
+| Attribute | Description |
+|-----------|-------------|
+| `id` | The API-assigned identifier (may be a hash like `abc123def456...`). Read-only. |
+| `schema_id` | Your chosen identifier (e.g., `customer`, `employee_v2`). You define this. |
+
+When you create a schema with `schema_id = "customer"`, Ory may internally store it with a different ID (hash).
+The `id` attribute tracks the API's internal ID, while `schema_id` tracks your chosen name.
+
+## Example Usage
+
+```hcl
+resource "ory_identity_schema" "customer" {
+  schema_id   = "customer"
+  set_default = true
+  schema = jsonencode({
+    "$id"     = "https://example.com/customer.schema.json"
+    "$schema" = "http://json-schema.org/draft-07/schema#"
+    title     = "Customer"
+    type      = "object"
+    properties = {
+      traits = {
+        type = "object"
+        properties = {
+          email = {
+            type   = "string"
+            format = "email"
+            "ory.sh/kratos" = {
+              credentials = { password = { identifier = true } }
+              verification = { via = "email" }
+              recovery     = { via = "email" }
+            }
+          }
+        }
+        required = ["email"]
+      }
+    }
+  })
+}
+```
+
+## Import
+
+Import using the API-assigned ID (found in Ory Console → Identity Schemas):
+
+```shell
+terraform import ory_identity_schema.customer <api-assigned-id>
+```
+
+**Important**: After import, you must set `schema_id` in your config to match your desired identifier.
+The `schema` content must also be provided (Terraform cannot read it back from the API).
+
+```hcl
+# After import, your config should look like:
+resource "ory_identity_schema" "customer" {
+  schema_id = "customer"  # Your chosen name
+  schema    = jsonencode({ ... })  # Must provide the schema content
+}
+```
 
 ## Example Usage
 

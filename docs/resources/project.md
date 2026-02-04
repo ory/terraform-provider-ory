@@ -87,6 +87,7 @@ output "project_state" {
 ### Optional
 
 - `environment` (String) The environment type. Must be one of: `prod` (production), `stage` (staging), or `dev` (development). Defaults to `prod`. **Cannot be changed after creation** - changing this will force a new resource. Note: `dev` environment does not support B2B Organizations.
+- `home_region` (String) The home region where the project data is stored. Must be one of: `eu-central` (Europe), `us-east`, `us-west`, `us`, `asia-northeast`, or `global`. Defaults to `eu-central`. **Cannot be changed after creation** - changing this will force a new resource.
 
 ### Read-Only
 
