@@ -51,9 +51,73 @@ func (r *IdentitySchemaResource) Schema(ctx context.Context, req resource.Schema
 		MarkdownDescription: `
 Manages an Ory Network identity schema.
 
-**Note:** Identity schemas are immutable in Ory Network. Any changes to the schema content will require resource replacement.
+## Important Notes
 
-**Note:** Ory Network does not support deleting identity schemas. When this resource is destroyed, the schema will remain in Ory but will no longer be managed by Terraform.
+- **Schemas are immutable**: Any changes to the schema content will require resource replacement.
+- **Schemas cannot be deleted**: When this resource is destroyed, the schema remains in Ory but is no longer managed by Terraform.
+
+## Understanding IDs
+
+This resource has two ID-related attributes:
+
+| Attribute | Description |
+|-----------|-------------|
+| ` + "`id`" + ` | The API-assigned identifier (may be a hash like ` + "`abc123def456...`" + `). Read-only. |
+| ` + "`schema_id`" + ` | Your chosen identifier (e.g., ` + "`customer`" + `, ` + "`employee_v2`" + `). You define this. |
+
+When you create a schema with ` + "`schema_id = \"customer\"`" + `, Ory may internally store it with a different ID (hash).
+The ` + "`id`" + ` attribute tracks the API's internal ID, while ` + "`schema_id`" + ` tracks your chosen name.
+
+## Example Usage
+
+` + "```hcl" + `
+resource "ory_identity_schema" "customer" {
+  schema_id   = "customer"
+  set_default = true
+  schema = jsonencode({
+    "$id"     = "https://example.com/customer.schema.json"
+    "$schema" = "http://json-schema.org/draft-07/schema#"
+    title     = "Customer"
+    type      = "object"
+    properties = {
+      traits = {
+        type = "object"
+        properties = {
+          email = {
+            type   = "string"
+            format = "email"
+            "ory.sh/kratos" = {
+              credentials = { password = { identifier = true } }
+              verification = { via = "email" }
+              recovery     = { via = "email" }
+            }
+          }
+        }
+        required = ["email"]
+      }
+    }
+  })
+}
+` + "```" + `
+
+## Import
+
+Import using the API-assigned ID (found in Ory Console → Identity Schemas):
+
+` + "```shell" + `
+terraform import ory_identity_schema.customer <api-assigned-id>
+` + "```" + `
+
+**Important**: After import, you must set ` + "`schema_id`" + ` in your config to match your desired identifier.
+The ` + "`schema`" + ` content must also be provided (Terraform cannot read it back from the API).
+
+` + "```hcl" + `
+# After import, your config should look like:
+resource "ory_identity_schema" "customer" {
+  schema_id = "customer"  # Your chosen name
+  schema    = jsonencode({ ... })  # Must provide the schema content
+}
+` + "```" + `
 `,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -404,7 +468,9 @@ func (r *IdentitySchemaResource) Read(ctx context.Context, req resource.ReadRequ
 
 func (r *IdentitySchemaResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan IdentitySchemaResourceModel
+	var state IdentitySchemaResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -414,14 +480,18 @@ func (r *IdentitySchemaResource) Update(ctx context.Context, req resource.Update
 		projectID = r.client.ProjectID()
 	}
 
-	schemaID := plan.SchemaID.ValueString()
+	// Use the API-assigned ID from state (which may differ from schema_id)
+	apiID := state.ID.ValueString()
+	if apiID == "" {
+		apiID = plan.SchemaID.ValueString()
+	}
 
 	// Only thing that can be updated without replacement is set_default
 	if plan.SetDefault.ValueBool() {
 		patches := []ory.JsonPatch{{
 			Op:    "replace",
 			Path:  "/services/identity/config/identity/default_schema_id",
-			Value: schemaID,
+			Value: apiID,
 		}}
 		_, err := r.client.PatchProject(ctx, projectID, patches)
 		if err != nil {
@@ -430,7 +500,8 @@ func (r *IdentitySchemaResource) Update(ctx context.Context, req resource.Update
 		}
 	}
 
-	plan.ID = types.StringValue(schemaID)
+	// Preserve the API-assigned ID from state
+	plan.ID = state.ID
 	plan.ProjectID = types.StringValue(projectID)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
@@ -448,6 +519,42 @@ func (r *IdentitySchemaResource) Delete(ctx context.Context, req resource.Delete
 }
 
 func (r *IdentitySchemaResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("schema_id"), req.ID)...)
+	// Import format: <api-id> or <api-id>:<schema_id>
+	// If only api-id is provided, schema_id will need to be set in config
+	importID := req.ID
+
+	var apiID, schemaID string
+	if idx := len(importID) - 1; idx > 0 {
+		// Check if it contains a colon separator for "api-id:schema-id" format
+		for i := len(importID) - 1; i >= 0; i-- {
+			if importID[i] == ':' {
+				apiID = importID[:i]
+				schemaID = importID[i+1:]
+				break
+			}
+		}
+	}
+
+	if apiID == "" {
+		// No colon found, use the whole thing as the API ID
+		apiID = importID
+		schemaID = importID // Default schema_id to the same value (user should override in config)
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), apiID)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("schema_id"), schemaID)...)
+
+	resp.Diagnostics.AddWarning(
+		"Identity Schema Import - Manual Configuration Required",
+		fmt.Sprintf("The identity schema has been imported with id: %s\n\n"+
+			"IMPORTANT: You must provide these values in your Terraform configuration:\n\n"+
+			"1. schema_id - Your chosen identifier for this schema\n"+
+			"2. schema - The full JSON schema content (cannot be read from API)\n\n"+
+			"Example:\n"+
+			"  resource \"ory_identity_schema\" \"example\" {\n"+
+			"    schema_id = \"your-schema-name\"  # Set your desired name\n"+
+			"    schema    = jsonencode({ ... })   # Must provide full schema\n"+
+			"  }\n\n"+
+			"If you see changes on the next plan, ensure schema_id matches what you want,\n"+
+			"and the schema content matches what's configured in Ory.", apiID))
 }

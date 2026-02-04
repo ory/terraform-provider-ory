@@ -163,7 +163,8 @@ func createSharedProject(t *testing.T) {
 	t.Logf("Creating test project: %s (environment: prod)", projectName)
 
 	// Create as "prod" environment to support all features including organizations
-	project, err := c.CreateProject(ctx, projectName, "prod")
+	// Empty home_region uses the default (eu-central)
+	project, err := c.CreateProject(ctx, projectName, "prod", "")
 	if err != nil {
 		initError = fmt.Errorf("failed to create test project: %w", err)
 		return

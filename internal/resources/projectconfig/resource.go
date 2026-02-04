@@ -2,7 +2,6 @@ package projectconfig
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -45,8 +44,13 @@ type ProjectConfigResourceModel struct {
 	CorsOrigins types.List `tfsdk:"cors_origins"`
 
 	// Session
-	SessionLifespan       types.String `tfsdk:"session_lifespan"`
-	SessionCookieSameSite types.String `tfsdk:"session_cookie_same_site"`
+	SessionLifespan         types.String `tfsdk:"session_lifespan"`
+	SessionCookieSameSite   types.String `tfsdk:"session_cookie_same_site"`
+	SessionCookiePersistent types.Bool   `tfsdk:"session_cookie_persistent"`
+
+	// OAuth2/Hydra
+	OAuth2AccessTokenLifespan  types.String `tfsdk:"oauth2_access_token_lifespan"`
+	OAuth2RefreshTokenLifespan types.String `tfsdk:"oauth2_refresh_token_lifespan"`
 
 	// URLs
 	DefaultReturnURL  types.String `tfsdk:"default_return_url"`
@@ -209,6 +213,20 @@ resource "ory_project_config" "main" {
 			},
 			"session_cookie_same_site": schema.StringAttribute{
 				Description: "SameSite cookie attribute (Lax, Strict, None).",
+				Optional:    true,
+			},
+			"session_cookie_persistent": schema.BoolAttribute{
+				Description: "Enable persistent session cookies (survive browser close).",
+				Optional:    true,
+			},
+
+			// OAuth2/Hydra
+			"oauth2_access_token_lifespan": schema.StringAttribute{
+				Description: "OAuth2 access token lifespan (e.g., '1h', '30m'). Requires Hydra service.",
+				Optional:    true,
+			},
+			"oauth2_refresh_token_lifespan": schema.StringAttribute{
+				Description: "OAuth2 refresh token lifespan (e.g., '720h' for 30 days). Requires Hydra service.",
 				Optional:    true,
 			},
 
@@ -453,6 +471,29 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 			Op:    "replace",
 			Path:  "/services/identity/config/session/cookie/same_site",
 			Value: plan.SessionCookieSameSite.ValueString(),
+		})
+	}
+	if !plan.SessionCookiePersistent.IsNull() && !plan.SessionCookiePersistent.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/session/cookie/persistent",
+			Value: plan.SessionCookiePersistent.ValueBool(),
+		})
+	}
+
+	// OAuth2/Hydra token lifespans
+	if !plan.OAuth2AccessTokenLifespan.IsNull() && !plan.OAuth2AccessTokenLifespan.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/oauth2/config/ttl/access_token",
+			Value: plan.OAuth2AccessTokenLifespan.ValueString(),
+		})
+	}
+	if !plan.OAuth2RefreshTokenLifespan.IsNull() && !plan.OAuth2RefreshTokenLifespan.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/oauth2/config/ttl/refresh_token",
+			Value: plan.OAuth2RefreshTokenLifespan.ValueString(),
 		})
 	}
 
@@ -708,10 +749,11 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 
 	patches := r.buildPatches(ctx, &plan)
 
-	// Debug: Log the patches being built
-	patchesJSON, _ := json.Marshal(patches)
-	tflog.Warn(ctx, fmt.Sprintf("Building project config patches: project_id=%s patch_count=%d patches=%s",
-		projectID, len(patches), string(patchesJSON)))
+	// Debug: Log the patches being built (only at Debug level to avoid exposing sensitive paths)
+	tflog.Debug(ctx, "Building project config patches", map[string]interface{}{
+		"project_id":  projectID,
+		"patch_count": len(patches),
+	})
 
 	if len(patches) > 0 {
 		_, err := r.client.PatchProject(ctx, projectID, patches)
@@ -719,8 +761,10 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 			resp.Diagnostics.AddError("Error Applying Project Config", err.Error())
 			return
 		}
-		tflog.Warn(ctx, fmt.Sprintf("Successfully applied project config patches: project_id=%s patch_count=%d",
-			projectID, len(patches)))
+		tflog.Debug(ctx, "Successfully applied project config patches", map[string]interface{}{
+			"project_id":  projectID,
+			"patch_count": len(patches),
+		})
 	}
 
 	plan.ID = types.StringValue(projectID)

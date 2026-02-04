@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -58,21 +59,48 @@ Manages an Ory Network identity (user).
 Identities represent users in your application. Each identity has traits
 (profile data) defined by an identity schema.
 
+## Required Provider Configuration
+
+This resource requires the following provider configuration:
+
+` + "```hcl" + `
+provider "ory" {
+  project_api_key = var.ory_project_api_key  # or ORY_PROJECT_API_KEY env var
+  project_slug    = var.ory_project_slug     # or ORY_PROJECT_SLUG env var
+}
+` + "```" + `
+
+Or via environment variables:
+
+` + "```bash" + `
+export ORY_PROJECT_API_KEY="ory_pat_..."
+export ORY_PROJECT_SLUG="your-project-slug"
+` + "```" + `
+
 ## Example Usage
 
 ` + "```hcl" + `
+# Basic identity with email
 resource "ory_identity" "user" {
   schema_id = "preset://email"
 
   traits = jsonencode({
     email = "user@example.com"
-    name  = "John Doe"
+  })
+}
+
+# Identity with password (for password-based authentication)
+resource "ory_identity" "user_with_password" {
+  schema_id = "preset://email"
+
+  traits = jsonencode({
+    email = "user@example.com"
   })
 
-  state = "active"
+  password = var.user_password  # Use a variable, never hardcode
 
   metadata_public = jsonencode({
-    role = "admin"
+    role = "user"
   })
 }
 ` + "```" + `
@@ -84,6 +112,9 @@ Identities can be imported using their ID:
 ` + "```shell" + `
 terraform import ory_identity.user <identity-id>
 ` + "```" + `
+
+**Note**: If the identity is deleted outside of Terraform (e.g., via UI or API),
+the next ` + "`terraform plan`" + ` will detect this and remove it from state.
 `,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -237,6 +268,17 @@ func (r *IdentityResource) Read(ctx context.Context, req resource.ReadRequest, r
 
 	identity, err := r.client.GetIdentity(ctx, state.ID.ValueString())
 	if err != nil {
+		// Check if it's a 404 (identity deleted outside Terraform)
+		errStr := err.Error()
+		if strings.Contains(errStr, "404") || strings.Contains(strings.ToLower(errStr), "not found") {
+			// Identity was deleted outside Terraform, remove from state
+			resp.Diagnostics.AddWarning(
+				"Identity Not Found",
+				fmt.Sprintf("Identity %s was not found (possibly deleted outside Terraform). Removing from state.", state.ID.ValueString()),
+			)
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Error Reading Identity",
 			"Could not read identity ID "+state.ID.ValueString()+": "+err.Error(),

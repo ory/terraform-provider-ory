@@ -64,6 +64,44 @@ func (r *EmailTemplateResource) Metadata(ctx context.Context, req resource.Metad
 func (r *EmailTemplateResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "Manages an Ory Network email template.",
+		MarkdownDescription: `Manages an Ory Network email template.
+
+## Template Types
+
+| Template Type | UI Name | Description |
+|---------------|---------|-------------|
+| ` + "`registration_code_valid`" + ` | Registration via Code | Sent when user registers with a valid code |
+| ` + "`registration_code_invalid`" + ` | - | Sent when registration code is invalid/expired |
+| ` + "`login_code_valid`" + ` | Login via Code | Sent when user logs in with a valid code |
+| ` + "`login_code_invalid`" + ` | - | Sent when login code is invalid/expired |
+| ` + "`verification_code_valid`" + ` | Verification via Code (Valid) | Sent for email verification with valid code |
+| ` + "`verification_code_invalid`" + ` | - | Sent when verification code is invalid/expired |
+| ` + "`recovery_code_valid`" + ` | Recovery via Code (Valid) | Sent for account recovery with valid code |
+| ` + "`recovery_code_invalid`" + ` | - | Sent when recovery code is invalid/expired |
+| ` + "`verification_valid`" + ` | - | Legacy verification email (link-based) |
+| ` + "`verification_invalid`" + ` | - | Legacy verification invalid |
+| ` + "`recovery_valid`" + ` | - | Legacy recovery email (link-based) |
+| ` + "`recovery_invalid`" + ` | - | Legacy recovery invalid |
+
+**Note:** The "_invalid" templates are sent when a code has expired or is incorrect. The non-code variants (recovery_valid, verification_valid) are for legacy link-based flows.
+
+## Example Usage
+
+` + "```hcl" + `
+resource "ory_email_template" "welcome" {
+  template_type  = "registration_code_valid"
+  subject        = "Welcome to {{ .Flow.OrganizationName }}!"
+  body_html      = "<h1>Welcome!</h1><p>Your code is: {{ .VerificationCode }}</p>"
+  body_plaintext = "Welcome! Your code is: {{ .VerificationCode }}"
+}
+` + "```" + `
+
+## Import
+
+` + "```shell" + `
+terraform import ory_email_template.welcome registration_code_valid
+` + "```" + `
+`,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "Resource ID (same as template_type).",
@@ -81,8 +119,9 @@ func (r *EmailTemplateResource) Schema(ctx context.Context, req resource.SchemaR
 				},
 			},
 			"template_type": schema.StringAttribute{
-				Description: "Template type (e.g., recovery_code_valid, verification_valid).",
-				Required:    true,
+				Description:         "Template type (e.g., recovery_code_valid, verification_valid).",
+				MarkdownDescription: "The email template type. See the Template Types table above for valid values and their UI equivalents. Common values: `registration_code_valid`, `login_code_valid`, `verification_code_valid`, `recovery_code_valid`.",
+				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.OneOf(validTemplateTypes...),
 				},
@@ -149,7 +188,7 @@ func (r *EmailTemplateResource) Create(ctx context.Context, req resource.CreateR
 	}
 
 	templatePath := r.templatePath(plan.TemplateType.ValueString())
-	basePath := fmt.Sprintf("/services/identity/config/courier/smtp/templates/%s/email", templatePath)
+	basePath := fmt.Sprintf("/services/identity/config/courier/templates/%s/email", templatePath)
 
 	htmlEncoded := encodeTemplate(plan.BodyHTML.ValueString())
 	plaintextEncoded := encodeTemplate(plan.BodyPlaintext.ValueString())
@@ -185,6 +224,16 @@ func (r *EmailTemplateResource) Create(ctx context.Context, req resource.CreateR
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
+func decodeTemplate(content string) string {
+	if strings.HasPrefix(content, "base64://") {
+		decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(content, "base64://"))
+		if err == nil {
+			return string(decoded)
+		}
+	}
+	return content
+}
+
 func (r *EmailTemplateResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state EmailTemplateResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -192,7 +241,79 @@ func (r *EmailTemplateResource) Read(ctx context.Context, req resource.ReadReque
 		return
 	}
 
-	// Email templates always exist once set, nothing special to read back
+	projectID := state.ProjectID.ValueString()
+	if projectID == "" {
+		projectID = r.client.ProjectID()
+	}
+
+	// Get project to read template config
+	project, err := r.client.GetProject(ctx, projectID)
+	if err != nil {
+		resp.Diagnostics.AddError("Error Reading Email Template", err.Error())
+		return
+	}
+
+	if project.Services.Identity == nil || project.Services.Identity.Config == nil {
+		// Template not configured, remove from state
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	configMap := project.Services.Identity.Config
+	courier, ok := configMap["courier"].(map[string]interface{})
+	if !ok {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	templates, ok := courier["templates"].(map[string]interface{})
+	if !ok {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	// Navigate to the specific template (e.g., "recovery_code/valid")
+	templatePath := r.templatePath(state.TemplateType.ValueString())
+	pathParts := strings.Split(templatePath, "/")
+
+	current := templates
+	for _, part := range pathParts {
+		next, ok := current[part].(map[string]interface{})
+		if !ok {
+			// Template not found
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		current = next
+	}
+
+	email, ok := current["email"].(map[string]interface{})
+	if !ok {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	// Read subject if present
+	if subject, ok := email["subject"].(string); ok && subject != "" {
+		state.Subject = types.StringValue(decodeTemplate(subject))
+	}
+
+	// Read body
+	if body, ok := email["body"].(map[string]interface{}); ok {
+		if html, ok := body["html"].(string); ok && html != "" {
+			// Check if it's a URL reference (like with actions) - if so, preserve user's config
+			if !strings.HasPrefix(html, "http://") && !strings.HasPrefix(html, "https://") {
+				state.BodyHTML = types.StringValue(decodeTemplate(html))
+			}
+		}
+		if plaintext, ok := body["plaintext"].(string); ok && plaintext != "" {
+			if !strings.HasPrefix(plaintext, "http://") && !strings.HasPrefix(plaintext, "https://") {
+				state.BodyPlaintext = types.StringValue(decodeTemplate(plaintext))
+			}
+		}
+	}
+
+	state.ProjectID = types.StringValue(projectID)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -209,7 +330,7 @@ func (r *EmailTemplateResource) Update(ctx context.Context, req resource.UpdateR
 	}
 
 	templatePath := r.templatePath(plan.TemplateType.ValueString())
-	basePath := fmt.Sprintf("/services/identity/config/courier/smtp/templates/%s/email", templatePath)
+	basePath := fmt.Sprintf("/services/identity/config/courier/templates/%s/email", templatePath)
 
 	htmlEncoded := encodeTemplate(plan.BodyHTML.ValueString())
 	plaintextEncoded := encodeTemplate(plan.BodyPlaintext.ValueString())
@@ -254,7 +375,7 @@ func (r *EmailTemplateResource) Delete(ctx context.Context, req resource.DeleteR
 
 	projectID := state.ProjectID.ValueString()
 	templatePath := r.templatePath(state.TemplateType.ValueString())
-	basePath := fmt.Sprintf("/services/identity/config/courier/smtp/templates/%s", templatePath)
+	basePath := fmt.Sprintf("/services/identity/config/courier/templates/%s", templatePath)
 
 	// Try to remove the template (resets to Ory defaults)
 	patches := []ory.JsonPatch{{

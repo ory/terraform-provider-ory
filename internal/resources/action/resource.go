@@ -481,15 +481,24 @@ func (r *ActionResource) Read(ctx context.Context, req resource.ReadRequest, res
 	}
 
 	// Read body - decode from base64 if needed
+	// Note: The API may return a URL reference to stored jsonnet instead of the actual content.
+	// In that case, we preserve the user's configured value to avoid drift.
 	if body, ok := config["body"].(string); ok && body != "" {
 		if strings.HasPrefix(body, "base64://") {
+			// User-provided content stored as base64 - decode it
 			decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(body, "base64://"))
 			if err == nil {
 				state.Body = types.StringValue(string(decoded))
 			} else {
+				// Decoding failed, keep as-is
 				state.Body = types.StringValue(body)
 			}
+		} else if strings.HasPrefix(body, "http://") || strings.HasPrefix(body, "https://") {
+			// API returned a URL reference to stored jsonnet content.
+			// Don't overwrite the user's configured body to avoid drift.
+			// The body remains as whatever the user configured (or null if not set).
 		} else {
+			// Plain text body
 			state.Body = types.StringValue(body)
 		}
 	}

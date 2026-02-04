@@ -413,13 +413,16 @@ func (c *OryClient) WorkspaceID() string {
 // =============================================================================
 
 // CreateProject creates a new Ory project.
-func (c *OryClient) CreateProject(ctx context.Context, name, environment string) (*ory.Project, error) {
+func (c *OryClient) CreateProject(ctx context.Context, name, environment, homeRegion string) (*ory.Project, error) {
 	body := ory.CreateProjectBody{
 		Name:        name,
 		Environment: environment,
 	}
 	if c.config.WorkspaceID != "" {
 		body.WorkspaceId = ory.PtrString(c.config.WorkspaceID)
+	}
+	if homeRegion != "" {
+		body.HomeRegion = &homeRegion
 	}
 
 	project, _, err := c.consoleClient.ProjectAPI.CreateProject(ctx).CreateProjectBody(body).Execute()

@@ -37,6 +37,7 @@ type ProjectResourceModel struct {
 	ID          types.String `tfsdk:"id"`
 	Name        types.String `tfsdk:"name"`
 	Environment types.String `tfsdk:"environment"`
+	HomeRegion  types.String `tfsdk:"home_region"`
 	Slug        types.String `tfsdk:"slug"`
 	State       types.String `tfsdk:"state"`
 }
@@ -60,6 +61,7 @@ identity service, OAuth2 server, and configuration.
 resource "ory_project" "main" {
   name        = "My Application"
   environment = "prod"
+  home_region = "eu-central"
 }
 ` + "```" + `
 
@@ -73,6 +75,19 @@ resource "ory_project" "main" {
 
 **Important:** If you plan to use ` + "`ory_organization`" + ` resources, you must use ` + "`prod`" + ` or ` + "`stage`" + ` environment.
 The ` + "`dev`" + ` environment does not support B2B features.
+
+## Home Region
+
+| Region | Description |
+|--------|-------------|
+| ` + "`eu-central`" + ` | Europe (Frankfurt) - Default |
+| ` + "`us-east`" + ` | US East (N. Virginia) |
+| ` + "`us-west`" + ` | US West (Oregon) |
+| ` + "`us`" + ` | US (legacy) |
+| ` + "`asia-northeast`" + ` | Asia Pacific (Tokyo) |
+| ` + "`global`" + ` | Global (multi-region) |
+
+**Note:** Home region cannot be changed after project creation.
 
 ## Import
 
@@ -114,6 +129,16 @@ output "project_state" {
 				Optional:            true,
 				Computed:            true,
 				Default:             stringdefault.StaticString("prod"),
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"home_region": schema.StringAttribute{
+				Description:         "The home region of the project. Defaults to eu-central. Cannot be changed after creation.",
+				MarkdownDescription: "The home region where the project data is stored. Must be one of: `eu-central` (Europe), `us-east`, `us-west`, `us`, `asia-northeast`, or `global`. Defaults to `eu-central`. **Cannot be changed after creation** - changing this will force a new resource.",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("eu-central"),
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
@@ -160,7 +185,7 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	project, err := r.client.CreateProject(ctx, plan.Name.ValueString(), plan.Environment.ValueString())
+	project, err := r.client.CreateProject(ctx, plan.Name.ValueString(), plan.Environment.ValueString(), plan.HomeRegion.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Project",
@@ -172,6 +197,7 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 	plan.ID = types.StringValue(project.GetId())
 	plan.Name = types.StringValue(project.GetName())
 	plan.Environment = types.StringValue(project.GetEnvironment())
+	plan.HomeRegion = types.StringValue(project.GetHomeRegion())
 	plan.Slug = types.StringValue(project.GetSlug())
 	plan.State = types.StringValue(project.GetState())
 
@@ -197,6 +223,7 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	state.Name = types.StringValue(project.GetName())
 	state.Environment = types.StringValue(project.GetEnvironment())
+	state.HomeRegion = types.StringValue(project.GetHomeRegion())
 	state.Slug = types.StringValue(project.GetSlug())
 	state.State = types.StringValue(project.GetState())
 
