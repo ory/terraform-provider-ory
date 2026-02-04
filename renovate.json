@@ -26,10 +26,11 @@
     {
       "customType": "regex",
       "description": "Track tool versions in .deps yaml files",
-      "managerFilePatterns": ["^.deps/.*.yaml$"],
+      "fileMatch": ["^\\.deps/.*.yaml$"],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>[^\\s]+)\\nversion: (?<currentValue>.*)"
-      ]
+        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>[^\\s]+)(?: extractVersion=(?<extractVersion>[^\\s]+))?\\nversion: (?<currentValue>.*)"
+      ],
+      "extractVersionTemplate": "{{#if extractVersion}}{{{extractVersion}}}{{/if}}"
     }
   ]
 }
