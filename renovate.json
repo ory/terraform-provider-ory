@@ -1,24 +1,34 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:best-practices"],
-  "labels": ["dependencies"],
+  "extends": [
+    "config:best-practices"
+  ],
+  "labels": [
+    "dependencies"
+  ],
   "semanticCommits": "enabled",
   "semanticCommitType": "chore",
   "semanticCommitScope": "deps",
   "packageRules": [
     {
       "description": "Group all Go module updates",
-      "matchManagers": ["gomod"],
+      "matchManagers": [
+        "gomod"
+      ],
       "groupName": "go modules"
     },
     {
       "description": "Group all GitHub Actions updates",
-      "matchManagers": ["github-actions"],
+      "matchManagers": [
+        "github-actions"
+      ],
       "groupName": "github actions"
     },
     {
       "description": "Group all tool dependency updates",
-      "matchFileNames": [".deps/**"],
+      "matchFileNames": [
+        ".deps/**"
+      ],
       "groupName": "tool dependencies"
     }
   ],
@@ -26,7 +36,9 @@
     {
       "customType": "regex",
       "description": "Track tool versions in .deps yaml files",
-      "fileMatch": ["^\\.deps/.*.yaml$"],
+      "managerFilePatterns": [
+        "/^\\.deps/.*.yaml$/"
+      ],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>[^\\s]+)(?: extractVersion=(?<extractVersion>[^\\s]+))?\\nversion: (?<currentValue>.*)"
       ],
