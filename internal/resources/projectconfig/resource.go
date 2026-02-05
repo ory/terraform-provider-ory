@@ -3,7 +3,9 @@ package projectconfig
 import (
 	"context"
 	"fmt"
+	"regexp"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -11,11 +13,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-orynetwork/internal/client"
+	"github.com/ory/terraform-provider-orynetwork/internal/helpers"
 )
 
 var (
@@ -334,6 +338,12 @@ resource "ory_project_config" "main" {
 			"smtp_from_address": schema.StringAttribute{
 				Description: "Email address to send from.",
 				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`),
+						"must be a valid email address",
+					),
+				},
 			},
 			"smtp_from_name": schema.StringAttribute{
 				Description: "Name to display as sender.",
@@ -742,9 +752,9 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
-	projectID := plan.ProjectID.ValueString()
-	if projectID == "" {
-		projectID = r.client.ProjectID()
+	projectID := helpers.ResolveProjectID(plan.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	patches := r.buildPatches(ctx, &plan)
@@ -779,7 +789,6 @@ func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
 	// Config exists as long as project exists - nothing to read back
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -791,9 +800,9 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 		return
 	}
 
-	projectID := plan.ProjectID.ValueString()
-	if projectID == "" {
-		projectID = r.client.ProjectID()
+	projectID := helpers.ResolveProjectID(plan.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	patches := r.buildPatches(ctx, &plan)

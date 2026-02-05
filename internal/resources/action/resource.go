@@ -20,6 +20,7 @@ import (
 	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-orynetwork/internal/client"
+	"github.com/ory/terraform-provider-orynetwork/internal/helpers"
 )
 
 var (
@@ -86,7 +87,7 @@ resource "ory_action" "social_signup" {
 
 ## Authentication Methods
 
-The ` + "`auth_method`" + ` attribute specifies which authentication method triggers the webhook. This corresponds to the "Next" modal in the Ory Console UI.
+The ` + "`auth_method`" + ` attribute specifies which authentication method triggers the webhook. In the Ory Console UI, this is the "Method" selector.
 
 | Value | Description | UI Equivalent |
 |-------|-------------|---------------|
@@ -160,7 +161,7 @@ terraform import ory_action.welcome_email "550e8400-e29b-41d4-a716-446655440000:
 			},
 			"auth_method": schema.StringAttribute{
 				Description:         "Authentication method to hook into (password, oidc, code, webauthn, passkey, totp, lookup_secret). Required for 'after' timing. Defaults to 'password'.",
-				MarkdownDescription: "Authentication method to hook into. This corresponds to the 'Next' step in the Ory Console UI when creating an action. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`. Only used for `timing = \"after\"` webhooks.",
+				MarkdownDescription: "Authentication method that triggers the webhook. In the Ory Console UI, this is the \"Method\" selector. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`. Only used for `timing = \"after\"` webhooks.",
 				Optional:            true,
 				Computed:            true,
 				Default:             stringdefault.StaticString("password"),
@@ -325,7 +326,8 @@ func (r *ActionResource) findHookIndex(hooks []map[string]interface{}, url, meth
 			if hookMethod == "" {
 				hookMethod = "POST"
 			}
-			if hookURL == url && hookMethod == method {
+			// If method is empty (e.g., during import), match by URL only
+			if hookURL == url && (method == "" || hookMethod == method) {
 				return i
 			}
 		}
@@ -347,9 +349,9 @@ func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	projectID := plan.ProjectID.ValueString()
-	if projectID == "" {
-		projectID = r.client.ProjectID()
+	projectID := helpers.ResolveProjectID(plan.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	flow := plan.Flow.ValueString()
@@ -539,9 +541,9 @@ func (r *ActionResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	projectID := plan.ProjectID.ValueString()
-	if projectID == "" {
-		projectID = r.client.ProjectID()
+	projectID := helpers.ResolveProjectID(plan.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	flow := plan.Flow.ValueString()
@@ -674,5 +676,6 @@ func (r *ActionResource) ImportState(ctx context.Context, req resource.ImportSta
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("timing"), timing)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("auth_method"), authMethod)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("url"), url)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("method"), "POST")...)
+	// Don't set method here - let Read() discover the actual method from the API.
+	// This allows importing webhooks that use non-POST methods (PATCH, PUT, etc.).
 }

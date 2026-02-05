@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-orynetwork/internal/client"
 )
@@ -185,8 +186,16 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	project, err := r.client.CreateProject(ctx, plan.Name.ValueString(), plan.Environment.ValueString(), plan.HomeRegion.ValueString())
+	project, httpResp, err := r.client.CreateProject(ctx, plan.Name.ValueString(), plan.Environment.ValueString(), plan.HomeRegion.ValueString())
 	if err != nil {
+		if httpResp != nil && httpResp.StatusCode == 402 {
+			resp.Diagnostics.AddError(
+				"Payment Required",
+				"Your Ory Network plan does not allow creating additional projects. "+
+					"Please upgrade your plan at https://console.ory.sh.",
+			)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Error Creating Project",
 			"Could not create project: "+err.Error(),
@@ -240,18 +249,33 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	// Ory doesn't have a direct update endpoint for project name
-	// For now, we just read back the current state
+	// Update project name if changed
+	if !plan.Name.Equal(state.Name) {
+		patches := []ory.JsonPatch{
+			{Op: "replace", Path: "/name", Value: plan.Name.ValueString()},
+		}
+		_, err := r.client.PatchProject(ctx, state.ID.ValueString(), patches)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Updating Project",
+				"Could not update project name: "+err.Error(),
+			)
+			return
+		}
+	}
+
+	// Read back the current state
 	project, err := r.client.GetProject(ctx, state.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Updating Project",
-			"Could not read project for update: "+err.Error(),
+			"Error Reading Project",
+			"Could not read project after update: "+err.Error(),
 		)
 		return
 	}
 
 	plan.ID = state.ID
+	plan.Name = types.StringValue(project.GetName())
 	plan.Slug = types.StringValue(project.GetSlug())
 	plan.State = types.StringValue(project.GetState())
 

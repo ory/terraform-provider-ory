@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"time"
 
@@ -413,7 +414,8 @@ func (c *OryClient) WorkspaceID() string {
 // =============================================================================
 
 // CreateProject creates a new Ory project.
-func (c *OryClient) CreateProject(ctx context.Context, name, environment, homeRegion string) (*ory.Project, error) {
+// Returns the project, HTTP response (for status code inspection), and any error.
+func (c *OryClient) CreateProject(ctx context.Context, name, environment, homeRegion string) (*ory.Project, *http.Response, error) {
 	body := ory.CreateProjectBody{
 		Name:        name,
 		Environment: environment,
@@ -425,8 +427,8 @@ func (c *OryClient) CreateProject(ctx context.Context, name, environment, homeRe
 		body.HomeRegion = &homeRegion
 	}
 
-	project, _, err := c.consoleClient.ProjectAPI.CreateProject(ctx).CreateProjectBody(body).Execute()
-	return project, err
+	project, httpResp, err := c.consoleClient.ProjectAPI.CreateProject(ctx).CreateProjectBody(body).Execute()
+	return project, httpResp, err
 }
 
 // GetProject retrieves a project by ID.

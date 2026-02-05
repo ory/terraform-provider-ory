@@ -61,7 +61,7 @@ resource "ory_action" "sync_verified" {
 
 ## Authentication Methods
 
-The `auth_method` attribute specifies which authentication method triggers the webhook. This corresponds to the "Next" modal in the Ory Console UI when creating an action.
+The `auth_method` attribute specifies which authentication method triggers the webhook. In the Ory Console UI, this is the "Method" selector.
 
 | Value | Description | UI Equivalent |
 |-------|-------------|---------------|
@@ -133,7 +133,7 @@ Common issues:
 
 ### Optional
 
-- `auth_method` (String) Authentication method to hook into. This corresponds to the 'Next' step in the Ory Console UI when creating an action. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`. Only used for `timing = "after"` webhooks.
+- `auth_method` (String) Authentication method that triggers the webhook. In the Ory Console UI, this is the "Method" selector. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`. Only used for `timing = "after"` webhooks.
 - `body` (String) Jsonnet template for the request body.
 - `can_interrupt` (Boolean) Allow webhook to interrupt/block the flow (default: false).
 - `method` (String) HTTP method (default: POST).

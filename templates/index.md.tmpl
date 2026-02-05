@@ -104,6 +104,24 @@ ory_project_id        = "..."
 ory_project_slug      = "..."
 ```
 
+Alternatively, variables can be passed with `-var` parameter when running terraform commands:
+
+```bash
+terraform plan -var 'ory_workspace_api_key=ory_wak_...' -var 'ory_workspace_id=...' -var 'ory_project_api_key=ory_pat_...' -var 'ory_project_id=...' -var 'ory_project_slug=...'
+```
+
+Or use `TF_VAR_` environment variables:
+
+```bash
+export TF_VAR_ory_workspace_api_key="ory_wak_..."
+export TF_VAR_ory_workspace_id="..."
+export TF_VAR_ory_project_api_key="ory_pat_..."
+export TF_VAR_ory_project_id="..."
+export TF_VAR_ory_project_slug="..."
+
+terraform plan
+```
+
 ## Which Credentials Do You Need?
 
 | Resource | Required Credentials |

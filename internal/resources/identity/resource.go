@@ -16,6 +16,7 @@ import (
 	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-orynetwork/internal/client"
+	"github.com/ory/terraform-provider-orynetwork/internal/helpers"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -183,6 +184,11 @@ func (r *IdentityResource) Create(ctx context.Context, req resource.CreateReques
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	cfg := r.client.Config()
+	if !helpers.ResolveProjectCreds(cfg.ProjectSlug, cfg.ProjectAPIKey, &resp.Diagnostics) {
 		return
 	}
 

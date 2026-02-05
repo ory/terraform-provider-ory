@@ -17,6 +17,7 @@ import (
 	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-orynetwork/internal/client"
+	"github.com/ory/terraform-provider-orynetwork/internal/helpers"
 )
 
 var validTemplateTypes = []string{
@@ -132,6 +133,7 @@ terraform import ory_email_template.welcome registration_code_valid
 			"subject": schema.StringAttribute{
 				Description: "Email subject template (Go template syntax).",
 				Optional:    true,
+				Computed:    true,
 			},
 			"body_html": schema.StringAttribute{
 				Description: "HTML body template (Go template syntax).",
@@ -182,9 +184,9 @@ func (r *EmailTemplateResource) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
-	projectID := plan.ProjectID.ValueString()
-	if projectID == "" {
-		projectID = r.client.ProjectID()
+	projectID := helpers.ResolveProjectID(plan.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	templatePath := r.templatePath(plan.TemplateType.ValueString())
@@ -221,6 +223,11 @@ func (r *EmailTemplateResource) Create(ctx context.Context, req resource.CreateR
 	plan.ID = plan.TemplateType
 	plan.ProjectID = types.StringValue(projectID)
 
+	// If subject was not set by user, set it to empty string (API default)
+	if plan.Subject.IsNull() || plan.Subject.IsUnknown() {
+		plan.Subject = types.StringValue("")
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
@@ -241,9 +248,9 @@ func (r *EmailTemplateResource) Read(ctx context.Context, req resource.ReadReque
 		return
 	}
 
-	projectID := state.ProjectID.ValueString()
-	if projectID == "" {
-		projectID = r.client.ProjectID()
+	projectID := helpers.ResolveProjectID(state.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	// Get project to read template config
@@ -324,9 +331,9 @@ func (r *EmailTemplateResource) Update(ctx context.Context, req resource.UpdateR
 		return
 	}
 
-	projectID := plan.ProjectID.ValueString()
-	if projectID == "" {
-		projectID = r.client.ProjectID()
+	projectID := helpers.ResolveProjectID(plan.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	templatePath := r.templatePath(plan.TemplateType.ValueString())

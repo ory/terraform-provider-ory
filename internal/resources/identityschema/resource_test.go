@@ -35,6 +35,39 @@ func TestAccIdentitySchemaResource_basic(t *testing.T) {
 	})
 }
 
+func TestAccIdentitySchemaResource_setDefault(t *testing.T) {
+	suffix := time.Now().UnixNano()
+	schemaID := fmt.Sprintf("tf-test-default-%d", suffix)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSchemaTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create without set_default
+			{
+				Config: testAccIdentitySchemaResourceConfig(schemaID),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_identity_schema.test", "id"),
+					resource.TestCheckResourceAttr("ory_identity_schema.test", "schema_id", schemaID),
+					resource.TestCheckResourceAttr("ory_identity_schema.test", "set_default", "false"),
+				),
+			},
+			// Update to set as default
+			{
+				Config: testAccIdentitySchemaResourceConfigSetDefault(schemaID),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_identity_schema.test", "id"),
+					resource.TestCheckResourceAttr("ory_identity_schema.test", "schema_id", schemaID),
+					resource.TestCheckResourceAttr("ory_identity_schema.test", "set_default", "true"),
+				),
+			},
+		},
+	})
+}
+
 func testAccIdentitySchemaResourceConfig(schemaID string) string {
 	return fmt.Sprintf(`
 provider "ory" {}
@@ -42,6 +75,43 @@ provider "ory" {}
 resource "ory_identity_schema" "test" {
   schema_id = %[1]q
   schema    = jsonencode({
+    "$id": "%[2]s/%[1]s.json",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Test Schema %[1]s",
+    "type": "object",
+    "properties": {
+      "traits": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email",
+            "ory.sh/kratos": {
+              "credentials": {
+                "password": {"identifier": true}
+              },
+              "verification": {"via": "email"},
+              "recovery": {"via": "email"}
+            }
+          }
+        },
+        "required": ["email"]
+      }
+    }
+  })
+}
+`, schemaID, testutil.ExampleAppURL)
+}
+
+func testAccIdentitySchemaResourceConfigSetDefault(schemaID string) string {
+	return fmt.Sprintf(`
+provider "ory" {}
+
+resource "ory_identity_schema" "test" {
+  schema_id   = %[1]q
+  set_default = true
+  schema      = jsonencode({
     "$id": "%[2]s/%[1]s.json",
     "$schema": "http://json-schema.org/draft-07/schema#",
     "title": "Test Schema %[1]s",
