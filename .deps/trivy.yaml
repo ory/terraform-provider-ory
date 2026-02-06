@@ -1,5 +1,5 @@
 # renovate: datasource=github-releases depName=aquasecurity/trivy
-version: 0.69.0
+version: 0.69.1
 url: https://github.com/aquasecurity/trivy/releases/download/v{{.Version}}/trivy_{{.Version}}_{{.Os}}-{{.Architecture}}.tar.gz
 mappings:
   architecture:
