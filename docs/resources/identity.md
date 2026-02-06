@@ -19,20 +19,24 @@ description: |-
   export ORY_PROJECT_API_KEY="ory_pat_..."
   export ORY_PROJECT_SLUG="your-project-slug"
   
+  Schema ID
+  The schema_id attribute specifies which identity schema defines the structure of the identity's traits:
+  Use the default schema: Most projects have a default schema (often named default)Reference a Terraform-managed schema: ory_identity_schema.customer.idUse a preset (must be enabled first): preset://email or preset://username
+  ~> Note: Preset schemas must be enabled in your Ory project before use. If you get a 500 error with a preset, it may not be enabled. Check your project's identity schema settings or use a custom schema.
   Example Usage
   
-  # Basic identity with email
+  # Identity using the default schema
   resource "ory_identity" "user" {
-    schema_id = "preset://email"
+    schema_id = "default"
   
     traits = jsonencode({
       email = "user@example.com"
     })
   }
   
-  # Identity with password (for password-based authentication)
+  # Identity with password
   resource "ory_identity" "user_with_password" {
-    schema_id = "preset://email"
+    schema_id = "default"
   
     traits = jsonencode({
       email = "user@example.com"
@@ -42,6 +46,15 @@ description: |-
   
     metadata_public = jsonencode({
       role = "user"
+    })
+  }
+  
+  # Identity using a custom Terraform-managed schema
+  resource "ory_identity" "customer" {
+    schema_id = ory_identity_schema.customer.id
+  
+    traits = jsonencode({
+      email = "customer@example.com"
     })
   }
   
@@ -79,21 +92,31 @@ export ORY_PROJECT_API_KEY="ory_pat_..."
 export ORY_PROJECT_SLUG="your-project-slug"
 ```
 
+## Schema ID
+
+The `schema_id` attribute specifies which identity schema defines the structure of the identity's traits:
+
+- **Use the default schema**: Most projects have a default schema (often named `default`)
+- **Reference a Terraform-managed schema**: `ory_identity_schema.customer.id`
+- **Use a preset** (must be enabled first): `preset://email` or `preset://username`
+
+~> **Note:** Preset schemas must be enabled in your Ory project before use. If you get a 500 error with a preset, it may not be enabled. Check your project's identity schema settings or use a custom schema.
+
 ## Example Usage
 
 ```hcl
-# Basic identity with email
+# Identity using the default schema
 resource "ory_identity" "user" {
-  schema_id = "preset://email"
+  schema_id = "default"
 
   traits = jsonencode({
     email = "user@example.com"
   })
 }
 
-# Identity with password (for password-based authentication)
+# Identity with password
 resource "ory_identity" "user_with_password" {
-  schema_id = "preset://email"
+  schema_id = "default"
 
   traits = jsonencode({
     email = "user@example.com"
@@ -103,6 +126,15 @@ resource "ory_identity" "user_with_password" {
 
   metadata_public = jsonencode({
     role = "user"
+  })
+}
+
+# Identity using a custom Terraform-managed schema
+resource "ory_identity" "customer" {
+  schema_id = ory_identity_schema.customer.id
+
+  traits = jsonencode({
+    email = "customer@example.com"
   })
 }
 ```
@@ -121,9 +153,9 @@ the next `terraform plan` will detect this and remove it from state.
 ## Example Usage
 
 ```terraform
-# Basic identity with default email schema
+# Basic identity using the project's default schema
 resource "ory_identity" "basic_user" {
-  schema_id = "preset://email"
+  schema_id = "default"
   traits = jsonencode({
     email = "user@example.com"
   })
@@ -131,7 +163,7 @@ resource "ory_identity" "basic_user" {
 
 # Identity with password
 resource "ory_identity" "user_with_password" {
-  schema_id = "preset://email"
+  schema_id = "default"
   traits = jsonencode({
     email = "secure-user@example.com"
   })
@@ -176,7 +208,7 @@ variable "user_password" {
 - `metadata_admin` (String, Sensitive) Admin metadata as JSON string. Only visible to admins.
 - `metadata_public` (String) Public metadata as JSON string. Visible to the identity.
 - `password` (String, Sensitive) Password for the identity. Write-only, not returned on read.
-- `schema_id` (String) Identity schema ID (e.g., 'preset://email').
+- `schema_id` (String) Identity schema ID. Use 'default' for the project's default schema, or reference a custom schema.
 - `state` (String) Identity state: active or inactive.
 
 ### Read-Only

@@ -3,6 +3,7 @@ package organization
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -104,8 +105,8 @@ terraform import ory_organization.acme <organization-id>
 				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
 					stringplanmodifier.UseStateForUnknown(),
+					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"created_at": schema.StringAttribute{
@@ -318,7 +319,22 @@ func (r *OrganizationResource) Delete(ctx context.Context, req resource.DeleteRe
 }
 
 func (r *OrganizationResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	// Import ID format: project_id/org_id or just org_id (uses provider's project_id)
+	id := req.ID
+	var projectID, orgID string
+
+	if strings.Contains(id, "/") {
+		parts := strings.SplitN(id, "/", 2)
+		projectID = parts[0]
+		orgID = parts[1]
+	} else {
+		orgID = id
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), orgID)...)
+	if projectID != "" {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), projectID)...)
+	}
 }
 
 func (r *OrganizationResource) resolveProjectID(tfProjectID types.String) string {

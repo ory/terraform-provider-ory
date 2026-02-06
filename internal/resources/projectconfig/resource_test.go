@@ -17,6 +17,7 @@ func TestAccProjectConfigResource_basic(t *testing.T) {
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
+			// Create and Read
 			{
 				Config: testAccProjectConfigResourceConfig(),
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -24,6 +25,16 @@ func TestAccProjectConfigResource_basic(t *testing.T) {
 					resource.TestCheckResourceAttr("ory_project_config.test", "cors_enabled", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "password_min_length", "10"),
 				),
+			},
+			// ImportState (uses project_id as the import ID)
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				// Many fields are not round-tripped from Read() since they're complex API structures
+				ImportStateVerifyIgnore: []string{
+					"cors_origins", "password_min_length", "cors_enabled",
+				},
 			},
 		},
 	})

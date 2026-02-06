@@ -133,10 +133,12 @@ terraform import ory_oauth2_client.api <client-id>
 				ElementType: types.StringType,
 			},
 			"scope": schema.StringAttribute{
-				Description: "Space-separated list of OAuth2 scopes.",
+				Description: "Space-separated list of OAuth2 scopes. If not specified, the API will set a default scope.",
 				Optional:    true,
 				Computed:    true,
-				Default:     stringdefault.StaticString(""),
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"audience": schema.ListAttribute{
 				Description: "List of allowed audiences for tokens.",

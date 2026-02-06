@@ -23,6 +23,13 @@ import (
 	"github.com/ory/terraform-provider-orynetwork/internal/helpers"
 )
 
+// Constants for repeated string values
+const (
+	defaultHTTPMethod = "POST"
+	defaultAuthMethod = "password"
+	timingBefore      = "before"
+)
+
 var (
 	_ resource.Resource                = &ActionResource{}
 	_ resource.ResourceWithConfigure   = &ActionResource{}
@@ -324,7 +331,7 @@ func (r *ActionResource) findHookIndex(hooks []map[string]interface{}, url, meth
 			hookURL, _ := config["url"].(string)
 			hookMethod, _ := config["method"].(string)
 			if hookMethod == "" {
-				hookMethod = "POST"
+				hookMethod = defaultHTTPMethod
 			}
 			// If method is empty (e.g., during import), match by URL only
 			if hookURL == url && (method == "" || hookMethod == method) {
@@ -453,7 +460,7 @@ func (r *ActionResource) Read(ctx context.Context, req resource.ReadRequest, res
 				hookURL, _ := config["url"].(string)
 				hookMethod, _ := config["method"].(string)
 				if hookMethod == "" {
-					hookMethod = "POST"
+					hookMethod = defaultHTTPMethod
 				}
 				foundHooks = append(foundHooks, fmt.Sprintf("  - %s %s", hookMethod, hookURL))
 			}
@@ -479,7 +486,7 @@ func (r *ActionResource) Read(ctx context.Context, req resource.ReadRequest, res
 	if method, ok := config["method"].(string); ok && method != "" {
 		state.HTTPMethod = types.StringValue(method)
 	} else {
-		state.HTTPMethod = types.StringValue("POST")
+		state.HTTPMethod = types.StringValue(defaultHTTPMethod)
 	}
 
 	// Read body - decode from base64 if needed
@@ -625,45 +632,99 @@ func (r *ActionResource) Delete(ctx context.Context, req resource.DeleteRequest,
 }
 
 func (r *ActionResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	// Import format:
+	// Import format includes HTTP method to support non-POST webhooks:
+	// - For "after" timing: project_id:flow:after:auth_method:method:url (6 parts)
+	// - For "before" timing: project_id:flow:before:method:url (5 parts)
+	//
+	// Legacy formats without method are still supported (defaults to POST):
 	// - For "after" timing: project_id:flow:after:auth_method:url (5 parts)
-	// - For "before" timing: project_id:flow:before:url (4 parts) or project_id:flow:before:_:url (5 parts with _ placeholder)
-	parts := strings.SplitN(req.ID, ":", 5)
+	// - For "before" timing: project_id:flow:before:url (4 parts)
+	parts := strings.SplitN(req.ID, ":", 6)
 
-	var projectID, flow, timing, authMethod, url string
+	var projectID, flow, timing, authMethod, httpMethod, url string
 
-	if len(parts) == 4 {
-		// 4-part format: project_id:flow:before:url (for "before" timing only)
+	switch len(parts) {
+	case 4:
+		// Legacy 4-part format: project_id:flow:before:url (for "before" timing only)
 		projectID = parts[0]
 		flow = parts[1]
 		timing = parts[2]
 		url = parts[3]
 
-		if timing != "before" {
+		if timing != timingBefore {
 			resp.Diagnostics.AddError("Invalid Import ID",
 				"4-part import format (project_id:flow:timing:url) is only valid for 'before' timing.\n"+
-					"For 'after' timing, use: project_id:flow:after:auth_method:url")
+					"For 'after' timing, use: project_id:flow:after:auth_method:method:url")
 			return
 		}
-		authMethod = "password" // Default, not used for "before" timing
-	} else if len(parts) == 5 {
-		// 5-part format: project_id:flow:timing:auth_method:url
+		authMethod = defaultAuthMethod // Default, not used for "before" timing
+		httpMethod = defaultHTTPMethod // Default
+	case 5:
+		// Could be:
+		// - Legacy 5-part for "after": project_id:flow:after:auth_method:url (no method, defaults to POST)
+		// - New 5-part for "before": project_id:flow:before:method:url
+		projectID = parts[0]
+		flow = parts[1]
+		timing = parts[2]
+
+		if timing == timingBefore {
+			// New format: project_id:flow:before:method:url
+			httpMethod = parts[3]
+			url = parts[4]
+			authMethod = defaultAuthMethod // Default, not used for "before" timing
+
+			// Validate HTTP method
+			if httpMethod != "POST" && httpMethod != "GET" && httpMethod != "PUT" && httpMethod != "PATCH" && httpMethod != "DELETE" {
+				resp.Diagnostics.AddError("Invalid Import ID",
+					fmt.Sprintf("Invalid HTTP method '%s'. Must be one of: POST, GET, PUT, PATCH, DELETE", httpMethod))
+				return
+			}
+		} else {
+			// Legacy format: project_id:flow:after:auth_method:url (no method)
+			authMethod = parts[3]
+			url = parts[4]
+			httpMethod = defaultHTTPMethod // Default
+
+			// Allow "_" or "none" as placeholder for auth_method
+			if authMethod == "_" || authMethod == "none" || authMethod == "" {
+				authMethod = defaultAuthMethod
+			}
+		}
+	case 6:
+		// New 6-part format for "after": project_id:flow:after:auth_method:method:url
 		projectID = parts[0]
 		flow = parts[1]
 		timing = parts[2]
 		authMethod = parts[3]
-		url = parts[4]
+		httpMethod = parts[4]
+		url = parts[5]
 
-		// Allow "_" or "none" as placeholder for auth_method in "before" timing
-		if timing == "before" && (authMethod == "_" || authMethod == "none" || authMethod == "") {
-			authMethod = "password" // Default, not used for "before" timing
+		if timing == timingBefore {
+			resp.Diagnostics.AddError("Invalid Import ID",
+				"6-part import format is only valid for 'after' timing.\n"+
+					"For 'before' timing, use: project_id:flow:before:method:url")
+			return
 		}
-	} else {
+
+		// Validate HTTP method
+		if httpMethod != "POST" && httpMethod != "GET" && httpMethod != "PUT" && httpMethod != "PATCH" && httpMethod != "DELETE" {
+			resp.Diagnostics.AddError("Invalid Import ID",
+				fmt.Sprintf("Invalid HTTP method '%s'. Must be one of: POST, GET, PUT, PATCH, DELETE", httpMethod))
+			return
+		}
+
+		// Allow "_" or "none" as placeholder for auth_method
+		if authMethod == "_" || authMethod == "none" || authMethod == "" {
+			authMethod = defaultAuthMethod
+		}
+	default:
 		resp.Diagnostics.AddError("Invalid Import ID",
 			"Import ID must be in one of these formats:\n"+
-				"  - For 'after' timing: project_id:flow:after:auth_method:url\n"+
-				"  - For 'before' timing: project_id:flow:before:url\n\n"+
-				"Example: 550e8400-e29b-41d4-a716-446655440000:registration:after:password:https://api.example.com/webhook")
+				"  - For 'after' timing: project_id:flow:after:auth_method:method:url\n"+
+				"  - For 'before' timing: project_id:flow:before:method:url\n\n"+
+				"Examples:\n"+
+				"  550e8400-...:registration:after:password:POST:https://api.example.com/webhook\n"+
+				"  550e8400-...:login:before:PATCH:https://api.example.com/validate")
 		return
 	}
 
@@ -676,6 +737,5 @@ func (r *ActionResource) ImportState(ctx context.Context, req resource.ImportSta
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("timing"), timing)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("auth_method"), authMethod)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("url"), url)...)
-	// Don't set method here - let Read() discover the actual method from the API.
-	// This allows importing webhooks that use non-POST methods (PATCH, PUT, etc.).
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("method"), httpMethod)...)
 }

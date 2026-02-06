@@ -18,6 +18,7 @@ func TestAccSocialProviderResource_basic(t *testing.T) {
 		},
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
+			// Create and Read
 			{
 				Config: testAccSocialProviderResourceConfig(),
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -25,6 +26,15 @@ func TestAccSocialProviderResource_basic(t *testing.T) {
 					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-google"),
 					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_type", "google"),
 				),
+			},
+			// ImportState using provider_id
+			{
+				ResourceName:      "ory_social_provider.test",
+				ImportState:       true,
+				ImportStateId:     "test-google",
+				ImportStateVerify: true,
+				// client_secret is sensitive and not returned by API
+				ImportStateVerifyIgnore: []string{"client_secret"},
 			},
 		},
 	})

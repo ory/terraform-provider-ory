@@ -61,48 +61,60 @@ resource "ory_action" "sync_verified" {
 
 ## Authentication Methods
 
-The `auth_method` attribute specifies which authentication method triggers the webhook. In the Ory Console UI, this is the "Method" selector.
+The `auth_method` attribute specifies which authentication method triggers the webhook. This is only used for `timing = "after"` webhooks.
 
-| Value | Description | UI Equivalent |
-|-------|-------------|---------------|
-| `password` | Password-based authentication (default) | "Password" |
-| `oidc` | Social/OIDC authentication (Google, GitHub, etc.) | "Social Sign-In" |
-| `code` | One-time code (magic link, OTP) | "Code" |
-| `webauthn` | Hardware security keys | "WebAuthn" |
-| `passkey` | Passkey authentication | "Passkey" |
-| `totp` | Time-based one-time password | "TOTP" |
-| `lookup_secret` | Recovery/backup codes | "Backup Codes" |
+| Value | Description |
+|-------|-------------|
+| `password` | Password-based authentication (default) |
+| `oidc` | Social/OIDC authentication (Google, GitHub, etc.) |
+| `code` | One-time code (magic link, OTP) |
+| `webauthn` | Hardware security keys |
+| `passkey` | Passkey authentication |
+| `totp` | Time-based one-time password |
+| `lookup_secret` | Recovery/backup codes |
 
-~> **Note:** `auth_method` is only used for `timing = "after"` webhooks. For `timing = "before"` hooks, the webhook runs before any authentication method.
+~> **Note:** `auth_method` is only used for `timing = "after"` webhooks. For `timing = "before"` hooks, the webhook runs before any authentication method is invoked.
+
+## HTTP Method
+
+The `method` attribute specifies the HTTP method used when calling the webhook:
+
+| Value | Description |
+|-------|-------------|
+| `POST` | HTTP POST request (default) |
+| `GET` | HTTP GET request |
+| `PUT` | HTTP PUT request |
+| `PATCH` | HTTP PATCH request |
+| `DELETE` | HTTP DELETE request |
 
 ## Import
 
-Actions use different import formats depending on timing:
+Actions must be imported with the HTTP method included in the import ID.
 
 **For "after" timing (post-hooks):**
 ```shell
-terraform import ory_action.welcome_email "project_id:flow:after:auth_method:url"
+terraform import ory_action.example "project_id:flow:after:auth_method:method:url"
 ```
 
 **For "before" timing (pre-hooks):**
 ```shell
-terraform import ory_action.validate_login "project_id:flow:before:url"
+terraform import ory_action.example "project_id:flow:before:method:url"
 ```
 
 ### Examples
 
 ```shell
-# Import a post-registration password webhook
+# Import a POST webhook for post-registration password flow
 terraform import ory_action.welcome \
-  "550e8400-e29b-41d4-a716-446655440000:registration:after:password:https://api.example.com/webhooks/welcome"
+  "550e8400-e29b-41d4-a716-446655440000:registration:after:password:POST:https://api.example.com/webhooks/welcome"
 
-# Import a post-login social (OIDC) webhook
+# Import a PATCH webhook for post-login social (OIDC) flow
 terraform import ory_action.social_login \
-  "550e8400-e29b-41d4-a716-446655440000:login:after:oidc:https://api.example.com/webhooks/social"
+  "550e8400-e29b-41d4-a716-446655440000:login:after:oidc:PATCH:https://api.example.com/webhooks/social"
 
-# Import a pre-login validation webhook (no auth_method needed)
+# Import a POST pre-login validation webhook
 terraform import ory_action.validate \
-  "550e8400-e29b-41d4-a716-446655440000:login:before:https://api.example.com/webhooks/validate"
+  "550e8400-e29b-41d4-a716-446655440000:login:before:POST:https://api.example.com/webhooks/validate"
 ```
 
 ### Finding Import Values from Ory Console
@@ -111,15 +123,17 @@ terraform import ory_action.validate \
 2. **flow**: The flow type (login, registration, recovery, settings, verification)
 3. **timing**: "before" or "after"
 4. **auth_method** (for "after" only): password, oidc, code, webauthn, passkey, totp, lookup_secret
-5. **url**: The exact webhook URL - must match exactly including protocol and trailing slashes
+5. **method**: The HTTP method (POST, GET, PUT, PATCH, DELETE)
+6. **url**: The exact webhook URL - must match exactly including protocol and trailing slashes
 
 ### Troubleshooting Import Errors
 
-If you see "Cannot import non-existent remote object", the import will show a warning listing webhooks found at that location. This helps you find the correct URL and auth_method.
+If you see "Cannot import non-existent remote object", the import will show a warning listing webhooks found at that location. This helps you find the correct URL, method, and auth_method.
 
 Common issues:
 - **URL mismatch**: URLs must match exactly, including `https://` and any trailing `/`
-- **Wrong auth_method**: UI-created actions default to "password" if you didn't explicitly select one
+- **Wrong method**: Check the HTTP method configured for the webhook (POST, PATCH, etc.)
+- **Wrong auth_method**: Check which authentication method the webhook is configured for
 - **Wrong timing**: Check if the webhook is a pre-hook (before) or post-hook (after)
 
 <!-- schema generated by tfplugindocs -->
