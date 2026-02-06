@@ -393,13 +393,13 @@ func (r *RelationshipResource) ImportState(ctx context.Context, req resource.Imp
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("relation"), relation)...)
 
 	// Check if subject is a subject_set (contains : and #) or simple subject_id
-	if strings.Contains(subject, ":") && strings.Contains(subject, "#") {
+	subjectColonIdx := strings.Index(subject, ":")
+	subjectHashIdx := strings.Index(subject, "#")
+	if subjectColonIdx > 0 && subjectHashIdx > subjectColonIdx {
 		// Subject set format: namespace:object#relation
-		subjectHashIdx := strings.LastIndex(subject, "#")
 		subjectNamespaceObject := subject[:subjectHashIdx]
 		subjectRelation := subject[subjectHashIdx+1:]
 
-		subjectColonIdx := strings.Index(subjectNamespaceObject, ":")
 		subjectNamespace := subjectNamespaceObject[:subjectColonIdx]
 		subjectObject := subjectNamespaceObject[subjectColonIdx+1:]
 

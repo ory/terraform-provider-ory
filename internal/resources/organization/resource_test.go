@@ -52,10 +52,10 @@ func TestAccOrganizationResource_basic(t *testing.T) {
 			},
 			// ImportState using composite ID: project_id/org_id
 			{
-				ResourceName:            "ory_organization.test",
-				ImportState:             true,
-				ImportStateIdFunc:       importStateOrganizationID,
-				ImportStateVerify:       true,
+				ResourceName:      "ory_organization.test",
+				ImportState:       true,
+				ImportStateIdFunc: importStateOrganizationID,
+				ImportStateVerify: true,
 				// created_at timestamp precision differs between create and read
 				ImportStateVerifyIgnore: []string{"created_at"},
 			},
