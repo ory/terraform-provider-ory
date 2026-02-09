@@ -233,6 +233,22 @@ func isRateLimitError(err error) bool {
 	return strings.Contains(errStr, "429") || strings.Contains(errStr, "Too Many Requests")
 }
 
+// isRetryableError checks if the error is a server error (5xx) that should be retried.
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "500") ||
+		strings.Contains(errStr, "502") ||
+		strings.Contains(errStr, "503") ||
+		strings.Contains(errStr, "504") ||
+		strings.Contains(errStr, "Internal Server Error") ||
+		strings.Contains(errStr, "Bad Gateway") ||
+		strings.Contains(errStr, "Service Unavailable") ||
+		strings.Contains(errStr, "Gateway Timeout")
+}
+
 // retryWithBackoff executes a function with exponential backoff on rate limit errors.
 func retryWithBackoff[T any](ctx context.Context, operation string, fn func() (T, error)) (T, error) {
 	var result T
@@ -786,13 +802,42 @@ func (c *OryClient) ListProjectAPIKeys(ctx context.Context, projectID string) ([
 	return keys, err
 }
 
-// DeleteProjectAPIKey deletes an API key.
+// DeleteProjectAPIKey deletes an API key with retry logic for transient errors.
 func (c *OryClient) DeleteProjectAPIKey(ctx context.Context, projectID, keyID string) error {
-	httpResp, err := c.consoleClient.ProjectAPI.DeleteProjectApiKey(ctx, projectID, keyID).Execute()
-	if httpResp != nil {
-		_ = httpResp.Body.Close()
+	var lastErr error
+	backoff := initialBackoff
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		httpResp, err := c.consoleClient.ProjectAPI.DeleteProjectApiKey(ctx, projectID, keyID).Execute()
+		if httpResp != nil {
+			_ = httpResp.Body.Close()
+		}
+
+		if err == nil {
+			return nil
+		}
+
+		lastErr = err
+
+		// Only retry on rate limit or 5xx errors
+		if !isRateLimitError(err) && !isRetryableError(err) {
+			return err
+		}
+
+		if attempt == maxRetries {
+			break
+		}
+
+		// Wait before retrying
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+			backoff *= 2 // Exponential backoff
+		}
 	}
-	return err
+
+	return fmt.Errorf("deleting API key: failed after %d retries: %w", maxRetries, lastErr)
 }
 
 // =============================================================================

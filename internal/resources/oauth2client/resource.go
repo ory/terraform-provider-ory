@@ -45,6 +45,7 @@ type OAuth2ClientResourceModel struct {
 	Scope                   types.String `tfsdk:"scope"`
 	Audience                types.List   `tfsdk:"audience"`
 	RedirectURIs            types.List   `tfsdk:"redirect_uris"`
+	PostLogoutRedirectURIs  types.List   `tfsdk:"post_logout_redirect_uris"`
 	TokenEndpointAuthMethod types.String `tfsdk:"token_endpoint_auth_method"`
 	Metadata                types.String `tfsdk:"metadata"`
 }
@@ -150,6 +151,11 @@ terraform import ory_oauth2_client.api <client-id>
 				Optional:    true,
 				ElementType: types.StringType,
 			},
+			"post_logout_redirect_uris": schema.ListAttribute{
+				Description: "List of allowed post-logout redirect URIs for OpenID Connect logout.",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
 			"token_endpoint_auth_method": schema.StringAttribute{
 				Description: "Token endpoint authentication method: client_secret_post, client_secret_basic, private_key_jwt, none.",
 				Optional:    true,
@@ -228,6 +234,15 @@ func (r *OAuth2ClientResource) Create(ctx context.Context, req resource.CreateRe
 			return
 		}
 		oauthClient.RedirectUris = redirectURIs
+	}
+
+	if !plan.PostLogoutRedirectURIs.IsNull() && !plan.PostLogoutRedirectURIs.IsUnknown() {
+		var postLogoutURIs []string
+		resp.Diagnostics.Append(plan.PostLogoutRedirectURIs.ElementsAs(ctx, &postLogoutURIs, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		oauthClient.PostLogoutRedirectUris = postLogoutURIs
 	}
 
 	if !plan.TokenEndpointAuthMethod.IsNull() && !plan.TokenEndpointAuthMethod.IsUnknown() {
@@ -328,6 +343,12 @@ func (r *OAuth2ClientResource) Read(ctx context.Context, req resource.ReadReques
 		state.RedirectURIs = redirectList
 	}
 
+	if len(oauthClient.PostLogoutRedirectUris) > 0 {
+		postLogoutList, diags := types.ListValueFrom(ctx, types.StringType, oauthClient.PostLogoutRedirectUris)
+		resp.Diagnostics.Append(diags...)
+		state.PostLogoutRedirectURIs = postLogoutList
+	}
+
 	// Only set metadata if it's non-empty
 	// The API returns {} (empty object) by default, but we want null in Terraform state
 	// when metadata wasn't specified in the config
@@ -391,6 +412,15 @@ func (r *OAuth2ClientResource) Update(ctx context.Context, req resource.UpdateRe
 			return
 		}
 		oauthClient.RedirectUris = redirectURIs
+	}
+
+	if !plan.PostLogoutRedirectURIs.IsNull() && !plan.PostLogoutRedirectURIs.IsUnknown() {
+		var postLogoutURIs []string
+		resp.Diagnostics.Append(plan.PostLogoutRedirectURIs.ElementsAs(ctx, &postLogoutURIs, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		oauthClient.PostLogoutRedirectUris = postLogoutURIs
 	}
 
 	if !plan.TokenEndpointAuthMethod.IsNull() && !plan.TokenEndpointAuthMethod.IsUnknown() {
