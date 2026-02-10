@@ -45,29 +45,34 @@ func (r *WorkspaceResource) Metadata(ctx context.Context, req resource.MetadataR
 
 func (r *WorkspaceResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages an Ory Network workspace.",
+		Description: "Manages an Ory Network workspace (import-only).",
 		MarkdownDescription: `
 Manages an Ory Network workspace.
 
 Workspaces are organizational units that can contain multiple projects.
 
-**Note:** The Ory API does not support workspace deletion. Destroying this
-resource will only remove it from Terraform state, not from Ory Network.
+~> **Import-Only Resource:** Workspaces can only be created through the
+[Ory Console](https://console.ory.sh). Use this resource to import existing
+workspaces into Terraform and manage their configuration. The Ory API does
+not support workspace deletion, so destroying this resource will only remove
+it from Terraform state.
 
-## Example Usage
+## Usage
+
+1. Create a workspace in the [Ory Console](https://console.ory.sh)
+2. Get the workspace ID from the URL or API
+3. Import it into Terraform:
+
+` + "```shell" + `
+terraform import ory_workspace.main <workspace-id>
+` + "```" + `
+
+4. Add the resource block to your configuration:
 
 ` + "```hcl" + `
 resource "ory_workspace" "main" {
   name = "My Workspace"
 }
-` + "```" + `
-
-## Import
-
-Workspaces can be imported using their ID:
-
-` + "```shell" + `
-terraform import ory_workspace.main <workspace-id>
 ` + "```" + `
 `,
 		Attributes: map[string]schema.Attribute{
@@ -115,28 +120,14 @@ func (r *WorkspaceResource) Configure(ctx context.Context, req resource.Configur
 }
 
 func (r *WorkspaceResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan WorkspaceResourceModel
-
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	workspace, err := r.client.CreateWorkspace(ctx, plan.Name.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Error Creating Workspace",
-			"Could not create workspace: "+err.Error(),
-		)
-		return
-	}
-
-	plan.ID = types.StringValue(workspace.GetId())
-	plan.Name = types.StringValue(workspace.GetName())
-	plan.CreatedAt = types.StringValue(workspace.CreatedAt.String())
-	plan.UpdatedAt = types.StringValue(workspace.UpdatedAt.String())
-
-	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
+	// Workspaces cannot be created via workspace API keys - they require account-level access
+	// which is only available through the Ory Console
+	resp.Diagnostics.AddError(
+		"Workspace Creation Not Supported",
+		"Workspaces can only be created through the Ory Console (https://console.ory.sh). "+
+			"To manage an existing workspace with Terraform, import it using:\n\n"+
+			"  terraform import ory_workspace.<name> <workspace-id>",
+	)
 }
 
 func (r *WorkspaceResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {

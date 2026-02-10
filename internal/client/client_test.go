@@ -270,3 +270,129 @@ func TestNewOryClient_InvalidProjectURL(t *testing.T) {
 		t.Errorf("expected error message to contain 'invalid project API URL', got: %s", err.Error())
 	}
 }
+
+func TestIsRateLimitError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			name:     "nil error",
+			err:      nil,
+			expected: false,
+		},
+		{
+			name:     "429 status code",
+			err:      fmt.Errorf("request failed with status 429"),
+			expected: true,
+		},
+		{
+			name:     "Too Many Requests message",
+			err:      fmt.Errorf("Too Many Requests"),
+			expected: true,
+		},
+		{
+			name:     "regular error",
+			err:      fmt.Errorf("some other error"),
+			expected: false,
+		},
+		{
+			name:     "500 error (not rate limit)",
+			err:      fmt.Errorf("Internal Server Error 500"),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isRateLimitError(tt.err)
+			if result != tt.expected {
+				t.Errorf("isRateLimitError(%v) = %v, want %v", tt.err, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestIsRetryableError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			name:     "nil error",
+			err:      nil,
+			expected: false,
+		},
+		{
+			name:     "500 Internal Server Error",
+			err:      fmt.Errorf("request failed with status 500"),
+			expected: true,
+		},
+		{
+			name:     "Internal Server Error message",
+			err:      fmt.Errorf("Internal Server Error"),
+			expected: true,
+		},
+		{
+			name:     "502 Bad Gateway",
+			err:      fmt.Errorf("request failed with status 502"),
+			expected: true,
+		},
+		{
+			name:     "Bad Gateway message",
+			err:      fmt.Errorf("Bad Gateway"),
+			expected: true,
+		},
+		{
+			name:     "503 Service Unavailable",
+			err:      fmt.Errorf("request failed with status 503"),
+			expected: true,
+		},
+		{
+			name:     "Service Unavailable message",
+			err:      fmt.Errorf("Service Unavailable"),
+			expected: true,
+		},
+		{
+			name:     "504 Gateway Timeout",
+			err:      fmt.Errorf("request failed with status 504"),
+			expected: true,
+		},
+		{
+			name:     "Gateway Timeout message",
+			err:      fmt.Errorf("Gateway Timeout"),
+			expected: true,
+		},
+		{
+			name:     "404 Not Found (not retryable)",
+			err:      fmt.Errorf("request failed with status 404"),
+			expected: false,
+		},
+		{
+			name:     "400 Bad Request (not retryable)",
+			err:      fmt.Errorf("Bad Request"),
+			expected: false,
+		},
+		{
+			name:     "429 Rate Limit (not retryable by this function)",
+			err:      fmt.Errorf("request failed with status 429"),
+			expected: false,
+		},
+		{
+			name:     "regular error",
+			err:      fmt.Errorf("some other error"),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isRetryableError(tt.err)
+			if result != tt.expected {
+				t.Errorf("isRetryableError(%v) = %v, want %v", tt.err, result, tt.expected)
+			}
+		})
+	}
+}

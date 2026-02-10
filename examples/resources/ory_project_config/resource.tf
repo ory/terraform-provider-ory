@@ -18,10 +18,10 @@ resource "ory_project_config" "secure" {
   session_cookie_persistent = true
 
   # Password Policy
-  password_min_length             = 12
-  password_identifier_similarity  = true
-  password_haveibeenpwned_enabled = true
-  password_max_breaches           = 0
+  password_min_length            = 12
+  password_identifier_similarity = true
+  password_check_haveibeenpwned  = true
+  password_max_breaches          = 0
 
   # Authentication Methods
   enable_password = true
@@ -36,14 +36,13 @@ resource "ory_project_config" "secure" {
   webauthn_rp_id           = "app.example.com"
   webauthn_rp_origins      = ["https://app.example.com"]
   webauthn_passwordless    = true
-  required_aal             = "aal2" # Require MFA
 
   # Account Experience Branding
   account_experience_name           = "MyApp"
   account_experience_logo_url       = "https://cdn.example.com/logo.png"
   account_experience_default_locale = "en"
 
-  # OAuth2 Token TTLs
-  oauth2_access_token_ttl  = "1h"
-  oauth2_refresh_token_ttl = "720h"
+  # OAuth2 Token Lifespans
+  oauth2_access_token_lifespan  = "1h"
+  oauth2_refresh_token_lifespan = "720h"
 }

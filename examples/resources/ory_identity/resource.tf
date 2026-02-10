@@ -1,6 +1,6 @@
-# Basic identity with default email schema
+# Basic identity using the project's default schema
 resource "ory_identity" "basic_user" {
-  schema_id = "preset://email"
+  schema_id = "default"
   traits = jsonencode({
     email = "user@example.com"
   })
@@ -8,7 +8,7 @@ resource "ory_identity" "basic_user" {
 
 # Identity with password
 resource "ory_identity" "user_with_password" {
-  schema_id = "preset://email"
+  schema_id = "default"
   traits = jsonencode({
     email = "secure-user@example.com"
   })

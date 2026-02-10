@@ -64,6 +64,7 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
@@ -347,10 +348,49 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 	provider := providers[index]
 	state.ProviderType = types.StringValue(fmt.Sprintf("%v", provider["provider"]))
 	state.ClientID = types.StringValue(fmt.Sprintf("%v", provider["client_id"]))
-	// Don't read back client_secret for security
+	// Don't read back client_secret for security - it's sensitive
 
 	if issuer, ok := provider["issuer_url"].(string); ok {
 		state.IssuerURL = types.StringValue(issuer)
+	}
+
+	// Read scope array
+	if scope, ok := provider["scope"].([]interface{}); ok && len(scope) > 0 {
+		scopeStrings := make([]string, 0, len(scope))
+		for _, s := range scope {
+			if str, ok := s.(string); ok {
+				scopeStrings = append(scopeStrings, str)
+			}
+		}
+		scopeList, diags := types.ListValueFrom(ctx, types.StringType, scopeStrings)
+		resp.Diagnostics.Append(diags...)
+		if !resp.Diagnostics.HasError() {
+			state.Scope = scopeList
+		}
+	}
+
+	// Read mapper_url only if user explicitly configured it
+	// When user doesn't set mapper_url, we use a default which gets transformed to a GCS URL by the API
+	// We only read it back if it was already in state (user configured it)
+	if !state.MapperURL.IsNull() && !state.MapperURL.IsUnknown() {
+		if mapper, ok := provider["mapper_url"].(string); ok && mapper != "" {
+			state.MapperURL = types.StringValue(mapper)
+		}
+	}
+
+	// Read auth_url for custom providers
+	if authURL, ok := provider["auth_url"].(string); ok && authURL != "" {
+		state.AuthURL = types.StringValue(authURL)
+	}
+
+	// Read token_url for custom providers
+	if tokenURL, ok := provider["token_url"].(string); ok && tokenURL != "" {
+		state.TokenURL = types.StringValue(tokenURL)
+	}
+
+	// Read microsoft_tenant for Azure providers
+	if tenant, ok := provider["microsoft_tenant"].(string); ok && tenant != "" {
+		state.Tenant = types.StringValue(tenant)
 	}
 
 	// Always ensure ID and ProjectID are set in state

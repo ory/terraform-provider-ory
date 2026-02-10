@@ -3,6 +3,7 @@ package projectapikey
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -94,8 +95,8 @@ resource "ory_project_api_key" "temporary" {
 				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
 					stringplanmodifier.UseStateForUnknown(),
+					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"name": schema.StringAttribute{
@@ -303,5 +304,20 @@ func (r *ProjectAPIKeyResource) Delete(ctx context.Context, req resource.DeleteR
 }
 
 func (r *ProjectAPIKeyResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
+	// Import ID format: project_id/key_id or just key_id (uses provider's project_id)
+	id := req.ID
+	var projectID, keyID string
+
+	if strings.Contains(id, "/") {
+		parts := strings.SplitN(id, "/", 2)
+		projectID = parts[0]
+		keyID = parts[1]
+	} else {
+		keyID = id
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), keyID)...)
+	if projectID != "" {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), projectID)...)
+	}
 }

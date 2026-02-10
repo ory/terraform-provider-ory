@@ -3,7 +3,9 @@ package relationship
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -16,8 +18,9 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource              = &RelationshipResource{}
-	_ resource.ResourceWithConfigure = &RelationshipResource{}
+	_ resource.Resource                = &RelationshipResource{}
+	_ resource.ResourceWithConfigure   = &RelationshipResource{}
+	_ resource.ResourceWithImportState = &RelationshipResource{}
 )
 
 // NewResource returns a new Relationship resource.
@@ -328,6 +331,84 @@ func (r *RelationshipResource) Delete(ctx context.Context, req resource.DeleteRe
 			"Could not delete relationship: "+err.Error(),
 		)
 		return
+	}
+}
+
+// ImportState imports an existing relationship into Terraform state.
+// Import ID format: namespace:object#relation@subject
+// Where subject is either:
+// - A simple subject_id (e.g., "user-456")
+// - A subject_set in format "namespace:object#relation" (e.g., "folders:folder-789#editor")
+//
+// Examples:
+// - Simple: documents:doc-123#viewer@user-456
+// - Subject set: documents:doc-123#viewer@folders:folder-789#editor
+func (r *RelationshipResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := req.ID
+
+	// Parse: namespace:object#relation@subject
+	// First split by @ to get subject
+	atIdx := strings.LastIndex(id, "@")
+	if atIdx == -1 {
+		resp.Diagnostics.AddError(
+			"Invalid Import ID",
+			"Import ID must be in format: namespace:object#relation@subject. Missing '@' separator.",
+		)
+		return
+	}
+
+	prefix := id[:atIdx]
+	subject := id[atIdx+1:]
+
+	// Parse prefix: namespace:object#relation
+	hashIdx := strings.LastIndex(prefix, "#")
+	if hashIdx == -1 {
+		resp.Diagnostics.AddError(
+			"Invalid Import ID",
+			"Import ID must be in format: namespace:object#relation@subject. Missing '#' separator.",
+		)
+		return
+	}
+
+	namespaceObject := prefix[:hashIdx]
+	relation := prefix[hashIdx+1:]
+
+	// Parse namespaceObject: namespace:object
+	colonIdx := strings.Index(namespaceObject, ":")
+	if colonIdx == -1 {
+		resp.Diagnostics.AddError(
+			"Invalid Import ID",
+			"Import ID must be in format: namespace:object#relation@subject. Missing ':' separator in namespace:object.",
+		)
+		return
+	}
+
+	namespace := namespaceObject[:colonIdx]
+	object := namespaceObject[colonIdx+1:]
+
+	// Set the basic attributes
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("namespace"), namespace)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("object"), object)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("relation"), relation)...)
+
+	// Check if subject is a subject_set (contains : and #) or simple subject_id
+	subjectColonIdx := strings.Index(subject, ":")
+	subjectHashIdx := strings.Index(subject, "#")
+	if subjectColonIdx > 0 && subjectHashIdx > subjectColonIdx {
+		// Subject set format: namespace:object#relation
+		subjectNamespaceObject := subject[:subjectHashIdx]
+		subjectRelation := subject[subjectHashIdx+1:]
+
+		subjectNamespace := subjectNamespaceObject[:subjectColonIdx]
+		subjectObject := subjectNamespaceObject[subjectColonIdx+1:]
+
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("subject_set_namespace"), subjectNamespace)...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("subject_set_object"), subjectObject)...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("subject_set_relation"), subjectRelation)...)
+	} else {
+		// Simple subject_id
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("subject_id"), subject)...)
 	}
 }
 

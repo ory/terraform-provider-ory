@@ -8,10 +8,21 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 
 	"github.com/ory/terraform-provider-orynetwork/internal/acctest"
 	"github.com/ory/terraform-provider-orynetwork/internal/testutil"
 )
+
+func importStateOrganizationID(s *terraform.State) (string, error) {
+	rs, ok := s.RootModule().Resources["ory_organization.test"]
+	if !ok {
+		return "", fmt.Errorf("resource not found: ory_organization.test")
+	}
+	projectID := rs.Primary.Attributes["project_id"]
+	orgID := rs.Primary.ID
+	return fmt.Sprintf("%s/%s", projectID, orgID), nil
+}
 
 func testAccPreCheckB2B(t *testing.T) {
 	acctest.AccPreCheck(t)
@@ -39,11 +50,14 @@ func TestAccOrganizationResource_basic(t *testing.T) {
 					resource.TestCheckResourceAttrSet("ory_organization.test", "created_at"),
 				),
 			},
-			// ImportState
+			// ImportState using composite ID: project_id/org_id
 			{
 				ResourceName:      "ory_organization.test",
 				ImportState:       true,
+				ImportStateIdFunc: importStateOrganizationID,
 				ImportStateVerify: true,
+				// created_at timestamp precision differs between create and read
+				ImportStateVerifyIgnore: []string{"created_at"},
 			},
 			// Update
 			{

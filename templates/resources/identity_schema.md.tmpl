@@ -1,0 +1,34 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  Manages an Ory Network identity schema.
+---
+
+# {{.Name}} ({{.Type}})
+
+Manages an Ory Network identity schema.
+
+## Important Notes
+
+- **Schemas are immutable**: Identity schemas cannot be modified after creation. Any changes to the schema content or `schema_id` will require Terraform to destroy and recreate the resource.
+- **Schemas cannot be deleted**: When this resource is destroyed, the schema remains in Ory but is no longer managed by Terraform.
+- **Import is not supported**: Existing schemas created via the Ory Console or API cannot be imported into Terraform. To manage an existing schema, recreate it in your Terraform configuration using the same content.
+
+## Understanding IDs
+
+This resource has two ID-related attributes:
+
+| Attribute | Description |
+|-----------|-------------|
+| `id` | The API-assigned identifier (may be a hash like `abc123def456...`). Read-only. |
+| `schema_id` | Your chosen identifier (e.g., `customer`, `employee_v2`). You define this. |
+
+When you create a schema with `schema_id = "customer"`, Ory may internally store it with a different ID (hash).
+The `id` attribute tracks the API's internal ID, while `schema_id` tracks your chosen name.
+
+## Example Usage
+
+{{ tffile "examples/resources/ory_identity_schema/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}

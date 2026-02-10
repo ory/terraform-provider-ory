@@ -15,6 +15,7 @@ func TestAccJWKResource_basic(t *testing.T) {
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
+			// Create and Read
 			{
 				Config: testAccJWKResourceConfig(),
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -25,6 +26,13 @@ func TestAccJWKResource_basic(t *testing.T) {
 					resource.TestCheckResourceAttr("ory_json_web_key_set.test", "use", "sig"),
 					resource.TestCheckResourceAttrSet("ory_json_web_key_set.test", "keys"),
 				),
+			},
+			// ImportState
+			{
+				ResourceName:      "ory_json_web_key_set.test",
+				ImportState:       true,
+				ImportStateId:     "tf-test-jwks",
+				ImportStateVerify: true,
 			},
 		},
 	})

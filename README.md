@@ -39,7 +39,7 @@ A Terraform provider for managing [Ory Network](https://www.ory.sh/) resources u
 terraform {
   required_providers {
     ory = {
-      source  = "ory/terraform-provider-orynetwork"
+      source  = "ory/orynetwork"
       version = "~> 0.1"
     }
   }
@@ -60,7 +60,7 @@ Then configure Terraform to use the local provider:
 # ~/.terraformrc
 provider_installation {
   dev_overrides {
-    "ory/terraform-provider-orynetwork" = "/path/to/terraform-provider-orynetwork"
+    "ory/orynetwork" = "/path/to/terraform-provider-orynetwork"
   }
   direct {}
 }
@@ -101,7 +101,7 @@ provider "ory" {
 terraform {
   required_providers {
     ory = {
-      source = "ory/terraform-provider-orynetwork"
+      source = "ory/orynetwork"
     }
   }
 }
