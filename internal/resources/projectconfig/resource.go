@@ -2,9 +2,10 @@ package projectconfig
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"regexp"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -12,11 +13,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-orynetwork/internal/client"
+	"github.com/ory/terraform-provider-orynetwork/internal/helpers"
 )
 
 var (
@@ -45,8 +48,13 @@ type ProjectConfigResourceModel struct {
 	CorsOrigins types.List `tfsdk:"cors_origins"`
 
 	// Session
-	SessionLifespan       types.String `tfsdk:"session_lifespan"`
-	SessionCookieSameSite types.String `tfsdk:"session_cookie_same_site"`
+	SessionLifespan         types.String `tfsdk:"session_lifespan"`
+	SessionCookieSameSite   types.String `tfsdk:"session_cookie_same_site"`
+	SessionCookiePersistent types.Bool   `tfsdk:"session_cookie_persistent"`
+
+	// OAuth2/Hydra
+	OAuth2AccessTokenLifespan  types.String `tfsdk:"oauth2_access_token_lifespan"`
+	OAuth2RefreshTokenLifespan types.String `tfsdk:"oauth2_refresh_token_lifespan"`
 
 	// URLs
 	DefaultReturnURL  types.String `tfsdk:"default_return_url"`
@@ -108,6 +116,61 @@ func (r *ProjectConfigResource) Metadata(ctx context.Context, req resource.Metad
 func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "Configures an Ory Network project's settings.",
+		MarkdownDescription: `
+Configures an Ory Network project's settings.
+
+This resource manages the configuration of an Ory Network project, including authentication methods,
+password policies, session settings, CORS, and more.
+
+## Example Usage
+
+` + "```hcl" + `
+resource "ory_project_config" "main" {
+  cors_enabled        = true
+  cors_origins        = ["https://app.example.com"]
+  password_min_length = 10
+  session_lifespan    = "720h"  # 30 days
+}
+` + "```" + `
+
+## Import
+
+Import using the project ID:
+
+` + "```shell" + `
+terraform import ory_project_config.main <project-id>
+` + "```" + `
+
+### Avoiding "Forces Replacement" After Import
+
+After importing, if Terraform shows ` + "`project_id forces replacement`" + `, ensure your configuration matches:
+
+**Option 1: Explicit project_id**
+` + "```hcl" + `
+resource "ory_project_config" "main" {
+  project_id = "the-exact-project-id-you-imported"
+  # ... other settings
+}
+` + "```" + `
+
+**Option 2: Use provider default** (recommended)
+` + "```hcl" + `
+provider "ory" {
+  project_id = "the-exact-project-id-you-imported"
+}
+
+resource "ory_project_config" "main" {
+  # project_id inherits from provider
+  # ... other settings
+}
+` + "```" + `
+
+## Notes
+
+- Project config cannot be deleted - it always exists for a project
+- Deleting this resource from Terraform state does not reset the project configuration
+- The ` + "`project_id`" + ` attribute forces replacement if changed (you cannot move config to a different project)
+`,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "Resource ID (same as project_id).",
@@ -121,6 +184,7 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
@@ -154,6 +218,20 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 			},
 			"session_cookie_same_site": schema.StringAttribute{
 				Description: "SameSite cookie attribute (Lax, Strict, None).",
+				Optional:    true,
+			},
+			"session_cookie_persistent": schema.BoolAttribute{
+				Description: "Enable persistent session cookies (survive browser close).",
+				Optional:    true,
+			},
+
+			// OAuth2/Hydra
+			"oauth2_access_token_lifespan": schema.StringAttribute{
+				Description: "OAuth2 access token lifespan (e.g., '1h', '30m'). Requires Hydra service.",
+				Optional:    true,
+			},
+			"oauth2_refresh_token_lifespan": schema.StringAttribute{
+				Description: "OAuth2 refresh token lifespan (e.g., '720h' for 30 days). Requires Hydra service.",
 				Optional:    true,
 			},
 
@@ -261,6 +339,12 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 			"smtp_from_address": schema.StringAttribute{
 				Description: "Email address to send from.",
 				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`),
+						"must be a valid email address",
+					),
+				},
 			},
 			"smtp_from_name": schema.StringAttribute{
 				Description: "Name to display as sender.",
@@ -398,6 +482,29 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 			Op:    "replace",
 			Path:  "/services/identity/config/session/cookie/same_site",
 			Value: plan.SessionCookieSameSite.ValueString(),
+		})
+	}
+	if !plan.SessionCookiePersistent.IsNull() && !plan.SessionCookiePersistent.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/session/cookie/persistent",
+			Value: plan.SessionCookiePersistent.ValueBool(),
+		})
+	}
+
+	// OAuth2/Hydra token lifespans
+	if !plan.OAuth2AccessTokenLifespan.IsNull() && !plan.OAuth2AccessTokenLifespan.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/oauth2/config/ttl/access_token",
+			Value: plan.OAuth2AccessTokenLifespan.ValueString(),
+		})
+	}
+	if !plan.OAuth2RefreshTokenLifespan.IsNull() && !plan.OAuth2RefreshTokenLifespan.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/oauth2/config/ttl/refresh_token",
+			Value: plan.OAuth2RefreshTokenLifespan.ValueString(),
 		})
 	}
 
@@ -646,17 +753,18 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
-	projectID := plan.ProjectID.ValueString()
-	if projectID == "" {
-		projectID = r.client.ProjectID()
+	projectID := helpers.ResolveProjectID(plan.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	patches := r.buildPatches(ctx, &plan)
 
-	// Debug: Log the patches being built
-	patchesJSON, _ := json.Marshal(patches)
-	tflog.Warn(ctx, fmt.Sprintf("Building project config patches: project_id=%s patch_count=%d patches=%s",
-		projectID, len(patches), string(patchesJSON)))
+	// Debug: Log the patches being built (only at Debug level to avoid exposing sensitive paths)
+	tflog.Debug(ctx, "Building project config patches", map[string]interface{}{
+		"project_id":  projectID,
+		"patch_count": len(patches),
+	})
 
 	if len(patches) > 0 {
 		_, err := r.client.PatchProject(ctx, projectID, patches)
@@ -664,8 +772,10 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 			resp.Diagnostics.AddError("Error Applying Project Config", err.Error())
 			return
 		}
-		tflog.Warn(ctx, fmt.Sprintf("Successfully applied project config patches: project_id=%s patch_count=%d",
-			projectID, len(patches)))
+		tflog.Debug(ctx, "Successfully applied project config patches", map[string]interface{}{
+			"project_id":  projectID,
+			"patch_count": len(patches),
+		})
 	}
 
 	plan.ID = types.StringValue(projectID)
@@ -680,7 +790,6 @@ func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
 	// Config exists as long as project exists - nothing to read back
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -692,9 +801,9 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 		return
 	}
 
-	projectID := plan.ProjectID.ValueString()
-	if projectID == "" {
-		projectID = r.client.ProjectID()
+	projectID := helpers.ResolveProjectID(plan.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	patches := r.buildPatches(ctx, &plan)
@@ -717,6 +826,28 @@ func (r *ProjectConfigResource) Delete(ctx context.Context, req resource.DeleteR
 }
 
 func (r *ProjectConfigResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), req.ID)...)
+	projectID := req.ID
+
+	// Set both id and project_id from the import ID
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), projectID)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), projectID)...)
+
+	// Add a warning to help users understand how import works for this resource
+	resp.Diagnostics.AddWarning(
+		"Project Config Import - Read Your Existing Config",
+		"The project config has been imported with project_id: "+projectID+".\n\n"+
+			"IMPORTANT: After import, you must ensure your Terraform configuration matches the imported project:\n\n"+
+			"Option 1 - Set project_id explicitly:\n"+
+			"  resource \"ory_project_config\" \"main\" {\n"+
+			"    project_id = \""+projectID+"\"\n"+
+			"    # ... your config\n"+
+			"  }\n\n"+
+			"Option 2 - Use provider default:\n"+
+			"  provider \"ory\" {\n"+
+			"    project_id = \""+projectID+"\"\n"+
+			"  }\n\n"+
+			"  resource \"ory_project_config\" \"main\" {\n"+
+			"    # project_id inherits from provider\n"+
+			"  }\n\n"+
+			"If you see 'project_id forces replacement', the project_id in your config doesn't match the imported project.")
 }

@@ -20,6 +20,14 @@ import (
 	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-orynetwork/internal/client"
+	"github.com/ory/terraform-provider-orynetwork/internal/helpers"
+)
+
+// Constants for repeated string values
+const (
+	defaultHTTPMethod = "POST"
+	defaultAuthMethod = "password"
+	timingBefore      = "before"
 )
 
 var (
@@ -57,6 +65,71 @@ func (r *ActionResource) Metadata(ctx context.Context, req resource.MetadataRequ
 func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "Manages an Ory Action (webhook) for identity flows.",
+		MarkdownDescription: `
+Manages an Ory Action (webhook) for identity flows.
+
+Actions allow you to trigger webhooks at specific points in identity flows (login, registration, etc.).
+
+## Example Usage
+
+` + "```hcl" + `
+# Post-registration webhook for password signups
+resource "ory_action" "welcome_email" {
+  flow        = "registration"
+  timing      = "after"
+  auth_method = "password"
+  url         = "https://api.example.com/webhooks/welcome"
+  method      = "POST"
+}
+
+# Post-registration webhook for social (OIDC) signups
+resource "ory_action" "social_signup" {
+  flow        = "registration"
+  timing      = "after"
+  auth_method = "oidc"
+  url         = "https://api.example.com/webhooks/social-signup"
+  method      = "POST"
+}
+` + "```" + `
+
+## Authentication Methods
+
+The ` + "`auth_method`" + ` attribute specifies which authentication method triggers the webhook. In the Ory Console UI, this is the "Method" selector.
+
+| Value | Description | UI Equivalent |
+|-------|-------------|---------------|
+| ` + "`password`" + ` | Password-based authentication (default) | "Password" |
+| ` + "`oidc`" + ` | Social/OIDC authentication (Google, GitHub, etc.) | "Social Sign-In" |
+| ` + "`code`" + ` | One-time code (magic link, OTP) | "Code" |
+| ` + "`webauthn`" + ` | Hardware security keys | "WebAuthn" |
+| ` + "`passkey`" + ` | Passkey authentication | "Passkey" |
+| ` + "`totp`" + ` | Time-based one-time password | "TOTP" |
+| ` + "`lookup_secret`" + ` | Recovery/backup codes | "Backup Codes" |
+
+**Note:** ` + "`auth_method`" + ` is only used for ` + "`timing = \"after\"`" + ` webhooks. For ` + "`timing = \"before\"`" + ` hooks, the webhook runs before any authentication method.
+
+## Import
+
+Actions use a composite ID format: ` + "`project_id:flow:timing:auth_method:url`" + `
+
+` + "```shell" + `
+terraform import ory_action.welcome_email "550e8400-e29b-41d4-a716-446655440000:registration:after:password:https://api.example.com/webhooks/welcome"
+` + "```" + `
+
+### Finding Import Values from Ory Console
+
+1. **project_id**: Settings → General → Project ID
+2. **flow**: The flow type shown in Actions page (login, registration, recovery, settings, verification)
+3. **timing**: "Before" or "After" as shown in the action configuration
+4. **auth_method**: The authentication method selected (defaults to "password" if not explicitly set)
+5. **url**: The exact webhook URL - must match exactly including trailing slashes
+
+### Common Import Issues
+
+- **"Cannot import non-existent remote object"**: Verify all 5 components match exactly what's configured in Ory
+- **URL mismatch**: Ensure the URL matches exactly, including protocol (https://) and any trailing slashes
+- **auth_method not matching**: Actions created via UI default to "password" if not explicitly selected
+`,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "Resource ID.",
@@ -94,10 +167,11 @@ func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				},
 			},
 			"auth_method": schema.StringAttribute{
-				Description: "Authentication method to hook into (password, oidc, code, webauthn, passkey, totp, lookup_secret). Required for 'after' timing.",
-				Optional:    true,
-				Computed:    true,
-				Default:     stringdefault.StaticString("password"),
+				Description:         "Authentication method to hook into (password, oidc, code, webauthn, passkey, totp, lookup_secret). Required for 'after' timing. Defaults to 'password'.",
+				MarkdownDescription: "Authentication method that triggers the webhook. In the Ory Console UI, this is the \"Method\" selector. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`. Only used for `timing = \"after\"` webhooks.",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("password"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("password", "oidc", "code", "webauthn", "passkey", "totp", "lookup_secret"),
 				},
@@ -257,9 +331,10 @@ func (r *ActionResource) findHookIndex(hooks []map[string]interface{}, url, meth
 			hookURL, _ := config["url"].(string)
 			hookMethod, _ := config["method"].(string)
 			if hookMethod == "" {
-				hookMethod = "POST"
+				hookMethod = defaultHTTPMethod
 			}
-			if hookURL == url && hookMethod == method {
+			// If method is empty (e.g., during import), match by URL only
+			if hookURL == url && (method == "" || hookMethod == method) {
 				return i
 			}
 		}
@@ -281,9 +356,9 @@ func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	projectID := plan.ProjectID.ValueString()
-	if projectID == "" {
-		projectID = r.client.ProjectID()
+	projectID := helpers.ResolveProjectID(plan.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	flow := plan.Flow.ValueString()
@@ -377,6 +452,28 @@ func (r *ActionResource) Read(ctx context.Context, req resource.ReadRequest, res
 	}
 
 	if index < 0 {
+		// Build a helpful error message showing what hooks exist
+		var foundHooks []string
+		for _, hook := range hooks {
+			if hook["hook"] == "web_hook" {
+				config, _ := hook["config"].(map[string]interface{})
+				hookURL, _ := config["url"].(string)
+				hookMethod, _ := config["method"].(string)
+				if hookMethod == "" {
+					hookMethod = defaultHTTPMethod
+				}
+				foundHooks = append(foundHooks, fmt.Sprintf("  - %s %s", hookMethod, hookURL))
+			}
+		}
+
+		if len(foundHooks) > 0 {
+			resp.Diagnostics.AddWarning(
+				"Action Not Found - Resource Removed From State",
+				fmt.Sprintf("No webhook found matching:\n  URL: %s\n  Method: %s\n  Flow: %s/%s/%s\n\n"+
+					"Webhooks found at this location:\n%s\n\n"+
+					"Make sure the URL matches exactly (including protocol and trailing slashes).",
+					url, httpMethod, flow, timing, authMethod, strings.Join(foundHooks, "\n")))
+		}
 		resp.State.RemoveResource(ctx)
 		return
 	}
@@ -389,19 +486,28 @@ func (r *ActionResource) Read(ctx context.Context, req resource.ReadRequest, res
 	if method, ok := config["method"].(string); ok && method != "" {
 		state.HTTPMethod = types.StringValue(method)
 	} else {
-		state.HTTPMethod = types.StringValue("POST")
+		state.HTTPMethod = types.StringValue(defaultHTTPMethod)
 	}
 
 	// Read body - decode from base64 if needed
+	// Note: The API may return a URL reference to stored jsonnet instead of the actual content.
+	// In that case, we preserve the user's configured value to avoid drift.
 	if body, ok := config["body"].(string); ok && body != "" {
 		if strings.HasPrefix(body, "base64://") {
+			// User-provided content stored as base64 - decode it
 			decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(body, "base64://"))
 			if err == nil {
 				state.Body = types.StringValue(string(decoded))
 			} else {
+				// Decoding failed, keep as-is
 				state.Body = types.StringValue(body)
 			}
+		} else if strings.HasPrefix(body, "http://") || strings.HasPrefix(body, "https://") {
+			// API returned a URL reference to stored jsonnet content.
+			// Don't overwrite the user's configured body to avoid drift.
+			// The body remains as whatever the user configured (or null if not set).
 		} else {
+			// Plain text body
 			state.Body = types.StringValue(body)
 		}
 	}
@@ -442,9 +548,9 @@ func (r *ActionResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	projectID := plan.ProjectID.ValueString()
-	if projectID == "" {
-		projectID = r.client.ProjectID()
+	projectID := helpers.ResolveProjectID(plan.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	flow := plan.Flow.ValueString()
@@ -526,19 +632,110 @@ func (r *ActionResource) Delete(ctx context.Context, req resource.DeleteRequest,
 }
 
 func (r *ActionResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	// Import format: project_id:flow:timing:auth_method:url
-	parts := strings.SplitN(req.ID, ":", 5)
-	if len(parts) != 5 {
+	// Import format includes HTTP method to support non-POST webhooks:
+	// - For "after" timing: project_id:flow:after:auth_method:method:url (6 parts)
+	// - For "before" timing: project_id:flow:before:method:url (5 parts)
+	//
+	// Legacy formats without method are still supported (defaults to POST):
+	// - For "after" timing: project_id:flow:after:auth_method:url (5 parts)
+	// - For "before" timing: project_id:flow:before:url (4 parts)
+	parts := strings.SplitN(req.ID, ":", 6)
+
+	var projectID, flow, timing, authMethod, httpMethod, url string
+
+	switch len(parts) {
+	case 4:
+		// Legacy 4-part format: project_id:flow:before:url (for "before" timing only)
+		projectID = parts[0]
+		flow = parts[1]
+		timing = parts[2]
+		url = parts[3]
+
+		if timing != timingBefore {
+			resp.Diagnostics.AddError("Invalid Import ID",
+				"4-part import format (project_id:flow:timing:url) is only valid for 'before' timing.\n"+
+					"For 'after' timing, use: project_id:flow:after:auth_method:method:url")
+			return
+		}
+		authMethod = defaultAuthMethod // Default, not used for "before" timing
+		httpMethod = defaultHTTPMethod // Default
+	case 5:
+		// Could be:
+		// - Legacy 5-part for "after": project_id:flow:after:auth_method:url (no method, defaults to POST)
+		// - New 5-part for "before": project_id:flow:before:method:url
+		projectID = parts[0]
+		flow = parts[1]
+		timing = parts[2]
+
+		if timing == timingBefore {
+			// New format: project_id:flow:before:method:url
+			httpMethod = parts[3]
+			url = parts[4]
+			authMethod = defaultAuthMethod // Default, not used for "before" timing
+
+			// Validate HTTP method
+			if httpMethod != "POST" && httpMethod != "GET" && httpMethod != "PUT" && httpMethod != "PATCH" && httpMethod != "DELETE" {
+				resp.Diagnostics.AddError("Invalid Import ID",
+					fmt.Sprintf("Invalid HTTP method '%s'. Must be one of: POST, GET, PUT, PATCH, DELETE", httpMethod))
+				return
+			}
+		} else {
+			// Legacy format: project_id:flow:after:auth_method:url (no method)
+			authMethod = parts[3]
+			url = parts[4]
+			httpMethod = defaultHTTPMethod // Default
+
+			// Allow "_" or "none" as placeholder for auth_method
+			if authMethod == "_" || authMethod == "none" || authMethod == "" {
+				authMethod = defaultAuthMethod
+			}
+		}
+	case 6:
+		// New 6-part format for "after": project_id:flow:after:auth_method:method:url
+		projectID = parts[0]
+		flow = parts[1]
+		timing = parts[2]
+		authMethod = parts[3]
+		httpMethod = parts[4]
+		url = parts[5]
+
+		if timing == timingBefore {
+			resp.Diagnostics.AddError("Invalid Import ID",
+				"6-part import format is only valid for 'after' timing.\n"+
+					"For 'before' timing, use: project_id:flow:before:method:url")
+			return
+		}
+
+		// Validate HTTP method
+		if httpMethod != "POST" && httpMethod != "GET" && httpMethod != "PUT" && httpMethod != "PATCH" && httpMethod != "DELETE" {
+			resp.Diagnostics.AddError("Invalid Import ID",
+				fmt.Sprintf("Invalid HTTP method '%s'. Must be one of: POST, GET, PUT, PATCH, DELETE", httpMethod))
+			return
+		}
+
+		// Allow "_" or "none" as placeholder for auth_method
+		if authMethod == "_" || authMethod == "none" || authMethod == "" {
+			authMethod = defaultAuthMethod
+		}
+	default:
 		resp.Diagnostics.AddError("Invalid Import ID",
-			"Import ID must be in format: project_id:flow:timing:auth_method:url")
+			"Import ID must be in one of these formats:\n"+
+				"  - For 'after' timing: project_id:flow:after:auth_method:method:url\n"+
+				"  - For 'before' timing: project_id:flow:before:method:url\n\n"+
+				"Examples:\n"+
+				"  550e8400-...:registration:after:password:POST:https://api.example.com/webhook\n"+
+				"  550e8400-...:login:before:PATCH:https://api.example.com/validate")
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), parts[0])...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("flow"), parts[1])...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("timing"), parts[2])...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("auth_method"), parts[3])...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("url"), parts[4])...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("method"), "POST")...)
+	// Construct the full ID for state
+	fullID := fmt.Sprintf("%s:%s:%s:%s:%s", projectID, flow, timing, authMethod, url)
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), fullID)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), projectID)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("flow"), flow)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("timing"), timing)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("auth_method"), authMethod)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("url"), url)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("method"), httpMethod)...)
 }

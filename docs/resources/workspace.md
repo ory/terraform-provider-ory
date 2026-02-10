@@ -5,18 +5,21 @@ subcategory: ""
 description: |-
   Manages an Ory Network workspace.
   Workspaces are organizational units that can contain multiple projects.
-  Note: The Ory API does not support workspace deletion. Destroying this
-  resource will only remove it from Terraform state, not from Ory Network.
-  Example Usage
+  ~> Import-Only Resource: Workspaces can only be created through the
+  Ory Console https://console.ory.sh. Use this resource to import existing
+  workspaces into Terraform and manage their configuration. The Ory API does
+  not support workspace deletion, so destroying this resource will only remove
+  it from Terraform state.
+  Usage
+  Create a workspace in the Ory Console https://console.ory.shGet the workspace ID from the URL or APIImport it into Terraform:
+  
+  terraform import ory_workspace.main <workspace-id>
+  
+  Add the resource block to your configuration:
   
   resource "ory_workspace" "main" {
     name = "My Workspace"
   }
-  
-  Import
-  Workspaces can be imported using their ID:
-  
-  terraform import ory_workspace.main <workspace-id>
 ---
 
 # ory_workspace (Resource)
@@ -25,23 +28,28 @@ Manages an Ory Network workspace.
 
 Workspaces are organizational units that can contain multiple projects.
 
-**Note:** The Ory API does not support workspace deletion. Destroying this
-resource will only remove it from Terraform state, not from Ory Network.
+~> **Import-Only Resource:** Workspaces can only be created through the
+[Ory Console](https://console.ory.sh). Use this resource to import existing
+workspaces into Terraform and manage their configuration. The Ory API does
+not support workspace deletion, so destroying this resource will only remove
+it from Terraform state.
 
-## Example Usage
+## Usage
+
+1. Create a workspace in the [Ory Console](https://console.ory.sh)
+2. Get the workspace ID from the URL or API
+3. Import it into Terraform:
+
+```shell
+terraform import ory_workspace.main <workspace-id>
+```
+
+4. Add the resource block to your configuration:
 
 ```hcl
 resource "ory_workspace" "main" {
   name = "My Workspace"
 }
-```
-
-## Import
-
-Workspaces can be imported using their ID:
-
-```shell
-terraform import ory_workspace.main <workspace-id>
 ```
 
 

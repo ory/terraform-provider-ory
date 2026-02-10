@@ -7,7 +7,7 @@ description: |-
   Organizations represent tenants in a multi-tenant application. They can have
   associated SSO domains and contain users (identities).
   ~> Important: Organizations require:
-  A paid Ory plan with B2B features enabledProject environment set to prod (Production) or stage (Staging)Organizations are NOT available in dev (Development) environments
+  An Ory Network Growth plan or higher with B2B features enabledProject environment set to prod (Production) or stage (Staging)Organizations are NOT available in dev (Development) environments
   Example Usage
   
   # Ensure your project is in prod or stage environment
@@ -35,7 +35,7 @@ Organizations represent tenants in a multi-tenant application. They can have
 associated SSO domains and contain users (identities).
 
 ~> **Important:** Organizations require:
-- A paid Ory plan with B2B features enabled
+- An Ory Network **Growth plan or higher** with B2B features enabled
 - Project environment set to `prod` (Production) or `stage` (Staging)
 - Organizations are NOT available in `dev` (Development) environments
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"time"
 
@@ -232,6 +233,22 @@ func isRateLimitError(err error) bool {
 	return strings.Contains(errStr, "429") || strings.Contains(errStr, "Too Many Requests")
 }
 
+// isRetryableError checks if the error is a server error (5xx) that should be retried.
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "500") ||
+		strings.Contains(errStr, "502") ||
+		strings.Contains(errStr, "503") ||
+		strings.Contains(errStr, "504") ||
+		strings.Contains(errStr, "Internal Server Error") ||
+		strings.Contains(errStr, "Bad Gateway") ||
+		strings.Contains(errStr, "Service Unavailable") ||
+		strings.Contains(errStr, "Gateway Timeout")
+}
+
 // retryWithBackoff executes a function with exponential backoff on rate limit errors.
 func retryWithBackoff[T any](ctx context.Context, operation string, fn func() (T, error)) (T, error) {
 	var result T
@@ -413,7 +430,8 @@ func (c *OryClient) WorkspaceID() string {
 // =============================================================================
 
 // CreateProject creates a new Ory project.
-func (c *OryClient) CreateProject(ctx context.Context, name, environment string) (*ory.Project, error) {
+// Returns the project, HTTP response (for status code inspection), and any error.
+func (c *OryClient) CreateProject(ctx context.Context, name, environment, homeRegion string) (*ory.Project, *http.Response, error) {
 	body := ory.CreateProjectBody{
 		Name:        name,
 		Environment: environment,
@@ -421,28 +439,40 @@ func (c *OryClient) CreateProject(ctx context.Context, name, environment string)
 	if c.config.WorkspaceID != "" {
 		body.WorkspaceId = ory.PtrString(c.config.WorkspaceID)
 	}
+	if homeRegion != "" {
+		body.HomeRegion = &homeRegion
+	}
 
-	project, _, err := c.consoleClient.ProjectAPI.CreateProject(ctx).CreateProjectBody(body).Execute()
-	return project, err
+	project, httpResp, err := c.consoleClient.ProjectAPI.CreateProject(ctx).CreateProjectBody(body).Execute()
+	return project, httpResp, err
 }
 
 // GetProject retrieves a project by ID.
 func (c *OryClient) GetProject(ctx context.Context, projectID string) (*ory.Project, error) {
-	project, _, err := c.consoleClient.ProjectAPI.GetProject(ctx, projectID).Execute()
+	project, httpResp, err := c.consoleClient.ProjectAPI.GetProject(ctx, projectID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	return project, err
 }
 
 // DeleteProject purges a project.
 func (c *OryClient) DeleteProject(ctx context.Context, projectID string) error {
-	_, err := c.consoleClient.ProjectAPI.PurgeProject(ctx, projectID).Execute()
+	httpResp, err := c.consoleClient.ProjectAPI.PurgeProject(ctx, projectID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	return err
 }
 
 // PatchProject applies JSON Patch operations to a project.
 func (c *OryClient) PatchProject(ctx context.Context, projectID string, patches []ory.JsonPatch) (*ory.SuccessfulProjectUpdate, error) {
-	result, _, err := c.consoleClient.ProjectAPI.PatchProject(ctx, projectID).
+	result, httpResp, err := c.consoleClient.ProjectAPI.PatchProject(ctx, projectID).
 		JsonPatch(patches).
 		Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	return result, err
 }
 
@@ -455,7 +485,10 @@ func (c *OryClient) CreateWorkspace(ctx context.Context, name string) (*ory.Work
 	body := ory.CreateWorkspaceBody{
 		Name: name,
 	}
-	workspace, _, err := c.consoleClient.WorkspaceAPI.CreateWorkspace(ctx).CreateWorkspaceBody(body).Execute()
+	workspace, httpResp, err := c.consoleClient.WorkspaceAPI.CreateWorkspace(ctx).CreateWorkspaceBody(body).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	return workspace, err
 }
 
@@ -464,13 +497,19 @@ func (c *OryClient) CreateWorkspace(ctx context.Context, name string) (*ory.Work
 // but not get a specific workspace. We fall back to listing and filtering if
 // the direct GET fails with 403.
 func (c *OryClient) GetWorkspace(ctx context.Context, workspaceID string) (*ory.Workspace, error) {
-	workspace, _, err := c.consoleClient.WorkspaceAPI.GetWorkspace(ctx, workspaceID).Execute()
+	workspace, httpResp, err := c.consoleClient.WorkspaceAPI.GetWorkspace(ctx, workspaceID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	if err != nil {
 		// Check if it's a 403 error - try fallback to list
 		errStr := err.Error()
 		if strings.Contains(errStr, "403") || strings.Contains(errStr, "Forbidden") {
 			// Fall back to listing workspaces and finding by ID
-			listResp, _, listErr := c.consoleClient.WorkspaceAPI.ListWorkspaces(ctx).Execute()
+			listResp, listHttpResp, listErr := c.consoleClient.WorkspaceAPI.ListWorkspaces(ctx).Execute()
+			if listHttpResp != nil {
+				_ = listHttpResp.Body.Close()
+			}
 			if listErr != nil {
 				return nil, err // Return original error
 			}
@@ -491,7 +530,10 @@ func (c *OryClient) UpdateWorkspace(ctx context.Context, workspaceID, name strin
 	body := ory.UpdateWorkspaceBody{
 		Name: name,
 	}
-	workspace, _, err := c.consoleClient.WorkspaceAPI.UpdateWorkspace(ctx, workspaceID).UpdateWorkspaceBody(body).Execute()
+	workspace, httpResp, err := c.consoleClient.WorkspaceAPI.UpdateWorkspace(ctx, workspaceID).UpdateWorkspaceBody(body).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	return workspace, err
 }
 
@@ -500,7 +542,10 @@ func (c *OryClient) GetProjectEnvironment(ctx context.Context, projectID string)
 	if c.consoleClient == nil {
 		return "", fmt.Errorf("console API client not configured")
 	}
-	project, _, err := c.consoleClient.ProjectAPI.GetProject(ctx, projectID).Execute()
+	project, httpResp, err := c.consoleClient.ProjectAPI.GetProject(ctx, projectID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	if err != nil {
 		return "", err
 	}
@@ -532,7 +577,10 @@ func (c *OryClient) CreateOrganization(ctx context.Context, projectID, label str
 		Domains: domains,
 	}
 
-	org, _, err := c.consoleClient.ProjectAPI.CreateOrganization(ctx, projectID).OrganizationBody(body).Execute()
+	org, httpResp, err := c.consoleClient.ProjectAPI.CreateOrganization(ctx, projectID).OrganizationBody(body).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	if err != nil {
 		return nil, wrapAPIError(err, "creating organization")
 	}
@@ -551,7 +599,10 @@ func (c *OryClient) GetOrganization(ctx context.Context, projectID, orgID string
 	// Use 5 attempts with delays: 1s, 2s, 4s, 8s to handle slow propagation
 	var lastErr error
 	for attempt := 0; attempt < 5; attempt++ {
-		resp, _, err := c.consoleClient.ProjectAPI.GetOrganization(ctx, projectID, orgID).Execute()
+		resp, httpResp, err := c.consoleClient.ProjectAPI.GetOrganization(ctx, projectID, orgID).Execute()
+		if httpResp != nil {
+			_ = httpResp.Body.Close()
+		}
 		if err == nil {
 			return &resp.Organization, nil
 		}
@@ -598,7 +649,10 @@ func (c *OryClient) UpdateOrganization(ctx context.Context, projectID, orgID, la
 	// Use 5 attempts with delays: 1s, 2s, 4s, 8s to handle slow propagation
 	var lastErr error
 	for attempt := 0; attempt < 5; attempt++ {
-		org, _, err := c.consoleClient.ProjectAPI.UpdateOrganization(ctx, projectID, orgID).OrganizationBody(body).Execute()
+		org, httpResp, err := c.consoleClient.ProjectAPI.UpdateOrganization(ctx, projectID, orgID).OrganizationBody(body).Execute()
+		if httpResp != nil {
+			_ = httpResp.Body.Close()
+		}
 		if err == nil {
 			return org, nil
 		}
@@ -630,7 +684,10 @@ func (c *OryClient) DeleteOrganization(ctx context.Context, projectID, orgID str
 		return fmt.Errorf("deleting organization: console API client not configured. " +
 			"Set workspace_api_key (ORY_WORKSPACE_API_KEY)")
 	}
-	_, err := c.consoleClient.ProjectAPI.DeleteOrganization(ctx, projectID, orgID).Execute()
+	httpResp, err := c.consoleClient.ProjectAPI.DeleteOrganization(ctx, projectID, orgID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	return wrapAPIError(err, "deleting organization")
 }
 
@@ -641,7 +698,10 @@ func (c *OryClient) DeleteOrganization(ctx context.Context, projectID, orgID str
 // CreateIdentity creates a new identity with retry on rate limit.
 func (c *OryClient) CreateIdentity(ctx context.Context, body ory.CreateIdentityBody) (*ory.Identity, error) {
 	return retryWithBackoff(ctx, "creating identity", func() (*ory.Identity, error) {
-		identity, _, err := c.projectClient.IdentityAPI.CreateIdentity(ctx).CreateIdentityBody(body).Execute()
+		identity, httpResp, err := c.projectClient.IdentityAPI.CreateIdentity(ctx).CreateIdentityBody(body).Execute()
+		if httpResp != nil {
+			_ = httpResp.Body.Close()
+		}
 		return identity, err
 	})
 }
@@ -649,7 +709,10 @@ func (c *OryClient) CreateIdentity(ctx context.Context, body ory.CreateIdentityB
 // GetIdentity retrieves an identity by ID with retry on rate limit.
 func (c *OryClient) GetIdentity(ctx context.Context, identityID string) (*ory.Identity, error) {
 	return retryWithBackoff(ctx, "getting identity", func() (*ory.Identity, error) {
-		identity, _, err := c.projectClient.IdentityAPI.GetIdentity(ctx, identityID).Execute()
+		identity, httpResp, err := c.projectClient.IdentityAPI.GetIdentity(ctx, identityID).Execute()
+		if httpResp != nil {
+			_ = httpResp.Body.Close()
+		}
 		return identity, err
 	})
 }
@@ -657,7 +720,10 @@ func (c *OryClient) GetIdentity(ctx context.Context, identityID string) (*ory.Id
 // UpdateIdentity updates an identity with retry on rate limit.
 func (c *OryClient) UpdateIdentity(ctx context.Context, identityID string, body ory.UpdateIdentityBody) (*ory.Identity, error) {
 	return retryWithBackoff(ctx, "updating identity", func() (*ory.Identity, error) {
-		identity, _, err := c.projectClient.IdentityAPI.UpdateIdentity(ctx, identityID).UpdateIdentityBody(body).Execute()
+		identity, httpResp, err := c.projectClient.IdentityAPI.UpdateIdentity(ctx, identityID).UpdateIdentityBody(body).Execute()
+		if httpResp != nil {
+			_ = httpResp.Body.Close()
+		}
 		return identity, err
 	})
 }
@@ -665,7 +731,10 @@ func (c *OryClient) UpdateIdentity(ctx context.Context, identityID string, body 
 // DeleteIdentity deletes an identity with retry on rate limit.
 func (c *OryClient) DeleteIdentity(ctx context.Context, identityID string) error {
 	_, err := retryWithBackoff(ctx, "deleting identity", func() (struct{}, error) {
-		_, err := c.projectClient.IdentityAPI.DeleteIdentity(ctx, identityID).Execute()
+		httpResp, err := c.projectClient.IdentityAPI.DeleteIdentity(ctx, identityID).Execute()
+		if httpResp != nil {
+			_ = httpResp.Body.Close()
+		}
 		return struct{}{}, err
 	})
 	return err
@@ -677,25 +746,37 @@ func (c *OryClient) DeleteIdentity(ctx context.Context, identityID string) error
 
 // CreateOAuth2Client creates a new OAuth2 client.
 func (c *OryClient) CreateOAuth2Client(ctx context.Context, oauthClient ory.OAuth2Client) (*ory.OAuth2Client, error) {
-	result, _, err := c.projectClient.OAuth2API.CreateOAuth2Client(ctx).OAuth2Client(oauthClient).Execute()
+	result, httpResp, err := c.projectClient.OAuth2API.CreateOAuth2Client(ctx).OAuth2Client(oauthClient).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	return result, err
 }
 
 // GetOAuth2Client retrieves an OAuth2 client by ID.
 func (c *OryClient) GetOAuth2Client(ctx context.Context, clientID string) (*ory.OAuth2Client, error) {
-	oauthClient, _, err := c.projectClient.OAuth2API.GetOAuth2Client(ctx, clientID).Execute()
+	oauthClient, httpResp, err := c.projectClient.OAuth2API.GetOAuth2Client(ctx, clientID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	return oauthClient, err
 }
 
 // UpdateOAuth2Client updates an OAuth2 client.
 func (c *OryClient) UpdateOAuth2Client(ctx context.Context, clientID string, oauthClient ory.OAuth2Client) (*ory.OAuth2Client, error) {
-	result, _, err := c.projectClient.OAuth2API.SetOAuth2Client(ctx, clientID).OAuth2Client(oauthClient).Execute()
+	result, httpResp, err := c.projectClient.OAuth2API.SetOAuth2Client(ctx, clientID).OAuth2Client(oauthClient).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	return result, err
 }
 
 // DeleteOAuth2Client deletes an OAuth2 client.
 func (c *OryClient) DeleteOAuth2Client(ctx context.Context, clientID string) error {
-	_, err := c.projectClient.OAuth2API.DeleteOAuth2Client(ctx, clientID).Execute()
+	httpResp, err := c.projectClient.OAuth2API.DeleteOAuth2Client(ctx, clientID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	return err
 }
 
@@ -705,20 +786,58 @@ func (c *OryClient) DeleteOAuth2Client(ctx context.Context, clientID string) err
 
 // CreateProjectAPIKey creates a new API key for a project.
 func (c *OryClient) CreateProjectAPIKey(ctx context.Context, projectID string, body ory.CreateProjectApiKeyRequest) (*ory.ProjectApiKey, error) {
-	key, _, err := c.consoleClient.ProjectAPI.CreateProjectApiKey(ctx, projectID).CreateProjectApiKeyRequest(body).Execute()
+	key, httpResp, err := c.consoleClient.ProjectAPI.CreateProjectApiKey(ctx, projectID).CreateProjectApiKeyRequest(body).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	return key, err
 }
 
 // ListProjectAPIKeys lists all API keys for a project.
 func (c *OryClient) ListProjectAPIKeys(ctx context.Context, projectID string) ([]ory.ProjectApiKey, error) {
-	keys, _, err := c.consoleClient.ProjectAPI.ListProjectApiKeys(ctx, projectID).Execute()
+	keys, httpResp, err := c.consoleClient.ProjectAPI.ListProjectApiKeys(ctx, projectID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	return keys, err
 }
 
-// DeleteProjectAPIKey deletes an API key.
+// DeleteProjectAPIKey deletes an API key with retry logic for transient errors.
 func (c *OryClient) DeleteProjectAPIKey(ctx context.Context, projectID, keyID string) error {
-	_, err := c.consoleClient.ProjectAPI.DeleteProjectApiKey(ctx, projectID, keyID).Execute()
-	return err
+	var lastErr error
+	backoff := initialBackoff
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		httpResp, err := c.consoleClient.ProjectAPI.DeleteProjectApiKey(ctx, projectID, keyID).Execute()
+		if httpResp != nil {
+			_ = httpResp.Body.Close()
+		}
+
+		if err == nil {
+			return nil
+		}
+
+		lastErr = err
+
+		// Only retry on rate limit or 5xx errors
+		if !isRateLimitError(err) && !isRetryableError(err) {
+			return err
+		}
+
+		if attempt == maxRetries {
+			break
+		}
+
+		// Wait before retrying
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+			backoff *= 2 // Exponential backoff
+		}
+	}
+
+	return fmt.Errorf("deleting API key: failed after %d retries: %w", maxRetries, lastErr)
 }
 
 // =============================================================================
@@ -727,19 +846,28 @@ func (c *OryClient) DeleteProjectAPIKey(ctx context.Context, projectID, keyID st
 
 // CreateJsonWebKeySet creates a new JWK set.
 func (c *OryClient) CreateJsonWebKeySet(ctx context.Context, setID string, body ory.CreateJsonWebKeySet) (*ory.JsonWebKeySet, error) {
-	jwks, _, err := c.projectClient.JwkAPI.CreateJsonWebKeySet(ctx, setID).CreateJsonWebKeySet(body).Execute()
+	jwks, httpResp, err := c.projectClient.JwkAPI.CreateJsonWebKeySet(ctx, setID).CreateJsonWebKeySet(body).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	return jwks, err
 }
 
 // GetJsonWebKeySet retrieves a JWK set by ID.
 func (c *OryClient) GetJsonWebKeySet(ctx context.Context, setID string) (*ory.JsonWebKeySet, error) {
-	jwks, _, err := c.projectClient.JwkAPI.GetJsonWebKeySet(ctx, setID).Execute()
+	jwks, httpResp, err := c.projectClient.JwkAPI.GetJsonWebKeySet(ctx, setID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	return jwks, err
 }
 
 // DeleteJsonWebKeySet deletes a JWK set.
 func (c *OryClient) DeleteJsonWebKeySet(ctx context.Context, setID string) error {
-	_, err := c.projectClient.JwkAPI.DeleteJsonWebKeySet(ctx, setID).Execute()
+	httpResp, err := c.projectClient.JwkAPI.DeleteJsonWebKeySet(ctx, setID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	return err
 }
 
@@ -749,7 +877,10 @@ func (c *OryClient) DeleteJsonWebKeySet(ctx context.Context, setID string) error
 
 // CreateRelationship creates a new relationship tuple.
 func (c *OryClient) CreateRelationship(ctx context.Context, body ory.CreateRelationshipBody) (*ory.Relationship, error) {
-	rel, _, err := c.projectClient.RelationshipAPI.CreateRelationship(ctx).CreateRelationshipBody(body).Execute()
+	rel, httpResp, err := c.projectClient.RelationshipAPI.CreateRelationship(ctx).CreateRelationshipBody(body).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	return rel, err
 }
 
@@ -765,7 +896,10 @@ func (c *OryClient) GetRelationships(ctx context.Context, namespace string, obje
 	if subjectID != nil {
 		req = req.SubjectId(*subjectID)
 	}
-	rels, _, err := req.Execute()
+	rels, httpResp, err := req.Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	return rels, err
 }
 
@@ -781,6 +915,9 @@ func (c *OryClient) DeleteRelationships(ctx context.Context, namespace string, o
 	if subjectID != nil {
 		req = req.SubjectId(*subjectID)
 	}
-	_, err := req.Execute()
+	httpResp, err := req.Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	return err
 }
