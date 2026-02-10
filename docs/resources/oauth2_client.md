@@ -134,9 +134,10 @@ output "api_service_client_secret" {
 - `audience` (List of String) List of allowed audiences for tokens.
 - `grant_types` (List of String) OAuth2 grant types: authorization_code, implicit, client_credentials, refresh_token.
 - `metadata` (String) Custom metadata as JSON string.
+- `post_logout_redirect_uris` (List of String) List of allowed post-logout redirect URIs for OpenID Connect logout.
 - `redirect_uris` (List of String) List of allowed redirect URIs for authorization code flow.
 - `response_types` (List of String) OAuth2 response types: code, token, id_token.
-- `scope` (String) Space-separated list of OAuth2 scopes.
+- `scope` (String) Space-separated list of OAuth2 scopes. If not specified, the API will set a default scope.
 - `token_endpoint_auth_method` (String) Token endpoint authentication method: client_secret_post, client_secret_basic, private_key_jwt, none.
 
 ### Read-Only

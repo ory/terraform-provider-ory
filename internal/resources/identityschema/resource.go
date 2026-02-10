@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
@@ -17,12 +16,12 @@ import (
 	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-orynetwork/internal/client"
+	"github.com/ory/terraform-provider-orynetwork/internal/helpers"
 )
 
 var (
-	_ resource.Resource                = &IdentitySchemaResource{}
-	_ resource.ResourceWithConfigure   = &IdentitySchemaResource{}
-	_ resource.ResourceWithImportState = &IdentitySchemaResource{}
+	_ resource.Resource              = &IdentitySchemaResource{}
+	_ resource.ResourceWithConfigure = &IdentitySchemaResource{}
 )
 
 func NewResource() resource.Resource {
@@ -51,9 +50,55 @@ func (r *IdentitySchemaResource) Schema(ctx context.Context, req resource.Schema
 		MarkdownDescription: `
 Manages an Ory Network identity schema.
 
-**Note:** Identity schemas are immutable in Ory Network. Any changes to the schema content will require resource replacement.
+## Important Notes
 
-**Note:** Ory Network does not support deleting identity schemas. When this resource is destroyed, the schema will remain in Ory but will no longer be managed by Terraform.
+- **Schemas are immutable**: Identity schemas cannot be modified after creation. Any changes to the schema content or ` + "`schema_id`" + ` will require Terraform to destroy and recreate the resource.
+- **Schemas cannot be deleted**: When this resource is destroyed, the schema remains in Ory but is no longer managed by Terraform.
+- **Import is not supported**: Existing schemas created via the Ory Console or API cannot be imported into Terraform. To manage an existing schema, recreate it in your Terraform configuration using the same content.
+
+## Understanding IDs
+
+This resource has two ID-related attributes:
+
+| Attribute | Description |
+|-----------|-------------|
+| ` + "`id`" + ` | The API-assigned identifier (may be a hash like ` + "`abc123def456...`" + `). Read-only. |
+| ` + "`schema_id`" + ` | Your chosen identifier (e.g., ` + "`customer`" + `, ` + "`employee_v2`" + `). You define this. |
+
+When you create a schema with ` + "`schema_id = \"customer\"`" + `, Ory may internally store it with a different ID (hash).
+The ` + "`id`" + ` attribute tracks the API's internal ID, while ` + "`schema_id`" + ` tracks your chosen name.
+
+## Example Usage
+
+` + "```hcl" + `
+resource "ory_identity_schema" "customer" {
+  schema_id   = "customer"
+  set_default = true
+  schema = jsonencode({
+    "$id"     = "https://example.com/customer.schema.json"
+    "$schema" = "http://json-schema.org/draft-07/schema#"
+    title     = "Customer"
+    type      = "object"
+    properties = {
+      traits = {
+        type = "object"
+        properties = {
+          email = {
+            type   = "string"
+            format = "email"
+            "ory.sh/kratos" = {
+              credentials = { password = { identifier = true } }
+              verification = { via = "email" }
+              recovery     = { via = "email" }
+            }
+          }
+        }
+        required = ["email"]
+      }
+    }
+  })
+}
+` + "```" + `
 `,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -69,6 +114,7 @@ Manages an Ory Network identity schema.
 				Computed:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"schema_id": schema.StringAttribute{
@@ -174,9 +220,9 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	projectID := plan.ProjectID.ValueString()
-	if projectID == "" {
-		projectID = r.client.ProjectID()
+	projectID := helpers.ResolveProjectID(plan.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	schemaID := plan.SchemaID.ValueString()
@@ -299,8 +345,10 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 
 	// Set as default if requested
 	if plan.SetDefault.ValueBool() {
+		// Use the API-assigned hash ID (not the user-provided schema_id)
+		// The API validates that default_schema_id matches an existing schema's id
 		defaultPatches := []ory.JsonPatch{{
-			Op:    "replace",
+			Op:    "add",
 			Path:  "/services/identity/config/identity/default_schema_id",
 			Value: actualID,
 		}}
@@ -324,13 +372,11 @@ func (r *IdentitySchemaResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	projectID := state.ProjectID.ValueString()
-
-	// If projectID is empty, try to get it from the client
-	if projectID == "" {
-		projectID = r.client.ProjectID()
-		state.ProjectID = types.StringValue(projectID)
+	projectID := helpers.ResolveProjectID(state.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
+	state.ProjectID = types.StringValue(projectID)
 
 	storedID := state.ID.ValueString()
 	schemaID := state.SchemaID.ValueString()
@@ -390,6 +436,21 @@ func (r *IdentitySchemaResource) Read(ctx context.Context, req resource.ReadRequ
 	}
 
 	if index < 0 {
+		// List available schemas to help with debugging import issues
+		var availableIDs []string
+		for _, s := range schemas {
+			if id, ok := s["id"].(string); ok {
+				availableIDs = append(availableIDs, id)
+			}
+		}
+		if len(availableIDs) > 0 {
+			resp.Diagnostics.AddWarning(
+				"Identity Schema Not Found",
+				fmt.Sprintf("Could not find schema with id=%q or schema_id=%q.\n"+
+					"Available schema IDs in this project: %v\n\n"+
+					"When importing, use the exact ID shown above.",
+					storedID, schemaID, availableIDs))
+		}
 		resp.State.RemoveResource(ctx)
 		return
 	}
@@ -404,24 +465,32 @@ func (r *IdentitySchemaResource) Read(ctx context.Context, req resource.ReadRequ
 
 func (r *IdentitySchemaResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan IdentitySchemaResourceModel
+	var state IdentitySchemaResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	projectID := plan.ProjectID.ValueString()
-	if projectID == "" {
-		projectID = r.client.ProjectID()
+	projectID := helpers.ResolveProjectID(plan.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	schemaID := plan.SchemaID.ValueString()
+	// Use the API-assigned ID from state (which may differ from schema_id)
+	apiID := state.ID.ValueString()
+	if apiID == "" {
+		apiID = plan.SchemaID.ValueString()
+	}
 
 	// Only thing that can be updated without replacement is set_default
 	if plan.SetDefault.ValueBool() {
+		// Use the API-assigned hash ID (not the user-provided schema_id)
+		// The API validates that default_schema_id matches an existing schema's id
 		patches := []ory.JsonPatch{{
-			Op:    "replace",
+			Op:    "add",
 			Path:  "/services/identity/config/identity/default_schema_id",
-			Value: schemaID,
+			Value: apiID,
 		}}
 		_, err := r.client.PatchProject(ctx, projectID, patches)
 		if err != nil {
@@ -430,7 +499,8 @@ func (r *IdentitySchemaResource) Update(ctx context.Context, req resource.Update
 		}
 	}
 
-	plan.ID = types.StringValue(schemaID)
+	// Preserve the API-assigned ID from state
+	plan.ID = state.ID
 	plan.ProjectID = types.StringValue(projectID)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
@@ -447,7 +517,6 @@ func (r *IdentitySchemaResource) Delete(ctx context.Context, req resource.Delete
 	)
 }
 
-func (r *IdentitySchemaResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("schema_id"), req.ID)...)
-}
+// Note: ImportState is intentionally NOT implemented.
+// Identity schemas in Ory Network are immutable and cannot be modified or reliably imported.
+// Existing schemas created via the UI or API should be recreated in Terraform.

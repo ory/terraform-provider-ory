@@ -1,0 +1,57 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  Configures an Ory Network project's settings.
+---
+
+# {{.Name}} ({{.Type}})
+
+Configures an Ory Network project's settings.
+
+This resource manages the configuration of an Ory Network project, including authentication methods,
+password policies, session settings, CORS, and more.
+
+## Example Usage
+
+{{ tffile "examples/resources/ory_project_config/resource.tf" }}
+
+## Import
+
+Import using the project ID:
+
+```shell
+terraform import ory_project_config.main <project-id>
+```
+
+### Avoiding "Forces Replacement" After Import
+
+After importing, if Terraform shows `project_id forces replacement`, ensure your configuration matches:
+
+**Option 1: Explicit project_id**
+```hcl
+resource "ory_project_config" "main" {
+  project_id = "the-exact-project-id-you-imported"
+  # ... other settings
+}
+```
+
+**Option 2: Use provider default** (recommended)
+```hcl
+provider "ory" {
+  project_id = "the-exact-project-id-you-imported"
+}
+
+resource "ory_project_config" "main" {
+  # project_id inherits from provider
+  # ... other settings
+}
+```
+
+## Notes
+
+- Project config cannot be deleted - it always exists for a project
+- Deleting this resource from Terraform state does not reset the project configuration
+- The `project_id` attribute forces replacement if changed (you cannot move config to a different project)
+
+{{ .SchemaMarkdown | trimspace }}

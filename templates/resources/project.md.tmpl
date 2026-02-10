@@ -1,0 +1,52 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  Manages an Ory Network project.
+---
+
+# {{.Name}} ({{.Type}})
+
+Manages an Ory Network project.
+
+Projects are the top-level resource in Ory Network. Each project has its own
+identity service, OAuth2 server, and configuration.
+
+## Example Usage
+
+{{ tffile "examples/resources/ory_project/resource.tf" }}
+
+## Environment Types
+
+The `environment` attribute determines which features are available:
+
+| Environment | Description | B2B Organizations |
+|-------------|-------------|-------------------|
+| `prod` | Production environment with full features | Supported |
+| `stage` | Staging environment for testing | Supported |
+| `dev` | Development environment with limited features | **Not supported** |
+
+~> **Important:** If you plan to use `ory_organization` resources, you must use `prod` or `stage` environment.
+The `dev` environment does not support B2B features.
+
+## Import
+
+Projects can be imported using their ID:
+
+```shell
+terraform import ory_project.main <project-id>
+```
+
+After import, you can reference the computed outputs:
+
+```hcl
+output "project_slug" {
+  value = ory_project.main.slug
+}
+
+output "project_state" {
+  value = ory_project.main.state
+}
+```
+
+{{ .SchemaMarkdown | trimspace }}
