@@ -3,6 +3,7 @@ package socialprovider
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -234,6 +235,26 @@ func (r *SocialProviderResource) findProviderIndex(providers []map[string]interf
 	return -1
 }
 
+// waitForProvider polls GetProject until the provider appears in the config.
+// This handles eventual consistency where PatchProject succeeds but GetProject
+// doesn't immediately reflect the change.
+func (r *SocialProviderResource) waitForProvider(ctx context.Context, projectID, providerID string) error {
+	const maxAttempts = 10
+	const delay = 500 * time.Millisecond
+
+	for i := 0; i < maxAttempts; i++ {
+		providers, err := r.getProviders(ctx, projectID)
+		if err != nil {
+			return fmt.Errorf("failed to verify provider: %w", err)
+		}
+		if r.findProviderIndex(providers, providerID) >= 0 {
+			return nil
+		}
+		time.Sleep(delay)
+	}
+	return fmt.Errorf("provider %q not found after %d attempts — possible API eventual consistency issue", providerID, maxAttempts)
+}
+
 func (r *SocialProviderResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan SocialProviderResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -292,6 +313,13 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 	_, err = r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Creating Social Provider", err.Error())
+		return
+	}
+
+	// Read-after-write: verify the provider is visible via GetProject before returning.
+	// The Ory API has eventual consistency, so the config may not be immediately readable.
+	if err := r.waitForProvider(ctx, projectID, plan.ProviderID.ValueString()); err != nil {
+		resp.Diagnostics.AddError("Error Verifying Social Provider", err.Error())
 		return
 	}
 
@@ -435,6 +463,11 @@ func (r *SocialProviderResource) Update(ctx context.Context, req resource.Update
 	_, err = r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Social Provider", err.Error())
+		return
+	}
+
+	if err := r.waitForProvider(ctx, projectID, plan.ProviderID.ValueString()); err != nil {
+		resp.Diagnostics.AddError("Error Verifying Social Provider Update", err.Error())
 		return
 	}
 
