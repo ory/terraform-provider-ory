@@ -70,7 +70,7 @@ jobs:
     name: Build & Acceptance Test
     needs: detect-changes
     if: ${{ needs.detect-changes.outputs.source-changed == 'true' || github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     timeout-minutes: 30
 
     env:
