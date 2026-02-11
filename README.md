@@ -364,10 +364,29 @@ Some tests require additional feature flags or specific Ory plan features:
 
 \*Organizations require B2B features to be enabled on your plan.
 
-### Generating Documentation
+### Documentation
 
-```bash
-go generate ./...
+Documentation is auto-generated from **templates** using [tfplugindocs](https://github.com/hashicorp/terraform-plugin-docs). Do NOT edit files in `docs/` directly — they are overwritten on every build.
+
+**To update documentation:**
+
+1. Edit the templates in `templates/` (e.g., `templates/resources/oauth2_client.md.tmpl`)
+2. Edit example files in `examples/` (e.g., `examples/resources/ory_oauth2_client/resource.tf`)
+3. Run `make format` to regenerate `docs/` from the templates
+
+Templates use Go template syntax with these variables:
+- `{{ .SchemaMarkdown | trimspace }}` — auto-generated schema table from Go code
+- `{{ tffile "examples/resources/ory_foo/resource.tf" }}` — embed example files
+- `{{ .Name }}`, `{{ .Type }}` — resource name and type
+
+```
+templates/
+├── index.md.tmpl                    # Provider-level docs
+├── resources/
+│   ├── oauth2_client.md.tmpl        # Each resource has a template
+│   └── ...
+└── data-sources/
+    └── project.md.tmpl              # Data source template
 ```
 
 ## Contributing

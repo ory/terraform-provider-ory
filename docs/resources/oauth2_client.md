@@ -104,6 +104,22 @@ output "api_service_client_secret" {
 | `private_key_jwt` | Client authenticates with a signed JWT |
 | `none` | Public client (no secret, used for SPAs) |
 
+## Access Token Strategy
+
+The `access_token_strategy` attribute controls the format of issued access tokens:
+
+| Strategy | Description |
+|----------|-------------|
+| `opaque` | Short, random string tokens (default) |
+| `jwt` | Self-contained JSON Web Tokens |
+
+## OIDC Logout
+
+The provider supports both OIDC front-channel and back-channel logout:
+
+- `frontchannel_logout_uri` — The client's URL that the OP will redirect the user-agent to after logout. The OP sends the logout request via the user's browser.
+- `backchannel_logout_uri` — The client's URL that the OP will call directly (server-to-server) to notify the client about a logout event.
+
 ## Import
 
 OAuth2 clients can be imported using their client ID:
