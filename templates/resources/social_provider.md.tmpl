@@ -1,0 +1,66 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  Manages an Ory Network social sign-in provider (Google, GitHub, etc.).
+---
+
+# {{.Name}} ({{.Type}})
+
+Manages an Ory Network social sign-in provider (Google, GitHub, etc.).
+
+Social providers are configured as part of the project's OIDC authentication method. Each provider is identified by a unique `provider_id` that is used in callback URLs.
+
+## Provider Types
+
+The `provider_type` attribute determines which OAuth2/OIDC integration to use:
+
+| Value | Description |
+|-------|-------------|
+| `google` | Google Sign-In |
+| `github` | GitHub |
+| `microsoft` | Microsoft / Azure AD (use `tenant` attribute) |
+| `apple` | Apple Sign-In |
+| `discord` | Discord |
+| `facebook` | Facebook |
+| `gitlab` | GitLab |
+| `slack` | Slack |
+| `spotify` | Spotify |
+| `twitch` | Twitch |
+| `generic` | Generic OIDC provider (requires `issuer_url`) |
+
+~> **Note:** When using `provider_type = "generic"`, you **must** set `issuer_url` to the OIDC issuer URL. The provider uses OIDC discovery to find authorization and token endpoints automatically.
+
+## Example Usage
+
+{{ tffile "examples/resources/ory_social_provider/resource.tf" }}
+
+## Mapper URL
+
+The `mapper_url` attribute controls how OIDC claims are mapped to Ory identity traits. It accepts:
+
+- A URL pointing to a hosted Jsonnet file
+- A base64-encoded Jsonnet template prefixed with `base64://`
+
+If not set, the provider uses a default mapper that extracts the email claim.
+
+~> **Note:** The `mapper_url` value may be transformed by the API (e.g., stored as a GCS URL). The provider only tracks this field if you explicitly set it in your configuration to avoid false drift detection.
+
+## Important Behaviors
+
+- **`provider_id` and `provider_type` cannot be changed** after creation. Changing either forces a new resource.
+- **`client_secret` is write-only.** The API does not return secrets on read, so Terraform cannot detect external changes to the secret.
+- **`tenant` maps to `microsoft_tenant`** in the Ory API. This is only used with `provider_type = "microsoft"`.
+- **Deleting the last provider** resets the entire OIDC configuration to a disabled state with an empty providers array.
+
+## Import
+
+Import using the provider ID:
+
+```shell
+terraform import ory_social_provider.google google
+```
+
+The `provider_id` is the unique identifier you chose when creating the provider. After import, you must provide `client_secret` in your configuration since it cannot be read from the API.
+
+{{ .SchemaMarkdown | trimspace }}
