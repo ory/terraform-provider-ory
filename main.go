@@ -7,7 +7,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 
-	"github.com/ory/terraform-provider-orynetwork/internal/provider"
+	"github.com/ory/terraform-provider-ory/internal/provider"
 )
 
 // These will be set by goreleaser during the build.
@@ -22,7 +22,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/ory/orynetwork",
+		Address: "registry.terraform.io/ory/ory",
 		Debug:   debug,
 	}
 

@@ -9,6 +9,8 @@ description: |-
 
 Manages an Ory Network email template.
 
+Email templates use [Go template syntax](https://pkg.go.dev/text/template) for variable substitution. HTML bodies use `html/template` (auto-escaping) and plaintext bodies use `text/template`. [Sprig template functions](http://masterminds.github.io/sprig/) are available, except date, random, OS, and network functions.
+
 ## Template Types
 
 | Template Type | UI Name | Description |
@@ -27,6 +29,31 @@ Manages an Ory Network email template.
 | `recovery_invalid` | - | Legacy recovery invalid |
 
 **Note:** The "_invalid" templates are sent when a code has expired or is incorrect. The non-code variants (recovery_valid, verification_valid) are for legacy link-based flows.
+
+## Template Variables
+
+Each template type has access to different variables:
+
+| Template | Available Variables |
+|----------|-------------------|
+| `recovery_code_valid` | `.To`, `.RecoveryCode`, `.Identity`, `.ExpiresInMinutes` |
+| `recovery_code_invalid` | `.To` |
+| `verification_code_valid` | `.To`, `.VerificationCode`, `.VerificationURL`, `.Identity`, `.ExpiresInMinutes` |
+| `verification_code_invalid` | `.To` |
+| `login_code_valid` | `.To`, `.LoginCode`, `.Identity`, `.ExpiresInMinutes` |
+| `login_code_invalid` | `.To` |
+| `registration_code_valid` | `.To`, `.RegistrationCode`, `.Traits`, `.ExpiresInMinutes` |
+| `registration_code_invalid` | `.To` |
+| `recovery_valid` | `.To`, `.RecoveryURL`, `.Identity`, `.ExpiresInMinutes` |
+| `verification_valid` | `.To`, `.VerificationURL`, `.Identity`, `.ExpiresInMinutes` |
+
+The `.Identity` object provides access to `.Identity.traits` and `.Identity.metadata_public`.
+
+## Important Behaviors
+
+- **Destroying resets to defaults:** Deleting this resource resets the template to Ory's built-in default template. It does not leave a blank template.
+- **Base64 encoding is automatic:** You provide raw template content; the provider handles base64 encoding internally.
+- **Subject is optional:** If not specified, Ory uses a default subject line.
 
 ## Example Usage
 

@@ -9,11 +9,14 @@ description: |-
 
 Manages an Ory Network identity schema.
 
+Identity schemas define the structure of user profiles (traits) using [JSON Schema](https://json-schema.org/). Ory extends standard JSON Schema with `ory.sh/kratos` annotations for configuring credentials, verification, and recovery.
+
 ## Important Notes
 
 - **Schemas are immutable**: Identity schemas cannot be modified after creation. Any changes to the schema content or `schema_id` will require Terraform to destroy and recreate the resource.
-- **Schemas cannot be deleted**: When this resource is destroyed, the schema remains in Ory but is no longer managed by Terraform.
+- **Schemas cannot be deleted**: When this resource is destroyed, the schema remains in Ory but is no longer managed by Terraform. A warning is emitted.
 - **Import is not supported**: Existing schemas created via the Ory Console or API cannot be imported into Terraform. To manage an existing schema, recreate it in your Terraform configuration using the same content.
+- **Eventual consistency**: After creation, there may be a brief delay before the schema is available for use. The provider handles this with automatic retries.
 
 ## Understanding IDs
 
@@ -26,6 +29,35 @@ This resource has two ID-related attributes:
 
 When you create a schema with `schema_id = "customer"`, Ory may internally store it with a different ID (hash).
 The `id` attribute tracks the API's internal ID, while `schema_id` tracks your chosen name.
+
+## Built-in Preset Schemas
+
+New Ory projects come with preset schemas. These cannot be managed by Terraform but can be referenced in `ory_identity` resources:
+
+| Preset | Schema ID | Description |
+|--------|-----------|-------------|
+| Email | `preset://email` | Email-based login with password, code, webauthn, passkey, and TOTP support |
+| Username | `preset://username` | Username-based login (no email recovery) |
+
+## Ory Schema Extensions
+
+Identity schemas use the `ory.sh/kratos` JSON Schema extension to configure authentication behavior:
+
+```json
+{
+  "ory.sh/kratos": {
+    "credentials": {
+      "password": { "identifier": true },
+      "code": { "identifier": true, "via": "email" },
+      "webauthn": { "identifier": true },
+      "totp": { "account_name": true },
+      "passkey": { "display_name": true }
+    },
+    "verification": { "via": "email" },
+    "recovery": { "via": "email" }
+  }
+}
+```
 
 ## Example Usage
 

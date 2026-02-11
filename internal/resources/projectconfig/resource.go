@@ -18,8 +18,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	ory "github.com/ory/client-go"
 
-	"github.com/ory/terraform-provider-orynetwork/internal/client"
-	"github.com/ory/terraform-provider-orynetwork/internal/helpers"
+	"github.com/ory/terraform-provider-ory/internal/client"
+	"github.com/ory/terraform-provider-ory/internal/helpers"
 )
 
 var (
@@ -332,7 +332,7 @@ resource "ory_project_config" "main" {
 
 			// SMTP Configuration
 			"smtp_connection_uri": schema.StringAttribute{
-				Description: "SMTP connection URI (e.g., 'smtp://user:pass@smtp.example.com:587/').",
+				Description: "SMTP connection URI for sending emails.",
 				Optional:    true,
 				Sensitive:   true,
 			},

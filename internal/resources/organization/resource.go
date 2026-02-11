@@ -13,7 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"github.com/ory/terraform-provider-orynetwork/internal/client"
+	"github.com/ory/terraform-provider-ory/internal/client"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.

@@ -8,8 +8,8 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 
-	"github.com/ory/terraform-provider-orynetwork/internal/acctest"
-	"github.com/ory/terraform-provider-orynetwork/internal/testutil"
+	"github.com/ory/terraform-provider-ory/internal/acctest"
+	"github.com/ory/terraform-provider-ory/internal/testutil"
 )
 
 func TestAccProjectConfigResource_basic(t *testing.T) {

@@ -13,7 +13,7 @@
 # terraform {
 #   required_providers {
 #     ory = {
-#       source = "ory/orynetwork"
+#       source = "ory/ory"
 #     }
 #   }
 # }
@@ -28,7 +28,7 @@
 terraform {
   required_providers {
     ory = {
-      source = "ory/orynetwork"
+      source = "ory/ory"
     }
   }
 }

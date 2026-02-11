@@ -1,5 +1,5 @@
-# Terraform Provider Ory Network
-# ==============================
+# Terraform Provider Ory
+# ======================
 #
 # Development and testing Makefile
 #
@@ -12,8 +12,8 @@
 #   ORY_PROJECT_API_URL   - Project API URL template (default: https://%s.projects.oryapis.com)
 
 SHELL := /bin/bash -o pipefail
-BINARY_NAME := terraform-provider-orynetwork
-INSTALL_DIR := ~/.terraform.d/plugins/registry.terraform.io/ory/orynetwork/0.0.1/$(shell go env GOOS)_$(shell go env GOARCH)
+BINARY_NAME := terraform-provider-ory
+INSTALL_DIR := ~/.terraform.d/plugins/registry.terraform.io/ory/ory/0.0.1/$(shell go env GOOS)_$(shell go env GOARCH)
 
 # Platform detection for tool downloads
 OS := $(shell uname -s | tr '[:upper:]' '[:lower:]')

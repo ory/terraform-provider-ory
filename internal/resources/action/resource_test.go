@@ -9,8 +9,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 
-	"github.com/ory/terraform-provider-orynetwork/internal/acctest"
-	"github.com/ory/terraform-provider-orynetwork/internal/testutil"
+	"github.com/ory/terraform-provider-ory/internal/acctest"
+	"github.com/ory/terraform-provider-ory/internal/testutil"
 )
 
 func TestAccActionResource_basic(t *testing.T) {

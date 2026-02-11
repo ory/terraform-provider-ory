@@ -1,5 +1,5 @@
 #!/bin/bash
-# Pre-commit hook for terraform-provider-orynetwork
+# Pre-commit hook for terraform-provider-ory
 
 set -e
 
