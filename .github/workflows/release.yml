@@ -1,4 +1,5 @@
-# Copyright (c) Materialize Inc.
+# Copyright Ory Corp
+# SPDX-License-Identifier: Apache-2.0
 
 name: Release
 
@@ -11,8 +12,37 @@ permissions:
   contents: write
 
 jobs:
-  goreleaser:
+  acceptance-tests:
+    name: Pre-release Acceptance Tests
     runs-on: ubuntu-slim
+    env:
+      ORY_WORKSPACE_API_KEY: ${{ secrets.ORY_WORKSPACE_API_KEY }}
+      ORY_WORKSPACE_ID: ${{ secrets.ORY_WORKSPACE_ID }}
+      ORY_CONSOLE_API_URL: ${{ secrets.ORY_CONSOLE_API_URL }}
+      ORY_PROJECT_API_URL: ${{ secrets.ORY_PROJECT_API_URL }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - name: Install dependencies
+        run: make deps-ci
+      - name: Run Acceptance Tests
+        env:
+          ORY_KETO_TESTS_ENABLED: true
+          ORY_B2B_ENABLED: true
+          ORY_SOCIAL_PROVIDER_TESTS_ENABLED: true
+          ORY_SCHEMA_TESTS_ENABLED: true
+          ORY_PROJECT_TESTS_ENABLED: true
+        run: ./scripts/run-acceptance-tests.sh -v -timeout 20m ./...
+
+  goreleaser:
+    name: GoReleaser
+    needs: acceptance-tests
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
