@@ -4,5 +4,6 @@
   "onboarding": false,
   "platform": "github",
   "repositories": ["ory/terraform-provider-orynetwork"],
-  "requireConfig": "required"
+  "requireConfig": "required",
+  "gitAuthor": "ory-bot <60093411+ory-bot@users.noreply.github.com>"
 }
