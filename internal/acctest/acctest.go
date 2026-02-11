@@ -14,8 +14,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	ory "github.com/ory/client-go"
 
-	"github.com/ory/terraform-provider-orynetwork/internal/client"
-	"github.com/ory/terraform-provider-orynetwork/internal/provider"
+	"github.com/ory/terraform-provider-ory/internal/client"
+	"github.com/ory/terraform-provider-ory/internal/provider"
 )
 
 // TestProject holds information about a test project created for acceptance tests.

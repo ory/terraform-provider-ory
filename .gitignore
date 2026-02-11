@@ -1,5 +1,5 @@
 # Binaries
-terraform-provider-orynetwork
+terraform-provider-ory
 *.exe
 *.dll
 *.so

@@ -3,7 +3,7 @@
   "branchPrefix": "renovate/",
   "onboarding": false,
   "platform": "github",
-  "repositories": ["ory/terraform-provider-orynetwork"],
+  "repositories": ["ory/terraform-provider-ory"],
   "requireConfig": "required",
   "gitAuthor": "ory-bot <60093411+ory-bot@users.noreply.github.com>"
 }

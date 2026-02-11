@@ -1,7 +1,7 @@
 # Terraform Provider for Ory Network
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/ory/terraform-provider-orynetwork.svg)](https://pkg.go.dev/github.com/ory/terraform-provider-orynetwork)
-[![Go Report Card](https://goreportcard.com/badge/github.com/ory/terraform-provider-orynetwork)](https://goreportcard.com/report/github.com/ory/terraform-provider-orynetwork)
+[![Go Reference](https://pkg.go.dev/badge/github.com/ory/terraform-provider-ory.svg)](https://pkg.go.dev/github.com/ory/terraform-provider-ory)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ory/terraform-provider-ory)](https://goreportcard.com/report/github.com/ory/terraform-provider-ory)
 
 > **Special Thanks**
 > Shoutout to [Jason Hernandez](https://github.com/jasonhernandez) and the [Materialize](https://materialize.com/) team for creating the initial version of this provider! Also see [NOTICE.md](./NOTICE.md)
@@ -39,7 +39,7 @@ A Terraform provider for managing [Ory Network](https://www.ory.sh/) resources u
 terraform {
   required_providers {
     ory = {
-      source  = "ory/orynetwork"
+      source  = "ory/ory"
       version = "~> 0.1"
     }
   }
@@ -49,9 +49,9 @@ terraform {
 ### From Source
 
 ```bash
-git clone https://github.com/ory/terraform-provider-orynetwork.git
-cd terraform-provider-orynetwork
-go build -o terraform-provider-orynetwork
+git clone https://github.com/ory/terraform-provider-ory.git
+cd terraform-provider-ory
+go build -o terraform-provider-ory
 ```
 
 Then configure Terraform to use the local provider:
@@ -60,7 +60,7 @@ Then configure Terraform to use the local provider:
 # ~/.terraformrc
 provider_installation {
   dev_overrides {
-    "ory/orynetwork" = "/path/to/terraform-provider-orynetwork"
+    "ory/ory" = "/path/to/terraform-provider-ory"
   }
   direct {}
 }
@@ -101,7 +101,7 @@ provider "ory" {
 terraform {
   required_providers {
     ory = {
-      source = "ory/orynetwork"
+      source = "ory/ory"
     }
   }
 }
@@ -288,7 +288,7 @@ resource "ory_email_template" "recovery" {
 ### Building
 
 ```bash
-go build -o terraform-provider-orynetwork
+go build -o terraform-provider-ory
 ```
 
 ### Testing

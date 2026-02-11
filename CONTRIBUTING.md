@@ -14,8 +14,8 @@ Thank you for your interest in contributing to the Ory Terraform Provider!
 
 ```bash
 # Clone the repository
-git clone https://github.com/ory/terraform-provider-orynetwork.git
-cd terraform-provider-orynetwork
+git clone https://github.com/ory/terraform-provider-ory.git
+cd terraform-provider-ory
 
 # Install development tools and set up git hooks
 make tools
@@ -106,7 +106,7 @@ package myresource_test
 import (
     "testing"
     "github.com/hashicorp/terraform-plugin-testing/helper/resource"
-    "github.com/ory/terraform-provider-orynetwork/internal/acctest"
+    "github.com/ory/terraform-provider-ory/internal/acctest"
 )
 
 func TestAccMyResource_basic(t *testing.T) {
@@ -171,7 +171,7 @@ To use a locally built provider, create a `~/.terraformrc` file:
 ```hcl
 provider_installation {
   dev_overrides {
-    "ory/terraform-provider-orynetwork" = "/path/to/terraform-provider-orynetwork"
+    "ory/terraform-provider-ory" = "/path/to/terraform-provider-ory"
   }
   direct {}
 }
