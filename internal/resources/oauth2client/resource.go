@@ -48,6 +48,14 @@ type OAuth2ClientResourceModel struct {
 	PostLogoutRedirectURIs  types.List   `tfsdk:"post_logout_redirect_uris"`
 	TokenEndpointAuthMethod types.String `tfsdk:"token_endpoint_auth_method"`
 	Metadata                types.String `tfsdk:"metadata"`
+	AllowedCorsOrigins      types.List   `tfsdk:"allowed_cors_origins"`
+	ClientURI               types.String `tfsdk:"client_uri"`
+	LogoURI                 types.String `tfsdk:"logo_uri"`
+	PolicyURI               types.String `tfsdk:"policy_uri"`
+	TosURI                  types.String `tfsdk:"tos_uri"`
+	FrontchannelLogoutURI   types.String `tfsdk:"frontchannel_logout_uri"`
+	BackchannelLogoutURI    types.String `tfsdk:"backchannel_logout_uri"`
+	AccessTokenStrategy     types.String `tfsdk:"access_token_strategy"`
 }
 
 func (r *OAuth2ClientResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -166,6 +174,39 @@ terraform import ory_oauth2_client.api <client-id>
 				Description: "Custom metadata as JSON string.",
 				Optional:    true,
 			},
+			"allowed_cors_origins": schema.ListAttribute{
+				Description: "List of allowed CORS origins for this client.",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"client_uri": schema.StringAttribute{
+				Description: "URL of the client's homepage.",
+				Optional:    true,
+			},
+			"logo_uri": schema.StringAttribute{
+				Description: "URL of the client's logo.",
+				Optional:    true,
+			},
+			"policy_uri": schema.StringAttribute{
+				Description: "URL of the client's privacy policy.",
+				Optional:    true,
+			},
+			"tos_uri": schema.StringAttribute{
+				Description: "URL of the client's terms of service.",
+				Optional:    true,
+			},
+			"frontchannel_logout_uri": schema.StringAttribute{
+				Description: "OpenID Connect front-channel logout URI.",
+				Optional:    true,
+			},
+			"backchannel_logout_uri": schema.StringAttribute{
+				Description: "OpenID Connect back-channel logout URI.",
+				Optional:    true,
+			},
+			"access_token_strategy": schema.StringAttribute{
+				Description: "Access token strategy: jwt or opaque.",
+				Optional:    true,
+			},
 		},
 	}
 }
@@ -259,6 +300,37 @@ func (r *OAuth2ClientResource) Create(ctx context.Context, req resource.CreateRe
 			return
 		}
 		oauthClient.Metadata = metadata
+	}
+
+	if !plan.AllowedCorsOrigins.IsNull() && !plan.AllowedCorsOrigins.IsUnknown() {
+		var origins []string
+		resp.Diagnostics.Append(plan.AllowedCorsOrigins.ElementsAs(ctx, &origins, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		oauthClient.AllowedCorsOrigins = origins
+	}
+
+	if !plan.ClientURI.IsNull() && !plan.ClientURI.IsUnknown() {
+		oauthClient.ClientUri = ory.PtrString(plan.ClientURI.ValueString())
+	}
+	if !plan.LogoURI.IsNull() && !plan.LogoURI.IsUnknown() {
+		oauthClient.LogoUri = ory.PtrString(plan.LogoURI.ValueString())
+	}
+	if !plan.PolicyURI.IsNull() && !plan.PolicyURI.IsUnknown() {
+		oauthClient.PolicyUri = ory.PtrString(plan.PolicyURI.ValueString())
+	}
+	if !plan.TosURI.IsNull() && !plan.TosURI.IsUnknown() {
+		oauthClient.TosUri = ory.PtrString(plan.TosURI.ValueString())
+	}
+	if !plan.FrontchannelLogoutURI.IsNull() && !plan.FrontchannelLogoutURI.IsUnknown() {
+		oauthClient.FrontchannelLogoutUri = ory.PtrString(plan.FrontchannelLogoutURI.ValueString())
+	}
+	if !plan.BackchannelLogoutURI.IsNull() && !plan.BackchannelLogoutURI.IsUnknown() {
+		oauthClient.BackchannelLogoutUri = ory.PtrString(plan.BackchannelLogoutURI.ValueString())
+	}
+	if !plan.AccessTokenStrategy.IsNull() && !plan.AccessTokenStrategy.IsUnknown() {
+		oauthClient.AccessTokenStrategy = ory.PtrString(plan.AccessTokenStrategy.ValueString())
 	}
 
 	created, err := r.client.CreateOAuth2Client(ctx, oauthClient)
@@ -359,6 +431,33 @@ func (r *OAuth2ClientResource) Read(ctx context.Context, req resource.ReadReques
 		}
 	}
 
+	if len(oauthClient.AllowedCorsOrigins) > 0 {
+		originsList, diags := types.ListValueFrom(ctx, types.StringType, oauthClient.AllowedCorsOrigins)
+		resp.Diagnostics.Append(diags...)
+		state.AllowedCorsOrigins = originsList
+	}
+	if oauthClient.ClientUri != nil && *oauthClient.ClientUri != "" {
+		state.ClientURI = types.StringValue(*oauthClient.ClientUri)
+	}
+	if oauthClient.LogoUri != nil && *oauthClient.LogoUri != "" {
+		state.LogoURI = types.StringValue(*oauthClient.LogoUri)
+	}
+	if oauthClient.PolicyUri != nil && *oauthClient.PolicyUri != "" {
+		state.PolicyURI = types.StringValue(*oauthClient.PolicyUri)
+	}
+	if oauthClient.TosUri != nil && *oauthClient.TosUri != "" {
+		state.TosURI = types.StringValue(*oauthClient.TosUri)
+	}
+	if oauthClient.FrontchannelLogoutUri != nil && *oauthClient.FrontchannelLogoutUri != "" {
+		state.FrontchannelLogoutURI = types.StringValue(*oauthClient.FrontchannelLogoutUri)
+	}
+	if oauthClient.BackchannelLogoutUri != nil && *oauthClient.BackchannelLogoutUri != "" {
+		state.BackchannelLogoutURI = types.StringValue(*oauthClient.BackchannelLogoutUri)
+	}
+	if oauthClient.AccessTokenStrategy != nil && *oauthClient.AccessTokenStrategy != "" {
+		state.AccessTokenStrategy = types.StringValue(*oauthClient.AccessTokenStrategy)
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -437,6 +536,37 @@ func (r *OAuth2ClientResource) Update(ctx context.Context, req resource.UpdateRe
 			return
 		}
 		oauthClient.Metadata = metadata
+	}
+
+	if !plan.AllowedCorsOrigins.IsNull() && !plan.AllowedCorsOrigins.IsUnknown() {
+		var origins []string
+		resp.Diagnostics.Append(plan.AllowedCorsOrigins.ElementsAs(ctx, &origins, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		oauthClient.AllowedCorsOrigins = origins
+	}
+
+	if !plan.ClientURI.IsNull() && !plan.ClientURI.IsUnknown() {
+		oauthClient.ClientUri = ory.PtrString(plan.ClientURI.ValueString())
+	}
+	if !plan.LogoURI.IsNull() && !plan.LogoURI.IsUnknown() {
+		oauthClient.LogoUri = ory.PtrString(plan.LogoURI.ValueString())
+	}
+	if !plan.PolicyURI.IsNull() && !plan.PolicyURI.IsUnknown() {
+		oauthClient.PolicyUri = ory.PtrString(plan.PolicyURI.ValueString())
+	}
+	if !plan.TosURI.IsNull() && !plan.TosURI.IsUnknown() {
+		oauthClient.TosUri = ory.PtrString(plan.TosURI.ValueString())
+	}
+	if !plan.FrontchannelLogoutURI.IsNull() && !plan.FrontchannelLogoutURI.IsUnknown() {
+		oauthClient.FrontchannelLogoutUri = ory.PtrString(plan.FrontchannelLogoutURI.ValueString())
+	}
+	if !plan.BackchannelLogoutURI.IsNull() && !plan.BackchannelLogoutURI.IsUnknown() {
+		oauthClient.BackchannelLogoutUri = ory.PtrString(plan.BackchannelLogoutURI.ValueString())
+	}
+	if !plan.AccessTokenStrategy.IsNull() && !plan.AccessTokenStrategy.IsUnknown() {
+		oauthClient.AccessTokenStrategy = ory.PtrString(plan.AccessTokenStrategy.ValueString())
 	}
 
 	updated, err := r.client.UpdateOAuth2Client(ctx, state.ClientID.ValueString(), oauthClient)

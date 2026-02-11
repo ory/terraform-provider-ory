@@ -6,7 +6,7 @@ resource "ory_oauth2_client" "api_service" {
   scope                      = "read write admin"
 }
 
-# Web application (Authorization Code flow)
+# Web application (Authorization Code flow) with OIDC logout and metadata
 resource "ory_oauth2_client" "web_app" {
   client_name    = "Web Application"
   grant_types    = ["authorization_code", "refresh_token"]
@@ -18,6 +18,22 @@ resource "ory_oauth2_client" "web_app" {
   post_logout_redirect_uris  = ["https://app.example.com/logout"]
   token_endpoint_auth_method = "client_secret_basic"
   scope                      = "openid profile email offline_access"
+
+  # Client metadata URIs
+  client_uri = "https://app.example.com"
+  logo_uri   = "https://app.example.com/logo.png"
+  policy_uri = "https://app.example.com/privacy"
+  tos_uri    = "https://app.example.com/terms"
+
+  # OIDC logout
+  frontchannel_logout_uri = "https://app.example.com/logout/frontchannel"
+  backchannel_logout_uri  = "https://app.example.com/logout/backchannel"
+
+  # Per-client CORS
+  allowed_cors_origins = [
+    "https://app.example.com",
+    "https://admin.example.com"
+  ]
 }
 
 # Single Page Application (Public client with PKCE)

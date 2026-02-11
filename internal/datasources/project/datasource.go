@@ -30,6 +30,8 @@ type ProjectDataSourceModel struct {
 	Slug        types.String `tfsdk:"slug"`
 	State       types.String `tfsdk:"state"`
 	WorkspaceID types.String `tfsdk:"workspace_id"`
+	Environment types.String `tfsdk:"environment"`
+	HomeRegion  types.String `tfsdk:"home_region"`
 }
 
 func (d *ProjectDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -59,6 +61,14 @@ func (d *ProjectDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 			},
 			"workspace_id": schema.StringAttribute{
 				Description: "The workspace ID the project belongs to.",
+				Computed:    true,
+			},
+			"environment": schema.StringAttribute{
+				Description: "The project environment: prod, stage, or dev.",
+				Computed:    true,
+			},
+			"home_region": schema.StringAttribute{
+				Description: "The project home region (e.g., eu-central, us-east, us-west, us, global).",
 				Computed:    true,
 			},
 		},
@@ -110,6 +120,8 @@ func (d *ProjectDataSource) Read(ctx context.Context, req datasource.ReadRequest
 	if project.WorkspaceId.IsSet() && project.WorkspaceId.Get() != nil {
 		data.WorkspaceID = types.StringValue(*project.WorkspaceId.Get())
 	}
+	data.Environment = types.StringValue(project.Environment)
+	data.HomeRegion = types.StringValue(project.HomeRegion)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

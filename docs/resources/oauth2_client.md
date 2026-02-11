@@ -24,7 +24,7 @@ resource "ory_oauth2_client" "api_service" {
   scope                      = "read write admin"
 }
 
-# Web application (Authorization Code flow)
+# Web application (Authorization Code flow) with OIDC logout and metadata
 resource "ory_oauth2_client" "web_app" {
   client_name    = "Web Application"
   grant_types    = ["authorization_code", "refresh_token"]
@@ -36,6 +36,22 @@ resource "ory_oauth2_client" "web_app" {
   post_logout_redirect_uris  = ["https://app.example.com/logout"]
   token_endpoint_auth_method = "client_secret_basic"
   scope                      = "openid profile email offline_access"
+
+  # Client metadata URIs
+  client_uri = "https://app.example.com"
+  logo_uri   = "https://app.example.com/logo.png"
+  policy_uri = "https://app.example.com/privacy"
+  tos_uri    = "https://app.example.com/terms"
+
+  # OIDC logout
+  frontchannel_logout_uri = "https://app.example.com/logout/frontchannel"
+  backchannel_logout_uri  = "https://app.example.com/logout/backchannel"
+
+  # Per-client CORS
+  allowed_cors_origins = [
+    "https://app.example.com",
+    "https://admin.example.com"
+  ]
 }
 
 # Single Page Application (Public client with PKCE)
@@ -107,14 +123,22 @@ terraform import ory_oauth2_client.api <client-id>
 
 ### Optional
 
+- `access_token_strategy` (String) Access token strategy: jwt or opaque.
+- `allowed_cors_origins` (List of String) List of allowed CORS origins for this client.
 - `audience` (List of String) List of allowed audiences for tokens.
+- `backchannel_logout_uri` (String) OpenID Connect back-channel logout URI.
+- `client_uri` (String) URL of the client's homepage.
+- `frontchannel_logout_uri` (String) OpenID Connect front-channel logout URI.
 - `grant_types` (List of String) OAuth2 grant types: authorization_code, implicit, client_credentials, refresh_token.
+- `logo_uri` (String) URL of the client's logo.
 - `metadata` (String) Custom metadata as JSON string.
+- `policy_uri` (String) URL of the client's privacy policy.
 - `post_logout_redirect_uris` (List of String) List of allowed post-logout redirect URIs for OpenID Connect logout.
 - `redirect_uris` (List of String) List of allowed redirect URIs for authorization code flow.
 - `response_types` (List of String) OAuth2 response types: code, token, id_token.
 - `scope` (String) Space-separated list of OAuth2 scopes. If not specified, the API will set a default scope.
 - `token_endpoint_auth_method` (String) Token endpoint authentication method: client_secret_post, client_secret_basic, private_key_jwt, none.
+- `tos_uri` (String) URL of the client's terms of service.
 
 ### Read-Only
 

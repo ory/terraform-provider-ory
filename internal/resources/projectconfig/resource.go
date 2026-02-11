@@ -43,9 +43,13 @@ type ProjectConfigResourceModel struct {
 	// Keto/Permissions Namespaces
 	KetoNamespaces types.List `tfsdk:"keto_namespaces"`
 
-	// CORS
+	// CORS (Public)
 	CorsEnabled types.Bool `tfsdk:"cors_enabled"`
 	CorsOrigins types.List `tfsdk:"cors_origins"`
+
+	// CORS (Admin)
+	CorsAdminEnabled types.Bool `tfsdk:"cors_admin_enabled"`
+	CorsAdminOrigins types.List `tfsdk:"cors_admin_origins"`
 
 	// Session
 	SessionLifespan         types.String `tfsdk:"session_lifespan"`
@@ -207,6 +211,17 @@ resource "ory_project_config" "main" {
 			},
 			"cors_origins": schema.ListAttribute{
 				Description: "Allowed CORS origins.",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+
+			// CORS (Admin)
+			"cors_admin_enabled": schema.BoolAttribute{
+				Description: "Enable CORS for the admin API.",
+				Optional:    true,
+			},
+			"cors_admin_origins": schema.ListAttribute{
+				Description: "Allowed CORS origins for the admin API.",
 				Optional:    true,
 				ElementType: types.StringType,
 			},
@@ -465,6 +480,24 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 		patches = append(patches, ory.JsonPatch{
 			Op:    "replace",
 			Path:  "/cors_public/origins",
+			Value: origins,
+		})
+	}
+
+	// Admin CORS
+	if !plan.CorsAdminEnabled.IsNull() && !plan.CorsAdminEnabled.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/cors_admin/enabled",
+			Value: plan.CorsAdminEnabled.ValueBool(),
+		})
+	}
+	if !plan.CorsAdminOrigins.IsNull() && !plan.CorsAdminOrigins.IsUnknown() {
+		var origins []string
+		plan.CorsAdminOrigins.ElementsAs(ctx, &origins, false)
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/cors_admin/origins",
 			Value: origins,
 		})
 	}
@@ -781,6 +814,17 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 	plan.ID = types.StringValue(projectID)
 	plan.ProjectID = types.StringValue(projectID)
 
+	// Read back the actual config from the API to ensure state matches reality
+	project, err := r.client.GetProject(ctx, projectID)
+	if err != nil {
+		tflog.Warn(ctx, "Could not read back project config after apply", map[string]interface{}{
+			"project_id": projectID,
+			"error":      err.Error(),
+		})
+	} else {
+		r.readProjectConfig(ctx, project, &plan)
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
@@ -790,8 +834,339 @@ func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	// Config exists as long as project exists - nothing to read back
+
+	projectID := helpers.ResolveProjectID(state.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	project, err := r.client.GetProject(ctx, projectID)
+	if err != nil {
+		resp.Diagnostics.AddError("Error Reading Project Config",
+			"Could not read project "+projectID+": "+err.Error())
+		return
+	}
+
+	r.readProjectConfig(ctx, project, &state)
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// getNestedValue safely traverses nested maps to extract a value.
+func getNestedValue(config map[string]interface{}, keys ...string) interface{} {
+	current := interface{}(config)
+	for _, key := range keys {
+		m, ok := current.(map[string]interface{})
+		if !ok {
+			return nil
+		}
+		current, ok = m[key]
+		if !ok {
+			return nil
+		}
+	}
+	return current
+}
+
+// getNestedString extracts a string from nested maps, returning ("", false) if not found.
+func getNestedString(config map[string]interface{}, keys ...string) (string, bool) {
+	v := getNestedValue(config, keys...)
+	if v == nil {
+		return "", false
+	}
+	s, ok := v.(string)
+	return s, ok
+}
+
+// getNestedBool extracts a bool from nested maps, returning (false, false) if not found.
+func getNestedBool(config map[string]interface{}, keys ...string) (bool, bool) {
+	v := getNestedValue(config, keys...)
+	if v == nil {
+		return false, false
+	}
+	b, ok := v.(bool)
+	return b, ok
+}
+
+// getNestedFloat extracts a number from nested maps (JSON numbers are float64).
+func getNestedFloat(config map[string]interface{}, keys ...string) (float64, bool) {
+	v := getNestedValue(config, keys...)
+	if v == nil {
+		return 0, false
+	}
+	f, ok := v.(float64)
+	return f, ok
+}
+
+// readProjectConfig reads the project configuration from the API response into the Terraform state.
+// Only updates attributes that are already set in state (non-null) to avoid importing defaults.
+func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *ory.Project, state *ProjectConfigResourceModel) {
+	// CORS (Public)
+	if project.CorsPublic != nil {
+		if !state.CorsEnabled.IsNull() {
+			if project.CorsPublic.Enabled != nil {
+				state.CorsEnabled = types.BoolValue(*project.CorsPublic.Enabled)
+			}
+		}
+		if !state.CorsOrigins.IsNull() {
+			if len(project.CorsPublic.Origins) > 0 {
+				originsList, diags := types.ListValueFrom(ctx, types.StringType, project.CorsPublic.Origins)
+				if !diags.HasError() {
+					state.CorsOrigins = originsList
+				}
+			}
+		}
+	}
+
+	// CORS (Admin)
+	if project.CorsAdmin != nil {
+		if !state.CorsAdminEnabled.IsNull() {
+			if project.CorsAdmin.Enabled != nil {
+				state.CorsAdminEnabled = types.BoolValue(*project.CorsAdmin.Enabled)
+			}
+		}
+		if !state.CorsAdminOrigins.IsNull() {
+			if len(project.CorsAdmin.Origins) > 0 {
+				originsList, diags := types.ListValueFrom(ctx, types.StringType, project.CorsAdmin.Origins)
+				if !diags.HasError() {
+					state.CorsAdminOrigins = originsList
+				}
+			}
+		}
+	}
+
+	// Identity service config
+	if project.Services.Identity != nil {
+		identityConfig := project.Services.Identity.Config
+
+		// Session
+		if !state.SessionLifespan.IsNull() {
+			if v, ok := getNestedString(identityConfig, "session", "lifespan"); ok {
+				state.SessionLifespan = types.StringValue(v)
+			}
+		}
+		if !state.SessionCookieSameSite.IsNull() {
+			if v, ok := getNestedString(identityConfig, "session", "cookie", "same_site"); ok {
+				state.SessionCookieSameSite = types.StringValue(v)
+			}
+		}
+		if !state.SessionCookiePersistent.IsNull() {
+			if v, ok := getNestedBool(identityConfig, "session", "cookie", "persistent"); ok {
+				state.SessionCookiePersistent = types.BoolValue(v)
+			}
+		}
+
+		// URLs
+		if !state.DefaultReturnURL.IsNull() {
+			if v, ok := getNestedString(identityConfig, "selfservice", "default_browser_return_url"); ok {
+				state.DefaultReturnURL = types.StringValue(v)
+			}
+		}
+		if !state.AllowedReturnURLs.IsNull() {
+			if v := getNestedValue(identityConfig, "selfservice", "allowed_return_urls"); v != nil {
+				if urls, ok := v.([]interface{}); ok && len(urls) > 0 {
+					strs := make([]string, 0, len(urls))
+					for _, u := range urls {
+						if s, ok := u.(string); ok {
+							strs = append(strs, s)
+						}
+					}
+					urlsList, diags := types.ListValueFrom(ctx, types.StringType, strs)
+					if !diags.HasError() {
+						state.AllowedReturnURLs = urlsList
+					}
+				}
+			}
+		}
+
+		urlReadMappings := map[*types.String][]string{
+			&state.LoginUIURL:        {"selfservice", "flows", "login", "ui_url"},
+			&state.RegistrationUIURL: {"selfservice", "flows", "registration", "ui_url"},
+			&state.RecoveryUIURL:     {"selfservice", "flows", "recovery", "ui_url"},
+			&state.VerificationUIURL: {"selfservice", "flows", "verification", "ui_url"},
+			&state.SettingsUIURL:     {"selfservice", "flows", "settings", "ui_url"},
+			&state.ErrorUIURL:        {"selfservice", "flows", "error", "ui_url"},
+		}
+		for field, keys := range urlReadMappings {
+			if !field.IsNull() {
+				if v, ok := getNestedString(identityConfig, keys...); ok {
+					*field = types.StringValue(v)
+				}
+			}
+		}
+
+		// Auth methods
+		methodReadMappings := map[*types.Bool][]string{
+			&state.EnablePassword:     {"selfservice", "methods", "password", "enabled"},
+			&state.EnableCode:         {"selfservice", "methods", "code", "enabled"},
+			&state.EnableTOTP:         {"selfservice", "methods", "totp", "enabled"},
+			&state.EnableWebAuthn:     {"selfservice", "methods", "webauthn", "enabled"},
+			&state.EnablePasskey:      {"selfservice", "methods", "passkey", "enabled"},
+			&state.EnableLookupSecret: {"selfservice", "methods", "lookup_secret", "enabled"},
+		}
+		for field, keys := range methodReadMappings {
+			if !field.IsNull() {
+				if v, ok := getNestedBool(identityConfig, keys...); ok {
+					*field = types.BoolValue(v)
+				}
+			}
+		}
+
+		// Password policy
+		if !state.PasswordMinLength.IsNull() {
+			if v, ok := getNestedFloat(identityConfig, "selfservice", "methods", "password", "config", "min_password_length"); ok {
+				state.PasswordMinLength = types.Int64Value(int64(v))
+			}
+		}
+		if !state.PasswordCheckHaveIBeenPwned.IsNull() {
+			if v, ok := getNestedBool(identityConfig, "selfservice", "methods", "password", "config", "haveibeenpwned_enabled"); ok {
+				state.PasswordCheckHaveIBeenPwned = types.BoolValue(v)
+			}
+		}
+		if !state.PasswordMaxBreaches.IsNull() {
+			if v, ok := getNestedFloat(identityConfig, "selfservice", "methods", "password", "config", "max_breaches"); ok {
+				state.PasswordMaxBreaches = types.Int64Value(int64(v))
+			}
+		}
+		if !state.PasswordIdentifierSimilarity.IsNull() {
+			if v, ok := getNestedBool(identityConfig, "selfservice", "methods", "password", "config", "identifier_similarity_check_enabled"); ok {
+				state.PasswordIdentifierSimilarity = types.BoolValue(v)
+			}
+		}
+
+		// Flow settings
+		flowReadMappings := map[*types.Bool][]string{
+			&state.EnableRecovery:     {"selfservice", "flows", "recovery", "enabled"},
+			&state.EnableVerification: {"selfservice", "flows", "verification", "enabled"},
+			&state.EnableRegistration: {"selfservice", "flows", "registration", "enabled"},
+		}
+		for field, keys := range flowReadMappings {
+			if !field.IsNull() {
+				if v, ok := getNestedBool(identityConfig, keys...); ok {
+					*field = types.BoolValue(v)
+				}
+			}
+		}
+
+		// SMTP (skip smtp_connection_uri — it's sensitive and may not be returned)
+		if !state.SMTPFromAddress.IsNull() {
+			if v, ok := getNestedString(identityConfig, "courier", "smtp", "from_address"); ok {
+				state.SMTPFromAddress = types.StringValue(v)
+			}
+		}
+		if !state.SMTPFromName.IsNull() {
+			if v, ok := getNestedString(identityConfig, "courier", "smtp", "from_name"); ok {
+				state.SMTPFromName = types.StringValue(v)
+			}
+		}
+
+		// MFA / WebAuthn
+		if !state.TOTPIssuer.IsNull() {
+			if v, ok := getNestedString(identityConfig, "selfservice", "methods", "totp", "config", "issuer"); ok {
+				state.TOTPIssuer = types.StringValue(v)
+			}
+		}
+		if !state.WebAuthnRPDisplayName.IsNull() {
+			if v, ok := getNestedString(identityConfig, "selfservice", "methods", "webauthn", "config", "rp", "display_name"); ok {
+				state.WebAuthnRPDisplayName = types.StringValue(v)
+			}
+		}
+		if !state.WebAuthnRPID.IsNull() {
+			if v, ok := getNestedString(identityConfig, "selfservice", "methods", "webauthn", "config", "rp", "id"); ok {
+				state.WebAuthnRPID = types.StringValue(v)
+			}
+		}
+		if !state.WebAuthnRPOrigins.IsNull() {
+			if v := getNestedValue(identityConfig, "selfservice", "methods", "webauthn", "config", "rp", "origins"); v != nil {
+				if origins, ok := v.([]interface{}); ok && len(origins) > 0 {
+					strs := make([]string, 0, len(origins))
+					for _, o := range origins {
+						if s, ok := o.(string); ok {
+							strs = append(strs, s)
+						}
+					}
+					originsList, diags := types.ListValueFrom(ctx, types.StringType, strs)
+					if !diags.HasError() {
+						state.WebAuthnRPOrigins = originsList
+					}
+				}
+			}
+		}
+		if !state.WebAuthnPasswordless.IsNull() {
+			if v, ok := getNestedBool(identityConfig, "selfservice", "methods", "webauthn", "config", "passwordless"); ok {
+				state.WebAuthnPasswordless = types.BoolValue(v)
+			}
+		}
+		if !state.RequiredAAL.IsNull() {
+			if v, ok := getNestedString(identityConfig, "selfservice", "flows", "settings", "required_aal"); ok {
+				state.RequiredAAL = types.StringValue(v)
+			}
+		}
+		if !state.SessionWhoamiRequiredAAL.IsNull() {
+			if v, ok := getNestedString(identityConfig, "session", "whoami", "required_aal"); ok {
+				state.SessionWhoamiRequiredAAL = types.StringValue(v)
+			}
+		}
+	}
+
+	// OAuth2 service config
+	if project.Services.Oauth2 != nil {
+		oauth2Config := project.Services.Oauth2.Config
+
+		if !state.OAuth2AccessTokenLifespan.IsNull() {
+			if v, ok := getNestedString(oauth2Config, "ttl", "access_token"); ok {
+				state.OAuth2AccessTokenLifespan = types.StringValue(v)
+			}
+		}
+		if !state.OAuth2RefreshTokenLifespan.IsNull() {
+			if v, ok := getNestedString(oauth2Config, "ttl", "refresh_token"); ok {
+				state.OAuth2RefreshTokenLifespan = types.StringValue(v)
+			}
+		}
+	}
+
+	// Permission/Keto service config
+	if project.Services.Permission != nil && !state.KetoNamespaces.IsNull() {
+		permConfig := project.Services.Permission.Config
+		if v := getNestedValue(permConfig, "namespaces"); v != nil {
+			if nsList, ok := v.([]interface{}); ok && len(nsList) > 0 {
+				names := make([]string, 0, len(nsList))
+				for _, ns := range nsList {
+					if nsMap, ok := ns.(map[string]interface{}); ok {
+						if name, ok := nsMap["name"].(string); ok {
+							names = append(names, name)
+						}
+					}
+				}
+				if len(names) > 0 {
+					namesList, diags := types.ListValueFrom(ctx, types.StringType, names)
+					if !diags.HasError() {
+						state.KetoNamespaces = namesList
+					}
+				}
+			}
+		}
+	}
+
+	// Account Experience config
+	if project.Services.AccountExperience != nil {
+		aeConfig := project.Services.AccountExperience.Config
+
+		aeStringMappings := map[*types.String]string{
+			&state.AccountExperienceFaviconURL: "favicon_url",
+			&state.AccountExperienceLogoURL:    "logo_url",
+			&state.AccountExperienceName:       "name",
+			&state.AccountExperienceStylesheet: "stylesheet",
+			&state.AccountExperienceLocale:     "default_locale",
+		}
+		for field, key := range aeStringMappings {
+			if !field.IsNull() {
+				if v, ok := getNestedString(aeConfig, key); ok && v != "" {
+					*field = types.StringValue(v)
+				}
+			}
+		}
+	}
 }
 
 func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -817,6 +1192,17 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 
 	plan.ID = types.StringValue(projectID)
 	plan.ProjectID = types.StringValue(projectID)
+
+	// Read back the actual config from the API to ensure state matches reality
+	project, err := r.client.GetProject(ctx, projectID)
+	if err != nil {
+		tflog.Warn(ctx, "Could not read back project config after update", map[string]interface{}{
+			"project_id": projectID,
+			"error":      err.Error(),
+		})
+	} else {
+		r.readProjectConfig(ctx, project, &plan)
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }

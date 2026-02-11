@@ -50,6 +50,8 @@ If `id` is not specified, the data source uses the `project_id` from the provide
 
 ### Read-Only
 
+- `environment` (String) The project environment: prod, stage, or dev.
+- `home_region` (String) The project home region (e.g., eu-central, us-east, us-west, us, global).
 - `name` (String) The project name.
 - `slug` (String) The project slug.
 - `state` (String) The project state.

@@ -129,6 +129,8 @@ resource "ory_project_config" "main" {
 - `account_experience_name` (String) Application name shown in the hosted login UI.
 - `account_experience_stylesheet` (String) Custom CSS stylesheet for the hosted login UI.
 - `allowed_return_urls` (List of String) List of allowed return URLs.
+- `cors_admin_enabled` (Boolean) Enable CORS for the admin API.
+- `cors_admin_origins` (List of String) Allowed CORS origins for the admin API.
 - `cors_enabled` (Boolean) Enable CORS for the public API.
 - `cors_origins` (List of String) Allowed CORS origins.
 - `default_return_url` (String) Default URL to redirect after flows.

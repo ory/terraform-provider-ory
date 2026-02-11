@@ -39,8 +39,7 @@ A Terraform provider for managing [Ory Network](https://www.ory.sh/) resources u
 terraform {
   required_providers {
     ory = {
-      source  = "ory/ory"
-      version = "~> 0.1"
+      source = "ory/ory"
     }
   }
 }
