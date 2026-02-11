@@ -15,8 +15,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
 
-	"github.com/ory/terraform-provider-orynetwork/internal/client"
-	"github.com/ory/terraform-provider-orynetwork/internal/helpers"
+	"github.com/ory/terraform-provider-ory/internal/client"
+	"github.com/ory/terraform-provider-ory/internal/helpers"
 )
 
 var (

@@ -1,0 +1,57 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  Manages an Ory Network OAuth2 client.
+---
+
+# {{.Name}} ({{.Type}})
+
+Manages an Ory Network OAuth2 client.
+
+OAuth2 clients are used for machine-to-machine authentication or user-facing OAuth2/OIDC flows.
+
+~> **Important:** The `client_secret` is only returned when the client is first created. Store it securely immediately after creation. It cannot be retrieved later, including after `terraform import`.
+
+## Example Usage
+
+{{ tffile "examples/resources/ory_oauth2_client/resource.tf" }}
+
+## Grant Types
+
+| Grant Type | Description | Use Case |
+|------------|-------------|----------|
+| `authorization_code` | Authorization Code flow | Web apps, SPAs with PKCE |
+| `client_credentials` | Client Credentials flow | Machine-to-machine / API access |
+| `refresh_token` | Refresh Token grant | Long-lived sessions (pair with another grant) |
+| `implicit` | Implicit flow (legacy) | Legacy SPAs (not recommended) |
+| `urn:ietf:params:oauth:grant-type:device_code` | Device Authorization | IoT devices, CLIs |
+
+## Response Types
+
+| Response Type | Description |
+|---------------|-------------|
+| `code` | Authorization code (used with `authorization_code` grant) |
+| `token` | Access token (used with `implicit` grant) |
+| `id_token` | ID token (OpenID Connect) |
+
+## Token Endpoint Auth Methods
+
+| Method | Description |
+|--------|-------------|
+| `client_secret_post` | Secret sent in POST body (default) |
+| `client_secret_basic` | Secret sent via HTTP Basic auth header |
+| `private_key_jwt` | Client authenticates with a signed JWT |
+| `none` | Public client (no secret, used for SPAs) |
+
+## Import
+
+OAuth2 clients can be imported using their client ID:
+
+```shell
+terraform import ory_oauth2_client.api <client-id>
+```
+
+~> **Note:** When importing, the `client_secret` will **not** be available. The secret is only returned at creation time and cannot be retrieved from the API afterward.
+
+{{ .SchemaMarkdown | trimspace }}

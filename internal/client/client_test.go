@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/ory/terraform-provider-orynetwork/internal/testutil"
+	"github.com/ory/terraform-provider-ory/internal/testutil"
 )
 
 func TestNewOryClient_DefaultURLs(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"github.com/ory/terraform-provider-orynetwork/internal/testutil"
+	"github.com/ory/terraform-provider-ory/internal/testutil"
 )
 
 func TestProvider(t *testing.T) {

@@ -12,6 +12,8 @@ Configures an Ory Network project's settings.
 This resource manages the configuration of an Ory Network project, including authentication methods,
 password policies, session settings, CORS, and more.
 
+~> **Note:** This resource does not perform drift detection. The Read operation does not fetch current configuration from the API, so changes made outside of Terraform (e.g., via Ory Console or API) will not be detected by `terraform plan`. To re-sync, remove the resource from state and re-import it.
+
 ## Example Usage
 
 ```terraform
@@ -64,6 +66,19 @@ resource "ory_project_config" "secure" {
   oauth2_refresh_token_lifespan = "720h"
 }
 ```
+
+## Duration Format
+
+Time-based attributes use Go duration strings. Examples:
+
+| Duration | Meaning |
+|----------|---------|
+| `30m` | 30 minutes |
+| `1h` | 1 hour |
+| `24h0m0s` | 24 hours |
+| `168h` | 7 days |
+| `720h` | 30 days |
+| `8760h` | 365 days |
 
 ## Import
 
@@ -145,7 +160,7 @@ resource "ory_project_config" "main" {
 - `session_lifespan` (String) Session duration (e.g., '24h0m0s').
 - `session_whoami_required_aal` (String) Required AAL for session whoami endpoint: 'aal1', 'aal2', or 'highest_available'.
 - `settings_ui_url` (String) URL for the account settings UI.
-- `smtp_connection_uri` (String, Sensitive) SMTP connection URI (e.g., 'smtp://user:pass@smtp.example.com:587/').
+- `smtp_connection_uri` (String, Sensitive) SMTP connection URI for sending emails.
 - `smtp_from_address` (String) Email address to send from.
 - `smtp_from_name` (String) Name to display as sender.
 - `smtp_headers` (Map of String) Custom headers to include in emails.

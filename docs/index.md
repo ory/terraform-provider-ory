@@ -37,7 +37,7 @@ export ORY_PROJECT_SLUG="..."
 terraform {
   required_providers {
     ory = {
-      source = "ory/orynetwork"
+      source = "ory/ory"
     }
   }
 }
@@ -53,7 +53,7 @@ Define variables and pass values via `terraform.tfvars` or `-var` flags:
 terraform {
   required_providers {
     ory = {
-      source = "ory/orynetwork"
+      source = "ory/ory"
     }
   }
 }
