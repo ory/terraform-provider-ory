@@ -15,7 +15,6 @@ jobs:
   acceptance-tests:
     name: Pre-release Acceptance Tests
     runs-on: ubuntu-slim
-    timeout-minutes: 30
     env:
       ORY_WORKSPACE_API_KEY: ${{ secrets.ORY_WORKSPACE_API_KEY }}
       ORY_WORKSPACE_ID: ${{ secrets.ORY_WORKSPACE_ID }}
@@ -43,8 +42,7 @@ jobs:
   goreleaser:
     name: GoReleaser
     needs: acceptance-tests
-    runs-on: ubuntu-slim
-    timeout-minutes: 30
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
