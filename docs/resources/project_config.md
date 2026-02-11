@@ -160,7 +160,7 @@ resource "ory_project_config" "main" {
 - `session_lifespan` (String) Session duration (e.g., '24h0m0s').
 - `session_whoami_required_aal` (String) Required AAL for session whoami endpoint: 'aal1', 'aal2', or 'highest_available'.
 - `settings_ui_url` (String) URL for the account settings UI.
-- `smtp_connection_uri` (String, Sensitive) SMTP connection URI (e.g., 'smtp://user:pass@smtp.example.com:587/').
+- `smtp_connection_uri` (String, Sensitive) SMTP connection URI for sending emails.
 - `smtp_from_address` (String) Email address to send from.
 - `smtp_from_name` (String) Name to display as sender.
 - `smtp_headers` (Map of String) Custom headers to include in emails.
