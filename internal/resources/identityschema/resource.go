@@ -213,6 +213,26 @@ func (r *IdentitySchemaResource) findSchemaByURL(schemas []map[string]interface{
 	return -1
 }
 
+// waitForSchema polls GetProject until the schema appears in the config.
+// This handles eventual consistency where PatchProject succeeds but GetProject
+// doesn't immediately reflect the change.
+func (r *IdentitySchemaResource) waitForSchema(ctx context.Context, projectID, schemaID string) error {
+	const maxAttempts = 10
+	const delay = 500 * time.Millisecond
+
+	for i := 0; i < maxAttempts; i++ {
+		schemas, err := r.getSchemas(ctx, projectID)
+		if err != nil {
+			return fmt.Errorf("failed to verify schema: %w", err)
+		}
+		if r.findSchemaIndex(schemas, schemaID) >= 0 {
+			return nil
+		}
+		time.Sleep(delay)
+	}
+	return fmt.Errorf("schema %q not found after %d attempts", schemaID, maxAttempts)
+}
+
 func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan IdentitySchemaResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -495,6 +515,12 @@ func (r *IdentitySchemaResource) Update(ctx context.Context, req resource.Update
 		_, err := r.client.PatchProject(ctx, projectID, patches)
 		if err != nil {
 			resp.Diagnostics.AddError("Error Setting Default Schema", err.Error())
+			return
+		}
+
+		// Read-after-write: verify the schema is still visible after patching default.
+		if err := r.waitForSchema(ctx, projectID, apiID); err != nil {
+			resp.Diagnostics.AddError("Error Verifying Default Schema", err.Error())
 			return
 		}
 	}

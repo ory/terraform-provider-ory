@@ -349,6 +349,26 @@ func (r *ActionResource) hookPath(flow, timing, authMethod string) string {
 	return fmt.Sprintf("/services/identity/config/selfservice/flows/%s/%s/hooks", flow, timing)
 }
 
+// waitForHook polls GetProject until the hook appears in the config.
+// This handles eventual consistency where PatchProject succeeds but GetProject
+// doesn't immediately reflect the change.
+func (r *ActionResource) waitForHook(ctx context.Context, projectID, flow, timing, authMethod, url, httpMethod string) error {
+	const maxAttempts = 10
+	const delay = 500 * time.Millisecond
+
+	for i := 0; i < maxAttempts; i++ {
+		hooks, err := r.getHooks(ctx, projectID, flow, timing, authMethod)
+		if err != nil {
+			return fmt.Errorf("failed to verify action: %w", err)
+		}
+		if r.findHookIndex(hooks, url, httpMethod) >= 0 {
+			return nil
+		}
+		time.Sleep(delay)
+	}
+	return fmt.Errorf("action at %s/%s/%s with URL %s not found after %d attempts", flow, timing, authMethod, url, maxAttempts)
+}
+
 func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan ActionResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -400,6 +420,12 @@ func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest,
 	_, err = r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Creating Action", err.Error())
+		return
+	}
+
+	// Read-after-write: verify the hook is visible via GetProject before returning.
+	if err := r.waitForHook(ctx, projectID, flow, timing, authMethod, url, httpMethod); err != nil {
+		resp.Diagnostics.AddError("Error Verifying Action", err.Error())
 		return
 	}
 
@@ -584,6 +610,14 @@ func (r *ActionResource) Update(ctx context.Context, req resource.UpdateRequest,
 	_, err = r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Action", err.Error())
+		return
+	}
+
+	// Read-after-write: verify the updated hook is visible.
+	newURL := plan.URL.ValueString()
+	newMethod := plan.HTTPMethod.ValueString()
+	if err := r.waitForHook(ctx, projectID, flow, timing, authMethod, newURL, newMethod); err != nil {
+		resp.Diagnostics.AddError("Error Verifying Action Update", err.Error())
 		return
 	}
 

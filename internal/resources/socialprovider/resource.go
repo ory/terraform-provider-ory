@@ -350,13 +350,6 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	providers, err := r.getProviders(ctx, projectID)
-	if err != nil {
-		resp.Diagnostics.AddError("Error Reading Social Provider",
-			fmt.Sprintf("Failed to get providers for project %s: %v", projectID, err))
-		return
-	}
-
 	providerID := state.ProviderID.ValueString()
 	if providerID == "" {
 		resp.Diagnostics.AddError(
@@ -366,9 +359,37 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	index := r.findProviderIndex(providers, providerID)
+	// Retry logic for eventual consistency (especially during import after create)
+	var providers []map[string]interface{}
+	var index int
+
+	for attempt := 0; attempt < 5; attempt++ {
+		var err error
+		providers, err = r.getProviders(ctx, projectID)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Reading Social Provider",
+				fmt.Sprintf("Failed to get providers for project %s: %v", projectID, err))
+			return
+		}
+
+		index = r.findProviderIndex(providers, providerID)
+		if index >= 0 {
+			break
+		}
+
+		// Wait before retry (exponential backoff: 1s, 2s, 4s, 8s)
+		if attempt < 4 {
+			select {
+			case <-ctx.Done():
+				resp.State.RemoveResource(ctx)
+				return
+			case <-time.After(time.Duration(1<<attempt) * time.Second):
+			}
+		}
+	}
+
 	if index < 0 {
-		// Provider not found - it may have been deleted outside of Terraform
+		// Provider not found after retries - it may have been deleted outside of Terraform
 		resp.State.RemoveResource(ctx)
 		return
 	}
