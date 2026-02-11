@@ -12,8 +12,6 @@ Manages an Ory Network project.
 Projects are the top-level resource in Ory Network. Each project has its own
 identity service, OAuth2 server, and configuration.
 
-~> **Warning:** Destroying this resource **permanently deletes** the project and **all associated data** (identities, OAuth2 clients, sessions, etc.). This action cannot be undone.
-
 ## Example Usage
 
 ```terraform
@@ -21,17 +19,15 @@ identity service, OAuth2 server, and configuration.
 resource "ory_project" "production" {
   name        = "My Application - Production"
   environment = "prod"
-  home_region = "eu-central"
 }
 
 # Create a staging project
 resource "ory_project" "staging" {
   name        = "My Application - Staging"
   environment = "stage"
-  home_region = "us-west"
 }
 
-# Create a development project (note: limited features)
+# Create a development project (note: no B2B Organizations support)
 resource "ory_project" "dev" {
   name        = "My Application - Development"
   environment = "dev"
@@ -52,31 +48,14 @@ output "production_project_slug" {
 
 The `environment` attribute determines which features are available:
 
-| Environment | Description | B2B Organizations | Rate Limits |
-|-------------|-------------|-------------------|-------------|
-| `prod` | Production environment with full features | Supported | Workspace plan limits |
-| `stage` | Staging environment for testing | Supported | Development limits |
-| `dev` | Development environment with limited features | **Not supported** | Development limits |
+| Environment | Description | B2B Organizations |
+|-------------|-------------|-------------------|
+| `prod` | Production environment with full features | Supported |
+| `stage` | Staging environment for testing | Supported |
+| `dev` | Development environment with limited features | **Not supported** |
 
 ~> **Important:** If you plan to use `ory_organization` resources, you must use `prod` or `stage` environment.
 The `dev` environment does not support B2B features.
-
-## Home Regions
-
-The `home_region` attribute determines where project data is stored:
-
-| Region | Description |
-|--------|-------------|
-| `eu-central` | Europe (default) |
-| `us-east` | US East |
-| `us-west` | US West |
-| `us` | US |
-| `asia-northeast` | Asia Northeast |
-| `global` | Global |
-
-## Plan Limits
-
-Project creation may fail with HTTP 402 (Payment Required) if your workspace subscription does not allow additional projects. Upgrade your workspace plan or delete unused projects.
 
 ## Import
 
@@ -108,7 +87,7 @@ output "project_state" {
 ### Optional
 
 - `environment` (String) The environment type. Must be one of: `prod` (production), `stage` (staging), or `dev` (development). Defaults to `prod`. **Cannot be changed after creation** - changing this will force a new resource. Note: `dev` environment does not support B2B Organizations.
-- `home_region` (String) The home region where the project data is stored. Must be one of: `eu-central` (default), `us-east`, `us-west`, `us`, `asia-northeast`, or `global`. **Cannot be changed after creation** - changing this will force a new resource.
+- `home_region` (String) The home region where the project data is stored. Must be one of: `eu-central` (Europe), `us-east`, `us-west`, `us`, `asia-northeast`, or `global`. Defaults to `eu-central`. **Cannot be changed after creation** - changing this will force a new resource.
 
 ### Read-Only
 

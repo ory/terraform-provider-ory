@@ -129,8 +129,7 @@ terraform plan
 | `ory_project`, `ory_workspace` | `workspace_api_key`, `workspace_id` |
 | `ory_organization` | `workspace_api_key`, `project_id` |
 | `ory_project_config`, `ory_action`, `ory_social_provider`, `ory_email_template` | `workspace_api_key`, `project_id` |
-| `ory_identity_schema`, `ory_project_api_key` | `workspace_api_key`, `project_id` |
-| `ory_identity`, `ory_oauth2_client`, `ory_relationship`, `ory_json_web_key_set` | `project_api_key`, `project_slug` |
+| `ory_identity`, `ory_oauth2_client`, `ory_relationship` | `project_api_key`, `project_slug` |
 
 ## Import Requirements
 
