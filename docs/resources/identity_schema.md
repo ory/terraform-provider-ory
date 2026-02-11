@@ -9,11 +9,14 @@ description: |-
 
 Manages an Ory Network identity schema.
 
+Identity schemas define the structure of user profiles (traits) using [JSON Schema](https://json-schema.org/). Ory extends standard JSON Schema with `ory.sh/kratos` annotations for configuring credentials, verification, and recovery.
+
 ## Important Notes
 
 - **Schemas are immutable**: Identity schemas cannot be modified after creation. Any changes to the schema content or `schema_id` will require Terraform to destroy and recreate the resource.
-- **Schemas cannot be deleted**: When this resource is destroyed, the schema remains in Ory but is no longer managed by Terraform.
+- **Schemas cannot be deleted**: When this resource is destroyed, the schema remains in Ory but is no longer managed by Terraform. A warning is emitted.
 - **Import is not supported**: Existing schemas created via the Ory Console or API cannot be imported into Terraform. To manage an existing schema, recreate it in your Terraform configuration using the same content.
+- **Eventual consistency**: After creation, there may be a brief delay before the schema is available for use. The provider handles this with automatic retries.
 
 ## Understanding IDs
 
@@ -27,12 +30,41 @@ This resource has two ID-related attributes:
 When you create a schema with `schema_id = "customer"`, Ory may internally store it with a different ID (hash).
 The `id` attribute tracks the API's internal ID, while `schema_id` tracks your chosen name.
 
+## Built-in Preset Schemas
+
+New Ory projects come with preset schemas. These cannot be managed by Terraform but can be referenced in `ory_identity` resources:
+
+| Preset | Schema ID | Description |
+|--------|-----------|-------------|
+| Email | `preset://email` | Email-based login with password, code, webauthn, passkey, and TOTP support |
+| Username | `preset://username` | Username-based login (no email recovery) |
+
+## Ory Schema Extensions
+
+Identity schemas use the `ory.sh/kratos` JSON Schema extension to configure authentication behavior:
+
+```json
+{
+  "ory.sh/kratos": {
+    "credentials": {
+      "password": { "identifier": true },
+      "code": { "identifier": true, "via": "email" },
+      "webauthn": { "identifier": true },
+      "totp": { "account_name": true },
+      "passkey": { "display_name": true }
+    },
+    "verification": { "via": "email" },
+    "recovery": { "via": "email" }
+  }
+}
+```
+
 ## Example Usage
 
 ```terraform
 # Customer identity schema with email and name
 resource "ory_identity_schema" "customer" {
-  name = "customer_v1"
+  schema_id = "customer_v1"
   schema = jsonencode({
     "$id"     = "https://example.com/customer.schema.json"
     "$schema" = "http://json-schema.org/draft-07/schema#"
@@ -58,23 +90,8 @@ resource "ory_identity_schema" "customer" {
           name = {
             type = "object"
             properties = {
-              first = {
-                type  = "string"
-                title = "First Name"
-              }
-              last = {
-                type  = "string"
-                title = "Last Name"
-              }
-            }
-          }
-          phone = {
-            type  = "string"
-            title = "Phone Number"
-            "ory.sh/kratos" = {
-              credentials = {
-                code = { identifier = true, via = "sms" }
-              }
+              first = { type = "string", title = "First Name" }
+              last  = { type = "string", title = "Last Name" }
             }
           }
         }
@@ -85,8 +102,44 @@ resource "ory_identity_schema" "customer" {
   })
 }
 
-output "schema_id" {
-  value = ory_identity_schema.customer.id
+# Set as default schema
+resource "ory_identity_schema" "default_schema" {
+  schema_id   = "my_default"
+  set_default = true
+  schema = jsonencode({
+    "$id"     = "https://example.com/default.schema.json"
+    "$schema" = "http://json-schema.org/draft-07/schema#"
+    title     = "Default"
+    type      = "object"
+    properties = {
+      traits = {
+        type = "object"
+        properties = {
+          email = {
+            type   = "string"
+            format = "email"
+            title  = "Email"
+            "ory.sh/kratos" = {
+              credentials  = { password = { identifier = true } }
+              verification = { via = "email" }
+              recovery     = { via = "email" }
+            }
+          }
+        }
+        required             = ["email"]
+        additionalProperties = false
+      }
+    }
+  })
+}
+
+# Reference in identity resources
+resource "ory_identity" "customer" {
+  schema_id = ory_identity_schema.customer.id
+  traits = jsonencode({
+    email = "customer@example.com"
+    name  = { first = "John", last = "Doe" }
+  })
 }
 ```
 
@@ -95,14 +148,14 @@ output "schema_id" {
 
 ### Required
 
-- `schema` (String) JSON Schema definition for the identity traits (JSON string).
-- `schema_id` (String) Unique identifier for the schema (e.g., 'user', 'employee').
+- `schema` (String) JSON Schema definition for the identity traits (JSON string). Must include `ory.sh/kratos` extensions for credential and recovery configuration. Use `jsonencode()` to convert HCL maps to JSON.
+- `schema_id` (String) Unique identifier for the schema (e.g., `customer`, `employee_v2`). **Cannot be changed after creation.**
 
 ### Optional
 
 - `project_id` (String) Project ID. If not set, uses provider's project_id.
-- `set_default` (Boolean) Set this schema as the project's default schema.
+- `set_default` (Boolean) Set this schema as the project's default schema. Defaults to `false`.
 
 ### Read-Only
 
-- `id` (String) Resource ID.
+- `id` (String) API-assigned identifier. May differ from `schema_id` (Ory may assign an internal hash).

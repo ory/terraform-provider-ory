@@ -4,61 +4,47 @@ page_title: "ory_relationship Resource - ory"
 subcategory: ""
 description: |-
   Manages an Ory Keto relationship tuple for fine-grained authorization.
-  Relationships are the foundation of Ory Keto's permission system. They define
-  who (subject) has what relation to which resource (object) in a namespace.
-  Relationship Tuple Structure
-  A relationship tuple consists of:
-  namespace: The type of resource (e.g., "documents", "folders")object: The specific resource IDrelation: The type of relationship (e.g., "viewer", "editor", "owner")subject: Either a user ID or another relationship tuple (subject set)
-  Example Usage
-  Simple User Permission
-  
-  resource "ory_relationship" "user_can_view" {
-    namespace  = "documents"
-    object     = "doc-123"
-    relation   = "viewer"
-    subject_id = "user-456"
-  }
-  
-  Subject Set (Inherited Permission)
-  Grant all editors of a folder access to view documents in that folder:
-  
-  resource "ory_relationship" "editors_can_view" {
-    namespace             = "documents"
-    object                = "doc-123"
-    relation              = "viewer"
-    subject_set_namespace = "folders"
-    subject_set_object    = "folder-789"
-    subject_set_relation  = "editor"
-  }
-  
-  This means: anyone who is an "editor" of "folder-789" in the "folders" namespace
-  is automatically a "viewer" of "doc-123" in the "documents" namespace.
-  Note
-  You must configure Ory Keto namespaces and permissions in your project
-  configuration before creating relationships. Use ory_project_config or
-  configure via the Ory Console.
 ---
 
 # ory_relationship (Resource)
 
 Manages an Ory Keto relationship tuple for fine-grained authorization.
 
-Relationships are the foundation of Ory Keto's permission system. They define
-who (subject) has what relation to which resource (object) in a namespace.
+Relationships are the foundation of Ory Permissions (Keto), which implements [Google's Zanzibar](https://research.google/pubs/pub48190/) authorization model. They define who (subject) has what relation to which resource (object) in a namespace.
+
+## Prerequisites
+
+~> **Important:** You must configure Keto namespaces via `ory_project_config` **before** creating relationships. If the namespace doesn't exist, the API will return a 404 error.
+
+```terraform
+resource "ory_project_config" "main" {
+  keto_namespaces = ["documents", "folders", "groups"]
+}
+
+resource "ory_relationship" "example" {
+  namespace  = "documents"
+  object     = "doc-123"
+  relation   = "viewer"
+  subject_id = "user-456"
+
+  depends_on = [ory_project_config.main]
+}
+```
 
 ## Relationship Tuple Structure
 
 A relationship tuple consists of:
-- **namespace**: The type of resource (e.g., "documents", "folders")
+- **namespace**: The type of resource (e.g., `documents`, `folders`) — must be configured in `keto_namespaces`
 - **object**: The specific resource ID
-- **relation**: The type of relationship (e.g., "viewer", "editor", "owner")
-- **subject**: Either a user ID or another relationship tuple (subject set)
+- **relation**: The type of relationship (e.g., `viewer`, `editor`, `owner`)
+- **subject**: Either a user ID (`subject_id`) or another relationship tuple (`subject_set_*`)
 
 ## Example Usage
 
 ### Simple User Permission
 
-```hcl
+```terraform
+# user-456 can view doc-123
 resource "ory_relationship" "user_can_view" {
   namespace  = "documents"
   object     = "doc-123"
@@ -71,7 +57,7 @@ resource "ory_relationship" "user_can_view" {
 
 Grant all editors of a folder access to view documents in that folder:
 
-```hcl
+```terraform
 resource "ory_relationship" "editors_can_view" {
   namespace             = "documents"
   object                = "doc-123"
@@ -82,24 +68,13 @@ resource "ory_relationship" "editors_can_view" {
 }
 ```
 
-This means: anyone who is an "editor" of "folder-789" in the "folders" namespace
-is automatically a "viewer" of "doc-123" in the "documents" namespace.
+This means: anyone who is an `editor` of `folder-789` in the `folders` namespace is automatically a `viewer` of `doc-123` in the `documents` namespace.
 
-## Note
-
-You must configure Ory Keto namespaces and permissions in your project
-configuration before creating relationships. Use `ory_project_config` or
-configure via the Ory Console.
-
-## Example Usage
+### Complete RBAC Example
 
 ```terraform
-# Direct user permission: user-123 can view doc-456
-resource "ory_relationship" "user_view_doc" {
-  namespace  = "documents"
-  object     = "doc-456"
-  relation   = "viewer"
-  subject_id = "user-123"
+resource "ory_project_config" "main" {
+  keto_namespaces = ["documents", "groups"]
 }
 
 # User is member of a group
@@ -107,57 +82,50 @@ resource "ory_relationship" "user_in_group" {
   namespace  = "groups"
   object     = "engineering"
   relation   = "member"
-  subject_id = "user-123"
+  subject_id = "user-alice"
+
+  depends_on = [ory_project_config.main]
 }
 
-# Group members can edit project (subject set)
+# Group members can edit project (via subject set)
 resource "ory_relationship" "group_edit_project" {
-  namespace             = "projects"
+  namespace             = "documents"
   object                = "project-abc"
   relation              = "editor"
   subject_set_namespace = "groups"
   subject_set_object    = "engineering"
   subject_set_relation  = "member"
-}
 
-# Hierarchical permissions: folder viewers can view documents in folder
-resource "ory_relationship" "folder_viewer_inheritance" {
-  namespace             = "documents"
-  object                = "doc-789"
-  relation              = "viewer"
-  subject_set_namespace = "folders"
-  subject_set_object    = "folder-123"
-  subject_set_relation  = "viewer"
+  depends_on = [ory_project_config.main]
 }
+```
 
-# Complete RBAC example
-locals {
-  users = {
-    alice = "user-alice"
-    bob   = "user-bob"
-  }
+## Important Behaviors
 
-  docs = {
-    public  = "public-doc"
-    private = "private-doc"
-  }
-}
+- **Relationships are immutable.** Any change to any field forces a new resource (destroy + create).
+- **`subject_id` and `subject_set_*` are mutually exclusive.** You must provide either `subject_id` (for a direct user) or all three `subject_set_*` attributes (for an inherited permission), but not both.
+- **All three `subject_set_*` fields must be set together.** Setting only `subject_set_namespace` without `subject_set_object` and `subject_set_relation` will produce an error.
 
-# Alice owns the private doc
-resource "ory_relationship" "alice_owns_private" {
-  namespace  = "documents"
-  object     = local.docs.private
-  relation   = "owner"
-  subject_id = local.users.alice
-}
+## Import
 
-# Bob can view the public doc
-resource "ory_relationship" "bob_views_public" {
-  namespace  = "documents"
-  object     = local.docs.public
-  relation   = "viewer"
-  subject_id = local.users.bob
-}
+Import using Zanzibar-style tuple notation:
+
+```shell
+# Simple subject (user ID)
+terraform import ory_relationship.example "namespace:object#relation@subject_id"
+
+# Subject set (inherited permission)
+terraform import ory_relationship.example "namespace:object#relation@subject_namespace:subject_object#subject_relation"
+```
+
+### Examples
+
+```shell
+# user-456 is a viewer of doc-123 in documents namespace
+terraform import ory_relationship.user_can_view "documents:doc-123#viewer@user-456"
+
+# editors of folder-789 are viewers of doc-123
+terraform import ory_relationship.editors_can_view "documents:doc-123#viewer@folders:folder-789#editor"
 ```
 
 <!-- schema generated by tfplugindocs -->
@@ -165,17 +133,17 @@ resource "ory_relationship" "bob_views_public" {
 
 ### Required
 
-- `namespace` (String) The namespace of the relationship (e.g., 'documents', 'folders').
-- `object` (String) The object ID in the namespace.
-- `relation` (String) The relation type (e.g., 'viewer', 'editor', 'owner').
+- `namespace` (String) The namespace of the relationship (e.g., `documents`, `folders`). Must be configured in `ory_project_config.keto_namespaces`. **Cannot be changed after creation.**
+- `object` (String) The object ID in the namespace. **Cannot be changed after creation.**
+- `relation` (String) The relation type (e.g., `viewer`, `editor`, `owner`). **Cannot be changed after creation.**
 
 ### Optional
 
-- `subject_id` (String) The subject ID (user ID). Mutually exclusive with subject_set_* attributes.
-- `subject_set_namespace` (String) The namespace for a subject set. Use with subject_set_object and subject_set_relation.
-- `subject_set_object` (String) The object ID for a subject set.
-- `subject_set_relation` (String) The relation for a subject set.
+- `subject_id` (String) The subject ID (user ID). Mutually exclusive with `subject_set_*` attributes. **Cannot be changed after creation.**
+- `subject_set_namespace` (String) The namespace for a subject set. Must be used with `subject_set_object` and `subject_set_relation`. **Cannot be changed after creation.**
+- `subject_set_object` (String) The object ID for a subject set. **Cannot be changed after creation.**
+- `subject_set_relation` (String) The relation for a subject set. **Cannot be changed after creation.**
 
 ### Read-Only
 
-- `id` (String) Internal Terraform ID (composite of namespace:object#relation@subject).
+- `id` (String) Composite ID in Zanzibar tuple format: `namespace:object#relation@subject`.

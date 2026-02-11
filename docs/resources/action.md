@@ -143,12 +143,12 @@ Common issues:
 
 - `flow` (String) Identity flow to hook into (login, registration, recovery, settings, verification).
 - `timing` (String) When to trigger: 'before' (pre-hook) or 'after' (post-hook).
-- `url` (String) Webhook URL to call.
+- `url` (String) Webhook URL to call. Must match exactly, including protocol (`https://`) and any trailing slashes. **Cannot be changed after creation** - changing this will force a new resource.
 
 ### Optional
 
 - `auth_method` (String) Authentication method that triggers the webhook. In the Ory Console UI, this is the "Method" selector. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`. Only used for `timing = "after"` webhooks.
-- `body` (String) Jsonnet template for the request body.
+- `body` (String) [Jsonnet](https://jsonnet.org/) template for the request body. This is NOT plain JSON - it is a Jsonnet expression that receives a `ctx` parameter with flow context. The provider handles base64 encoding internally.
 - `can_interrupt` (Boolean) Allow webhook to interrupt/block the flow (default: false).
 - `method` (String) HTTP method (default: POST).
 - `project_id` (String) Project ID. If not set, uses provider's project_id.
@@ -157,4 +157,4 @@ Common issues:
 
 ### Read-Only
 
-- `id` (String) Resource ID.
+- `id` (String) Composite resource ID in the format `project_id:flow:timing:auth_method:url`.
