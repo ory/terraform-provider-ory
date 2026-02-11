@@ -102,6 +102,9 @@ resource "ory_project_api_key" "temporary" {
 			"name": schema.StringAttribute{
 				Description: "A descriptive name for the API key.",
 				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"expires_at": schema.StringAttribute{
 				Description: "Optional expiration time in RFC3339 format (e.g., 2025-12-31T23:59:59Z).",

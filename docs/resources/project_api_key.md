@@ -60,7 +60,7 @@ terraform import ory_project_api_key.backend <project-id>/<key-id>
 
 ### Required
 
-- `name` (String) A descriptive name for the API key.
+- `name` (String) A descriptive name for the API key. **Cannot be changed after creation.**
 
 ### Optional
 

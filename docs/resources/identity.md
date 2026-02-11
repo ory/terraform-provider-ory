@@ -148,7 +148,7 @@ terraform import ory_identity.user <identity-id>
 - `metadata_admin` (String, Sensitive) Admin metadata as JSON string. Only visible via the admin API, not to the identity owner.
 - `metadata_public` (String) Public metadata as JSON string. Visible to the identity owner.
 - `password` (String, Sensitive) Password for the identity. Write-only: not returned on read and cannot be imported.
-- `schema_id` (String) Identity schema ID. Must match a schema configured in your project (e.g., `preset://email`, `customer_v1`, or a Terraform-managed schema reference). Check your project's identity schemas to find valid values.
+- `schema_id` (String) Identity schema ID. Must match a schema configured in your project (e.g., `preset://email`, `customer_v1`, or a Terraform-managed schema reference). **Defaults to `"default"`** — this causes an HTTP 500 error on projects using preset schemas. Always set this explicitly.
 - `state` (String) Identity state: `active` or `inactive`. Defaults to `active`.
 
 ### Read-Only
