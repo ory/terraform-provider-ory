@@ -24,7 +24,7 @@ type TestProject struct {
 	Slug        string
 	Name        string
 	Environment string
-	APIKey      string
+	APIKey      string // #nosec G117 -- test-only struct field, not a credential
 }
 
 var (
