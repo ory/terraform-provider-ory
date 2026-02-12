@@ -349,6 +349,23 @@ func (r *ActionResource) hookPath(flow, timing, authMethod string) string {
 	return fmt.Sprintf("/services/identity/config/selfservice/flows/%s/%s/hooks", flow, timing)
 }
 
+// waitForHook polls GetProject until the hook appears in the config.
+// This handles eventual consistency where PatchProject succeeds but GetProject
+// doesn't immediately reflect the change.
+func (r *ActionResource) waitForHook(ctx context.Context, projectID, flow, timing, authMethod, url, httpMethod string) error {
+	err := helpers.WaitForCondition(ctx, func() (bool, error) {
+		hooks, err := r.getHooks(ctx, projectID, flow, timing, authMethod)
+		if err != nil {
+			return false, fmt.Errorf("failed to verify action: %w", err)
+		}
+		return r.findHookIndex(hooks, url, httpMethod) >= 0, nil
+	})
+	if err != nil {
+		return fmt.Errorf("action at %s/%s/%s with URL %s: %w", flow, timing, authMethod, url, err)
+	}
+	return nil
+}
+
 func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan ActionResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -403,6 +420,12 @@ func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
+	// Read-after-write: verify the hook is visible via GetProject before returning.
+	if err := r.waitForHook(ctx, projectID, flow, timing, authMethod, url, httpMethod); err != nil {
+		resp.Diagnostics.AddError("Error Verifying Action", err.Error())
+		return
+	}
+
 	plan.ID = types.StringValue(fmt.Sprintf("%s:%s:%s:%s:%s", projectID, flow, timing, authMethod, url))
 	plan.ProjectID = types.StringValue(projectID)
 
@@ -428,7 +451,7 @@ func (r *ActionResource) Read(ctx context.Context, req resource.ReadRequest, res
 	var index int
 	var err error
 
-	for attempt := 0; attempt < 5; attempt++ {
+	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
 		hooks, err = r.getHooks(ctx, projectID, flow, timing, authMethod)
 		if err != nil {
 			resp.Diagnostics.AddError("Error Reading Action", err.Error())
@@ -441,7 +464,7 @@ func (r *ActionResource) Read(ctx context.Context, req resource.ReadRequest, res
 		}
 
 		// Wait before retry (exponential backoff: 1s, 2s, 4s, 8s)
-		if attempt < 4 {
+		if attempt < helpers.ReadRetryMaxAttempts-1 {
 			select {
 			case <-ctx.Done():
 				resp.State.RemoveResource(ctx)
@@ -584,6 +607,14 @@ func (r *ActionResource) Update(ctx context.Context, req resource.UpdateRequest,
 	_, err = r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Action", err.Error())
+		return
+	}
+
+	// Read-after-write: verify the updated hook is visible.
+	newURL := plan.URL.ValueString()
+	newMethod := plan.HTTPMethod.ValueString()
+	if err := r.waitForHook(ctx, projectID, flow, timing, authMethod, newURL, newMethod); err != nil {
+		resp.Diagnostics.AddError("Error Verifying Action Update", err.Error())
 		return
 	}
 

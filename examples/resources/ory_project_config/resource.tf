@@ -8,9 +8,13 @@ resource "ory_project_config" "basic" {
 
 # Full security configuration
 resource "ory_project_config" "secure" {
-  # CORS
+  # Public CORS
   cors_enabled = true
   cors_origins = ["https://app.example.com", "https://admin.example.com"]
+
+  # Admin CORS
+  cors_admin_enabled = true
+  cors_admin_origins = ["https://admin.example.com"]
 
   # Sessions
   session_lifespan          = "168h" # 7 days

@@ -140,3 +140,52 @@ resource "ory_oauth2_client" "test" {
 }
 `, name, testutil.ExampleAppURL)
 }
+
+func TestAccOAuth2ClientResource_withNewFields(t *testing.T) {
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccOAuth2ClientResourceConfigWithNewFields("Test Client Extended"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_oauth2_client.test", "id"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "client_name", "Test Client Extended"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "allowed_cors_origins.#", "2"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "client_uri", testutil.ExampleAppURL),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "logo_uri", testutil.ExampleAppURL+"/logo.png"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "policy_uri", testutil.ExampleAppURL+"/privacy"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "tos_uri", testutil.ExampleAppURL+"/tos"),
+				),
+			},
+			// ImportState
+			{
+				ResourceName:            "ory_oauth2_client.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+		},
+	})
+}
+
+func testAccOAuth2ClientResourceConfigWithNewFields(name string) string {
+	return fmt.Sprintf(`
+provider "ory" {}
+
+resource "ory_oauth2_client" "test" {
+  client_name = %[1]q
+
+  grant_types    = ["authorization_code", "refresh_token"]
+  response_types = ["code"]
+  scope          = "openid profile email"
+  redirect_uris  = ["%[2]s/callback"]
+
+  allowed_cors_origins = ["%[2]s", "http://localhost:3000"]
+  client_uri           = "%[2]s"
+  logo_uri             = "%[2]s/logo.png"
+  policy_uri           = "%[2]s/privacy"
+  tos_uri              = "%[2]s/tos"
+}
+`, name, testutil.ExampleAppURL)
+}

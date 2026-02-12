@@ -14,7 +14,7 @@ permissions:
 jobs:
   acceptance-tests:
     name: Pre-release Acceptance Tests
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     env:
       ORY_WORKSPACE_API_KEY: ${{ secrets.ORY_WORKSPACE_API_KEY }}
       ORY_WORKSPACE_ID: ${{ secrets.ORY_WORKSPACE_ID }}

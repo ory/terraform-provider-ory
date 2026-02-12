@@ -3,6 +3,7 @@ package socialprovider
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -13,6 +14,7 @@ import (
 	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-ory/internal/client"
+	"github.com/ory/terraform-provider-ory/internal/helpers"
 )
 
 var (
@@ -234,6 +236,23 @@ func (r *SocialProviderResource) findProviderIndex(providers []map[string]interf
 	return -1
 }
 
+// waitForProvider polls GetProject until the provider appears in the config.
+// This handles eventual consistency where PatchProject succeeds but GetProject
+// doesn't immediately reflect the change.
+func (r *SocialProviderResource) waitForProvider(ctx context.Context, projectID, providerID string) error {
+	err := helpers.WaitForCondition(ctx, func() (bool, error) {
+		providers, err := r.getProviders(ctx, projectID)
+		if err != nil {
+			return false, fmt.Errorf("failed to verify provider: %w", err)
+		}
+		return r.findProviderIndex(providers, providerID) >= 0, nil
+	})
+	if err != nil {
+		return fmt.Errorf("provider %q: %w", providerID, err)
+	}
+	return nil
+}
+
 func (r *SocialProviderResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan SocialProviderResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -295,6 +314,13 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
+	// Read-after-write: verify the provider is visible via GetProject before returning.
+	// The Ory API has eventual consistency, so the config may not be immediately readable.
+	if err := r.waitForProvider(ctx, projectID, plan.ProviderID.ValueString()); err != nil {
+		resp.Diagnostics.AddError("Error Verifying Social Provider", err.Error())
+		return
+	}
+
 	plan.ID = plan.ProviderID
 	plan.ProjectID = types.StringValue(projectID)
 
@@ -322,13 +348,6 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	providers, err := r.getProviders(ctx, projectID)
-	if err != nil {
-		resp.Diagnostics.AddError("Error Reading Social Provider",
-			fmt.Sprintf("Failed to get providers for project %s: %v", projectID, err))
-		return
-	}
-
 	providerID := state.ProviderID.ValueString()
 	if providerID == "" {
 		resp.Diagnostics.AddError(
@@ -338,9 +357,37 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	index := r.findProviderIndex(providers, providerID)
+	// Retry logic for eventual consistency (especially during import after create)
+	var providers []map[string]interface{}
+	var index int
+
+	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
+		var err error
+		providers, err = r.getProviders(ctx, projectID)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Reading Social Provider",
+				fmt.Sprintf("Failed to get providers for project %s: %v", projectID, err))
+			return
+		}
+
+		index = r.findProviderIndex(providers, providerID)
+		if index >= 0 {
+			break
+		}
+
+		// Wait before retry (exponential backoff: 1s, 2s, 4s, 8s)
+		if attempt < helpers.ReadRetryMaxAttempts-1 {
+			select {
+			case <-ctx.Done():
+				resp.State.RemoveResource(ctx)
+				return
+			case <-time.After(time.Duration(1<<attempt) * time.Second):
+			}
+		}
+	}
+
 	if index < 0 {
-		// Provider not found - it may have been deleted outside of Terraform
+		// Provider not found after retries - it may have been deleted outside of Terraform
 		resp.State.RemoveResource(ctx)
 		return
 	}
@@ -435,6 +482,11 @@ func (r *SocialProviderResource) Update(ctx context.Context, req resource.Update
 	_, err = r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Social Provider", err.Error())
+		return
+	}
+
+	if err := r.waitForProvider(ctx, projectID, plan.ProviderID.ValueString()); err != nil {
+		resp.Diagnostics.AddError("Error Verifying Social Provider Update", err.Error())
 		return
 	}
 

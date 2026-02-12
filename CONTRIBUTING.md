@@ -192,9 +192,30 @@ provider_installation {
    - `Delete()` - Delete the resource
    - `ImportState()` - Import existing resources
 3. Register the resource in `internal/provider/provider.go`
-4. Add documentation in `docs/resources/`
+4. Add a documentation **template** in `templates/resources/` (NOT `docs/resources/`)
 5. Add examples in `examples/resources/`
 6. Write acceptance tests
+7. Run `make format` to regenerate docs
+
+### Documentation
+
+Documentation is auto-generated using [tfplugindocs](https://github.com/hashicorp/terraform-plugin-docs).
+
+**Important:** Never edit files in `docs/` directly. They are overwritten on every `make format`.
+
+Instead, edit the **templates** in `templates/`:
+- `templates/resources/<name>.md.tmpl` — Resource documentation
+- `templates/data-sources/<name>.md.tmpl` — Data source documentation
+- `templates/index.md.tmpl` — Provider documentation
+
+Templates use Go template syntax:
+```
+{{ .SchemaMarkdown | trimspace }}     → auto-generated schema table
+{{ tffile "examples/resources/..." }} → embeds an example .tf file
+{{ .Name }}, {{ .Type }}              → resource metadata
+```
+
+After editing templates, run `make format` to regenerate docs.
 
 ### Resource Contribution Checklist
 
@@ -202,9 +223,9 @@ provider_installation {
 - [ ] Resource supports import via `ImportState()`
 - [ ] Acceptance tests cover create, read, update, import, delete
 - [ ] Tests use `acctest.RunTest()` for consistent test execution
-- [ ] Documentation added to `docs/resources/`
+- [ ] Documentation template added to `templates/resources/`
 - [ ] Examples added to `examples/resources/`
-- [ ] Code passes `make lint` and `make fmt`
+- [ ] Code passes `make format` (includes lint, fmt, and doc generation)
 
 ### Code Style
 

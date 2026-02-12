@@ -26,14 +26,16 @@ func TestAccProjectConfigResource_basic(t *testing.T) {
 					resource.TestCheckResourceAttr("ory_project_config.test", "password_min_length", "10"),
 				),
 			},
-			// ImportState (uses project_id as the import ID)
+			// ImportState - after import, Read only refreshes fields that are
+			// non-null in state. Since import only sets id/project_id, config
+			// fields won't be populated until the user runs terraform apply.
 			{
 				ResourceName:      "ory_project_config.test",
 				ImportState:       true,
 				ImportStateVerify: true,
-				// Many fields are not round-tripped from Read() since they're complex API structures
 				ImportStateVerifyIgnore: []string{
-					"cors_origins", "password_min_length", "cors_enabled",
+					"cors_enabled", "cors_origins", "password_min_length",
+					"smtp_connection_uri",
 				},
 			},
 		},
@@ -106,4 +108,32 @@ resource "ory_project_config" "test" {
   account_experience_default_locale = "en"
 }
 `
+}
+
+func TestAccProjectConfigResource_adminCORS(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProjectConfigResourceAdminCORSConfig(),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "cors_admin_enabled", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "cors_admin_origins.#", "1"),
+				),
+			},
+		},
+	})
+}
+
+func testAccProjectConfigResourceAdminCORSConfig() string {
+	return fmt.Sprintf(`
+provider "ory" {}
+
+resource "ory_project_config" "test" {
+  cors_admin_enabled = true
+  cors_admin_origins = ["%s"]
+}
+`, testutil.ExampleAppURL)
 }
