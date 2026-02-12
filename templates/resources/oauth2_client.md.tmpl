@@ -53,6 +53,22 @@ The `access_token_strategy` attribute controls the format of issued access token
 | `opaque` | Short, random string tokens (default) |
 | `jwt` | Self-contained JSON Web Tokens |
 
+## Consent Behavior
+
+| Attribute | Description |
+|-----------|-------------|
+| `skip_consent` | When `true`, the user is never asked to grant consent for this client. Useful for first-party clients. |
+| `skip_logout_consent` | When `true`, the user is not asked to confirm logout for this client. |
+
+## Subject Type
+
+The `subject_type` attribute controls how the `sub` claim is generated in ID tokens:
+
+| Type | Description |
+|------|-------------|
+| `public` | Same `sub` value across all clients (default) |
+| `pairwise` | Unique `sub` value per client (privacy-preserving) |
+
 ## OIDC Logout
 
 The provider supports both OIDC front-channel and back-channel logout:

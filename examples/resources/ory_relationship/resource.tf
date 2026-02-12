@@ -1,9 +1,16 @@
+# Prerequisite: configure Keto namespaces first
+resource "ory_project_config" "main" {
+  keto_namespaces = ["documents", "folders", "groups", "projects"]
+}
+
 # Direct user permission: user-123 can view doc-456
 resource "ory_relationship" "user_view_doc" {
   namespace  = "documents"
   object     = "doc-456"
   relation   = "viewer"
   subject_id = "user-123"
+
+  depends_on = [ory_project_config.main]
 }
 
 # User is member of a group

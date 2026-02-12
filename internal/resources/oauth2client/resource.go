@@ -56,6 +56,10 @@ type OAuth2ClientResourceModel struct {
 	FrontchannelLogoutURI   types.String `tfsdk:"frontchannel_logout_uri"`
 	BackchannelLogoutURI    types.String `tfsdk:"backchannel_logout_uri"`
 	AccessTokenStrategy     types.String `tfsdk:"access_token_strategy"`
+	SkipConsent             types.Bool   `tfsdk:"skip_consent"`
+	SkipLogoutConsent       types.Bool   `tfsdk:"skip_logout_consent"`
+	SubjectType             types.String `tfsdk:"subject_type"`
+	Contacts                types.List   `tfsdk:"contacts"`
 }
 
 func (r *OAuth2ClientResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -207,6 +211,26 @@ terraform import ory_oauth2_client.api <client-id>
 				Description: "Access token strategy: jwt or opaque.",
 				Optional:    true,
 			},
+			"skip_consent": schema.BoolAttribute{
+				Description: "Skip the consent screen for this client. When true, the user is never asked to grant consent.",
+				Optional:    true,
+				Computed:    true,
+			},
+			"skip_logout_consent": schema.BoolAttribute{
+				Description: "Skip the logout consent screen for this client. When true, the user is not asked to confirm logout.",
+				Optional:    true,
+				Computed:    true,
+			},
+			"subject_type": schema.StringAttribute{
+				Description: "OpenID Connect subject type: public (same sub for all clients) or pairwise (unique sub per client).",
+				Optional:    true,
+				Computed:    true,
+			},
+			"contacts": schema.ListAttribute{
+				Description: "List of contact email addresses for the client maintainers.",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
 		},
 	}
 }
@@ -332,6 +356,23 @@ func (r *OAuth2ClientResource) Create(ctx context.Context, req resource.CreateRe
 	if !plan.AccessTokenStrategy.IsNull() && !plan.AccessTokenStrategy.IsUnknown() {
 		oauthClient.AccessTokenStrategy = ory.PtrString(plan.AccessTokenStrategy.ValueString())
 	}
+	if !plan.SkipConsent.IsNull() && !plan.SkipConsent.IsUnknown() {
+		oauthClient.SkipConsent = ory.PtrBool(plan.SkipConsent.ValueBool())
+	}
+	if !plan.SkipLogoutConsent.IsNull() && !plan.SkipLogoutConsent.IsUnknown() {
+		oauthClient.SkipLogoutConsent = ory.PtrBool(plan.SkipLogoutConsent.ValueBool())
+	}
+	if !plan.SubjectType.IsNull() && !plan.SubjectType.IsUnknown() {
+		oauthClient.SubjectType = ory.PtrString(plan.SubjectType.ValueString())
+	}
+	if !plan.Contacts.IsNull() && !plan.Contacts.IsUnknown() {
+		var contacts []string
+		resp.Diagnostics.Append(plan.Contacts.ElementsAs(ctx, &contacts, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		oauthClient.Contacts = contacts
+	}
 
 	created, err := r.client.CreateOAuth2Client(ctx, oauthClient)
 	if err != nil {
@@ -362,6 +403,22 @@ func (r *OAuth2ClientResource) Create(ctx context.Context, req resource.CreateRe
 		grantTypesList, diags := types.ListValueFrom(ctx, types.StringType, created.GrantTypes)
 		resp.Diagnostics.Append(diags...)
 		plan.GrantTypes = grantTypesList
+	}
+
+	if created.SkipConsent != nil {
+		plan.SkipConsent = types.BoolValue(*created.SkipConsent)
+	} else {
+		plan.SkipConsent = types.BoolValue(false)
+	}
+	if created.SkipLogoutConsent != nil {
+		plan.SkipLogoutConsent = types.BoolValue(*created.SkipLogoutConsent)
+	} else {
+		plan.SkipLogoutConsent = types.BoolValue(false)
+	}
+	if created.SubjectType != nil && *created.SubjectType != "" {
+		plan.SubjectType = types.StringValue(*created.SubjectType)
+	} else {
+		plan.SubjectType = types.StringValue("public")
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
@@ -456,6 +513,26 @@ func (r *OAuth2ClientResource) Read(ctx context.Context, req resource.ReadReques
 	}
 	if oauthClient.AccessTokenStrategy != nil && *oauthClient.AccessTokenStrategy != "" {
 		state.AccessTokenStrategy = types.StringValue(*oauthClient.AccessTokenStrategy)
+	}
+	if oauthClient.SkipConsent != nil {
+		state.SkipConsent = types.BoolValue(*oauthClient.SkipConsent)
+	} else {
+		state.SkipConsent = types.BoolValue(false)
+	}
+	if oauthClient.SkipLogoutConsent != nil {
+		state.SkipLogoutConsent = types.BoolValue(*oauthClient.SkipLogoutConsent)
+	} else {
+		state.SkipLogoutConsent = types.BoolValue(false)
+	}
+	if oauthClient.SubjectType != nil && *oauthClient.SubjectType != "" {
+		state.SubjectType = types.StringValue(*oauthClient.SubjectType)
+	} else {
+		state.SubjectType = types.StringValue("public")
+	}
+	if len(oauthClient.Contacts) > 0 {
+		contactsList, diags := types.ListValueFrom(ctx, types.StringType, oauthClient.Contacts)
+		resp.Diagnostics.Append(diags...)
+		state.Contacts = contactsList
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
@@ -568,6 +645,23 @@ func (r *OAuth2ClientResource) Update(ctx context.Context, req resource.UpdateRe
 	if !plan.AccessTokenStrategy.IsNull() && !plan.AccessTokenStrategy.IsUnknown() {
 		oauthClient.AccessTokenStrategy = ory.PtrString(plan.AccessTokenStrategy.ValueString())
 	}
+	if !plan.SkipConsent.IsNull() && !plan.SkipConsent.IsUnknown() {
+		oauthClient.SkipConsent = ory.PtrBool(plan.SkipConsent.ValueBool())
+	}
+	if !plan.SkipLogoutConsent.IsNull() && !plan.SkipLogoutConsent.IsUnknown() {
+		oauthClient.SkipLogoutConsent = ory.PtrBool(plan.SkipLogoutConsent.ValueBool())
+	}
+	if !plan.SubjectType.IsNull() && !plan.SubjectType.IsUnknown() {
+		oauthClient.SubjectType = ory.PtrString(plan.SubjectType.ValueString())
+	}
+	if !plan.Contacts.IsNull() && !plan.Contacts.IsUnknown() {
+		var contacts []string
+		resp.Diagnostics.Append(plan.Contacts.ElementsAs(ctx, &contacts, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		oauthClient.Contacts = contacts
+	}
 
 	updated, err := r.client.UpdateOAuth2Client(ctx, state.ClientID.ValueString(), oauthClient)
 	if err != nil {
@@ -592,6 +686,22 @@ func (r *OAuth2ClientResource) Update(ctx context.Context, req resource.UpdateRe
 		grantTypesList, diags := types.ListValueFrom(ctx, types.StringType, updated.GrantTypes)
 		resp.Diagnostics.Append(diags...)
 		plan.GrantTypes = grantTypesList
+	}
+
+	if updated.SkipConsent != nil {
+		plan.SkipConsent = types.BoolValue(*updated.SkipConsent)
+	} else {
+		plan.SkipConsent = types.BoolValue(false)
+	}
+	if updated.SkipLogoutConsent != nil {
+		plan.SkipLogoutConsent = types.BoolValue(*updated.SkipLogoutConsent)
+	} else {
+		plan.SkipLogoutConsent = types.BoolValue(false)
+	}
+	if updated.SubjectType != nil && *updated.SubjectType != "" {
+		plan.SubjectType = types.StringValue(*updated.SubjectType)
+	} else {
+		plan.SubjectType = types.StringValue("public")
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)

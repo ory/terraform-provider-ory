@@ -113,6 +113,22 @@ The `access_token_strategy` attribute controls the format of issued access token
 | `opaque` | Short, random string tokens (default) |
 | `jwt` | Self-contained JSON Web Tokens |
 
+## Consent Behavior
+
+| Attribute | Description |
+|-----------|-------------|
+| `skip_consent` | When `true`, the user is never asked to grant consent for this client. Useful for first-party clients. |
+| `skip_logout_consent` | When `true`, the user is not asked to confirm logout for this client. |
+
+## Subject Type
+
+The `subject_type` attribute controls how the `sub` claim is generated in ID tokens:
+
+| Type | Description |
+|------|-------------|
+| `public` | Same `sub` value across all clients (default) |
+| `pairwise` | Unique `sub` value per client (privacy-preserving) |
+
 ## OIDC Logout
 
 The provider supports both OIDC front-channel and back-channel logout:
@@ -144,6 +160,7 @@ terraform import ory_oauth2_client.api <client-id>
 - `audience` (List of String) List of allowed audiences for tokens.
 - `backchannel_logout_uri` (String) OpenID Connect back-channel logout URI.
 - `client_uri` (String) URL of the client's homepage.
+- `contacts` (List of String) List of contact email addresses for the client maintainers.
 - `frontchannel_logout_uri` (String) OpenID Connect front-channel logout URI.
 - `grant_types` (List of String) OAuth2 grant types: authorization_code, implicit, client_credentials, refresh_token.
 - `logo_uri` (String) URL of the client's logo.
@@ -153,6 +170,9 @@ terraform import ory_oauth2_client.api <client-id>
 - `redirect_uris` (List of String) List of allowed redirect URIs for authorization code flow.
 - `response_types` (List of String) OAuth2 response types: code, token, id_token.
 - `scope` (String) Space-separated list of OAuth2 scopes. If not specified, the API will set a default scope.
+- `skip_consent` (Boolean) Skip the consent screen for this client. When true, the user is never asked to grant consent.
+- `skip_logout_consent` (Boolean) Skip the logout consent screen for this client. When true, the user is not asked to confirm logout.
+- `subject_type` (String) OpenID Connect subject type: public (same sub for all clients) or pairwise (unique sub per client).
 - `token_endpoint_auth_method` (String) Token endpoint authentication method: client_secret_post, client_secret_basic, private_key_jwt, none.
 - `tos_uri` (String) URL of the client's terms of service.
 
