@@ -217,20 +217,17 @@ func (r *IdentitySchemaResource) findSchemaByURL(schemas []map[string]interface{
 // This handles eventual consistency where PatchProject succeeds but GetProject
 // doesn't immediately reflect the change.
 func (r *IdentitySchemaResource) waitForSchema(ctx context.Context, projectID, schemaID string) error {
-	const maxAttempts = 10
-	const delay = 500 * time.Millisecond
-
-	for i := 0; i < maxAttempts; i++ {
+	err := helpers.WaitForCondition(ctx, func() (bool, error) {
 		schemas, err := r.getSchemas(ctx, projectID)
 		if err != nil {
-			return fmt.Errorf("failed to verify schema: %w", err)
+			return false, fmt.Errorf("failed to verify schema: %w", err)
 		}
-		if r.findSchemaIndex(schemas, schemaID) >= 0 {
-			return nil
-		}
-		time.Sleep(delay)
+		return r.findSchemaIndex(schemas, schemaID) >= 0, nil
+	})
+	if err != nil {
+		return fmt.Errorf("schema %q: %w", schemaID, err)
 	}
-	return fmt.Errorf("schema %q not found after %d attempts", schemaID, maxAttempts)
+	return nil
 }
 
 func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -301,7 +298,7 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 
 	// Find the newly created schema by looking for new IDs
 	var actualID string
-	for attempt := 0; attempt < 5; attempt++ {
+	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
 		updatedSchemas, err := r.getSchemas(ctx, projectID)
 		if err != nil {
 			resp.Diagnostics.AddError("Error Reading Created Schema", err.Error())
@@ -341,7 +338,7 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		}
 
 		// Wait before retry (exponential backoff: 500ms, 1s, 2s, 4s, 8s)
-		if attempt < 4 {
+		if attempt < helpers.ReadRetryMaxAttempts-1 {
 			select {
 			case <-ctx.Done():
 				resp.Diagnostics.AddError("Context Canceled", "Operation was canceled while waiting for schema creation")
@@ -416,7 +413,7 @@ func (r *IdentitySchemaResource) Read(ctx context.Context, req resource.ReadRequ
 	var index int
 	var err error
 
-	for attempt := 0; attempt < 5; attempt++ {
+	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
 		schemas, err = r.getSchemas(ctx, projectID)
 		if err != nil {
 			resp.Diagnostics.AddError("Error Reading Identity Schema", err.Error())
@@ -445,7 +442,7 @@ func (r *IdentitySchemaResource) Read(ctx context.Context, req resource.ReadRequ
 		}
 
 		// Wait before retry (exponential backoff: 1s, 2s, 4s, 8s)
-		if attempt < 4 {
+		if attempt < helpers.ReadRetryMaxAttempts-1 {
 			select {
 			case <-ctx.Done():
 				resp.State.RemoveResource(ctx)

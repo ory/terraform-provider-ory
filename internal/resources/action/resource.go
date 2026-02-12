@@ -353,20 +353,17 @@ func (r *ActionResource) hookPath(flow, timing, authMethod string) string {
 // This handles eventual consistency where PatchProject succeeds but GetProject
 // doesn't immediately reflect the change.
 func (r *ActionResource) waitForHook(ctx context.Context, projectID, flow, timing, authMethod, url, httpMethod string) error {
-	const maxAttempts = 10
-	const delay = 500 * time.Millisecond
-
-	for i := 0; i < maxAttempts; i++ {
+	err := helpers.WaitForCondition(ctx, func() (bool, error) {
 		hooks, err := r.getHooks(ctx, projectID, flow, timing, authMethod)
 		if err != nil {
-			return fmt.Errorf("failed to verify action: %w", err)
+			return false, fmt.Errorf("failed to verify action: %w", err)
 		}
-		if r.findHookIndex(hooks, url, httpMethod) >= 0 {
-			return nil
-		}
-		time.Sleep(delay)
+		return r.findHookIndex(hooks, url, httpMethod) >= 0, nil
+	})
+	if err != nil {
+		return fmt.Errorf("action at %s/%s/%s with URL %s: %w", flow, timing, authMethod, url, err)
 	}
-	return fmt.Errorf("action at %s/%s/%s with URL %s not found after %d attempts", flow, timing, authMethod, url, maxAttempts)
+	return nil
 }
 
 func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -454,7 +451,7 @@ func (r *ActionResource) Read(ctx context.Context, req resource.ReadRequest, res
 	var index int
 	var err error
 
-	for attempt := 0; attempt < 5; attempt++ {
+	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
 		hooks, err = r.getHooks(ctx, projectID, flow, timing, authMethod)
 		if err != nil {
 			resp.Diagnostics.AddError("Error Reading Action", err.Error())
@@ -467,7 +464,7 @@ func (r *ActionResource) Read(ctx context.Context, req resource.ReadRequest, res
 		}
 
 		// Wait before retry (exponential backoff: 1s, 2s, 4s, 8s)
-		if attempt < 4 {
+		if attempt < helpers.ReadRetryMaxAttempts-1 {
 			select {
 			case <-ctx.Done():
 				resp.State.RemoveResource(ctx)

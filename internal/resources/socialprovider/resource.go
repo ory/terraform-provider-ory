@@ -14,6 +14,7 @@ import (
 	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-ory/internal/client"
+	"github.com/ory/terraform-provider-ory/internal/helpers"
 )
 
 var (
@@ -239,20 +240,17 @@ func (r *SocialProviderResource) findProviderIndex(providers []map[string]interf
 // This handles eventual consistency where PatchProject succeeds but GetProject
 // doesn't immediately reflect the change.
 func (r *SocialProviderResource) waitForProvider(ctx context.Context, projectID, providerID string) error {
-	const maxAttempts = 10
-	const delay = 500 * time.Millisecond
-
-	for i := 0; i < maxAttempts; i++ {
+	err := helpers.WaitForCondition(ctx, func() (bool, error) {
 		providers, err := r.getProviders(ctx, projectID)
 		if err != nil {
-			return fmt.Errorf("failed to verify provider: %w", err)
+			return false, fmt.Errorf("failed to verify provider: %w", err)
 		}
-		if r.findProviderIndex(providers, providerID) >= 0 {
-			return nil
-		}
-		time.Sleep(delay)
+		return r.findProviderIndex(providers, providerID) >= 0, nil
+	})
+	if err != nil {
+		return fmt.Errorf("provider %q: %w", providerID, err)
 	}
-	return fmt.Errorf("provider %q not found after %d attempts — possible API eventual consistency issue", providerID, maxAttempts)
+	return nil
 }
 
 func (r *SocialProviderResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -363,7 +361,7 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 	var providers []map[string]interface{}
 	var index int
 
-	for attempt := 0; attempt < 5; attempt++ {
+	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
 		var err error
 		providers, err = r.getProviders(ctx, projectID)
 		if err != nil {
@@ -378,7 +376,7 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		}
 
 		// Wait before retry (exponential backoff: 1s, 2s, 4s, 8s)
-		if attempt < 4 {
+		if attempt < helpers.ReadRetryMaxAttempts-1 {
 			select {
 			case <-ctx.Done():
 				resp.State.RemoveResource(ctx)
