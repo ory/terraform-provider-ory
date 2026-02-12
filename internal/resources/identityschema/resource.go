@@ -296,16 +296,15 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	// Find the newly created schema by looking for new IDs
 	var actualID string
-	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
+	maxCreateAttempts := 30
+	for attempt := 0; attempt < maxCreateAttempts; attempt++ {
 		updatedSchemas, err := r.getSchemas(ctx, projectID)
 		if err != nil {
 			resp.Diagnostics.AddError("Error Reading Created Schema", err.Error())
 			return
 		}
 
-		// Try to find by the user-provided schema ID first (works for preset:// schemas)
 		if idx := r.findSchemaIndex(updatedSchemas, schemaID); idx >= 0 {
 			if id, ok := updatedSchemas[idx]["id"].(string); ok {
 				actualID = id
@@ -313,7 +312,6 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 			break
 		}
 
-		// Try to find by URL match (Ory may keep the base64 URL for some cases)
 		if idx := r.findSchemaByURL(updatedSchemas, schemaURL); idx >= 0 {
 			if id, ok := updatedSchemas[idx]["id"].(string); ok {
 				actualID = id
@@ -321,12 +319,9 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 			break
 		}
 
-		// Find the newly added schema by looking for IDs that didn't exist before
-		// This handles the case where Ory transforms the ID to a hash
 		for _, s := range updatedSchemas {
 			if id, ok := s["id"].(string); ok {
 				if !existingIDs[id] {
-					// This is a new schema that wasn't there before
 					actualID = id
 					break
 				}
@@ -337,19 +332,16 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 			break
 		}
 
-		// Wait before retry (exponential backoff: 500ms, 1s, 2s, 4s, 8s)
-		if attempt < helpers.ReadRetryMaxAttempts-1 {
+		if attempt < maxCreateAttempts-1 {
 			select {
 			case <-ctx.Done():
 				resp.Diagnostics.AddError("Context Canceled", "Operation was canceled while waiting for schema creation")
 				return
-			case <-time.After(time.Duration(500<<attempt) * time.Millisecond):
+			case <-time.After(time.Second):
 			}
 		}
 	}
 
-	// If we still couldn't find by comparison, use the schema_id directly as a fallback
-	// This handles cases where Ory preserves the original ID or it matches by some other mechanism
 	if actualID == "" {
 		actualID = schemaID
 	}
@@ -408,31 +400,27 @@ func (r *IdentitySchemaResource) Read(ctx context.Context, req resource.ReadRequ
 		}
 	}
 
-	// Retry logic for eventual consistency after create/update
 	var schemas []map[string]interface{}
 	var index int
 	var err error
 
-	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
+	maxReadAttempts := 30
+	for attempt := 0; attempt < maxReadAttempts; attempt++ {
 		schemas, err = r.getSchemas(ctx, projectID)
 		if err != nil {
 			resp.Diagnostics.AddError("Error Reading Identity Schema", err.Error())
 			return
 		}
 
-		// The ID stored in state is the actual API-assigned ID (which may be a hash)
-		// Try to find by ID first (using the actual API ID from state)
 		index = -1
 		if storedID != "" {
 			index = r.findSchemaIndex(schemas, storedID)
 		}
 
-		// Fallback: try finding by the user-provided schema_id
 		if index < 0 {
 			index = r.findSchemaIndex(schemas, schemaID)
 		}
 
-		// Last resort: try to match by regenerating the URL from the schema content
 		if index < 0 && schemaURL != "" {
 			index = r.findSchemaByURL(schemas, schemaURL)
 		}
@@ -441,13 +429,12 @@ func (r *IdentitySchemaResource) Read(ctx context.Context, req resource.ReadRequ
 			break
 		}
 
-		// Wait before retry (exponential backoff: 1s, 2s, 4s, 8s)
-		if attempt < helpers.ReadRetryMaxAttempts-1 {
+		if attempt < maxReadAttempts-1 {
 			select {
 			case <-ctx.Done():
 				resp.State.RemoveResource(ctx)
 				return
-			case <-time.After(time.Duration(1<<attempt) * time.Second):
+			case <-time.After(time.Second):
 			}
 		}
 	}
