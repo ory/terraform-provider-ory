@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -60,6 +61,30 @@ type OAuth2ClientResourceModel struct {
 	SkipLogoutConsent       types.Bool   `tfsdk:"skip_logout_consent"`
 	SubjectType             types.String `tfsdk:"subject_type"`
 	Contacts                types.List   `tfsdk:"contacts"`
+
+	// Per-grant token lifespans
+	AuthorizationCodeGrantAccessTokenLifespan    types.String `tfsdk:"authorization_code_grant_access_token_lifespan"`
+	AuthorizationCodeGrantIdTokenLifespan        types.String `tfsdk:"authorization_code_grant_id_token_lifespan"`
+	AuthorizationCodeGrantRefreshTokenLifespan   types.String `tfsdk:"authorization_code_grant_refresh_token_lifespan"`
+	ClientCredentialsGrantAccessTokenLifespan    types.String `tfsdk:"client_credentials_grant_access_token_lifespan"`
+	DeviceAuthorizationGrantAccessTokenLifespan  types.String `tfsdk:"device_authorization_grant_access_token_lifespan"`
+	DeviceAuthorizationGrantIdTokenLifespan      types.String `tfsdk:"device_authorization_grant_id_token_lifespan"`
+	DeviceAuthorizationGrantRefreshTokenLifespan types.String `tfsdk:"device_authorization_grant_refresh_token_lifespan"`
+	ImplicitGrantAccessTokenLifespan             types.String `tfsdk:"implicit_grant_access_token_lifespan"`
+	ImplicitGrantIdTokenLifespan                 types.String `tfsdk:"implicit_grant_id_token_lifespan"`
+	JwtBearerGrantAccessTokenLifespan            types.String `tfsdk:"jwt_bearer_grant_access_token_lifespan"`
+	RefreshTokenGrantAccessTokenLifespan         types.String `tfsdk:"refresh_token_grant_access_token_lifespan"`
+	RefreshTokenGrantIdTokenLifespan             types.String `tfsdk:"refresh_token_grant_id_token_lifespan"`
+	RefreshTokenGrantRefreshTokenLifespan        types.String `tfsdk:"refresh_token_grant_refresh_token_lifespan"`
+
+	// OIDC fields
+	JwksURI                   types.String `tfsdk:"jwks_uri"`
+	UserinfoSignedResponseAlg types.String `tfsdk:"userinfo_signed_response_alg"`
+	RequestObjectSigningAlg   types.String `tfsdk:"request_object_signing_alg"`
+
+	// Logout session
+	FrontchannelLogoutSessionRequired types.Bool `tfsdk:"frontchannel_logout_session_required"`
+	BackchannelLogoutSessionRequired  types.Bool `tfsdk:"backchannel_logout_session_required"`
 }
 
 func (r *OAuth2ClientResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -231,6 +256,86 @@ terraform import ory_oauth2_client.api <client-id>
 				Optional:    true,
 				ElementType: types.StringType,
 			},
+
+			// Per-grant token lifespans
+			"authorization_code_grant_access_token_lifespan": schema.StringAttribute{
+				Description: "Access token lifespan for authorization code grant (e.g., '1h', '30m').",
+				Optional:    true,
+			},
+			"authorization_code_grant_id_token_lifespan": schema.StringAttribute{
+				Description: "ID token lifespan for authorization code grant (e.g., '1h', '30m').",
+				Optional:    true,
+			},
+			"authorization_code_grant_refresh_token_lifespan": schema.StringAttribute{
+				Description: "Refresh token lifespan for authorization code grant (e.g., '720h').",
+				Optional:    true,
+			},
+			"client_credentials_grant_access_token_lifespan": schema.StringAttribute{
+				Description: "Access token lifespan for client credentials grant (e.g., '1h', '30m').",
+				Optional:    true,
+			},
+			"device_authorization_grant_access_token_lifespan": schema.StringAttribute{
+				Description: "Access token lifespan for device authorization grant (e.g., '1h').",
+				Optional:    true,
+			},
+			"device_authorization_grant_id_token_lifespan": schema.StringAttribute{
+				Description: "ID token lifespan for device authorization grant (e.g., '1h').",
+				Optional:    true,
+			},
+			"device_authorization_grant_refresh_token_lifespan": schema.StringAttribute{
+				Description: "Refresh token lifespan for device authorization grant (e.g., '720h').",
+				Optional:    true,
+			},
+			"implicit_grant_access_token_lifespan": schema.StringAttribute{
+				Description: "Access token lifespan for implicit grant (e.g., '1h', '30m').",
+				Optional:    true,
+			},
+			"implicit_grant_id_token_lifespan": schema.StringAttribute{
+				Description: "ID token lifespan for implicit grant (e.g., '1h', '30m').",
+				Optional:    true,
+			},
+			"jwt_bearer_grant_access_token_lifespan": schema.StringAttribute{
+				Description: "Access token lifespan for JWT bearer grant (e.g., '1h', '30m').",
+				Optional:    true,
+			},
+			"refresh_token_grant_access_token_lifespan": schema.StringAttribute{
+				Description: "Access token lifespan for refresh token grant (e.g., '1h', '30m').",
+				Optional:    true,
+			},
+			"refresh_token_grant_id_token_lifespan": schema.StringAttribute{
+				Description: "ID token lifespan for refresh token grant (e.g., '1h', '30m').",
+				Optional:    true,
+			},
+			"refresh_token_grant_refresh_token_lifespan": schema.StringAttribute{
+				Description: "Refresh token lifespan for refresh token grant (e.g., '720h').",
+				Optional:    true,
+			},
+
+			// OIDC fields
+			"jwks_uri": schema.StringAttribute{
+				Description: "URL of the client's JSON Web Key Set for private_key_jwt authentication.",
+				Optional:    true,
+			},
+			"userinfo_signed_response_alg": schema.StringAttribute{
+				Description: "JWS algorithm for signing UserInfo responses (e.g., 'RS256', 'ES256').",
+				Optional:    true,
+			},
+			"request_object_signing_alg": schema.StringAttribute{
+				Description: "JWS algorithm for signing request objects (e.g., 'RS256', 'ES256').",
+				Optional:    true,
+			},
+
+			// Logout session
+			"frontchannel_logout_session_required": schema.BoolAttribute{
+				Description: "Whether the client requires a session identifier in front-channel logout notifications.",
+				Optional:    true,
+				Computed:    true,
+			},
+			"backchannel_logout_session_required": schema.BoolAttribute{
+				Description: "Whether the client requires a session identifier in back-channel logout notifications.",
+				Optional:    true,
+				Computed:    true,
+			},
 		},
 	}
 }
@@ -374,6 +479,36 @@ func (r *OAuth2ClientResource) Create(ctx context.Context, req resource.CreateRe
 		oauthClient.Contacts = contacts
 	}
 
+	setNullableStringFromPlan(&oauthClient.AuthorizationCodeGrantAccessTokenLifespan, plan.AuthorizationCodeGrantAccessTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.AuthorizationCodeGrantIdTokenLifespan, plan.AuthorizationCodeGrantIdTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.AuthorizationCodeGrantRefreshTokenLifespan, plan.AuthorizationCodeGrantRefreshTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.ClientCredentialsGrantAccessTokenLifespan, plan.ClientCredentialsGrantAccessTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.DeviceAuthorizationGrantAccessTokenLifespan, plan.DeviceAuthorizationGrantAccessTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.DeviceAuthorizationGrantIdTokenLifespan, plan.DeviceAuthorizationGrantIdTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.DeviceAuthorizationGrantRefreshTokenLifespan, plan.DeviceAuthorizationGrantRefreshTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.ImplicitGrantAccessTokenLifespan, plan.ImplicitGrantAccessTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.ImplicitGrantIdTokenLifespan, plan.ImplicitGrantIdTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.JwtBearerGrantAccessTokenLifespan, plan.JwtBearerGrantAccessTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.RefreshTokenGrantAccessTokenLifespan, plan.RefreshTokenGrantAccessTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.RefreshTokenGrantIdTokenLifespan, plan.RefreshTokenGrantIdTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.RefreshTokenGrantRefreshTokenLifespan, plan.RefreshTokenGrantRefreshTokenLifespan)
+
+	if !plan.JwksURI.IsNull() && !plan.JwksURI.IsUnknown() {
+		oauthClient.JwksUri = ory.PtrString(plan.JwksURI.ValueString())
+	}
+	if !plan.UserinfoSignedResponseAlg.IsNull() && !plan.UserinfoSignedResponseAlg.IsUnknown() {
+		oauthClient.UserinfoSignedResponseAlg = ory.PtrString(plan.UserinfoSignedResponseAlg.ValueString())
+	}
+	if !plan.RequestObjectSigningAlg.IsNull() && !plan.RequestObjectSigningAlg.IsUnknown() {
+		oauthClient.RequestObjectSigningAlg = ory.PtrString(plan.RequestObjectSigningAlg.ValueString())
+	}
+	if !plan.FrontchannelLogoutSessionRequired.IsNull() && !plan.FrontchannelLogoutSessionRequired.IsUnknown() {
+		oauthClient.FrontchannelLogoutSessionRequired = ory.PtrBool(plan.FrontchannelLogoutSessionRequired.ValueBool())
+	}
+	if !plan.BackchannelLogoutSessionRequired.IsNull() && !plan.BackchannelLogoutSessionRequired.IsUnknown() {
+		oauthClient.BackchannelLogoutSessionRequired = ory.PtrBool(plan.BackchannelLogoutSessionRequired.ValueBool())
+	}
+
 	created, err := r.client.CreateOAuth2Client(ctx, oauthClient)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -419,6 +554,16 @@ func (r *OAuth2ClientResource) Create(ctx context.Context, req resource.CreateRe
 		plan.SubjectType = types.StringValue(*created.SubjectType)
 	} else {
 		plan.SubjectType = types.StringValue("public")
+	}
+	if created.FrontchannelLogoutSessionRequired != nil {
+		plan.FrontchannelLogoutSessionRequired = types.BoolValue(*created.FrontchannelLogoutSessionRequired)
+	} else {
+		plan.FrontchannelLogoutSessionRequired = types.BoolValue(false)
+	}
+	if created.BackchannelLogoutSessionRequired != nil {
+		plan.BackchannelLogoutSessionRequired = types.BoolValue(*created.BackchannelLogoutSessionRequired)
+	} else {
+		plan.BackchannelLogoutSessionRequired = types.BoolValue(false)
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
@@ -533,6 +678,40 @@ func (r *OAuth2ClientResource) Read(ctx context.Context, req resource.ReadReques
 		contactsList, diags := types.ListValueFrom(ctx, types.StringType, oauthClient.Contacts)
 		resp.Diagnostics.Append(diags...)
 		state.Contacts = contactsList
+	}
+
+	readNullableStringToState(oauthClient.AuthorizationCodeGrantAccessTokenLifespan, &state.AuthorizationCodeGrantAccessTokenLifespan)
+	readNullableStringToState(oauthClient.AuthorizationCodeGrantIdTokenLifespan, &state.AuthorizationCodeGrantIdTokenLifespan)
+	readNullableStringToState(oauthClient.AuthorizationCodeGrantRefreshTokenLifespan, &state.AuthorizationCodeGrantRefreshTokenLifespan)
+	readNullableStringToState(oauthClient.ClientCredentialsGrantAccessTokenLifespan, &state.ClientCredentialsGrantAccessTokenLifespan)
+	readNullableStringToState(oauthClient.DeviceAuthorizationGrantAccessTokenLifespan, &state.DeviceAuthorizationGrantAccessTokenLifespan)
+	readNullableStringToState(oauthClient.DeviceAuthorizationGrantIdTokenLifespan, &state.DeviceAuthorizationGrantIdTokenLifespan)
+	readNullableStringToState(oauthClient.DeviceAuthorizationGrantRefreshTokenLifespan, &state.DeviceAuthorizationGrantRefreshTokenLifespan)
+	readNullableStringToState(oauthClient.ImplicitGrantAccessTokenLifespan, &state.ImplicitGrantAccessTokenLifespan)
+	readNullableStringToState(oauthClient.ImplicitGrantIdTokenLifespan, &state.ImplicitGrantIdTokenLifespan)
+	readNullableStringToState(oauthClient.JwtBearerGrantAccessTokenLifespan, &state.JwtBearerGrantAccessTokenLifespan)
+	readNullableStringToState(oauthClient.RefreshTokenGrantAccessTokenLifespan, &state.RefreshTokenGrantAccessTokenLifespan)
+	readNullableStringToState(oauthClient.RefreshTokenGrantIdTokenLifespan, &state.RefreshTokenGrantIdTokenLifespan)
+	readNullableStringToState(oauthClient.RefreshTokenGrantRefreshTokenLifespan, &state.RefreshTokenGrantRefreshTokenLifespan)
+
+	if oauthClient.JwksUri != nil && *oauthClient.JwksUri != "" {
+		state.JwksURI = types.StringValue(*oauthClient.JwksUri)
+	}
+	if oauthClient.UserinfoSignedResponseAlg != nil && *oauthClient.UserinfoSignedResponseAlg != "" && *oauthClient.UserinfoSignedResponseAlg != "none" {
+		state.UserinfoSignedResponseAlg = types.StringValue(*oauthClient.UserinfoSignedResponseAlg)
+	}
+	if oauthClient.RequestObjectSigningAlg != nil && *oauthClient.RequestObjectSigningAlg != "" && *oauthClient.RequestObjectSigningAlg != "none" {
+		state.RequestObjectSigningAlg = types.StringValue(*oauthClient.RequestObjectSigningAlg)
+	}
+	if oauthClient.FrontchannelLogoutSessionRequired != nil {
+		state.FrontchannelLogoutSessionRequired = types.BoolValue(*oauthClient.FrontchannelLogoutSessionRequired)
+	} else {
+		state.FrontchannelLogoutSessionRequired = types.BoolValue(false)
+	}
+	if oauthClient.BackchannelLogoutSessionRequired != nil {
+		state.BackchannelLogoutSessionRequired = types.BoolValue(*oauthClient.BackchannelLogoutSessionRequired)
+	} else {
+		state.BackchannelLogoutSessionRequired = types.BoolValue(false)
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
@@ -663,6 +842,36 @@ func (r *OAuth2ClientResource) Update(ctx context.Context, req resource.UpdateRe
 		oauthClient.Contacts = contacts
 	}
 
+	setNullableStringFromPlan(&oauthClient.AuthorizationCodeGrantAccessTokenLifespan, plan.AuthorizationCodeGrantAccessTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.AuthorizationCodeGrantIdTokenLifespan, plan.AuthorizationCodeGrantIdTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.AuthorizationCodeGrantRefreshTokenLifespan, plan.AuthorizationCodeGrantRefreshTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.ClientCredentialsGrantAccessTokenLifespan, plan.ClientCredentialsGrantAccessTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.DeviceAuthorizationGrantAccessTokenLifespan, plan.DeviceAuthorizationGrantAccessTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.DeviceAuthorizationGrantIdTokenLifespan, plan.DeviceAuthorizationGrantIdTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.DeviceAuthorizationGrantRefreshTokenLifespan, plan.DeviceAuthorizationGrantRefreshTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.ImplicitGrantAccessTokenLifespan, plan.ImplicitGrantAccessTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.ImplicitGrantIdTokenLifespan, plan.ImplicitGrantIdTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.JwtBearerGrantAccessTokenLifespan, plan.JwtBearerGrantAccessTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.RefreshTokenGrantAccessTokenLifespan, plan.RefreshTokenGrantAccessTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.RefreshTokenGrantIdTokenLifespan, plan.RefreshTokenGrantIdTokenLifespan)
+	setNullableStringFromPlan(&oauthClient.RefreshTokenGrantRefreshTokenLifespan, plan.RefreshTokenGrantRefreshTokenLifespan)
+
+	if !plan.JwksURI.IsNull() && !plan.JwksURI.IsUnknown() {
+		oauthClient.JwksUri = ory.PtrString(plan.JwksURI.ValueString())
+	}
+	if !plan.UserinfoSignedResponseAlg.IsNull() && !plan.UserinfoSignedResponseAlg.IsUnknown() {
+		oauthClient.UserinfoSignedResponseAlg = ory.PtrString(plan.UserinfoSignedResponseAlg.ValueString())
+	}
+	if !plan.RequestObjectSigningAlg.IsNull() && !plan.RequestObjectSigningAlg.IsUnknown() {
+		oauthClient.RequestObjectSigningAlg = ory.PtrString(plan.RequestObjectSigningAlg.ValueString())
+	}
+	if !plan.FrontchannelLogoutSessionRequired.IsNull() && !plan.FrontchannelLogoutSessionRequired.IsUnknown() {
+		oauthClient.FrontchannelLogoutSessionRequired = ory.PtrBool(plan.FrontchannelLogoutSessionRequired.ValueBool())
+	}
+	if !plan.BackchannelLogoutSessionRequired.IsNull() && !plan.BackchannelLogoutSessionRequired.IsUnknown() {
+		oauthClient.BackchannelLogoutSessionRequired = ory.PtrBool(plan.BackchannelLogoutSessionRequired.ValueBool())
+	}
+
 	updated, err := r.client.UpdateOAuth2Client(ctx, state.ClientID.ValueString(), oauthClient)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -703,6 +912,16 @@ func (r *OAuth2ClientResource) Update(ctx context.Context, req resource.UpdateRe
 	} else {
 		plan.SubjectType = types.StringValue("public")
 	}
+	if updated.FrontchannelLogoutSessionRequired != nil {
+		plan.FrontchannelLogoutSessionRequired = types.BoolValue(*updated.FrontchannelLogoutSessionRequired)
+	} else {
+		plan.FrontchannelLogoutSessionRequired = types.BoolValue(false)
+	}
+	if updated.BackchannelLogoutSessionRequired != nil {
+		plan.BackchannelLogoutSessionRequired = types.BoolValue(*updated.BackchannelLogoutSessionRequired)
+	} else {
+		plan.BackchannelLogoutSessionRequired = types.BoolValue(false)
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
@@ -728,4 +947,49 @@ func (r *OAuth2ClientResource) Delete(ctx context.Context, req resource.DeleteRe
 func (r *OAuth2ClientResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("client_id"), req.ID)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
+}
+
+func setNullableStringFromPlan(field *ory.NullableString, tfValue types.String) {
+	if !tfValue.IsNull() && !tfValue.IsUnknown() {
+		v := tfValue.ValueString()
+		field.Set(&v)
+	}
+}
+
+func readNullableStringToState(field ory.NullableString, tfValue *types.String) {
+	if field.IsSet() {
+		if v := field.Get(); v != nil && *v != "" {
+			*tfValue = types.StringValue(normalizeDuration(*v))
+		}
+	}
+}
+
+func normalizeDuration(s string) string {
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return s
+	}
+	if d == 0 {
+		return "0s"
+	}
+	hours := int(d.Hours())
+	remaining := d - time.Duration(hours)*time.Hour
+	minutes := int(remaining.Minutes())
+	remaining -= time.Duration(minutes) * time.Minute
+	seconds := int(remaining.Seconds())
+
+	var result string
+	if hours > 0 {
+		result += fmt.Sprintf("%dh", hours)
+	}
+	if minutes > 0 {
+		result += fmt.Sprintf("%dm", minutes)
+	}
+	if seconds > 0 {
+		result += fmt.Sprintf("%ds", seconds)
+	}
+	if result == "" {
+		return d.String()
+	}
+	return result
 }

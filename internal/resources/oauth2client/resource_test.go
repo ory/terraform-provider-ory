@@ -218,6 +218,56 @@ func TestAccOAuth2ClientResource_withConsentAndSubjectType(t *testing.T) {
 	})
 }
 
+func TestAccOAuth2ClientResource_withTokenLifespans(t *testing.T) {
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccOAuth2ClientResourceConfigWithLifespans("Test Client Lifespans"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_oauth2_client.test", "id"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "client_name", "Test Client Lifespans"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "authorization_code_grant_access_token_lifespan", "1h"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "authorization_code_grant_refresh_token_lifespan", "720h"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "client_credentials_grant_access_token_lifespan", "30m"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "backchannel_logout_session_required", "true"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "frontchannel_logout_session_required", "true"),
+				),
+			},
+			// ImportState
+			{
+				ResourceName:            "ory_oauth2_client.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+		},
+	})
+}
+
+func testAccOAuth2ClientResourceConfigWithLifespans(name string) string {
+	return fmt.Sprintf(`
+provider "ory" {}
+
+resource "ory_oauth2_client" "test" {
+  client_name = %[1]q
+
+  grant_types    = ["authorization_code", "client_credentials", "refresh_token"]
+  response_types = ["code"]
+  scope          = "openid profile email"
+  redirect_uris  = ["%[2]s/callback"]
+
+  authorization_code_grant_access_token_lifespan  = "1h"
+  authorization_code_grant_refresh_token_lifespan = "720h"
+  client_credentials_grant_access_token_lifespan  = "30m"
+
+  backchannel_logout_session_required  = true
+  frontchannel_logout_session_required = true
+}
+`, name, testutil.ExampleAppURL)
+}
+
 func testAccOAuth2ClientResourceConfigWithConsent(name string) string {
 	return fmt.Sprintf(`
 provider "ory" {}
