@@ -36,6 +36,20 @@ resource "ory_oauth2_client" "web_app" {
   ]
 }
 
+# Client with custom token lifespans
+resource "ory_oauth2_client" "api_gateway" {
+  client_name = "API Gateway"
+  grant_types = ["client_credentials"]
+  scope       = "api:read api:write"
+
+  # Short-lived access tokens for M2M
+  client_credentials_grant_access_token_lifespan = "15m"
+
+  # Logout session tracking
+  backchannel_logout_uri              = "https://gateway.example.com/logout"
+  backchannel_logout_session_required = true
+}
+
 # Single Page Application (Public client with PKCE)
 resource "ory_oauth2_client" "spa" {
   client_name    = "Single Page App"

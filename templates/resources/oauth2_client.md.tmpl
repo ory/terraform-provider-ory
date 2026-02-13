@@ -69,12 +69,37 @@ The `subject_type` attribute controls how the `sub` claim is generated in ID tok
 | `public` | Same `sub` value across all clients (default) |
 | `pairwise` | Unique `sub` value per client (privacy-preserving) |
 
+## Per-Grant Token Lifespans
+
+Override default token lifespans on a per-client, per-grant basis using Go duration strings (e.g., `1h`, `30m`, `720h`):
+
+| Grant Type | Access Token | ID Token | Refresh Token |
+|------------|-------------|----------|---------------|
+| Authorization Code | `authorization_code_grant_access_token_lifespan` | `authorization_code_grant_id_token_lifespan` | `authorization_code_grant_refresh_token_lifespan` |
+| Client Credentials | `client_credentials_grant_access_token_lifespan` | — | — |
+| Device Authorization | `device_authorization_grant_access_token_lifespan` | `device_authorization_grant_id_token_lifespan` | `device_authorization_grant_refresh_token_lifespan` |
+| Implicit | `implicit_grant_access_token_lifespan` | `implicit_grant_id_token_lifespan` | — |
+| JWT Bearer | `jwt_bearer_grant_access_token_lifespan` | — | — |
+| Refresh Token | `refresh_token_grant_access_token_lifespan` | `refresh_token_grant_id_token_lifespan` | `refresh_token_grant_refresh_token_lifespan` |
+
+If not set, the project-level defaults apply.
+
+## OIDC Configuration
+
+| Attribute | Description |
+|-----------|-------------|
+| `jwks_uri` | URL of the client's JSON Web Key Set, used with `private_key_jwt` authentication |
+| `userinfo_signed_response_alg` | JWS algorithm for signing UserInfo responses (e.g., `RS256`) |
+| `request_object_signing_alg` | JWS algorithm for signing request objects (e.g., `RS256`) |
+
 ## OIDC Logout
 
 The provider supports both OIDC front-channel and back-channel logout:
 
 - `frontchannel_logout_uri` — The client's URL that the OP will redirect the user-agent to after logout. The OP sends the logout request via the user's browser.
 - `backchannel_logout_uri` — The client's URL that the OP will call directly (server-to-server) to notify the client about a logout event.
+- `frontchannel_logout_session_required` — Whether the client requires a session identifier (`sid`) in front-channel logout notifications.
+- `backchannel_logout_session_required` — Whether the client requires a session identifier (`sid`) in back-channel logout notifications.
 
 ## Import
 
