@@ -82,6 +82,20 @@ resource "ory_oauth2_client" "web_app" {
   })
 }
 
+# Client with custom token lifespans
+resource "ory_oauth2_client" "api_gateway" {
+  client_name = "API Gateway"
+  grant_types = ["client_credentials"]
+  scope       = "api:read api:write"
+
+  # Short-lived access tokens for M2M
+  client_credentials_grant_access_token_lifespan = "15m"
+
+  # Logout session tracking
+  backchannel_logout_uri              = "https://gateway.example.com/logout"
+  backchannel_logout_session_required = true
+}
+
 # Single Page Application (Public client with PKCE)
 resource "ory_oauth2_client" "spa" {
   client_name    = "Single Page App"
@@ -166,12 +180,37 @@ The `subject_type` attribute controls how the `sub` claim is generated in ID tok
 | `public` | Same `sub` value across all clients (default) |
 | `pairwise` | Unique `sub` value per client (privacy-preserving) |
 
+## Per-Grant Token Lifespans
+
+Override default token lifespans on a per-client, per-grant basis using Go duration strings (e.g., `1h`, `30m`, `720h`):
+
+| Grant Type | Access Token | ID Token | Refresh Token |
+|------------|-------------|----------|---------------|
+| Authorization Code | `authorization_code_grant_access_token_lifespan` | `authorization_code_grant_id_token_lifespan` | `authorization_code_grant_refresh_token_lifespan` |
+| Client Credentials | `client_credentials_grant_access_token_lifespan` | — | — |
+| Device Authorization | `device_authorization_grant_access_token_lifespan` | `device_authorization_grant_id_token_lifespan` | `device_authorization_grant_refresh_token_lifespan` |
+| Implicit | `implicit_grant_access_token_lifespan` | `implicit_grant_id_token_lifespan` | — |
+| JWT Bearer | `jwt_bearer_grant_access_token_lifespan` | — | — |
+| Refresh Token | `refresh_token_grant_access_token_lifespan` | `refresh_token_grant_id_token_lifespan` | `refresh_token_grant_refresh_token_lifespan` |
+
+If not set, the project-level defaults apply.
+
+## OIDC Configuration
+
+| Attribute | Description |
+|-----------|-------------|
+| `jwks_uri` | URL of the client's JSON Web Key Set, used with `private_key_jwt` authentication |
+| `userinfo_signed_response_alg` | JWS algorithm for signing UserInfo responses (e.g., `RS256`) |
+| `request_object_signing_alg` | JWS algorithm for signing request objects (e.g., `RS256`) |
+
 ## OIDC Logout
 
 The provider supports both OIDC front-channel and back-channel logout:
 
 - `frontchannel_logout_uri` — The client's URL that the OP will redirect the user-agent to after logout. The OP sends the logout request via the user's browser.
 - `backchannel_logout_uri` — The client's URL that the OP will call directly (server-to-server) to notify the client about a logout event.
+- `frontchannel_logout_session_required` — Whether the client requires a session identifier (`sid`) in front-channel logout notifications.
+- `backchannel_logout_session_required` — Whether the client requires a session identifier (`sid`) in back-channel logout notifications.
 
 ## Import
 
@@ -195,16 +234,33 @@ terraform import ory_oauth2_client.api <client-id>
 - `access_token_strategy` (String) Access token strategy: jwt or opaque.
 - `allowed_cors_origins` (List of String) List of allowed CORS origins for this client.
 - `audience` (List of String) List of allowed audiences for tokens.
+- `authorization_code_grant_access_token_lifespan` (String) Access token lifespan for authorization code grant (e.g., '1h', '30m').
+- `authorization_code_grant_id_token_lifespan` (String) ID token lifespan for authorization code grant (e.g., '1h', '30m').
+- `authorization_code_grant_refresh_token_lifespan` (String) Refresh token lifespan for authorization code grant (e.g., '720h').
+- `backchannel_logout_session_required` (Boolean) Whether the client requires a session identifier in back-channel logout notifications.
 - `backchannel_logout_uri` (String) OpenID Connect back-channel logout URI.
+- `client_credentials_grant_access_token_lifespan` (String) Access token lifespan for client credentials grant (e.g., '1h', '30m').
 - `client_uri` (String) URL of the client's homepage.
 - `contacts` (List of String) List of contact email addresses for the client maintainers.
+- `device_authorization_grant_access_token_lifespan` (String) Access token lifespan for device authorization grant (e.g., '1h').
+- `device_authorization_grant_id_token_lifespan` (String) ID token lifespan for device authorization grant (e.g., '1h').
+- `device_authorization_grant_refresh_token_lifespan` (String) Refresh token lifespan for device authorization grant (e.g., '720h').
+- `frontchannel_logout_session_required` (Boolean) Whether the client requires a session identifier in front-channel logout notifications.
 - `frontchannel_logout_uri` (String) OpenID Connect front-channel logout URI.
 - `grant_types` (List of String) OAuth2 grant types: authorization_code, implicit, client_credentials, refresh_token.
+- `implicit_grant_access_token_lifespan` (String) Access token lifespan for implicit grant (e.g., '1h', '30m').
+- `implicit_grant_id_token_lifespan` (String) ID token lifespan for implicit grant (e.g., '1h', '30m').
+- `jwks_uri` (String) URL of the client's JSON Web Key Set for private_key_jwt authentication.
+- `jwt_bearer_grant_access_token_lifespan` (String) Access token lifespan for JWT bearer grant (e.g., '1h', '30m').
 - `logo_uri` (String) URL of the client's logo.
 - `metadata` (String) Custom metadata as JSON string.
 - `policy_uri` (String) URL of the client's privacy policy.
 - `post_logout_redirect_uris` (List of String) List of allowed post-logout redirect URIs for OpenID Connect logout.
 - `redirect_uris` (List of String) List of allowed redirect URIs for authorization code flow.
+- `refresh_token_grant_access_token_lifespan` (String) Access token lifespan for refresh token grant (e.g., '1h', '30m').
+- `refresh_token_grant_id_token_lifespan` (String) ID token lifespan for refresh token grant (e.g., '1h', '30m').
+- `refresh_token_grant_refresh_token_lifespan` (String) Refresh token lifespan for refresh token grant (e.g., '720h').
+- `request_object_signing_alg` (String) JWS algorithm for signing request objects (e.g., 'RS256', 'ES256').
 - `response_types` (List of String) OAuth2 response types: code, token, id_token.
 - `scope` (String) Space-separated list of OAuth2 scopes. If not specified, the API will set a default scope.
 - `skip_consent` (Boolean) Skip the consent screen for this client. When true, the user is never asked to grant consent.
@@ -212,6 +268,7 @@ terraform import ory_oauth2_client.api <client-id>
 - `subject_type` (String) OpenID Connect subject type: public (same sub for all clients) or pairwise (unique sub per client).
 - `token_endpoint_auth_method` (String) Token endpoint authentication method: client_secret_post, client_secret_basic, private_key_jwt, none.
 - `tos_uri` (String) URL of the client's terms of service.
+- `userinfo_signed_response_alg` (String) JWS algorithm for signing UserInfo responses (e.g., 'RS256', 'ES256').
 
 ### Read-Only
 

@@ -23,6 +23,24 @@ JSON Web Keys are used for signing and encrypting tokens. This resource generate
 | `HS256` | HMAC | Symmetric — uses shared secret, not suitable for public verification |
 | `HS512` | HMAC | Symmetric — stronger HMAC variant |
 
+## Choosing the Right Algorithm
+
+| Scenario | Recommended | Why |
+|----------|-------------|-----|
+| **General signing** (default) | `RS256` | Widest compatibility across OAuth2/OIDC libraries |
+| **High-performance signing** | `ES256` | Smaller keys, faster operations — ideal for high-throughput APIs |
+| **Maximum security** | `ES512` | Strongest elliptic curve option |
+| **Internal services only** | `HS256`/`HS512` | Symmetric — both parties must share the secret. Not suitable for public token verification |
+
+### `sig` vs `enc` Use
+
+| Use | Description |
+|-----|-------------|
+| `sig` | **Signing** — for JWT signing, ID token signing, and token verification. This is the most common use case. |
+| `enc` | **Encryption** — for encrypting tokens or data at rest. Rarely needed unless you have specific encryption requirements. |
+
+Most configurations only need `use = "sig"`.
+
 ## Example Usage
 
 ```terraform
