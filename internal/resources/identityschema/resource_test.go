@@ -25,7 +25,7 @@ func TestAccIdentitySchemaResource_basic(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccIdentitySchemaResourceConfig(schemaID),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf", map[string]string{"SchemaID": schemaID, "AppURL": testutil.ExampleAppURL}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_identity_schema.test", "id"),
 					resource.TestCheckResourceAttr("ory_identity_schema.test", "schema_id", schemaID),
@@ -48,7 +48,7 @@ func TestAccIdentitySchemaResource_setDefault(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create without set_default
 			{
-				Config: testAccIdentitySchemaResourceConfig(schemaID),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf", map[string]string{"SchemaID": schemaID, "AppURL": testutil.ExampleAppURL}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_identity_schema.test", "id"),
 					resource.TestCheckResourceAttr("ory_identity_schema.test", "schema_id", schemaID),
@@ -57,7 +57,7 @@ func TestAccIdentitySchemaResource_setDefault(t *testing.T) {
 			},
 			// Update to set as default
 			{
-				Config: testAccIdentitySchemaResourceConfigSetDefault(schemaID),
+				Config: acctest.LoadTestConfig(t, "testdata/set_default.tf", map[string]string{"SchemaID": schemaID, "AppURL": testutil.ExampleAppURL}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_identity_schema.test", "id"),
 					resource.TestCheckResourceAttr("ory_identity_schema.test", "schema_id", schemaID),
@@ -66,77 +66,4 @@ func TestAccIdentitySchemaResource_setDefault(t *testing.T) {
 			},
 		},
 	})
-}
-
-func testAccIdentitySchemaResourceConfig(schemaID string) string {
-	return fmt.Sprintf(`
-provider "ory" {}
-
-resource "ory_identity_schema" "test" {
-  schema_id = %[1]q
-  schema    = jsonencode({
-    "$id": "%[2]s/%[1]s.json",
-    "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "Test Schema %[1]s",
-    "type": "object",
-    "properties": {
-      "traits": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string",
-            "format": "email",
-            "title": "Email",
-            "ory.sh/kratos": {
-              "credentials": {
-                "password": {"identifier": true}
-              },
-              "verification": {"via": "email"},
-              "recovery": {"via": "email"}
-            }
-          }
-        },
-        "required": ["email"]
-      }
-    }
-  })
-}
-`, schemaID, testutil.ExampleAppURL)
-}
-
-func testAccIdentitySchemaResourceConfigSetDefault(schemaID string) string {
-	return fmt.Sprintf(`
-provider "ory" {}
-
-resource "ory_identity_schema" "test" {
-  schema_id   = %[1]q
-  set_default = true
-  schema      = jsonencode({
-    "$id": "%[2]s/%[1]s.json",
-    "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "Test Schema %[1]s",
-    "type": "object",
-    "properties": {
-      "traits": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string",
-            "format": "email",
-            "title": "Email",
-            "ory.sh/kratos": {
-              "credentials": {
-                "password": {"identifier": true}
-              },
-              "verification": {"via": "email"},
-              "recovery": {"via": "email"}
-            }
-          }
-        },
-        "required": ["email"]
-      }
-    }
-  })
-}
-`, schemaID, testutil.ExampleAppURL)
 }

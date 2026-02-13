@@ -17,7 +17,7 @@ func TestAccEmailTemplateResource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create
 			{
-				Config: testAccEmailTemplateResourceConfig("Your recovery code", "<p>Your code is: {{ .RecoveryCode }}</p>"),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf", map[string]string{"Subject": "Your recovery code", "BodyHTML": "<p>Your code is: {{ .RecoveryCode }}</p>"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_email_template.test", "id"),
 					resource.TestCheckResourceAttr("ory_email_template.test", "template_type", "recovery_code_valid"),
@@ -34,7 +34,7 @@ func TestAccEmailTemplateResource_basic(t *testing.T) {
 			},
 			// Update subject and body
 			{
-				Config: testAccEmailTemplateResourceConfig("Recovery code for your account", "<h1>Recovery</h1><p>Code: {{ .RecoveryCode }}</p>"),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf", map[string]string{"Subject": "Recovery code for your account", "BodyHTML": "<h1>Recovery</h1><p>Code: {{ .RecoveryCode }}</p>"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_email_template.test", "id"),
 					resource.TestCheckResourceAttr("ory_email_template.test", "template_type", "recovery_code_valid"),
@@ -52,7 +52,7 @@ func TestAccEmailTemplateResource_noSubject(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create without subject (should use API default)
 			{
-				Config: testAccEmailTemplateResourceConfigNoSubject(),
+				Config: acctest.LoadTestConfig(t, "testdata/no_subject.tf", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_email_template.test", "id"),
 					resource.TestCheckResourceAttr("ory_email_template.test", "template_type", "verification_code_valid"),
@@ -60,29 +60,4 @@ func TestAccEmailTemplateResource_noSubject(t *testing.T) {
 			},
 		},
 	})
-}
-
-func testAccEmailTemplateResourceConfig(subject, bodyHTML string) string {
-	return `
-provider "ory" {}
-
-resource "ory_email_template" "test" {
-  template_type  = "recovery_code_valid"
-  subject        = "` + subject + `"
-  body_html      = "` + bodyHTML + `"
-  body_plaintext = "Your code is: {{ .RecoveryCode }}"
-}
-`
-}
-
-func testAccEmailTemplateResourceConfigNoSubject() string {
-	return `
-provider "ory" {}
-
-resource "ory_email_template" "test" {
-  template_type  = "verification_code_valid"
-  body_html      = "<p>Your verification code is: {{ .VerificationCode }}</p>"
-  body_plaintext = "Your verification code is: {{ .VerificationCode }}"
-}
-`
 }

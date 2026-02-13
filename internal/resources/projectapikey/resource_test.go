@@ -18,7 +18,7 @@ func TestAccProjectAPIKeyResource_basic(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccProjectAPIKeyResourceConfig(),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_api_key.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_api_key.test", "name", "tf-test-key"),
@@ -47,14 +47,4 @@ func importStateProjectAPIKeyID(s *terraform.State) (string, error) {
 	projectID := rs.Primary.Attributes["project_id"]
 	keyID := rs.Primary.ID
 	return fmt.Sprintf("%s/%s", projectID, keyID), nil
-}
-
-func testAccProjectAPIKeyResourceConfig() string {
-	return `
-provider "ory" {}
-
-resource "ory_project_api_key" "test" {
-  name = "tf-test-key"
-}
-`
 }

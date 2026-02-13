@@ -3,7 +3,6 @@
 package identity_test
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -18,7 +17,7 @@ func TestAccIdentityResource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
-				Config: testAccIdentityResourceConfig("test-basic-user"),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf", map[string]string{"Username": "test-basic-user"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_identity.test", "id"),
 					resource.TestCheckResourceAttr("ory_identity.test", "schema_id", "preset://username"),
@@ -35,7 +34,7 @@ func TestAccIdentityResource_basic(t *testing.T) {
 			},
 			// Update
 			{
-				Config: testAccIdentityResourceConfig("test-updated-user"),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf", map[string]string{"Username": "test-updated-user"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_identity.test", "id"),
 					resource.TestCheckResourceAttr("ory_identity.test", "state", "active"),
@@ -51,7 +50,7 @@ func TestAccIdentityResource_withMetadata(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccIdentityResourceConfigWithMetadata("test-metadata-user"),
+				Config: acctest.LoadTestConfig(t, "testdata/with_metadata.tf", map[string]string{"Username": "test-metadata-user"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_identity.test", "id"),
 					resource.TestCheckResourceAttr("ory_identity.test", "state", "active"),
@@ -68,7 +67,7 @@ func TestAccIdentityResource_inactive(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccIdentityResourceConfigInactive("test-inactive-user"),
+				Config: acctest.LoadTestConfig(t, "testdata/inactive.tf", map[string]string{"Username": "test-inactive-user"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_identity.test", "id"),
 					resource.TestCheckResourceAttr("ory_identity.test", "state", "inactive"),
@@ -76,57 +75,4 @@ func TestAccIdentityResource_inactive(t *testing.T) {
 			},
 		},
 	})
-}
-
-func testAccIdentityResourceConfig(username string) string {
-	return fmt.Sprintf(`
-provider "ory" {}
-
-resource "ory_identity" "test" {
-  schema_id = "preset://username"
-
-  traits = jsonencode({
-    username = %[1]q
-  })
-
-  state = "active"
-}
-`, username)
-}
-
-func testAccIdentityResourceConfigWithMetadata(username string) string {
-	return fmt.Sprintf(`
-provider "ory" {}
-
-resource "ory_identity" "test" {
-  schema_id = "preset://username"
-
-  traits = jsonencode({
-    username = %[1]q
-  })
-
-  state = "active"
-
-  metadata_public = jsonencode({
-    role        = "admin"
-    created_by  = "terraform"
-  })
-}
-`, username)
-}
-
-func testAccIdentityResourceConfigInactive(username string) string {
-	return fmt.Sprintf(`
-provider "ory" {}
-
-resource "ory_identity" "test" {
-  schema_id = "preset://username"
-
-  traits = jsonencode({
-    username = %[1]q
-  })
-
-  state = "inactive"
-}
-`, username)
 }

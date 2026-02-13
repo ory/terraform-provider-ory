@@ -3,7 +3,6 @@
 package projectconfig_test
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -19,7 +18,7 @@ func TestAccProjectConfigResource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
-				Config: testAccProjectConfigResourceConfig(),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf", map[string]string{"AppURL": testutil.ExampleAppURL}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "cors_enabled", "true"),
@@ -42,25 +41,13 @@ func TestAccProjectConfigResource_basic(t *testing.T) {
 	})
 }
 
-func testAccProjectConfigResourceConfig() string {
-	return fmt.Sprintf(`
-provider "ory" {}
-
-resource "ory_project_config" "test" {
-  cors_enabled        = true
-  cors_origins        = ["%s"]
-  password_min_length = 10
-}
-`, testutil.ExampleAppURL)
-}
-
 func TestAccProjectConfigResource_mfaPolicy(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccProjectConfigResourceMFAConfig(),
+				Config: acctest.LoadTestConfig(t, "testdata/mfa.tf", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "enable_totp", "true"),
@@ -71,24 +58,13 @@ func TestAccProjectConfigResource_mfaPolicy(t *testing.T) {
 	})
 }
 
-func testAccProjectConfigResourceMFAConfig() string {
-	return `
-provider "ory" {}
-
-resource "ory_project_config" "test" {
-  enable_totp  = true
-  totp_issuer  = "TerraformTest"
-}
-`
-}
-
 func TestAccProjectConfigResource_accountExperience(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccProjectConfigResourceAccountExperienceConfig(),
+				Config: acctest.LoadTestConfig(t, "testdata/account_experience.tf", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_name", "TF Test App"),
@@ -99,24 +75,13 @@ func TestAccProjectConfigResource_accountExperience(t *testing.T) {
 	})
 }
 
-func testAccProjectConfigResourceAccountExperienceConfig() string {
-	return `
-provider "ory" {}
-
-resource "ory_project_config" "test" {
-  account_experience_name           = "TF Test App"
-  account_experience_default_locale = "en"
-}
-`
-}
-
 func TestAccProjectConfigResource_adminCORS(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccProjectConfigResourceAdminCORSConfig(),
+				Config: acctest.LoadTestConfig(t, "testdata/admin_cors.tf", map[string]string{"AppURL": testutil.ExampleAppURL}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "cors_admin_enabled", "true"),
@@ -125,15 +90,4 @@ func TestAccProjectConfigResource_adminCORS(t *testing.T) {
 			},
 		},
 	})
-}
-
-func testAccProjectConfigResourceAdminCORSConfig() string {
-	return fmt.Sprintf(`
-provider "ory" {}
-
-resource "ory_project_config" "test" {
-  cors_admin_enabled = true
-  cors_admin_origins = ["%s"]
-}
-`, testutil.ExampleAppURL)
 }
