@@ -28,6 +28,7 @@ const (
 	defaultHTTPMethod = "POST"
 	defaultAuthMethod = "password"
 	timingBefore      = "before"
+	timingAfter       = "after"
 )
 
 var (
@@ -41,8 +42,7 @@ func NewResource() resource.Resource {
 }
 
 type ActionResource struct {
-	client        *client.OryClient
-	cachedProject *ory.Project
+	client *client.OryClient
 }
 
 type ActionResourceModel struct {
@@ -306,7 +306,7 @@ func (r *ActionResource) getHooks(ctx context.Context, projectID, flow, timing, 
 	// For 'after' timing, hooks are nested under the auth method
 	// For 'before' timing, hooks are directly under timing
 	var hooks []interface{}
-	if timing == "after" {
+	if timing == timingAfter {
 		authMethodConfig, ok := timingConfig[authMethod].(map[string]interface{})
 		if !ok {
 			return []map[string]interface{}{}, nil
@@ -344,7 +344,7 @@ func (r *ActionResource) findHookIndex(hooks []map[string]interface{}, url, meth
 }
 
 func (r *ActionResource) hookPath(flow, timing, authMethod string) string {
-	if timing == "after" {
+	if timing == timingAfter {
 		return fmt.Sprintf("/services/identity/config/selfservice/flows/%s/%s/%s/hooks", flow, timing, authMethod)
 	}
 	return fmt.Sprintf("/services/identity/config/selfservice/flows/%s/%s/hooks", flow, timing)
@@ -381,7 +381,7 @@ func (r *ActionResource) getHooksFromProject(project *ory.Project, flow, timing,
 	}
 
 	var hooks []interface{}
-	if timing == "after" {
+	if timing == timingAfter {
 		authMethodConfig, ok := timingConfig[authMethod].(map[string]interface{})
 		if !ok {
 			return []map[string]interface{}{}
@@ -462,8 +462,6 @@ func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	r.cachedProject = &project
-
 	plan.ID = types.StringValue(fmt.Sprintf("%s:%s:%s:%s:%s", projectID, flow, timing, authMethod, url))
 	plan.ProjectID = types.StringValue(projectID)
 
@@ -485,11 +483,10 @@ func (r *ActionResource) Read(ctx context.Context, req resource.ReadRequest, res
 	httpMethod := state.HTTPMethod.ValueString()
 
 	var hooks []map[string]interface{}
-	var index int = -1
+	var index = -1
 
-	if r.cachedProject != nil {
-		hooks = r.getHooksFromProject(r.cachedProject, flow, timing, authMethod)
-		r.cachedProject = nil
+	if cached := r.client.GetCachedProject(projectID); cached != nil {
+		hooks = r.getHooksFromProject(cached, flow, timing, authMethod)
 		index = r.findHookIndex(hooks, url, httpMethod)
 	}
 
@@ -663,8 +660,6 @@ func (r *ActionResource) Update(ctx context.Context, req resource.UpdateRequest,
 			fmt.Sprintf("Hook not found in PatchProject response for %s/%s/%s with URL %s", flow, timing, authMethod, newURL))
 		return
 	}
-
-	r.cachedProject = &project
 
 	plan.ID = types.StringValue(fmt.Sprintf("%s:%s:%s:%s:%s", projectID, flow, timing, authMethod, plan.URL.ValueString()))
 	plan.ProjectID = types.StringValue(projectID)

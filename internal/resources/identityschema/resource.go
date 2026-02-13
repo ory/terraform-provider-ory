@@ -29,8 +29,7 @@ func NewResource() resource.Resource {
 }
 
 type IdentitySchemaResource struct {
-	client        *client.OryClient
-	cachedProject *ory.Project
+	client *client.OryClient
 }
 
 type IdentitySchemaResourceModel struct {
@@ -217,7 +216,6 @@ func (r *IdentitySchemaResource) findSchemaByURL(schemas []map[string]interface{
 	return -1
 }
 
-
 func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan IdentitySchemaResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -330,8 +328,6 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		}
 	}
 
-	r.cachedProject = &project
-
 	plan.ID = types.StringValue(actualID)
 	plan.ProjectID = types.StringValue(projectID)
 
@@ -365,11 +361,10 @@ func (r *IdentitySchemaResource) Read(ctx context.Context, req resource.ReadRequ
 	}
 
 	var schemas []map[string]interface{}
-	var index int = -1
+	var index = -1
 
-	if r.cachedProject != nil {
-		schemas = extractSchemasFromProject(r.cachedProject)
-		r.cachedProject = nil
+	if cached := r.client.GetCachedProject(projectID); cached != nil {
+		schemas = extractSchemasFromProject(cached)
 		if storedID != "" {
 			index = r.findSchemaIndex(schemas, storedID)
 		}

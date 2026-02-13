@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	ory "github.com/ory/client-go"
@@ -304,6 +305,12 @@ type OryClient struct {
 
 	// Project API client (for identities, OAuth2)
 	projectClient *ory.APIClient
+
+	// cachedProjects stores PatchProject responses to avoid stale GetProject reads.
+	// The Ory API has eventual consistency: GetProject may return stale data
+	// immediately after PatchProject. This cache ensures Read operations
+	// see the latest state after Create/Update.
+	cachedProjects sync.Map
 }
 
 // NewOryClient creates a new Ory API client.
@@ -466,6 +473,7 @@ func (c *OryClient) DeleteProject(ctx context.Context, projectID string) error {
 }
 
 // PatchProject applies JSON Patch operations to a project.
+// The response is automatically cached to avoid stale GetProject reads.
 func (c *OryClient) PatchProject(ctx context.Context, projectID string, patches []ory.JsonPatch) (*ory.SuccessfulProjectUpdate, error) {
 	result, httpResp, err := c.consoleClient.ProjectAPI.PatchProject(ctx, projectID).
 		JsonPatch(patches).
@@ -473,7 +481,20 @@ func (c *OryClient) PatchProject(ctx context.Context, projectID string, patches 
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
+	if err == nil && result != nil {
+		project := result.GetProject()
+		c.cachedProjects.Store(projectID, &project)
+	}
 	return result, err
+}
+
+// GetCachedProject returns the cached project state from the last PatchProject call.
+// Returns nil if no cached state exists for this project.
+func (c *OryClient) GetCachedProject(projectID string) *ory.Project {
+	if v, ok := c.cachedProjects.Load(projectID); ok {
+		return v.(*ory.Project)
+	}
+	return nil
 }
 
 // =============================================================================

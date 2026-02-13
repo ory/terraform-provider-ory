@@ -28,8 +28,7 @@ func NewResource() resource.Resource {
 }
 
 type SocialProviderResource struct {
-	client        *client.OryClient
-	cachedProject *ory.Project
+	client *client.OryClient
 }
 
 type SocialProviderResourceModel struct {
@@ -237,7 +236,6 @@ func (r *SocialProviderResource) findProviderIndex(providers []map[string]interf
 	return -1
 }
 
-
 func (r *SocialProviderResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan SocialProviderResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -307,8 +305,6 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	r.cachedProject = &project
-
 	plan.ID = plan.ProviderID
 	plan.ProjectID = types.StringValue(projectID)
 
@@ -346,11 +342,10 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 	}
 
 	var providers []map[string]interface{}
-	var index int = -1
+	var index = -1
 
-	if r.cachedProject != nil {
-		providers = extractProvidersFromProject(r.cachedProject)
-		r.cachedProject = nil
+	if cached := r.client.GetCachedProject(projectID); cached != nil {
+		providers = extractProvidersFromProject(cached)
 		index = r.findProviderIndex(providers, providerID)
 	}
 

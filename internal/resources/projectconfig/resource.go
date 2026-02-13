@@ -33,8 +33,7 @@ func NewResource() resource.Resource {
 }
 
 type ProjectConfigResource struct {
-	client        *client.OryClient
-	cachedProject *ory.Project
+	client *client.OryClient
 }
 
 type ProjectConfigResourceModel struct {
@@ -801,7 +800,7 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 	})
 
 	if len(patches) > 0 {
-		result, err := r.client.PatchProject(ctx, projectID, patches)
+		_, err := r.client.PatchProject(ctx, projectID, patches)
 		if err != nil {
 			resp.Diagnostics.AddError("Error Applying Project Config", err.Error())
 			return
@@ -810,9 +809,6 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 			"project_id":  projectID,
 			"patch_count": len(patches),
 		})
-		project := result.GetProject()
-		r.readProjectConfig(ctx, &project, &plan)
-		r.cachedProject = &project
 	}
 
 	plan.ID = types.StringValue(projectID)
@@ -834,9 +830,8 @@ func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadReque
 	}
 
 	var project *ory.Project
-	if r.cachedProject != nil {
-		project = r.cachedProject
-		r.cachedProject = nil
+	if cached := r.client.GetCachedProject(projectID); cached != nil {
+		project = cached
 	} else {
 		var err error
 		project, err = r.client.GetProject(ctx, projectID)
@@ -1183,14 +1178,11 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 
 	patches := r.buildPatches(ctx, &plan)
 	if len(patches) > 0 {
-		result, err := r.client.PatchProject(ctx, projectID, patches)
+		_, err := r.client.PatchProject(ctx, projectID, patches)
 		if err != nil {
 			resp.Diagnostics.AddError("Error Updating Project Config", err.Error())
 			return
 		}
-		project := result.GetProject()
-		r.readProjectConfig(ctx, &project, &plan)
-		r.cachedProject = &project
 	}
 
 	plan.ID = types.StringValue(projectID)
