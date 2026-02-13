@@ -31,15 +31,13 @@ export ORY_PROJECT_SLUG="your-project-slug"
 
 ## Schema ID
 
-The `schema_id` attribute specifies which identity schema defines the structure of the identity's traits.
-
-~> **Important:** The value of `schema_id` must match a schema that exists in your project. Using a schema ID that doesn't exist (including `"default"` on projects that don't have a schema named "default") will result in an HTTP 500 error.
+The `schema_id` attribute specifies which identity schema defines the structure of the identity's traits. It is **required** — you must explicitly set it to a schema that exists in your project.
 
 **How to find your project's schema IDs:**
 
 1. **Ory Console:** Go to your project > Identity Schema to see configured schemas
 2. **API:** `GET /projects/<project-id>` and check `services.identity.config.identity.schemas`
-3. **Terraform:** Use `ory_identity_schema` resources and reference their IDs
+3. **Terraform:** Use `ory_identity_schema` resources and reference their `schema_id`
 
 **Common schema ID values:**
 
@@ -47,15 +45,14 @@ The `schema_id` attribute specifies which identity schema defines the structure 
 |-----------|-------------|
 | `preset://email` | Built-in email schema (most common default for new projects) |
 | `preset://username` | Built-in username schema |
-| `default` | Only valid if your project has a schema explicitly named "default" |
-| Custom IDs | e.g., `customer_v1` - if created via `ory_identity_schema` or Console |
+| Custom IDs | e.g., `customer_v1` — created via `ory_identity_schema` or Console |
 
 ## Example Usage
 
 ```terraform
-# Basic identity using the project's default schema
+# Identity using the preset email schema
 resource "ory_identity" "basic_user" {
-  schema_id = "default"
+  schema_id = "preset://email"
   traits = jsonencode({
     email = "user@example.com"
   })
@@ -63,7 +60,7 @@ resource "ory_identity" "basic_user" {
 
 # Identity with password
 resource "ory_identity" "user_with_password" {
-  schema_id = "default"
+  schema_id = "preset://email"
   traits = jsonencode({
     email = "secure-user@example.com"
   })
@@ -73,7 +70,7 @@ resource "ory_identity" "user_with_password" {
 
 # Identity with custom schema and metadata
 resource "ory_identity" "customer" {
-  schema_id = ory_identity_schema.customer.id
+  schema_id = ory_identity_schema.customer.schema_id
   traits = jsonencode({
     email = "customer@example.com"
     name = {
@@ -116,6 +113,7 @@ terraform import ory_identity.user <identity-id>
 
 ### Required
 
+- `schema_id` (String) Identity schema ID. Must match a schema configured in your project (e.g., 'preset://email', a custom schema ID). Check your project's identity schemas in the Ory Console or API.
 - `traits` (String) Identity traits as JSON string. The structure depends on your identity schema.
 
 ### Optional
@@ -123,7 +121,6 @@ terraform import ory_identity.user <identity-id>
 - `metadata_admin` (String, Sensitive) Admin metadata as JSON string. Only visible to admins.
 - `metadata_public` (String) Public metadata as JSON string. Visible to the identity.
 - `password` (String, Sensitive) Password for the identity. Write-only, not returned on read.
-- `schema_id` (String) Identity schema ID. Use 'default' for the project's default schema, or reference a custom schema.
 - `state` (String) Identity state: active or inactive.
 
 ### Read-Only

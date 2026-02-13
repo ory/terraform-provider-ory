@@ -175,47 +175,39 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 	return config
 }
 
-func (r *SocialProviderResource) getProviders(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
-	project, err := r.client.GetProject(ctx, projectID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get project %s: %w", projectID, err)
-	}
-
+func extractProvidersFromProject(project *ory.Project) []map[string]interface{} {
 	if project.Services.Identity == nil {
-		// No identity service configured yet - this is valid, return empty list
-		return []map[string]interface{}{}, nil
+		return []map[string]interface{}{}
 	}
 
 	configMap := project.Services.Identity.Config
 	if configMap == nil {
-		// No config yet - return empty list
-		return []map[string]interface{}{}, nil
+		return []map[string]interface{}{}
 	}
 
-	// Navigate through the config structure - return empty list if any level is missing
 	selfservice, ok := configMap["selfservice"].(map[string]interface{})
 	if !ok {
-		return []map[string]interface{}{}, nil
+		return []map[string]interface{}{}
 	}
 
 	methods, ok := selfservice["methods"].(map[string]interface{})
 	if !ok {
-		return []map[string]interface{}{}, nil
+		return []map[string]interface{}{}
 	}
 
 	oidc, ok := methods["oidc"].(map[string]interface{})
 	if !ok {
-		return []map[string]interface{}{}, nil
+		return []map[string]interface{}{}
 	}
 
 	oidcConfig, ok := oidc["config"].(map[string]interface{})
 	if !ok {
-		return []map[string]interface{}{}, nil
+		return []map[string]interface{}{}
 	}
 
 	providers, ok := oidcConfig["providers"].([]interface{})
 	if !ok {
-		return []map[string]interface{}{}, nil
+		return []map[string]interface{}{}
 	}
 
 	result := make([]map[string]interface{}, 0, len(providers))
@@ -224,7 +216,15 @@ func (r *SocialProviderResource) getProviders(ctx context.Context, projectID str
 			result = append(result, pm)
 		}
 	}
-	return result, nil
+	return result
+}
+
+func (r *SocialProviderResource) getProviders(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
+	project, err := r.client.GetProject(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get project %s: %w", projectID, err)
+	}
+	return extractProvidersFromProject(project), nil
 }
 
 func (r *SocialProviderResource) findProviderIndex(providers []map[string]interface{}, providerID string) int {
@@ -234,23 +234,6 @@ func (r *SocialProviderResource) findProviderIndex(providers []map[string]interf
 		}
 	}
 	return -1
-}
-
-// waitForProvider polls GetProject until the provider appears in the config.
-// This handles eventual consistency where PatchProject succeeds but GetProject
-// doesn't immediately reflect the change.
-func (r *SocialProviderResource) waitForProvider(ctx context.Context, projectID, providerID string) error {
-	err := helpers.WaitForCondition(ctx, func() (bool, error) {
-		providers, err := r.getProviders(ctx, projectID)
-		if err != nil {
-			return false, fmt.Errorf("failed to verify provider: %w", err)
-		}
-		return r.findProviderIndex(providers, providerID) >= 0, nil
-	})
-	if err != nil {
-		return fmt.Errorf("provider %q: %w", providerID, err)
-	}
-	return nil
 }
 
 func (r *SocialProviderResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -308,16 +291,17 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 		}
 	}
 
-	_, err = r.client.PatchProject(ctx, projectID, patches)
+	result, err := r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Creating Social Provider", err.Error())
 		return
 	}
 
-	// Read-after-write: verify the provider is visible via GetProject before returning.
-	// The Ory API has eventual consistency, so the config may not be immediately readable.
-	if err := r.waitForProvider(ctx, projectID, plan.ProviderID.ValueString()); err != nil {
-		resp.Diagnostics.AddError("Error Verifying Social Provider", err.Error())
+	project := result.GetProject()
+	updatedProviders := extractProvidersFromProject(&project)
+	if r.findProviderIndex(updatedProviders, plan.ProviderID.ValueString()) < 0 {
+		resp.Diagnostics.AddError("Error Verifying Social Provider",
+			fmt.Sprintf("Provider %q was not found in the PatchProject response", plan.ProviderID.ValueString()))
 		return
 	}
 
@@ -357,31 +341,36 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	// Retry logic for eventual consistency (especially during import after create)
 	var providers []map[string]interface{}
-	var index int
+	var index = -1
 
-	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
-		var err error
-		providers, err = r.getProviders(ctx, projectID)
-		if err != nil {
-			resp.Diagnostics.AddError("Error Reading Social Provider",
-				fmt.Sprintf("Failed to get providers for project %s: %v", projectID, err))
-			return
-		}
-
+	if cached := r.client.GetCachedProject(projectID); cached != nil {
+		providers = extractProvidersFromProject(cached)
 		index = r.findProviderIndex(providers, providerID)
-		if index >= 0 {
-			break
-		}
+	}
 
-		// Wait before retry (exponential backoff: 1s, 2s, 4s, 8s)
-		if attempt < helpers.ReadRetryMaxAttempts-1 {
-			select {
-			case <-ctx.Done():
-				resp.State.RemoveResource(ctx)
+	if index < 0 {
+		for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
+			var err error
+			providers, err = r.getProviders(ctx, projectID)
+			if err != nil {
+				resp.Diagnostics.AddError("Error Reading Social Provider",
+					fmt.Sprintf("Failed to get providers for project %s: %v", projectID, err))
 				return
-			case <-time.After(time.Duration(1<<attempt) * time.Second):
+			}
+
+			index = r.findProviderIndex(providers, providerID)
+			if index >= 0 {
+				break
+			}
+
+			if attempt < helpers.ReadRetryMaxAttempts-1 {
+				select {
+				case <-ctx.Done():
+					resp.State.RemoveResource(ctx)
+					return
+				case <-time.After(time.Duration(1<<attempt) * time.Second):
+				}
 			}
 		}
 	}
@@ -482,11 +471,6 @@ func (r *SocialProviderResource) Update(ctx context.Context, req resource.Update
 	_, err = r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Social Provider", err.Error())
-		return
-	}
-
-	if err := r.waitForProvider(ctx, projectID, plan.ProviderID.ValueString()); err != nil {
-		resp.Diagnostics.AddError("Error Verifying Social Provider Update", err.Error())
 		return
 	}
 

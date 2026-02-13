@@ -189,3 +189,51 @@ resource "ory_oauth2_client" "test" {
 }
 `, name, testutil.ExampleAppURL)
 }
+
+func TestAccOAuth2ClientResource_withConsentAndSubjectType(t *testing.T) {
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with skip_consent, skip_logout_consent, subject_type, contacts
+			{
+				Config: testAccOAuth2ClientResourceConfigWithConsent("Test Client Consent"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_oauth2_client.test", "id"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "client_name", "Test Client Consent"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "skip_consent", "true"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "skip_logout_consent", "true"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "subject_type", "public"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "contacts.#", "2"),
+				),
+			},
+			// ImportState
+			{
+				ResourceName:            "ory_oauth2_client.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+		},
+	})
+}
+
+func testAccOAuth2ClientResourceConfigWithConsent(name string) string {
+	return fmt.Sprintf(`
+provider "ory" {}
+
+resource "ory_oauth2_client" "test" {
+  client_name = %[1]q
+
+  grant_types    = ["authorization_code", "refresh_token"]
+  response_types = ["code"]
+  scope          = "openid profile email"
+  redirect_uris  = ["%[2]s/callback"]
+
+  skip_consent        = true
+  skip_logout_consent = true
+  subject_type        = "public"
+  contacts            = ["admin@%[3]s", "dev@%[3]s"]
+}
+`, name, testutil.ExampleAppURL, testutil.ExampleEmailDomain)
+}

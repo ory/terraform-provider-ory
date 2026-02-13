@@ -814,17 +814,6 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 	plan.ID = types.StringValue(projectID)
 	plan.ProjectID = types.StringValue(projectID)
 
-	// Read back the actual config from the API to ensure state matches reality
-	project, err := r.client.GetProject(ctx, projectID)
-	if err != nil {
-		tflog.Warn(ctx, "Could not read back project config after apply", map[string]interface{}{
-			"project_id": projectID,
-			"error":      err.Error(),
-		})
-	} else {
-		r.readProjectConfig(ctx, project, &plan)
-	}
-
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
@@ -840,11 +829,17 @@ func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadReque
 		return
 	}
 
-	project, err := r.client.GetProject(ctx, projectID)
-	if err != nil {
-		resp.Diagnostics.AddError("Error Reading Project Config",
-			"Could not read project "+projectID+": "+err.Error())
-		return
+	var project *ory.Project
+	if cached := r.client.GetCachedProject(projectID); cached != nil {
+		project = cached
+	} else {
+		var err error
+		project, err = r.client.GetProject(ctx, projectID)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Reading Project Config",
+				"Could not read project "+projectID+": "+err.Error())
+			return
+		}
 	}
 
 	r.readProjectConfig(ctx, project, &state)
@@ -1192,17 +1187,6 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 
 	plan.ID = types.StringValue(projectID)
 	plan.ProjectID = types.StringValue(projectID)
-
-	// Read back the actual config from the API to ensure state matches reality
-	project, err := r.client.GetProject(ctx, projectID)
-	if err != nil {
-		tflog.Warn(ctx, "Could not read back project config after update", map[string]interface{}{
-			"project_id": projectID,
-			"error":      err.Error(),
-		})
-	} else {
-		r.readProjectConfig(ctx, project, &plan)
-	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }

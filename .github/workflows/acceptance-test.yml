@@ -94,9 +94,9 @@ jobs:
 
       - name: Run Acceptance Tests
         env:
-          ORY_KETO_TESTS_ENABLED: ${{ github.event_name == 'pull_request' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_keto_tests == 'true' }}
-          ORY_B2B_ENABLED: ${{ github.event_name == 'pull_request' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_b2b_tests == 'true' }}
-          ORY_SOCIAL_PROVIDER_TESTS_ENABLED: ${{ github.event_name == 'pull_request' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_social_provider_tests == 'true' }}
-          ORY_SCHEMA_TESTS_ENABLED: ${{ github.event_name == 'pull_request' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_schema_tests == 'true' }}
-          ORY_PROJECT_TESTS_ENABLED: ${{ github.event_name == 'pull_request' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_project_tests == 'true' }}
+          ORY_KETO_TESTS_ENABLED: ${{ github.event_name == 'pull_request' || github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_keto_tests == 'true' }}
+          ORY_B2B_ENABLED: ${{ github.event_name == 'pull_request' || github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_b2b_tests == 'true' }}
+          ORY_SOCIAL_PROVIDER_TESTS_ENABLED: ${{ github.event_name == 'pull_request' || github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_social_provider_tests == 'true' }}
+          ORY_SCHEMA_TESTS_ENABLED: ${{ github.event_name == 'pull_request' || github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_schema_tests == 'true' }}
+          ORY_PROJECT_TESTS_ENABLED: ${{ github.event_name == 'pull_request' || github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_project_tests == 'true' }}
         run: ./scripts/run-acceptance-tests.sh -v -timeout 20m ./...

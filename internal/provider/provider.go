@@ -43,6 +43,12 @@ type OryProvider struct {
 	// provider is built and ran locally, and "test" when running acceptance
 	// tests.
 	version string
+
+	// Reuse the OryClient across Configure calls to preserve cached state.
+	// Terraform calls ConfigureProvider for each operation (apply, plan/refresh),
+	// which would otherwise create a new client and lose the project cache.
+	oryClient  *client.OryClient
+	lastConfig client.OryClientConfig
 }
 
 // OryProviderModel describes the provider data model.
@@ -227,8 +233,10 @@ For more information: https://www.ory.sh/docs/guides/api-keys`,
 		return
 	}
 
-	// Create the Ory client
-	oryClient, err := client.NewOryClient(client.OryClientConfig{
+	// Reuse the existing client if the config hasn't changed.
+	// This preserves cached project state across Terraform operations
+	// (apply → plan/refresh) within the same provider server lifecycle.
+	newConfig := client.OryClientConfig{
 		WorkspaceAPIKey: workspaceAPIKey,
 		ProjectAPIKey:   projectAPIKey,
 		ProjectID:       projectID,
@@ -236,18 +244,23 @@ For more information: https://www.ory.sh/docs/guides/api-keys`,
 		WorkspaceID:     workspaceID,
 		ConsoleAPIURL:   consoleAPIURL,
 		ProjectAPIURL:   projectAPIURL,
-	})
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to Create Ory Client",
-			"An error occurred creating the Ory API client: "+err.Error(),
-		)
-		return
 	}
 
-	// Make client available to resources and data sources
-	resp.DataSourceData = oryClient
-	resp.ResourceData = oryClient
+	if p.oryClient == nil || p.lastConfig != newConfig {
+		oryClient, err := client.NewOryClient(newConfig)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Unable to Create Ory Client",
+				"An error occurred creating the Ory API client: "+err.Error(),
+			)
+			return
+		}
+		p.oryClient = oryClient
+		p.lastConfig = newConfig
+	}
+
+	resp.DataSourceData = p.oryClient
+	resp.ResourceData = p.oryClient
 }
 
 func (p *OryProvider) Resources(ctx context.Context) []func() resource.Resource {

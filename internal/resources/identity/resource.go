@@ -82,18 +82,18 @@ export ORY_PROJECT_SLUG="your-project-slug"
 
 The ` + "`schema_id`" + ` attribute specifies which identity schema defines the structure of the identity's traits:
 
-- **Use the default schema**: Most projects have a default schema (often named ` + "`default`" + `)
-- **Reference a Terraform-managed schema**: ` + "`ory_identity_schema.customer.id`" + `
-- **Use a preset** (must be enabled first): ` + "`preset://email`" + ` or ` + "`preset://username`" + `
+- **Use a preset schema**: ` + "`preset://email`" + ` (most common default for new projects) or ` + "`preset://username`" + `
+- **Reference a Terraform-managed schema**: ` + "`ory_identity_schema.customer.schema_id`" + `
+- **Use a custom ID**: e.g., ` + "`customer_v1`" + ` if created via Console or API
 
-~> **Note:** Preset schemas must be enabled in your Ory project before use. If you get a 500 error with a preset, it may not be enabled. Check your project's identity schema settings or use a custom schema.
+~> **Note:** The ` + "`schema_id`" + ` must match a schema that exists in your project. Check your project's identity schemas in the Ory Console, or use ` + "`GET /projects/<id>`" + ` and inspect ` + "`services.identity.config.identity.schemas`" + `.
 
 ## Example Usage
 
 ` + "```hcl" + `
-# Identity using the default schema
+# Identity using the preset email schema
 resource "ory_identity" "user" {
-  schema_id = "default"
+  schema_id = "preset://email"
 
   traits = jsonencode({
     email = "user@example.com"
@@ -102,7 +102,7 @@ resource "ory_identity" "user" {
 
 # Identity with password
 resource "ory_identity" "user_with_password" {
-  schema_id = "default"
+  schema_id = "preset://email"
 
   traits = jsonencode({
     email = "user@example.com"
@@ -117,10 +117,12 @@ resource "ory_identity" "user_with_password" {
 
 # Identity using a custom Terraform-managed schema
 resource "ory_identity" "customer" {
-  schema_id = ory_identity_schema.customer.id
+  schema_id = ory_identity_schema.customer.schema_id
 
   traits = jsonencode({
-    email = "customer@example.com"
+    email      = "customer@example.com"
+    first_name = "Jane"
+    last_name  = "Doe"
   })
 }
 ` + "```" + `
@@ -145,10 +147,8 @@ the next ` + "`terraform plan`" + ` will detect this and remove it from state.
 				},
 			},
 			"schema_id": schema.StringAttribute{
-				Description: "Identity schema ID. Use 'default' for the project's default schema, or reference a custom schema.",
-				Optional:    true,
-				Computed:    true,
-				Default:     stringdefault.StaticString("default"),
+				Description: "Identity schema ID. Must match a schema configured in your project (e.g., 'preset://email', a custom schema ID). Check your project's identity schemas in the Ory Console or API.",
+				Required:    true,
 			},
 			"traits": schema.StringAttribute{
 				Description: "Identity traits as JSON string. The structure depends on your identity schema.",
