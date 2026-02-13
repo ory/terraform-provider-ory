@@ -29,7 +29,8 @@ func NewResource() resource.Resource {
 }
 
 type IdentitySchemaResource struct {
-	client *client.OryClient
+	client        *client.OryClient
+	cachedProject *ory.Project
 }
 
 type IdentitySchemaResourceModel struct {
@@ -166,19 +167,14 @@ func (r *IdentitySchemaResource) encodeSchema(schemaJSON string) (string, error)
 	return "base64://" + encoded, nil
 }
 
-func (r *IdentitySchemaResource) getSchemas(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
-	project, err := r.client.GetProject(ctx, projectID)
-	if err != nil {
-		return nil, err
-	}
-
+func extractSchemasFromProject(project *ory.Project) []map[string]interface{} {
 	if project.Services.Identity == nil {
-		return nil, nil
+		return nil
 	}
 
 	configMap := project.Services.Identity.Config
 	if configMap == nil {
-		return nil, nil
+		return nil
 	}
 
 	identity, _ := configMap["identity"].(map[string]interface{})
@@ -190,7 +186,15 @@ func (r *IdentitySchemaResource) getSchemas(ctx context.Context, projectID strin
 			result = append(result, sm)
 		}
 	}
-	return result, nil
+	return result
+}
+
+func (r *IdentitySchemaResource) getSchemas(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
+	project, err := r.client.GetProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	return extractSchemasFromProject(project), nil
 }
 
 func (r *IdentitySchemaResource) findSchemaIndex(schemas []map[string]interface{}, schemaID string) int {
@@ -213,22 +217,6 @@ func (r *IdentitySchemaResource) findSchemaByURL(schemas []map[string]interface{
 	return -1
 }
 
-// waitForSchema polls GetProject until the schema appears in the config.
-// This handles eventual consistency where PatchProject succeeds but GetProject
-// doesn't immediately reflect the change.
-func (r *IdentitySchemaResource) waitForSchema(ctx context.Context, projectID, schemaID string) error {
-	err := helpers.WaitForCondition(ctx, func() (bool, error) {
-		schemas, err := r.getSchemas(ctx, projectID)
-		if err != nil {
-			return false, fmt.Errorf("failed to verify schema: %w", err)
-		}
-		return r.findSchemaIndex(schemas, schemaID) >= 0, nil
-	})
-	if err != nil {
-		return fmt.Errorf("schema %q: %w", schemaID, err)
-	}
-	return nil
-}
 
 func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan IdentitySchemaResourceModel
@@ -290,35 +278,31 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		})
 	}
 
-	_, err = r.client.PatchProject(ctx, projectID, patches)
+	result, err := r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Creating Identity Schema", err.Error())
 		return
 	}
 
 	var actualID string
-	maxCreateAttempts := 30
-	for attempt := 0; attempt < maxCreateAttempts; attempt++ {
-		updatedSchemas, err := r.getSchemas(ctx, projectID)
-		if err != nil {
-			resp.Diagnostics.AddError("Error Reading Created Schema", err.Error())
-			return
-		}
+	project := result.GetProject()
+	updatedSchemas := extractSchemasFromProject(&project)
 
-		if idx := r.findSchemaIndex(updatedSchemas, schemaID); idx >= 0 {
-			if id, ok := updatedSchemas[idx]["id"].(string); ok {
-				actualID = id
-			}
-			break
+	if idx := r.findSchemaIndex(updatedSchemas, schemaID); idx >= 0 {
+		if id, ok := updatedSchemas[idx]["id"].(string); ok {
+			actualID = id
 		}
+	}
 
+	if actualID == "" {
 		if idx := r.findSchemaByURL(updatedSchemas, schemaURL); idx >= 0 {
 			if id, ok := updatedSchemas[idx]["id"].(string); ok {
 				actualID = id
 			}
-			break
 		}
+	}
 
+	if actualID == "" {
 		for _, s := range updatedSchemas {
 			if id, ok := s["id"].(string); ok {
 				if !existingIDs[id] {
@@ -327,35 +311,13 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 				}
 			}
 		}
-
-		if actualID != "" {
-			break
-		}
-
-		if attempt < maxCreateAttempts-1 {
-			select {
-			case <-ctx.Done():
-				resp.Diagnostics.AddError("Context Canceled", "Operation was canceled while waiting for schema creation")
-				return
-			case <-time.After(time.Second):
-			}
-		}
 	}
 
 	if actualID == "" {
 		actualID = schemaID
 	}
 
-	if actualID == "" {
-		resp.Diagnostics.AddError("Error Finding Created Schema",
-			"Could not find the created schema. The schema was created but its ID could not be determined.")
-		return
-	}
-
-	// Set as default if requested
 	if plan.SetDefault.ValueBool() {
-		// Use the API-assigned hash ID (not the user-provided schema_id)
-		// The API validates that default_schema_id matches an existing schema's id
 		defaultPatches := []ory.JsonPatch{{
 			Op:    "add",
 			Path:  "/services/identity/config/identity/default_schema_id",
@@ -367,6 +329,8 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 			return
 		}
 	}
+
+	r.cachedProject = &project
 
 	plan.ID = types.StringValue(actualID)
 	plan.ProjectID = types.StringValue(projectID)
@@ -401,40 +365,55 @@ func (r *IdentitySchemaResource) Read(ctx context.Context, req resource.ReadRequ
 	}
 
 	var schemas []map[string]interface{}
-	var index int
-	var err error
+	var index int = -1
 
-	maxReadAttempts := 30
-	for attempt := 0; attempt < maxReadAttempts; attempt++ {
-		schemas, err = r.getSchemas(ctx, projectID)
-		if err != nil {
-			resp.Diagnostics.AddError("Error Reading Identity Schema", err.Error())
-			return
-		}
-
-		index = -1
+	if r.cachedProject != nil {
+		schemas = extractSchemasFromProject(r.cachedProject)
+		r.cachedProject = nil
 		if storedID != "" {
 			index = r.findSchemaIndex(schemas, storedID)
 		}
-
 		if index < 0 {
 			index = r.findSchemaIndex(schemas, schemaID)
 		}
-
 		if index < 0 && schemaURL != "" {
 			index = r.findSchemaByURL(schemas, schemaURL)
 		}
+	}
 
-		if index >= 0 {
-			break
-		}
-
-		if attempt < maxReadAttempts-1 {
-			select {
-			case <-ctx.Done():
-				resp.State.RemoveResource(ctx)
+	if index < 0 {
+		var err error
+		for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
+			schemas, err = r.getSchemas(ctx, projectID)
+			if err != nil {
+				resp.Diagnostics.AddError("Error Reading Identity Schema", err.Error())
 				return
-			case <-time.After(time.Second):
+			}
+
+			index = -1
+			if storedID != "" {
+				index = r.findSchemaIndex(schemas, storedID)
+			}
+
+			if index < 0 {
+				index = r.findSchemaIndex(schemas, schemaID)
+			}
+
+			if index < 0 && schemaURL != "" {
+				index = r.findSchemaByURL(schemas, schemaURL)
+			}
+
+			if index >= 0 {
+				break
+			}
+
+			if attempt < helpers.ReadRetryMaxAttempts-1 {
+				select {
+				case <-ctx.Done():
+					resp.State.RemoveResource(ctx)
+					return
+				case <-time.After(time.Second):
+				}
 			}
 		}
 	}
@@ -487,10 +466,7 @@ func (r *IdentitySchemaResource) Update(ctx context.Context, req resource.Update
 		apiID = plan.SchemaID.ValueString()
 	}
 
-	// Only thing that can be updated without replacement is set_default
 	if plan.SetDefault.ValueBool() {
-		// Use the API-assigned hash ID (not the user-provided schema_id)
-		// The API validates that default_schema_id matches an existing schema's id
 		patches := []ory.JsonPatch{{
 			Op:    "add",
 			Path:  "/services/identity/config/identity/default_schema_id",
@@ -499,12 +475,6 @@ func (r *IdentitySchemaResource) Update(ctx context.Context, req resource.Update
 		_, err := r.client.PatchProject(ctx, projectID, patches)
 		if err != nil {
 			resp.Diagnostics.AddError("Error Setting Default Schema", err.Error())
-			return
-		}
-
-		// Read-after-write: verify the schema is still visible after patching default.
-		if err := r.waitForSchema(ctx, projectID, apiID); err != nil {
-			resp.Diagnostics.AddError("Error Verifying Default Schema", err.Error())
 			return
 		}
 	}

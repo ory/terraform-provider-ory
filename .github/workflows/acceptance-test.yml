@@ -43,7 +43,7 @@ concurrency:
   cancel-in-progress: false
           
 permissions:
-  contents: read
+  contents: write
   pull-requests: read
 
 jobs:
@@ -94,9 +94,27 @@ jobs:
 
       - name: Run Acceptance Tests
         env:
-          ORY_KETO_TESTS_ENABLED: ${{ github.event_name == 'pull_request' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_keto_tests == 'true' }}
-          ORY_B2B_ENABLED: ${{ github.event_name == 'pull_request' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_b2b_tests == 'true' }}
-          ORY_SOCIAL_PROVIDER_TESTS_ENABLED: ${{ github.event_name == 'pull_request' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_social_provider_tests == 'true' }}
-          ORY_SCHEMA_TESTS_ENABLED: ${{ github.event_name == 'pull_request' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_schema_tests == 'true' }}
-          ORY_PROJECT_TESTS_ENABLED: ${{ github.event_name == 'pull_request' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_project_tests == 'true' }}
+          ORY_KETO_TESTS_ENABLED: ${{ github.event_name == 'pull_request' || github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_keto_tests == 'true' }}
+          ORY_B2B_ENABLED: ${{ github.event_name == 'pull_request' || github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_b2b_tests == 'true' }}
+          ORY_SOCIAL_PROVIDER_TESTS_ENABLED: ${{ github.event_name == 'pull_request' || github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_social_provider_tests == 'true' }}
+          ORY_SCHEMA_TESTS_ENABLED: ${{ github.event_name == 'pull_request' || github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_schema_tests == 'true' }}
+          ORY_PROJECT_TESTS_ENABLED: ${{ github.event_name == 'pull_request' || github.event_name == 'push' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_project_tests == 'true' }}
         run: ./scripts/run-acceptance-tests.sh -v -timeout 20m ./...
+
+  revert-on-failure:
+    name: Revert Merge on Failure
+    needs: acceptance-test
+    if: ${{ failure() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-slim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 2
+
+      - name: Revert the merge commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git revert --no-edit HEAD
+          git push origin main

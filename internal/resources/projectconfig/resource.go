@@ -33,7 +33,8 @@ func NewResource() resource.Resource {
 }
 
 type ProjectConfigResource struct {
-	client *client.OryClient
+	client        *client.OryClient
+	cachedProject *ory.Project
 }
 
 type ProjectConfigResourceModel struct {
@@ -800,7 +801,7 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 	})
 
 	if len(patches) > 0 {
-		_, err := r.client.PatchProject(ctx, projectID, patches)
+		result, err := r.client.PatchProject(ctx, projectID, patches)
 		if err != nil {
 			resp.Diagnostics.AddError("Error Applying Project Config", err.Error())
 			return
@@ -809,21 +810,13 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 			"project_id":  projectID,
 			"patch_count": len(patches),
 		})
+		project := result.GetProject()
+		r.readProjectConfig(ctx, &project, &plan)
+		r.cachedProject = &project
 	}
 
 	plan.ID = types.StringValue(projectID)
 	plan.ProjectID = types.StringValue(projectID)
-
-	// Read back the actual config from the API to ensure state matches reality
-	project, err := r.client.GetProject(ctx, projectID)
-	if err != nil {
-		tflog.Warn(ctx, "Could not read back project config after apply", map[string]interface{}{
-			"project_id": projectID,
-			"error":      err.Error(),
-		})
-	} else {
-		r.readProjectConfig(ctx, project, &plan)
-	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
@@ -840,11 +833,18 @@ func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadReque
 		return
 	}
 
-	project, err := r.client.GetProject(ctx, projectID)
-	if err != nil {
-		resp.Diagnostics.AddError("Error Reading Project Config",
-			"Could not read project "+projectID+": "+err.Error())
-		return
+	var project *ory.Project
+	if r.cachedProject != nil {
+		project = r.cachedProject
+		r.cachedProject = nil
+	} else {
+		var err error
+		project, err = r.client.GetProject(ctx, projectID)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Reading Project Config",
+				"Could not read project "+projectID+": "+err.Error())
+			return
+		}
 	}
 
 	r.readProjectConfig(ctx, project, &state)
@@ -1183,26 +1183,18 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 
 	patches := r.buildPatches(ctx, &plan)
 	if len(patches) > 0 {
-		_, err := r.client.PatchProject(ctx, projectID, patches)
+		result, err := r.client.PatchProject(ctx, projectID, patches)
 		if err != nil {
 			resp.Diagnostics.AddError("Error Updating Project Config", err.Error())
 			return
 		}
+		project := result.GetProject()
+		r.readProjectConfig(ctx, &project, &plan)
+		r.cachedProject = &project
 	}
 
 	plan.ID = types.StringValue(projectID)
 	plan.ProjectID = types.StringValue(projectID)
-
-	// Read back the actual config from the API to ensure state matches reality
-	project, err := r.client.GetProject(ctx, projectID)
-	if err != nil {
-		tflog.Warn(ctx, "Could not read back project config after update", map[string]interface{}{
-			"project_id": projectID,
-			"error":      err.Error(),
-		})
-	} else {
-		r.readProjectConfig(ctx, project, &plan)
-	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }

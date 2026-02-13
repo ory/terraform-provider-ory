@@ -41,7 +41,8 @@ func NewResource() resource.Resource {
 }
 
 type ActionResource struct {
-	client *client.OryClient
+	client        *client.OryClient
+	cachedProject *ory.Project
 }
 
 type ActionResourceModel struct {
@@ -349,21 +350,54 @@ func (r *ActionResource) hookPath(flow, timing, authMethod string) string {
 	return fmt.Sprintf("/services/identity/config/selfservice/flows/%s/%s/hooks", flow, timing)
 }
 
-// waitForHook polls GetProject until the hook appears in the config.
-// This handles eventual consistency where PatchProject succeeds but GetProject
-// doesn't immediately reflect the change.
-func (r *ActionResource) waitForHook(ctx context.Context, projectID, flow, timing, authMethod, url, httpMethod string) error {
-	err := helpers.WaitForCondition(ctx, func() (bool, error) {
-		hooks, err := r.getHooks(ctx, projectID, flow, timing, authMethod)
-		if err != nil {
-			return false, fmt.Errorf("failed to verify action: %w", err)
-		}
-		return r.findHookIndex(hooks, url, httpMethod) >= 0, nil
-	})
-	if err != nil {
-		return fmt.Errorf("action at %s/%s/%s with URL %s: %w", flow, timing, authMethod, url, err)
+func (r *ActionResource) getHooksFromProject(project *ory.Project, flow, timing, authMethod string) []map[string]interface{} {
+	if project.Services.Identity == nil {
+		return []map[string]interface{}{}
 	}
-	return nil
+
+	configMap := project.Services.Identity.Config
+	if configMap == nil {
+		return []map[string]interface{}{}
+	}
+
+	selfservice, ok := configMap["selfservice"].(map[string]interface{})
+	if !ok {
+		return []map[string]interface{}{}
+	}
+
+	flows, ok := selfservice["flows"].(map[string]interface{})
+	if !ok {
+		return []map[string]interface{}{}
+	}
+
+	flowConfig, ok := flows[flow].(map[string]interface{})
+	if !ok {
+		return []map[string]interface{}{}
+	}
+
+	timingConfig, ok := flowConfig[timing].(map[string]interface{})
+	if !ok {
+		return []map[string]interface{}{}
+	}
+
+	var hooks []interface{}
+	if timing == "after" {
+		authMethodConfig, ok := timingConfig[authMethod].(map[string]interface{})
+		if !ok {
+			return []map[string]interface{}{}
+		}
+		hooks, _ = authMethodConfig["hooks"].([]interface{})
+	} else {
+		hooks, _ = timingConfig["hooks"].([]interface{})
+	}
+
+	result := make([]map[string]interface{}, 0, len(hooks))
+	for _, h := range hooks {
+		if hm, ok := h.(map[string]interface{}); ok {
+			result = append(result, hm)
+		}
+	}
+	return result
 }
 
 func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -414,17 +448,21 @@ func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest,
 		Value: newHooks,
 	}}
 
-	_, err = r.client.PatchProject(ctx, projectID, patches)
+	result, err := r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Creating Action", err.Error())
 		return
 	}
 
-	// Read-after-write: verify the hook is visible via GetProject before returning.
-	if err := r.waitForHook(ctx, projectID, flow, timing, authMethod, url, httpMethod); err != nil {
-		resp.Diagnostics.AddError("Error Verifying Action", err.Error())
+	project := result.GetProject()
+	hooks = r.getHooksFromProject(&project, flow, timing, authMethod)
+	if r.findHookIndex(hooks, url, httpMethod) < 0 {
+		resp.Diagnostics.AddError("Error Verifying Action",
+			fmt.Sprintf("Hook not found in PatchProject response for %s/%s/%s with URL %s", flow, timing, authMethod, url))
 		return
 	}
+
+	r.cachedProject = &project
 
 	plan.ID = types.StringValue(fmt.Sprintf("%s:%s:%s:%s:%s", projectID, flow, timing, authMethod, url))
 	plan.ProjectID = types.StringValue(projectID)
@@ -446,30 +484,36 @@ func (r *ActionResource) Read(ctx context.Context, req resource.ReadRequest, res
 	url := state.URL.ValueString()
 	httpMethod := state.HTTPMethod.ValueString()
 
-	// Retry logic for eventual consistency after create/update
 	var hooks []map[string]interface{}
-	var index int
-	var err error
+	var index int = -1
 
-	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
-		hooks, err = r.getHooks(ctx, projectID, flow, timing, authMethod)
-		if err != nil {
-			resp.Diagnostics.AddError("Error Reading Action", err.Error())
-			return
-		}
-
+	if r.cachedProject != nil {
+		hooks = r.getHooksFromProject(r.cachedProject, flow, timing, authMethod)
+		r.cachedProject = nil
 		index = r.findHookIndex(hooks, url, httpMethod)
-		if index >= 0 {
-			break
-		}
+	}
 
-		// Wait before retry (exponential backoff: 1s, 2s, 4s, 8s)
-		if attempt < helpers.ReadRetryMaxAttempts-1 {
-			select {
-			case <-ctx.Done():
-				resp.State.RemoveResource(ctx)
+	if index < 0 {
+		var err error
+		for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
+			hooks, err = r.getHooks(ctx, projectID, flow, timing, authMethod)
+			if err != nil {
+				resp.Diagnostics.AddError("Error Reading Action", err.Error())
 				return
-			case <-time.After(time.Duration(1<<attempt) * time.Second):
+			}
+
+			index = r.findHookIndex(hooks, url, httpMethod)
+			if index >= 0 {
+				break
+			}
+
+			if attempt < helpers.ReadRetryMaxAttempts-1 {
+				select {
+				case <-ctx.Done():
+					resp.State.RemoveResource(ctx)
+					return
+				case <-time.After(time.Duration(1<<attempt) * time.Second):
+				}
 			}
 		}
 	}
@@ -604,19 +648,23 @@ func (r *ActionResource) Update(ctx context.Context, req resource.UpdateRequest,
 		Value: hookValue,
 	}}
 
-	_, err = r.client.PatchProject(ctx, projectID, patches)
+	result, err := r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Action", err.Error())
 		return
 	}
 
-	// Read-after-write: verify the updated hook is visible.
+	project := result.GetProject()
 	newURL := plan.URL.ValueString()
 	newMethod := plan.HTTPMethod.ValueString()
-	if err := r.waitForHook(ctx, projectID, flow, timing, authMethod, newURL, newMethod); err != nil {
-		resp.Diagnostics.AddError("Error Verifying Action Update", err.Error())
+	updatedHooks := r.getHooksFromProject(&project, flow, timing, authMethod)
+	if r.findHookIndex(updatedHooks, newURL, newMethod) < 0 {
+		resp.Diagnostics.AddError("Error Verifying Action Update",
+			fmt.Sprintf("Hook not found in PatchProject response for %s/%s/%s with URL %s", flow, timing, authMethod, newURL))
 		return
 	}
+
+	r.cachedProject = &project
 
 	plan.ID = types.StringValue(fmt.Sprintf("%s:%s:%s:%s:%s", projectID, flow, timing, authMethod, plan.URL.ValueString()))
 	plan.ProjectID = types.StringValue(projectID)
