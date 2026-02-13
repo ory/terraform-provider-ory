@@ -246,23 +246,66 @@ After editing templates, run `make format` to regenerate docs.
 - [ ] Examples added to `examples/resources/`
 - [ ] Code passes `make format` (includes lint, fmt, and doc generation)
 
+### Pre-Commit Checklist
+
+Run these checks locally before committing. They mirror what CI runs on every push.
+
+#### Required
+
+```bash
+make build          # Verify the provider compiles
+make format         # Format code, tidy modules, regenerate docs, fix lint issues
+make test           # Run unit tests (no API calls needed)
+```
+
+`make format` runs several tools in sequence:
+- `go fmt` + `gofmt -s` — Go formatting
+- `terraform fmt` — HCL formatting for examples
+- `go mod tidy` — dependency cleanup
+- `tfplugindocs generate` — regenerate `docs/` from templates
+- `golangci-lint --fix` — lint with auto-fix
+
+#### Recommended
+
+```bash
+make sec            # Run all security scans (govulncheck + gosec + gitleaks)
+make licenses       # Check dependency licenses
+```
+
+You can also run security scans individually:
+
+| Command | Tool | What it checks |
+|---------|------|----------------|
+| `make sec-vuln` | govulncheck | Known Go vulnerabilities |
+| `make sec-gosec` | gosec | Go security patterns (injection, file traversal, etc.) |
+| `make sec-gitleaks` | gitleaks | Hardcoded secrets and credentials |
+| `make sec-trivy` | trivy | Vulnerability, secret, and misconfig scanning |
+
+#### Quick Reference
+
+```bash
+# Minimum before committing:
+make build && make format && make test
+
+# Full CI-equivalent check:
+make build && make format && make test && make sec && make licenses
+```
+
 ### Code Style
 
-- Run `make fmt` before committing
-- Run `make lint` to check for issues
 - Follow existing patterns in the codebase
 - Add meaningful comments for complex logic
+- Use `#nosec` annotations for false positives (with a justification comment)
 
 ### Commit Messages
 
-Use clear, descriptive commit messages:
+Use [Conventional Commits](https://www.conventionalcommits.org/) format:
 
 ```
-Add ory_foo resource for managing foos
-
-- Implement CRUD operations
-- Add acceptance tests
-- Add documentation
+feat: add ory_foo resource for managing foos
+fix: handle nil pointer in OAuth2 client read
+refactor: extract test configs into testdata templates
+docs: add algorithm guidance to JWK docs
 ```
 
 ### Pull Requests
@@ -270,9 +313,8 @@ Add ory_foo resource for managing foos
 1. Fork the repository
 2. Create a feature branch from `main`
 3. Make your changes
-4. Run tests: `make test`
-5. Run linter: `make lint`
-6. Submit a pull request
+4. Run checks: `make build && make format && make test`
+5. Submit a pull request using the PR template
 
 Please include:
 
