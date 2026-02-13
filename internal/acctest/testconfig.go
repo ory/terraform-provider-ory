@@ -18,7 +18,7 @@ import (
 func LoadTestConfig(t *testing.T, path string, data any) string {
 	t.Helper()
 
-	content, err := os.ReadFile(path)
+	content, err := os.ReadFile(path) // #nosec G304 -- test-only helper, path is always a hardcoded testdata literal
 	if err != nil {
 		t.Fatalf("failed to read test config %s: %v", path, err)
 	}
