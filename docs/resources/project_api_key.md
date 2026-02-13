@@ -24,7 +24,7 @@ resource "ory_project_api_key" "backend" {
 # API key with expiration
 resource "ory_project_api_key" "temporary" {
   name       = "Temporary Access"
-  expires_at = "2024-12-31T23:59:59Z"
+  expires_at = "2026-12-31T23:59:59Z"
 }
 
 # Multiple keys for different environments
