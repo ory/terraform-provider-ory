@@ -80,11 +80,11 @@ For debugging, you can interact with the API directly:
 ```shell
 # List relationships in a namespace
 curl -s -H "Authorization: Bearer $ORY_PROJECT_API_KEY" \
-  "https://$ORY_PROJECT_SLUG.projects.oryapis.com/admin/relation-tuples?namespace=documents"
+  "https://${ORY_PROJECT_SLUG}.projects.oryapis.com/admin/relation-tuples?namespace=${NAMESPACE}"
 
 # Check a specific permission
 curl -s -H "Authorization: Bearer $ORY_PROJECT_API_KEY" \
-  "https://$ORY_PROJECT_SLUG.projects.oryapis.com/relation-tuples/check?namespace=documents&object=doc-123&relation=viewer&subject_id=user-456"
+  "https://${ORY_PROJECT_SLUG}.projects.oryapis.com/relation-tuples/check?namespace=${NAMESPACE}&object=${OBJECT}&relation=${RELATION}&subject_id=${SUBJECT_ID}"
 ```
 
 {{ .SchemaMarkdown | trimspace }}
