@@ -88,3 +88,28 @@ resource "ory_email_template" "login_code" {
     This code expires in 15 minutes.
   TEXT
 }
+
+# Registration code email
+resource "ory_email_template" "registration_code" {
+  template_type = "registration_code_valid"
+  subject       = "Complete your registration"
+
+  body_html = <<-HTML
+    <!DOCTYPE html>
+    <html>
+    <body>
+      <h1>Welcome!</h1>
+      <p>Your registration code is: <strong>{{ .RegistrationCode }}</strong></p>
+      <p>Enter this code to complete your account setup.</p>
+    </body>
+    </html>
+  HTML
+
+  body_plaintext = <<-TEXT
+    Welcome!
+
+    Your registration code is: {{ .RegistrationCode }}
+
+    Enter this code to complete your account setup.
+  TEXT
+}

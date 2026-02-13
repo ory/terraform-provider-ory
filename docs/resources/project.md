@@ -17,16 +17,18 @@ identity service, OAuth2 server, and configuration.
 ## Example Usage
 
 ```terraform
-# Create a production project
+# Create a production project in a specific region
 resource "ory_project" "production" {
   name        = "My Application - Production"
   environment = "prod"
+  home_region = "eu-central"
 }
 
 # Create a staging project
 resource "ory_project" "staging" {
   name        = "My Application - Staging"
   environment = "stage"
+  home_region = "us-west"
 }
 
 # Create a development project (note: no B2B Organizations support)

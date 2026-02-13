@@ -41,6 +41,20 @@ provider "ory" {
   project_slug      = var.ory_project_slug
 }
 
+# =============================================================================
+# OPTION 3: Staging / Custom API Endpoints
+# =============================================================================
+# Use console_api_url and project_api_url for staging or self-hosted setups.
+# Defaults: console_api_url = "https://api.console.ory.sh"
+#           project_api_url = "https://%s.projects.oryapis.com"
+#
+# provider "ory" {
+#   workspace_api_key = var.ory_workspace_api_key
+#   workspace_id      = var.ory_workspace_id
+#   console_api_url   = "https://custom.console.example.com"
+#   project_api_url   = "https://%s.projects.custom.example.com"
+# }
+
 # -----------------------------------------------------------------------------
 # Variables
 # -----------------------------------------------------------------------------

@@ -57,6 +57,22 @@ resource "ory_action" "sync_verified" {
   url         = "https://api.example.com/webhooks/user-verified"
   method      = "POST"
 }
+
+# Post-registration enrichment (parse response to modify identity)
+resource "ory_action" "enrich_identity" {
+  flow           = "registration"
+  timing         = "after"
+  auth_method    = "password"
+  url            = "https://api.example.com/webhooks/enrich"
+  method         = "POST"
+  response_parse = true # Parse the webhook response to update identity traits
+  body           = <<-JSONNET
+    function(ctx) {
+      identity_id: ctx.identity.id,
+      email: ctx.identity.traits.email
+    }
+  JSONNET
+}
 ```
 
 ## Authentication Methods
