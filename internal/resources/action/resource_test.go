@@ -20,7 +20,7 @@ func TestAccActionResource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/basic.tf", map[string]string{"WebhookURL": testutil.ExampleWebhookURL}),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{"WebhookURL": testutil.ExampleWebhookURL}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_action.test", "id"),
 					resource.TestCheckResourceAttr("ory_action.test", "flow", "registration"),

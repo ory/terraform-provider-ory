@@ -18,7 +18,7 @@ func TestAccProjectAPIKeyResource_basic(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/basic.tf", nil),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_api_key.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_api_key.test", "name", "tf-test-key"),

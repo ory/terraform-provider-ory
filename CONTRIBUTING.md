@@ -115,7 +115,7 @@ func TestAccMyResource_basic(t *testing.T) {
         ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
         Steps: []resource.TestStep{
             {
-                Config: acctest.LoadTestConfig(t, "testdata/basic.tf", map[string]string{
+                Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{
                     "Name": "Test Resource",
                 }),
                 Check: resource.ComposeAggregateTestCheckFunc(
@@ -138,7 +138,7 @@ Store Terraform configurations in `testdata/` files, not inline strings. Use `ac
 
 ```go
 // In your test function:
-Config: acctest.LoadTestConfig(t, "testdata/basic.tf", map[string]string{
+Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{
     "Name": "My Resource",
 })
 ```
@@ -146,7 +146,7 @@ Config: acctest.LoadTestConfig(t, "testdata/basic.tf", map[string]string{
 **Template files** use `[[ ]]` delimiters (to avoid conflicts with Terraform's `{{ }}`):
 
 ```hcl
-# testdata/basic.tf
+# testdata/basic.tf.tmpl
 resource "ory_myresource" "test" {
   name = "[[ .Name ]]"
 }
@@ -157,12 +157,12 @@ The `provider "ory" {}` block is automatically prepended — don't include it in
 For configs with no variables, pass `nil`:
 
 ```go
-Config: acctest.LoadTestConfig(t, "testdata/basic.tf", nil)
+Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", nil)
 ```
 
 **Guidelines:**
-- One `.tf` file per test scenario in each resource's `testdata/` directory
-- Use descriptive filenames: `basic.tf`, `updated.tf`, `with_audience.tf`
+- One `.tf.tmpl` file per test scenario in each resource's `testdata/` directory
+- Use descriptive filenames: `basic.tf.tmpl`, `updated.tf.tmpl`, `with_audience.tf.tmpl`
 - Test create, read, update, import, and delete operations
 - Pass dynamic values (URLs, names) via the template data map using `testutil` constants
 

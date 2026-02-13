@@ -8,11 +8,11 @@ import (
 )
 
 // LoadTestConfig loads a Terraform test configuration from a testdata file.
-// The path is relative to the test's working directory (e.g., "testdata/basic.tf").
+// The path is relative to the test's working directory (e.g., "testdata/basic.tf.tmpl").
 //
 // If data is non-nil, the file is parsed as a Go template using [[ ]] delimiters
 // to avoid conflicts with Terraform's {{ }} syntax. Template variables use
-// [[ .VarName ]] in the .tf file.
+// [[ .VarName ]] in the .tf.tmpl file.
 //
 // The provider block is automatically prepended.
 func LoadTestConfig(t *testing.T, path string, data any) string {

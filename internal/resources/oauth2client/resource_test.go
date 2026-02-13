@@ -18,7 +18,7 @@ func TestAccOAuth2ClientResource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/basic.tf", map[string]string{
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{
 					"Name": "Test API Client",
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -39,7 +39,7 @@ func TestAccOAuth2ClientResource_basic(t *testing.T) {
 			},
 			// Update
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/updated.tf", map[string]string{
+				Config: acctest.LoadTestConfig(t, "testdata/updated.tf.tmpl", map[string]string{
 					"Name": "Test API Client Updated",
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -58,7 +58,7 @@ func TestAccOAuth2ClientResource_withAudience(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/with_audience.tf", map[string]string{
+				Config: acctest.LoadTestConfig(t, "testdata/with_audience.tf.tmpl", map[string]string{
 					"Name":   "Test Client with Audience",
 					"APIURL": testutil.ExampleAPIURL,
 				}),
@@ -78,7 +78,7 @@ func TestAccOAuth2ClientResource_withRedirectURIs(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/with_redirect_uris.tf", map[string]string{
+				Config: acctest.LoadTestConfig(t, "testdata/with_redirect_uris.tf.tmpl", map[string]string{
 					"Name":   "Test Client with Redirects",
 					"AppURL": testutil.ExampleAppURL,
 				}),
@@ -98,7 +98,7 @@ func TestAccOAuth2ClientResource_withNewFields(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/with_new_fields.tf", map[string]string{
+				Config: acctest.LoadTestConfig(t, "testdata/with_new_fields.tf.tmpl", map[string]string{
 					"Name":   "Test Client Extended",
 					"AppURL": testutil.ExampleAppURL,
 				}),
@@ -130,7 +130,7 @@ func TestAccOAuth2ClientResource_withConsentAndSubjectType(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create with skip_consent, skip_logout_consent, subject_type, contacts
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/with_consent.tf", map[string]string{
+				Config: acctest.LoadTestConfig(t, "testdata/with_consent.tf.tmpl", map[string]string{
 					"Name":        "Test Client Consent",
 					"AppURL":      testutil.ExampleAppURL,
 					"EmailDomain": testutil.ExampleEmailDomain,
@@ -161,7 +161,7 @@ func TestAccOAuth2ClientResource_withTokenLifespans(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/with_lifespans.tf", map[string]string{
+				Config: acctest.LoadTestConfig(t, "testdata/with_lifespans.tf.tmpl", map[string]string{
 					"Name":   "Test Client Lifespans",
 					"AppURL": testutil.ExampleAppURL,
 				}),

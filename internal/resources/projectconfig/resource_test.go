@@ -18,7 +18,7 @@ func TestAccProjectConfigResource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/basic.tf", map[string]string{"AppURL": testutil.ExampleAppURL}),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{"AppURL": testutil.ExampleAppURL}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "cors_enabled", "true"),
@@ -47,7 +47,7 @@ func TestAccProjectConfigResource_mfaPolicy(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/mfa.tf", nil),
+				Config: acctest.LoadTestConfig(t, "testdata/mfa.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "enable_totp", "true"),
@@ -64,7 +64,7 @@ func TestAccProjectConfigResource_accountExperience(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/account_experience.tf", nil),
+				Config: acctest.LoadTestConfig(t, "testdata/account_experience.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_name", "TF Test App"),
@@ -81,7 +81,7 @@ func TestAccProjectConfigResource_adminCORS(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/admin_cors.tf", map[string]string{"AppURL": testutil.ExampleAppURL}),
+				Config: acctest.LoadTestConfig(t, "testdata/admin_cors.tf.tmpl", map[string]string{"AppURL": testutil.ExampleAppURL}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "cors_admin_enabled", "true"),

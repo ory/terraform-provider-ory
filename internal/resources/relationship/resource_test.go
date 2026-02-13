@@ -19,7 +19,7 @@ func TestAccRelationshipResource_basic(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/basic.tf", nil),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_relationship.test", "id"),
 					resource.TestCheckResourceAttr("ory_relationship.test", "namespace", "documents"),

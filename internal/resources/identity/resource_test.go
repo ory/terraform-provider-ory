@@ -17,7 +17,7 @@ func TestAccIdentityResource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/basic.tf", map[string]string{"Username": "test-basic-user"}),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{"Username": "test-basic-user"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_identity.test", "id"),
 					resource.TestCheckResourceAttr("ory_identity.test", "schema_id", "preset://username"),
@@ -34,7 +34,7 @@ func TestAccIdentityResource_basic(t *testing.T) {
 			},
 			// Update
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/basic.tf", map[string]string{"Username": "test-updated-user"}),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{"Username": "test-updated-user"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_identity.test", "id"),
 					resource.TestCheckResourceAttr("ory_identity.test", "state", "active"),
@@ -50,7 +50,7 @@ func TestAccIdentityResource_withMetadata(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/with_metadata.tf", map[string]string{"Username": "test-metadata-user"}),
+				Config: acctest.LoadTestConfig(t, "testdata/with_metadata.tf.tmpl", map[string]string{"Username": "test-metadata-user"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_identity.test", "id"),
 					resource.TestCheckResourceAttr("ory_identity.test", "state", "active"),
@@ -67,7 +67,7 @@ func TestAccIdentityResource_inactive(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/inactive.tf", map[string]string{"Username": "test-inactive-user"}),
+				Config: acctest.LoadTestConfig(t, "testdata/inactive.tf.tmpl", map[string]string{"Username": "test-inactive-user"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_identity.test", "id"),
 					resource.TestCheckResourceAttr("ory_identity.test", "state", "inactive"),

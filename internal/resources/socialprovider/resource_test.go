@@ -20,7 +20,7 @@ func TestAccSocialProviderResource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/basic.tf", nil),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
 					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-google"),

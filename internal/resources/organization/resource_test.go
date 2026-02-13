@@ -43,7 +43,7 @@ func TestAccOrganizationResource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/basic.tf", map[string]string{"Label": "Test Organization"}),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{"Label": "Test Organization"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_organization.test", "id"),
 					resource.TestCheckResourceAttr("ory_organization.test", "label", "Test Organization"),
@@ -61,7 +61,7 @@ func TestAccOrganizationResource_basic(t *testing.T) {
 			},
 			// Update
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/basic.tf", map[string]string{"Label": "Test Organization Updated"}),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{"Label": "Test Organization Updated"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_organization.test", "id"),
 					resource.TestCheckResourceAttr("ory_organization.test", "label", "Test Organization Updated"),
@@ -80,7 +80,7 @@ func TestAccOrganizationResource_withDomains(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/with_domains.tf", map[string]string{"Label": "Org with Domains", "DomainList": twoDomains}),
+				Config: acctest.LoadTestConfig(t, "testdata/with_domains.tf.tmpl", map[string]string{"Label": "Org with Domains", "DomainList": twoDomains}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_organization.test", "id"),
 					resource.TestCheckResourceAttr("ory_organization.test", "label", "Org with Domains"),
@@ -89,7 +89,7 @@ func TestAccOrganizationResource_withDomains(t *testing.T) {
 			},
 			// Update domains
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/with_domains.tf", map[string]string{"Label": "Org with Domains", "DomainList": threeDomains}),
+				Config: acctest.LoadTestConfig(t, "testdata/with_domains.tf.tmpl", map[string]string{"Label": "Org with Domains", "DomainList": threeDomains}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("ory_organization.test", "domains.#", "3"),
 				),

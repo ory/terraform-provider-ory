@@ -33,7 +33,7 @@ func TestAccWorkspaceResource_import(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config:        acctest.LoadTestConfig(t, "testdata/basic.tf", map[string]string{"Name": "placeholder"}),
+				Config:        acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{"Name": "placeholder"}),
 				ImportState:   true,
 				ImportStateId: workspaceID,
 				ResourceName:  "ory_workspace.test",
