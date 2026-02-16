@@ -36,7 +36,7 @@ func TestAccProjectResource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
-				Config: testAccProjectResourceConfig(projectName, "dev"),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{"Name": projectName, "Environment": "dev"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project.test", "id"),
 					resource.TestCheckResourceAttr("ory_project.test", "name", projectName),
@@ -53,7 +53,7 @@ func TestAccProjectResource_basic(t *testing.T) {
 			},
 			// Update name
 			{
-				Config: testAccProjectResourceConfig(updatedName, "dev"),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{"Name": updatedName, "Environment": "dev"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project.test", "id"),
 					resource.TestCheckResourceAttr("ory_project.test", "name", updatedName),
@@ -72,7 +72,7 @@ func TestAccProjectResource_prodEnvironment(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccProjectResourceConfig(projectName, "prod"),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{"Name": projectName, "Environment": "prod"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project.test", "id"),
 					resource.TestCheckResourceAttr("ory_project.test", "environment", "prod"),
@@ -90,15 +90,4 @@ func testProjectName(suffix string) string {
 		return fmt.Sprintf("%s-tf-%s-%d", prefix, suffix, time.Now().UnixNano())
 	}
 	return fmt.Sprintf("tf-acc-test-%s-%d", suffix, time.Now().UnixNano())
-}
-
-func testAccProjectResourceConfig(name, environment string) string {
-	return fmt.Sprintf(`
-provider "ory" {}
-
-resource "ory_project" "test" {
-  name        = %[1]q
-  environment = %[2]q
-}
-`, name, environment)
 }

@@ -115,7 +115,9 @@ func TestAccMyResource_basic(t *testing.T) {
         ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
         Steps: []resource.TestStep{
             {
-                Config: testAccMyResourceConfig(),
+                Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{
+                    "Name": "Test Resource",
+                }),
                 Check: resource.ComposeAggregateTestCheckFunc(
                     resource.TestCheckResourceAttrSet("ory_myresource.test", "id"),
                 ),
@@ -130,23 +132,39 @@ func TestAccMyResource_basic(t *testing.T) {
 }
 ```
 
-#### 2. Test Configuration Best Practices
+#### 2. Test Configuration with `testdata/` Templates
 
-- Use `fmt.Sprintf()` for variable injection in HCL configs
-- Include the `provider "ory" {}` declaration in each config
-- Test create, read, update, import, and delete operations
+Store Terraform configurations in `testdata/` files, not inline strings. Use `acctest.LoadTestConfig()` to load and render them:
 
 ```go
-func testAccMyResourceConfig(name string) string {
-    return fmt.Sprintf(`
-provider "ory" {}
+// In your test function:
+Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{
+    "Name": "My Resource",
+})
+```
 
+**Template files** use `[[ ]]` delimiters (to avoid conflicts with Terraform's `{{ }}`):
+
+```hcl
+# testdata/basic.tf.tmpl
 resource "ory_myresource" "test" {
-  name = %[1]q
-}
-`, name)
+  name = "[[ .Name ]]"
 }
 ```
+
+The `provider "ory" {}` block is automatically prepended — don't include it in template files.
+
+For configs with no variables, pass `nil`:
+
+```go
+Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", nil)
+```
+
+**Guidelines:**
+- One `.tf.tmpl` file per test scenario in each resource's `testdata/` directory
+- Use descriptive filenames: `basic.tf.tmpl`, `updated.tf.tmpl`, `with_audience.tf.tmpl`
+- Test create, read, update, import, and delete operations
+- Pass dynamic values (URLs, names) via the template data map using `testutil` constants
 
 #### 3. Feature-Gated Tests
 
@@ -223,27 +241,71 @@ After editing templates, run `make format` to regenerate docs.
 - [ ] Resource supports import via `ImportState()`
 - [ ] Acceptance tests cover create, read, update, import, delete
 - [ ] Tests use `acctest.RunTest()` for consistent test execution
+- [ ] Test configs stored in `testdata/` directory (not inline strings)
 - [ ] Documentation template added to `templates/resources/`
 - [ ] Examples added to `examples/resources/`
 - [ ] Code passes `make format` (includes lint, fmt, and doc generation)
 
+### Pre-Commit Checklist
+
+Run these checks locally before committing. They mirror what CI runs on every push.
+
+#### Required
+
+```bash
+make build          # Verify the provider compiles
+make format         # Format code, tidy modules, regenerate docs, fix lint issues
+make test           # Run unit tests (no API calls needed)
+```
+
+`make format` runs several tools in sequence:
+- `go fmt` + `gofmt -s` — Go formatting
+- `terraform fmt` — HCL formatting for examples
+- `go mod tidy` — dependency cleanup
+- `tfplugindocs generate` — regenerate `docs/` from templates
+- `golangci-lint --fix` — lint with auto-fix
+
+#### Recommended
+
+```bash
+make sec            # Run all security scans (govulncheck + gosec + gitleaks)
+make licenses       # Check dependency licenses
+```
+
+You can also run security scans individually:
+
+| Command | Tool | What it checks |
+|---------|------|----------------|
+| `make sec-vuln` | govulncheck | Known Go vulnerabilities |
+| `make sec-gosec` | gosec | Go security patterns (injection, file traversal, etc.) |
+| `make sec-gitleaks` | gitleaks | Hardcoded secrets and credentials |
+| `make sec-trivy` | trivy | Vulnerability, secret, and misconfig scanning |
+
+#### Quick Reference
+
+```bash
+# Minimum before committing:
+make build && make format && make test
+
+# Full CI-equivalent check:
+make build && make format && make test && make sec && make licenses
+```
+
 ### Code Style
 
-- Run `make fmt` before committing
-- Run `make lint` to check for issues
 - Follow existing patterns in the codebase
 - Add meaningful comments for complex logic
+- Use `#nosec` annotations for false positives (with a justification comment)
 
 ### Commit Messages
 
-Use clear, descriptive commit messages:
+Use [Conventional Commits](https://www.conventionalcommits.org/) format:
 
 ```
-Add ory_foo resource for managing foos
-
-- Implement CRUD operations
-- Add acceptance tests
-- Add documentation
+feat: add ory_foo resource for managing foos
+fix: handle nil pointer in OAuth2 client read
+refactor: extract test configs into testdata templates
+docs: add algorithm guidance to JWK docs
 ```
 
 ### Pull Requests
@@ -251,9 +313,8 @@ Add ory_foo resource for managing foos
 1. Fork the repository
 2. Create a feature branch from `main`
 3. Make your changes
-4. Run tests: `make test`
-5. Run linter: `make lint`
-6. Submit a pull request
+4. Run checks: `make build && make format && make test`
+5. Submit a pull request using the PR template
 
 Please include:
 

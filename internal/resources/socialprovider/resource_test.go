@@ -20,7 +20,7 @@ func TestAccSocialProviderResource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
-				Config: testAccSocialProviderResourceConfig(),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
 					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-google"),
@@ -38,18 +38,4 @@ func TestAccSocialProviderResource_basic(t *testing.T) {
 			},
 		},
 	})
-}
-
-func testAccSocialProviderResourceConfig() string {
-	return `
-provider "ory" {}
-
-resource "ory_social_provider" "test" {
-  provider_id   = "test-google"
-  provider_type = "google"
-  client_id     = "test-client-id.apps.googleusercontent.com"
-  client_secret = "test-client-secret"
-  scope         = ["email", "profile"]
-}
-`
 }

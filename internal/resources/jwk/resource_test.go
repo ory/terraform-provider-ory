@@ -17,7 +17,7 @@ func TestAccJWKResource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
-				Config: testAccJWKResourceConfig(),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_json_web_key_set.test", "id"),
 					resource.TestCheckResourceAttr("ory_json_web_key_set.test", "set_id", "tf-test-jwks"),
@@ -36,17 +36,4 @@ func TestAccJWKResource_basic(t *testing.T) {
 			},
 		},
 	})
-}
-
-func testAccJWKResourceConfig() string {
-	return `
-provider "ory" {}
-
-resource "ory_json_web_key_set" "test" {
-  set_id    = "tf-test-jwks"
-  key_id    = "tf-test-key"
-  algorithm = "RS256"
-  use       = "sig"
-}
-`
 }
