@@ -19,7 +19,7 @@ func TestAccRelationshipResource_basic(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccRelationshipResourceConfig(),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_relationship.test", "id"),
 					resource.TestCheckResourceAttr("ory_relationship.test", "namespace", "documents"),
@@ -37,17 +37,4 @@ func TestAccRelationshipResource_basic(t *testing.T) {
 			},
 		},
 	})
-}
-
-func testAccRelationshipResourceConfig() string {
-	return `
-provider "ory" {}
-
-resource "ory_relationship" "test" {
-  namespace  = "documents"
-  object     = "doc-123"
-  relation   = "viewer"
-  subject_id = "user-456"
-}
-`
 }

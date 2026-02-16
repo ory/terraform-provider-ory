@@ -43,7 +43,7 @@ func TestAccOrganizationResource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
-				Config: testAccOrganizationResourceConfig("Test Organization"),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{"Label": "Test Organization"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_organization.test", "id"),
 					resource.TestCheckResourceAttr("ory_organization.test", "label", "Test Organization"),
@@ -61,7 +61,7 @@ func TestAccOrganizationResource_basic(t *testing.T) {
 			},
 			// Update
 			{
-				Config: testAccOrganizationResourceConfig("Test Organization Updated"),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{"Label": "Test Organization Updated"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_organization.test", "id"),
 					resource.TestCheckResourceAttr("ory_organization.test", "label", "Test Organization Updated"),
@@ -72,12 +72,15 @@ func TestAccOrganizationResource_basic(t *testing.T) {
 }
 
 func TestAccOrganizationResource_withDomains(t *testing.T) {
+	twoDomains := fmt.Sprintf("[%q, %q]", testutil.ExampleEmailDomain, "test."+testutil.ExampleEmailDomain)
+	threeDomains := fmt.Sprintf("[%q, %q, %q]", testutil.ExampleEmailDomain, "test."+testutil.ExampleEmailDomain, "new."+testutil.ExampleEmailDomain)
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheckB2B(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccOrganizationResourceConfigWithDomains("Org with Domains", []string{testutil.ExampleEmailDomain, fmt.Sprintf("test.%s", testutil.ExampleEmailDomain)}),
+				Config: acctest.LoadTestConfig(t, "testdata/with_domains.tf.tmpl", map[string]string{"Label": "Org with Domains", "DomainList": twoDomains}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_organization.test", "id"),
 					resource.TestCheckResourceAttr("ory_organization.test", "label", "Org with Domains"),
@@ -86,41 +89,11 @@ func TestAccOrganizationResource_withDomains(t *testing.T) {
 			},
 			// Update domains
 			{
-				Config: testAccOrganizationResourceConfigWithDomains("Org with Domains", []string{testutil.ExampleEmailDomain, fmt.Sprintf("test.%s", testutil.ExampleEmailDomain), fmt.Sprintf("new.%s", testutil.ExampleEmailDomain)}),
+				Config: acctest.LoadTestConfig(t, "testdata/with_domains.tf.tmpl", map[string]string{"Label": "Org with Domains", "DomainList": threeDomains}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("ory_organization.test", "domains.#", "3"),
 				),
 			},
 		},
 	})
-}
-
-func testAccOrganizationResourceConfig(label string) string {
-	return fmt.Sprintf(`
-provider "ory" {}
-
-resource "ory_organization" "test" {
-  label = %[1]q
-}
-`, label)
-}
-
-func testAccOrganizationResourceConfigWithDomains(label string, domains []string) string {
-	// Build domain list for HCL
-	domainList := ""
-	for i, d := range domains {
-		if i > 0 {
-			domainList += ", "
-		}
-		domainList += fmt.Sprintf("%q", d)
-	}
-
-	return fmt.Sprintf(`
-provider "ory" {}
-
-resource "ory_organization" "test" {
-  label   = %[1]q
-  domains = [%[2]s]
-}
-`, label, domainList)
 }

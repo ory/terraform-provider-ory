@@ -3,7 +3,6 @@
 package oauth2client_test
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -19,7 +18,9 @@ func TestAccOAuth2ClientResource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
-				Config: testAccOAuth2ClientResourceConfig("Test API Client"),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{
+					"Name": "Test API Client",
+				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_oauth2_client.test", "id"),
 					resource.TestCheckResourceAttr("ory_oauth2_client.test", "client_name", "Test API Client"),
@@ -38,7 +39,9 @@ func TestAccOAuth2ClientResource_basic(t *testing.T) {
 			},
 			// Update
 			{
-				Config: testAccOAuth2ClientResourceConfigUpdated("Test API Client Updated"),
+				Config: acctest.LoadTestConfig(t, "testdata/updated.tf.tmpl", map[string]string{
+					"Name": "Test API Client Updated",
+				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_oauth2_client.test", "id"),
 					resource.TestCheckResourceAttr("ory_oauth2_client.test", "client_name", "Test API Client Updated"),
@@ -55,7 +58,10 @@ func TestAccOAuth2ClientResource_withAudience(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccOAuth2ClientResourceConfigWithAudience("Test Client with Audience"),
+				Config: acctest.LoadTestConfig(t, "testdata/with_audience.tf.tmpl", map[string]string{
+					"Name":   "Test Client with Audience",
+					"APIURL": testutil.ExampleAPIURL,
+				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_oauth2_client.test", "id"),
 					resource.TestCheckResourceAttr("ory_oauth2_client.test", "client_name", "Test Client with Audience"),
@@ -72,7 +78,10 @@ func TestAccOAuth2ClientResource_withRedirectURIs(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccOAuth2ClientResourceConfigWithRedirectURIs("Test Client with Redirects"),
+				Config: acctest.LoadTestConfig(t, "testdata/with_redirect_uris.tf.tmpl", map[string]string{
+					"Name":   "Test Client with Redirects",
+					"AppURL": testutil.ExampleAppURL,
+				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_oauth2_client.test", "id"),
 					resource.TestCheckResourceAttr("ory_oauth2_client.test", "client_name", "Test Client with Redirects"),
@@ -83,71 +92,16 @@ func TestAccOAuth2ClientResource_withRedirectURIs(t *testing.T) {
 	})
 }
 
-func testAccOAuth2ClientResourceConfig(name string) string {
-	return fmt.Sprintf(`
-provider "ory" {}
-
-resource "ory_oauth2_client" "test" {
-  client_name = %[1]q
-
-  grant_types    = ["client_credentials"]
-  response_types = ["token"]
-  scope          = "api:read"
-}
-`, name)
-}
-
-func testAccOAuth2ClientResourceConfigUpdated(name string) string {
-	return fmt.Sprintf(`
-provider "ory" {}
-
-resource "ory_oauth2_client" "test" {
-  client_name = %[1]q
-
-  grant_types    = ["client_credentials"]
-  response_types = ["token"]
-  scope          = "api:read api:write"
-}
-`, name)
-}
-
-func testAccOAuth2ClientResourceConfigWithAudience(name string) string {
-	return fmt.Sprintf(`
-provider "ory" {}
-
-resource "ory_oauth2_client" "test" {
-  client_name = %[1]q
-
-  grant_types    = ["client_credentials"]
-  response_types = ["token"]
-  scope          = "api:read"
-  audience       = ["%[2]s", "%[2]s/v2"]
-}
-`, name, testutil.ExampleAPIURL)
-}
-
-func testAccOAuth2ClientResourceConfigWithRedirectURIs(name string) string {
-	return fmt.Sprintf(`
-provider "ory" {}
-
-resource "ory_oauth2_client" "test" {
-  client_name = %[1]q
-
-  grant_types    = ["authorization_code", "refresh_token"]
-  response_types = ["code"]
-  scope          = "openid profile email"
-  redirect_uris  = ["%[2]s/callback", "http://localhost:3000/callback"]
-}
-`, name, testutil.ExampleAppURL)
-}
-
 func TestAccOAuth2ClientResource_withNewFields(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccOAuth2ClientResourceConfigWithNewFields("Test Client Extended"),
+				Config: acctest.LoadTestConfig(t, "testdata/with_new_fields.tf.tmpl", map[string]string{
+					"Name":   "Test Client Extended",
+					"AppURL": testutil.ExampleAppURL,
+				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_oauth2_client.test", "id"),
 					resource.TestCheckResourceAttr("ory_oauth2_client.test", "client_name", "Test Client Extended"),
@@ -169,27 +123,6 @@ func TestAccOAuth2ClientResource_withNewFields(t *testing.T) {
 	})
 }
 
-func testAccOAuth2ClientResourceConfigWithNewFields(name string) string {
-	return fmt.Sprintf(`
-provider "ory" {}
-
-resource "ory_oauth2_client" "test" {
-  client_name = %[1]q
-
-  grant_types    = ["authorization_code", "refresh_token"]
-  response_types = ["code"]
-  scope          = "openid profile email"
-  redirect_uris  = ["%[2]s/callback"]
-
-  allowed_cors_origins = ["%[2]s", "http://localhost:3000"]
-  client_uri           = "%[2]s"
-  logo_uri             = "%[2]s/logo.png"
-  policy_uri           = "%[2]s/privacy"
-  tos_uri              = "%[2]s/tos"
-}
-`, name, testutil.ExampleAppURL)
-}
-
 func TestAccOAuth2ClientResource_withConsentAndSubjectType(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
@@ -197,7 +130,11 @@ func TestAccOAuth2ClientResource_withConsentAndSubjectType(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create with skip_consent, skip_logout_consent, subject_type, contacts
 			{
-				Config: testAccOAuth2ClientResourceConfigWithConsent("Test Client Consent"),
+				Config: acctest.LoadTestConfig(t, "testdata/with_consent.tf.tmpl", map[string]string{
+					"Name":        "Test Client Consent",
+					"AppURL":      testutil.ExampleAppURL,
+					"EmailDomain": testutil.ExampleEmailDomain,
+				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_oauth2_client.test", "id"),
 					resource.TestCheckResourceAttr("ory_oauth2_client.test", "client_name", "Test Client Consent"),
@@ -224,7 +161,10 @@ func TestAccOAuth2ClientResource_withTokenLifespans(t *testing.T) {
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccOAuth2ClientResourceConfigWithLifespans("Test Client Lifespans"),
+				Config: acctest.LoadTestConfig(t, "testdata/with_lifespans.tf.tmpl", map[string]string{
+					"Name":   "Test Client Lifespans",
+					"AppURL": testutil.ExampleAppURL,
+				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_oauth2_client.test", "id"),
 					resource.TestCheckResourceAttr("ory_oauth2_client.test", "client_name", "Test Client Lifespans"),
@@ -244,46 +184,4 @@ func TestAccOAuth2ClientResource_withTokenLifespans(t *testing.T) {
 			},
 		},
 	})
-}
-
-func testAccOAuth2ClientResourceConfigWithLifespans(name string) string {
-	return fmt.Sprintf(`
-provider "ory" {}
-
-resource "ory_oauth2_client" "test" {
-  client_name = %[1]q
-
-  grant_types    = ["authorization_code", "client_credentials", "refresh_token"]
-  response_types = ["code"]
-  scope          = "openid profile email"
-  redirect_uris  = ["%[2]s/callback"]
-
-  authorization_code_grant_access_token_lifespan  = "1h"
-  authorization_code_grant_refresh_token_lifespan = "720h"
-  client_credentials_grant_access_token_lifespan  = "30m"
-
-  backchannel_logout_session_required  = true
-  frontchannel_logout_session_required = true
-}
-`, name, testutil.ExampleAppURL)
-}
-
-func testAccOAuth2ClientResourceConfigWithConsent(name string) string {
-	return fmt.Sprintf(`
-provider "ory" {}
-
-resource "ory_oauth2_client" "test" {
-  client_name = %[1]q
-
-  grant_types    = ["authorization_code", "refresh_token"]
-  response_types = ["code"]
-  scope          = "openid profile email"
-  redirect_uris  = ["%[2]s/callback"]
-
-  skip_consent        = true
-  skip_logout_consent = true
-  subject_type        = "public"
-  contacts            = ["admin@%[3]s", "dev@%[3]s"]
-}
-`, name, testutil.ExampleAppURL, testutil.ExampleEmailDomain)
 }
