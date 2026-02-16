@@ -1,0 +1,5 @@
+resource "ory_event_stream" "test" {
+  type      = "sns"
+  topic_arn = "[[ .TopicArn ]]"
+  role_arn  = "[[ .RoleArn ]]"
+}

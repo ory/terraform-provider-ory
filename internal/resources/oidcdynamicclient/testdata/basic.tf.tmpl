@@ -1,0 +1,7 @@
+resource "ory_oidc_dynamic_client" "test" {
+  client_name = "[[ .Name ]]"
+
+  grant_types    = ["authorization_code"]
+  response_types = ["code"]
+  scope          = "openid"
+}

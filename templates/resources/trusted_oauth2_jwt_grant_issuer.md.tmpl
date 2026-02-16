@@ -1,0 +1,30 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  Manages a trusted OAuth2 JWT grant issuer for RFC 7523 client authentication.
+---
+
+# {{.Name}} ({{.Type}})
+
+Manages a trusted OAuth2 JWT grant issuer.
+
+This resource creates a trust relationship that allows an external identity provider to authenticate via the OAuth2 JWT Bearer grant type (RFC 7523). The issuer provides a JSON Web Key (JWK) that Ory uses to verify JWT assertions.
+
+-> **Plan:** Available on all Ory Network plans.
+
+~> **Important:** This resource is **create and delete only**. Any changes require the resource to be recreated.
+
+## Example Usage
+
+{{ tffile "examples/resources/ory_trusted_oauth2_jwt_grant_issuer/resource.tf" }}
+
+## Import
+
+Trusted JWT grant issuers can be imported using their ID:
+
+```shell
+terraform import ory_trusted_oauth2_jwt_grant_issuer.example <issuer-id>
+```
+
+{{ .SchemaMarkdown | trimspace }}

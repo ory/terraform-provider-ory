@@ -12,6 +12,8 @@ Configures an Ory Network project's settings.
 This resource manages the configuration of an Ory Network project, including authentication methods,
 password policies, session settings, CORS, and more.
 
+-> **Plan:** Available on all Ory Network plans. Some configuration options may require specific plan features.
+
 This resource supports drift detection — `terraform plan` will detect changes made outside of Terraform (e.g., via Ory Console or API) for any attributes you have configured.
 
 ~> **Note:** Only attributes present in your Terraform configuration are tracked for drift. Attributes you have not configured will not appear in plan output, even if they have non-default values in the API.

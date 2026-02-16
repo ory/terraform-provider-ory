@@ -942,3 +942,263 @@ func (c *OryClient) DeleteRelationships(ctx context.Context, namespace string, o
 	}
 	return err
 }
+
+// =============================================================================
+// Event Stream Operations (Console API)
+// =============================================================================
+
+// CreateEventStream creates a new event stream for a project.
+func (c *OryClient) CreateEventStream(ctx context.Context, projectID string, body ory.CreateEventStreamBody) (*ory.EventStream, error) {
+	stream, httpResp, err := c.consoleClient.EventsAPI.CreateEventStream(ctx, projectID).CreateEventStreamBody(body).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, wrapAPIError(err, "creating event stream")
+	}
+	return stream, nil
+}
+
+// GetEventStream retrieves an event stream by listing all and filtering by ID.
+// The Ory API does not have a direct GET endpoint for event streams.
+func (c *OryClient) GetEventStream(ctx context.Context, projectID, streamID string) (*ory.EventStream, error) {
+	list, httpResp, err := c.consoleClient.EventsAPI.ListEventStreams(ctx, projectID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, wrapAPIError(err, "listing event streams")
+	}
+
+	for _, s := range list.GetEventStreams() {
+		if s.GetId() == streamID {
+			return &s, nil
+		}
+	}
+	return nil, fmt.Errorf("event stream %s not found in project %s", streamID, projectID)
+}
+
+// SetEventStream updates an event stream.
+func (c *OryClient) SetEventStream(ctx context.Context, projectID, streamID string, body ory.SetEventStreamBody) (*ory.EventStream, error) {
+	stream, httpResp, err := c.consoleClient.EventsAPI.SetEventStream(ctx, projectID, streamID).SetEventStreamBody(body).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, wrapAPIError(err, "updating event stream")
+	}
+	return stream, nil
+}
+
+// DeleteEventStream deletes an event stream.
+func (c *OryClient) DeleteEventStream(ctx context.Context, projectID, streamID string) error {
+	httpResp, err := c.consoleClient.EventsAPI.DeleteEventStream(ctx, projectID, streamID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	return wrapAPIError(err, "deleting event stream")
+}
+
+// ListEventStreams lists all event streams for a project.
+func (c *OryClient) ListEventStreams(ctx context.Context, projectID string) ([]ory.EventStream, error) {
+	list, httpResp, err := c.consoleClient.EventsAPI.ListEventStreams(ctx, projectID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, wrapAPIError(err, "listing event streams")
+	}
+	return list.GetEventStreams(), nil
+}
+
+// =============================================================================
+// Trusted OAuth2 JWT Grant Issuer Operations (Project API)
+// =============================================================================
+
+// TrustOAuth2JwtGrantIssuer creates a new trust relationship for a JWT issuer.
+func (c *OryClient) TrustOAuth2JwtGrantIssuer(ctx context.Context, body ory.TrustOAuth2JwtGrantIssuer) (*ory.TrustedOAuth2JwtGrantIssuer, error) {
+	issuer, httpResp, err := c.projectClient.OAuth2API.TrustOAuth2JwtGrantIssuer(ctx).TrustOAuth2JwtGrantIssuer(body).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, wrapAPIError(err, "trusting JWT grant issuer")
+	}
+	return issuer, nil
+}
+
+// GetTrustedOAuth2JwtGrantIssuer retrieves a trusted JWT grant issuer by ID.
+func (c *OryClient) GetTrustedOAuth2JwtGrantIssuer(ctx context.Context, id string) (*ory.TrustedOAuth2JwtGrantIssuer, error) {
+	issuer, httpResp, err := c.projectClient.OAuth2API.GetTrustedOAuth2JwtGrantIssuer(ctx, id).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, wrapAPIError(err, "getting trusted JWT grant issuer")
+	}
+	return issuer, nil
+}
+
+// DeleteTrustedOAuth2JwtGrantIssuer deletes a trusted JWT grant issuer.
+func (c *OryClient) DeleteTrustedOAuth2JwtGrantIssuer(ctx context.Context, id string) error {
+	httpResp, err := c.projectClient.OAuth2API.DeleteTrustedOAuth2JwtGrantIssuer(ctx, id).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	return wrapAPIError(err, "deleting trusted JWT grant issuer")
+}
+
+// ListTrustedOAuth2JwtGrantIssuers lists all trusted JWT grant issuers.
+func (c *OryClient) ListTrustedOAuth2JwtGrantIssuers(ctx context.Context) ([]ory.TrustedOAuth2JwtGrantIssuer, error) {
+	issuers, httpResp, err := c.projectClient.OAuth2API.ListTrustedOAuth2JwtGrantIssuers(ctx).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, wrapAPIError(err, "listing trusted JWT grant issuers")
+	}
+	return issuers, nil
+}
+
+// =============================================================================
+// Workspace API Key Operations (Console API)
+// =============================================================================
+
+// CreateWorkspaceAPIKey creates a new API key for a workspace.
+func (c *OryClient) CreateWorkspaceAPIKey(ctx context.Context, workspaceID string, body ory.CreateWorkspaceApiKeyBody) (*ory.WorkspaceApiKey, error) {
+	key, httpResp, err := c.consoleClient.WorkspaceAPI.CreateWorkspaceApiKey(ctx, workspaceID).CreateWorkspaceApiKeyBody(body).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, wrapAPIError(err, "creating workspace API key")
+	}
+	return key, nil
+}
+
+// ListWorkspaceAPIKeys lists all API keys for a workspace.
+func (c *OryClient) ListWorkspaceAPIKeys(ctx context.Context, workspaceID string) ([]ory.WorkspaceApiKey, error) {
+	keys, httpResp, err := c.consoleClient.WorkspaceAPI.ListWorkspaceApiKeys(ctx, workspaceID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, wrapAPIError(err, "listing workspace API keys")
+	}
+	return keys, nil
+}
+
+// DeleteWorkspaceAPIKey deletes a workspace API key.
+func (c *OryClient) DeleteWorkspaceAPIKey(ctx context.Context, workspaceID, tokenID string) error {
+	httpResp, err := c.consoleClient.WorkspaceAPI.DeleteWorkspaceApiKey(ctx, workspaceID, tokenID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	return wrapAPIError(err, "deleting workspace API key")
+}
+
+// =============================================================================
+// OIDC Dynamic Client Registration (Project API)
+// =============================================================================
+
+// CreateOIDCDynamicClient registers a new dynamic OAuth2 client via RFC 7591.
+func (c *OryClient) CreateOIDCDynamicClient(ctx context.Context, oauthClient ory.OAuth2Client) (*ory.OAuth2Client, error) {
+	result, httpResp, err := c.projectClient.OidcAPI.CreateOidcDynamicClient(ctx).OAuth2Client(oauthClient).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, wrapAPIError(err, "creating OIDC dynamic client")
+	}
+	return result, nil
+}
+
+// GetOIDCDynamicClient retrieves a dynamic client by ID.
+// Uses the admin OAuth2 API (/admin/clients/{id}) instead of the RFC 7592 endpoint
+// (/oauth2/register/{id}) because the RFC 7592 endpoint requires a registration_access_token
+// which is only available at creation time. The admin API uses the project API key.
+func (c *OryClient) GetOIDCDynamicClient(ctx context.Context, clientID string) (*ory.OAuth2Client, error) {
+	result, httpResp, err := c.projectClient.OAuth2API.GetOAuth2Client(ctx, clientID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, wrapAPIError(err, "getting OIDC dynamic client")
+	}
+	return result, nil
+}
+
+// UpdateOIDCDynamicClient updates a dynamic client.
+// Uses the admin OAuth2 API instead of RFC 7592 (see GetOIDCDynamicClient comment).
+func (c *OryClient) UpdateOIDCDynamicClient(ctx context.Context, clientID string, oauthClient ory.OAuth2Client) (*ory.OAuth2Client, error) {
+	result, httpResp, err := c.projectClient.OAuth2API.SetOAuth2Client(ctx, clientID).OAuth2Client(oauthClient).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, wrapAPIError(err, "updating OIDC dynamic client")
+	}
+	return result, nil
+}
+
+// DeleteOIDCDynamicClient deletes a dynamic client.
+// Uses the admin OAuth2 API instead of RFC 7592 (see GetOIDCDynamicClient comment).
+func (c *OryClient) DeleteOIDCDynamicClient(ctx context.Context, clientID string) error {
+	httpResp, err := c.projectClient.OAuth2API.DeleteOAuth2Client(ctx, clientID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	return wrapAPIError(err, "deleting OIDC dynamic client")
+}
+
+// =============================================================================
+// List Operations for Data Sources
+// =============================================================================
+
+// ListOAuth2Clients lists all OAuth2 clients.
+func (c *OryClient) ListOAuth2Clients(ctx context.Context) ([]ory.OAuth2Client, error) {
+	clients, httpResp, err := c.projectClient.OAuth2API.ListOAuth2Clients(ctx).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, wrapAPIError(err, "listing OAuth2 clients")
+	}
+	return clients, nil
+}
+
+// ListOrganizations lists all organizations in a project.
+func (c *OryClient) ListOrganizations(ctx context.Context, projectID string) ([]ory.Organization, error) {
+	resp, httpResp, err := c.consoleClient.ProjectAPI.ListOrganizations(ctx, projectID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, wrapAPIError(err, "listing organizations")
+	}
+	return resp.Organizations, nil
+}
+
+// ListIdentitySchemas lists all identity schemas for a project.
+func (c *OryClient) ListIdentitySchemas(ctx context.Context) ([]ory.IdentitySchemaContainer, error) {
+	schemas, httpResp, err := c.projectClient.IdentityAPI.ListIdentitySchemas(ctx).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, wrapAPIError(err, "listing identity schemas")
+	}
+	return schemas, nil
+}
+
+// ListWorkspaces lists all workspaces.
+func (c *OryClient) ListWorkspaces(ctx context.Context) ([]ory.Workspace, error) {
+	resp, httpResp, err := c.consoleClient.WorkspaceAPI.ListWorkspaces(ctx).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, wrapAPIError(err, "listing workspaces")
+	}
+	return resp.Workspaces, nil
+}

@@ -11,6 +11,8 @@ Manages an Ory Network OAuth2 client.
 
 OAuth2 clients are used for machine-to-machine authentication or user-facing OAuth2/OIDC flows.
 
+-> **Plan:** Available on all Ory Network plans.
+
 ~> **Important:** The `client_secret` is only returned when the client is first created. Store it securely immediately after creation. It cannot be retrieved later, including after `terraform import`.
 
 ## Example Usage

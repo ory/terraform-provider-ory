@@ -11,6 +11,8 @@ Manages an Ory Network identity (user).
 
 Identities represent users in your application. Each identity has traits (profile data) defined by an identity schema.
 
+-> **Plan:** Available on all Ory Network plans.
+
 ## Required Provider Configuration
 
 This resource requires the following provider configuration:

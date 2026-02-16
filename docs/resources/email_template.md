@@ -11,6 +11,8 @@ Manages an Ory Network email template.
 
 Email templates use [Go template syntax](https://pkg.go.dev/text/template) for variable substitution. HTML bodies use `html/template` (auto-escaping) and plaintext bodies use `text/template`. [Sprig template functions](http://masterminds.github.io/sprig/) are available, except date, random, OS, and network functions.
 
+-> **Plan:** Available on all Ory Network plans.
+
 ## Template Types
 
 | Template Type | UI Name | Description |

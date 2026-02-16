@@ -1,0 +1,20 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  Fetches information about an Ory organization.
+---
+
+# {{.Name}} ({{.Type}})
+
+Fetches information about an Ory organization.
+
+This data source retrieves details about an existing organization, including its label and associated SSO domains.
+
+-> **Plan:** Requires an Ory Network **Growth plan or higher** with B2B features enabled.
+
+## Example Usage
+
+{{ tffile "examples/data-sources/ory_organization/data-source.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}

@@ -1,0 +1,13 @@
+resource "ory_identity" "test" {
+  schema_id = "preset://username"
+
+  traits = jsonencode({
+    username = "ds-identity-test"
+  })
+
+  state = "active"
+}
+
+data "ory_identity" "test" {
+  id = ory_identity.test.id
+}

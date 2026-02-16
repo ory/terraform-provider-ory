@@ -11,6 +11,8 @@ Manages an Ory Network JSON Web Key Set (JWKS).
 
 JSON Web Keys are used for signing and encrypting tokens. This resource generates and manages custom key sets for your Ory project's OAuth2/OIDC service (Hydra).
 
+-> **Plan:** Available on all Ory Network plans.
+
 ~> **Note:** This resource is **immutable**. Any change to `set_id`, `key_id`, `algorithm`, or `use` will destroy the existing key set and create a new one. Private keys in the old set will be permanently lost.
 
 ## Algorithms

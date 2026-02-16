@@ -152,6 +152,7 @@ test-acc-all: env-check ## Run all acceptance tests including optional ones
 		ORY_B2B_ENABLED=true \
 		ORY_SOCIAL_PROVIDER_TESTS_ENABLED=true \
 		ORY_SCHEMA_TESTS_ENABLED=true \
+		ORY_EVENT_STREAM_TESTS_ENABLED=true \
 		./scripts/run-acceptance-tests.sh -p 1 -v -timeout 30m ./...
 
 # ==============================================================================
@@ -224,3 +225,4 @@ env-check: ## Check required environment variables
 	@if [ "$$ORY_SOCIAL_PROVIDER_TESTS_ENABLED" = "true" ]; then echo "  ORY_SOCIAL_PROVIDER_TESTS_ENABLED: true"; else echo "  ORY_SOCIAL_PROVIDER_TESTS_ENABLED: (not set)"; fi
 	@if [ "$$ORY_SCHEMA_TESTS_ENABLED" = "true" ]; then echo "  ORY_SCHEMA_TESTS_ENABLED: true"; else echo "  ORY_SCHEMA_TESTS_ENABLED: (not set - schema tests will be skipped)"; fi
 	@if [ "$$ORY_PROJECT_TESTS_ENABLED" = "true" ]; then echo "  ORY_PROJECT_TESTS_ENABLED: true"; else echo "  ORY_PROJECT_TESTS_ENABLED: (not set - project resource tests will be skipped)"; fi
+	@if [ "$$ORY_EVENT_STREAM_TESTS_ENABLED" = "true" ]; then echo "  ORY_EVENT_STREAM_TESTS_ENABLED: true"; else echo "  ORY_EVENT_STREAM_TESTS_ENABLED: (not set - event stream tests will be skipped, requires Enterprise plan)"; fi

@@ -21,9 +21,12 @@ A Terraform provider for managing [Ory Network](https://www.ory.sh/) resources u
 - **Project Configuration**: CORS, session settings, password policies, MFA
 - **Webhooks/Actions**: Trigger webhooks on identity flow events
 - **Email Templates**: Customize verification, recovery, and login code emails
-- **OAuth2 Clients**: Manage OAuth2/OIDC client applications
+- **OAuth2 Clients**: Manage OAuth2/OIDC client applications and dynamic client registration (RFC 7591)
+- **JWT Grant Trust**: Trust external identity providers for RFC 7523 JWT Bearer grants
+- **Event Streams**: Publish Ory events to external systems like AWS SNS (Enterprise)
 - **Organizations**: Multi-tenancy support for B2B applications
 - **Permissions (Keto)**: Manage relationship tuples for fine-grained authorization
+- **API Key Management**: Manage project and workspace API keys
 
 ## Requirements
 
@@ -135,27 +138,36 @@ resource "ory_action" "welcome_email" {
 
 ## Resources
 
-| Resource                                                     | Description                          |
-| ------------------------------------------------------------ | ------------------------------------ |
-| [`ory_project`](docs/resources/project.md)                   | Ory Network projects                 |
-| [`ory_workspace`](docs/resources/workspace.md)               | Ory workspaces                       |
-| [`ory_organization`](docs/resources/organization.md)         | Organizations for multi-tenancy      |
-| [`ory_identity`](docs/resources/identity.md)                 | User identities                      |
-| [`ory_identity_schema`](docs/resources/identity_schema.md)   | Custom identity schemas              |
-| [`ory_oauth2_client`](docs/resources/oauth2_client.md)       | OAuth2/OIDC client applications      |
-| [`ory_project_config`](docs/resources/project_config.md)     | Project configuration settings       |
-| [`ory_action`](docs/resources/action.md)                     | Webhooks for identity flows          |
-| [`ory_social_provider`](docs/resources/social_provider.md)   | Social sign-in providers             |
-| [`ory_email_template`](docs/resources/email_template.md)     | Email template customization         |
-| [`ory_project_api_key`](docs/resources/project_api_key.md)   | Project API keys                     |
-| [`ory_json_web_key_set`](docs/resources/json_web_key_set.md) | JSON Web Key Sets for signing        |
-| [`ory_relationship`](docs/resources/relationship.md)         | Ory Permissions (Keto) relationships |
+| Resource                                                                                        | Description                               | Plan Requirement     |
+| ----------------------------------------------------------------------------------------------- | ----------------------------------------- | -------------------- |
+| [`ory_project`](docs/resources/project.md)                                                      | Ory Network projects                      | All plans            |
+| [`ory_workspace`](docs/resources/workspace.md)                                                  | Ory workspaces (import-only)              | All plans            |
+| [`ory_organization`](docs/resources/organization.md)                                            | Organizations for multi-tenancy           | Growth+ (B2B)        |
+| [`ory_identity`](docs/resources/identity.md)                                                    | User identities                           | All plans            |
+| [`ory_identity_schema`](docs/resources/identity_schema.md)                                      | Custom identity schemas                   | All plans            |
+| [`ory_oauth2_client`](docs/resources/oauth2_client.md)                                          | OAuth2/OIDC client applications           | All plans            |
+| [`ory_oidc_dynamic_client`](docs/resources/oidc_dynamic_client.md)                              | RFC 7591 dynamic OIDC client registration | All plans            |
+| [`ory_project_config`](docs/resources/project_config.md)                                        | Project configuration settings            | All plans            |
+| [`ory_action`](docs/resources/action.md)                                                        | Webhooks for identity flows               | All plans            |
+| [`ory_social_provider`](docs/resources/social_provider.md)                                      | Social sign-in providers                  | All plans            |
+| [`ory_email_template`](docs/resources/email_template.md)                                        | Email template customization              | All plans            |
+| [`ory_project_api_key`](docs/resources/project_api_key.md)                                      | Project API keys                          | All plans            |
+| [`ory_workspace_api_key`](docs/resources/workspace_api_key.md)                                  | Workspace API keys (import-only)          | All plans            |
+| [`ory_json_web_key_set`](docs/resources/json_web_key_set.md)                                    | JSON Web Key Sets for signing             | All plans            |
+| [`ory_relationship`](docs/resources/relationship.md)                                            | Ory Permissions (Keto) relationships      | All plans            |
+| [`ory_event_stream`](docs/resources/event_stream.md)                                            | Event streams (e.g., AWS SNS)             | Enterprise           |
+| [`ory_trusted_oauth2_jwt_grant_issuer`](docs/resources/trusted_oauth2_jwt_grant_issuer.md)      | RFC 7523 JWT grant trust relationships    | All plans            |
 
 ## Data Sources
 
-| Data Source                                   | Description              |
-| --------------------------------------------- | ------------------------ |
-| [`ory_project`](docs/data-sources/project.md) | Read project information |
+| Data Source                                                        | Description                    | Plan Requirement     |
+| ------------------------------------------------------------------ | ------------------------------ | -------------------- |
+| [`ory_project`](docs/data-sources/project.md)                     | Read project information       | All plans            |
+| [`ory_workspace`](docs/data-sources/workspace.md)                 | Read workspace information     | All plans            |
+| [`ory_identity`](docs/data-sources/identity.md)                   | Read identity details          | All plans            |
+| [`ory_oauth2_client`](docs/data-sources/oauth2_client.md)         | Read OAuth2 client details     | All plans            |
+| [`ory_organization`](docs/data-sources/organization.md)           | Read organization details      | Growth+ (B2B)        |
+| [`ory_identity_schemas`](docs/data-sources/identity_schemas.md)   | List project identity schemas  | All plans            |
 
 ## Examples
 
@@ -272,15 +284,19 @@ resource "ory_email_template" "recovery" {
 
 ## Known Limitations
 
-| Resource              | Limitation                                                                          |
-| --------------------- | ----------------------------------------------------------------------------------- |
-| `ory_organization`    | Requires B2B features AND project environment must be `prod` or `stage` (not `dev`) |
-| `ory_identity_schema` | Immutable - content cannot be updated after creation                                |
-| `ory_identity_schema` | Delete not supported by Ory API (resource removed from state only)                  |
-| `ory_workspace`       | Delete not supported by Ory API                                                     |
-| `ory_oauth2_client`   | `client_secret` only returned on create                                             |
-| `ory_email_template`  | Delete resets to Ory defaults                                                       |
-| `ory_relationship`    | Requires Ory Permissions (Keto) to be enabled                                       |
+| Resource                                | Limitation                                                                          |
+| --------------------------------------- | ----------------------------------------------------------------------------------- |
+| `ory_organization`                      | Requires B2B features AND project environment must be `prod` or `stage` (not `dev`) |
+| `ory_identity_schema`                   | Immutable - content cannot be updated after creation                                |
+| `ory_identity_schema`                   | Delete not supported by Ory API (resource removed from state only)                  |
+| `ory_workspace`                         | Import-only; create/delete not supported by Ory API                                 |
+| `ory_workspace_api_key`                 | Import-only; must be created via Ory Console                                        |
+| `ory_oauth2_client`                     | `client_secret` only returned on create                                             |
+| `ory_oidc_dynamic_client`               | `client_secret`, `registration_access_token`, `registration_client_uri` only returned on create |
+| `ory_email_template`                    | Delete resets to Ory defaults                                                       |
+| `ory_relationship`                      | Requires Ory Permissions (Keto) to be enabled                                       |
+| `ory_event_stream`                      | Requires Enterprise plan; authenticates with workspace API key                      |
+| `ory_trusted_oauth2_jwt_grant_issuer`   | Create and delete only; any changes require resource recreation                     |
 
 ## Development
 
@@ -347,20 +363,24 @@ Some tests require additional feature flags or specific Ory plan features:
 | `ORY_SOCIAL_PROVIDER_TESTS_ENABLED=true` | Run social provider tests                           | Skipped  |
 | `ORY_SCHEMA_TESTS_ENABLED=true`          | Run IdentitySchema tests (schemas can't be deleted) | Skipped  |
 | `ORY_PROJECT_TESTS_ENABLED=true`         | Run Project create/delete tests                     | Skipped  |
+| `ORY_EVENT_STREAM_TESTS_ENABLED=true`    | Run Event Stream tests (requires Enterprise plan)   | Skipped  |
 
 #### Test Coverage by Plan
 
-| Test Suite          | Free Plan | Growth Plan | Enterprise |
-| ------------------- | --------- | ----------- | ---------- |
-| Identity            | ✅        | ✅          | ✅         |
-| OAuth2 Client       | ✅        | ✅          | ✅         |
-| Project Config      | ✅        | ✅          | ✅         |
-| Action (webhooks)   | ✅        | ✅          | ✅         |
-| Email Template      | ✅        | ✅          | ✅         |
-| Social Provider     | ✅        | ✅          | ✅         |
-| JWK                 | ✅        | ✅          | ✅         |
-| Organization        | ❌        | ✅\*        | ✅         |
-| Relationship (Keto) | ❌        | ✅          | ✅         |
+| Test Suite                      | Free Plan | Growth Plan | Enterprise |
+| ------------------------------- | --------- | ----------- | ---------- |
+| Identity                        | ✅        | ✅          | ✅         |
+| OAuth2 Client                   | ✅        | ✅          | ✅         |
+| OIDC Dynamic Client             | ✅        | ✅          | ✅         |
+| Project Config                  | ✅        | ✅          | ✅         |
+| Action (webhooks)               | ✅        | ✅          | ✅         |
+| Email Template                  | ✅        | ✅          | ✅         |
+| Social Provider                 | ✅        | ✅          | ✅         |
+| JWK                             | ✅        | ✅          | ✅         |
+| Trusted JWT Grant Issuer        | ✅        | ✅          | ✅         |
+| Organization                    | ❌        | ✅\*        | ✅         |
+| Relationship (Keto)             | ❌        | ✅          | ✅         |
+| Event Stream                    | ❌        | ❌          | ✅         |
 
 \*Organizations require B2B features to be enabled on your plan.
 
@@ -381,12 +401,22 @@ Templates use Go template syntax with these variables:
 
 ```
 templates/
-├── index.md.tmpl                    # Provider-level docs
+├── index.md.tmpl                                  # Provider-level docs
 ├── resources/
-│   ├── oauth2_client.md.tmpl        # Each resource has a template
+│   ├── oauth2_client.md.tmpl                      # Each resource has a template
+│   ├── oidc_dynamic_client.md.tmpl
+│   ├── event_stream.md.tmpl
+│   ├── trusted_oauth2_jwt_grant_issuer.md.tmpl
+│   ├── workspace_api_key.md.tmpl
 │   └── ...
 └── data-sources/
-    └── project.md.tmpl              # Data source template
+    ├── project.md.tmpl                            # Data source templates
+    ├── workspace.md.tmpl
+    ├── identity.md.tmpl
+    ├── oauth2_client.md.tmpl
+    ├── organization.md.tmpl
+    ├── identity_schemas.md.tmpl
+    └── ...
 ```
 
 ## Contributing
