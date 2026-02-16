@@ -146,7 +146,7 @@ func loadProjectFromEnv(t *testing.T) {
 // This is called when running individual test packages without the wrapper script.
 func createSharedProject(t *testing.T) {
 	ctx := context.Background()
-	c, err := getOryClient()
+	c, err := GetOryClient()
 	if err != nil {
 		initError = fmt.Errorf("failed to create Ory client: %w", err)
 		return
@@ -226,7 +226,7 @@ func cleanupTestProject(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	c, err := getOryClient()
+	c, err := GetOryClient()
 	if err != nil {
 		t.Logf("Warning: Failed to create Ory client for cleanup: %v", err)
 		return
@@ -242,8 +242,8 @@ func cleanupTestProject(t *testing.T) {
 	sharedTestProject = nil
 }
 
-// getOryClient returns a shared Ory client for test setup/teardown.
-func getOryClient() (*client.OryClient, error) {
+// GetOryClient returns a shared Ory client for test setup/teardown.
+func GetOryClient() (*client.OryClient, error) {
 	if oryClient != nil {
 		return oryClient, nil
 	}

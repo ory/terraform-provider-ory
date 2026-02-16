@@ -366,9 +366,6 @@ func NewOryClient(cfg OryClientConfig) (*OryClient, error) {
 			"WorkspaceAPIService.GetWorkspace":          consoleServer,
 			"WorkspaceAPIService.ListWorkspaces":        consoleServer,
 			"WorkspaceAPIService.UpdateWorkspace":       consoleServer,
-			"WorkspaceAPIService.CreateWorkspaceApiKey": consoleServer,
-			"WorkspaceAPIService.DeleteWorkspaceApiKey": consoleServer,
-			"WorkspaceAPIService.ListWorkspaceApiKeys":  consoleServer,
 			"WorkspaceAPIService.ListWorkspaceProjects": consoleServer,
 			// EventsAPI operations
 			"EventsAPIService.CreateEventStream": consoleServer,
@@ -1058,43 +1055,6 @@ func (c *OryClient) ListTrustedOAuth2JwtGrantIssuers(ctx context.Context) ([]ory
 		return nil, wrapAPIError(err, "listing trusted JWT grant issuers")
 	}
 	return issuers, nil
-}
-
-// =============================================================================
-// Workspace API Key Operations (Console API)
-// =============================================================================
-
-// CreateWorkspaceAPIKey creates a new API key for a workspace.
-func (c *OryClient) CreateWorkspaceAPIKey(ctx context.Context, workspaceID string, body ory.CreateWorkspaceApiKeyBody) (*ory.WorkspaceApiKey, error) {
-	key, httpResp, err := c.consoleClient.WorkspaceAPI.CreateWorkspaceApiKey(ctx, workspaceID).CreateWorkspaceApiKeyBody(body).Execute()
-	if httpResp != nil {
-		_ = httpResp.Body.Close()
-	}
-	if err != nil {
-		return nil, wrapAPIError(err, "creating workspace API key")
-	}
-	return key, nil
-}
-
-// ListWorkspaceAPIKeys lists all API keys for a workspace.
-func (c *OryClient) ListWorkspaceAPIKeys(ctx context.Context, workspaceID string) ([]ory.WorkspaceApiKey, error) {
-	keys, httpResp, err := c.consoleClient.WorkspaceAPI.ListWorkspaceApiKeys(ctx, workspaceID).Execute()
-	if httpResp != nil {
-		_ = httpResp.Body.Close()
-	}
-	if err != nil {
-		return nil, wrapAPIError(err, "listing workspace API keys")
-	}
-	return keys, nil
-}
-
-// DeleteWorkspaceAPIKey deletes a workspace API key.
-func (c *OryClient) DeleteWorkspaceAPIKey(ctx context.Context, workspaceID, tokenID string) error {
-	httpResp, err := c.consoleClient.WorkspaceAPI.DeleteWorkspaceApiKey(ctx, workspaceID, tokenID).Execute()
-	if httpResp != nil {
-		_ = httpResp.Body.Close()
-	}
-	return wrapAPIError(err, "deleting workspace API key")
 }
 
 // =============================================================================

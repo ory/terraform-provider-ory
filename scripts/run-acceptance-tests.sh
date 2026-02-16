@@ -17,6 +17,8 @@
 #   ORY_SCHEMA_TESTS_ENABLED         - Enable identity schema tests
 #   ORY_PROJECT_TESTS_ENABLED        - Enable project create/delete tests
 #   ORY_EVENT_STREAM_TESTS_ENABLED   - Enable event stream tests (requires Enterprise plan)
+#   ORY_EVENT_STREAM_TOPIC_ARN       - Real AWS SNS topic ARN (required for event stream tests)
+#   ORY_EVENT_STREAM_ROLE_ARN        - Real AWS IAM role ARN (required for event stream tests)
 
 set -euo pipefail
 

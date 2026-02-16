@@ -34,7 +34,6 @@ import (
 	"github.com/ory/terraform-provider-ory/internal/resources/socialprovider"
 	"github.com/ory/terraform-provider-ory/internal/resources/trustedjwtissuer"
 	"github.com/ory/terraform-provider-ory/internal/resources/workspace"
-	"github.com/ory/terraform-provider-ory/internal/resources/workspaceapikey"
 )
 
 // Re-export client defaults for use in tests
@@ -289,7 +288,6 @@ func (p *OryProvider) Resources(ctx context.Context) []func() resource.Resource 
 		relationship.NewResource,
 		eventstream.NewResource,
 		trustedjwtissuer.NewResource,
-		workspaceapikey.NewResource,
 		oidcdynamicclient.NewResource,
 	}
 }

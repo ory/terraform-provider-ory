@@ -303,7 +303,10 @@ func (r *EmailTemplateResource) Read(ctx context.Context, req resource.ReadReque
 
 	// Read subject if present
 	if subject, ok := email["subject"].(string); ok && subject != "" {
-		state.Subject = types.StringValue(decodeTemplate(subject))
+		// Skip URL references (e.g., GCS URLs on staging) - preserve user's config value
+		if !strings.HasPrefix(subject, "http://") && !strings.HasPrefix(subject, "https://") {
+			state.Subject = types.StringValue(decodeTemplate(subject))
+		}
 	}
 
 	// Read body

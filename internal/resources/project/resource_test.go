@@ -82,6 +82,44 @@ func TestAccProjectResource_prodEnvironment(t *testing.T) {
 	})
 }
 
+// TestAccProjectResource_regions tests creating projects in different home regions.
+func TestAccProjectResource_regions(t *testing.T) {
+	regions := []string{"eu-central", "us-east", "us-west", "asia-northeast", "global"}
+
+	for _, region := range regions {
+		t.Run(region, func(t *testing.T) {
+			projectName := testProjectName("region-" + region)
+			acctest.RunTest(t, resource.TestCase{
+				PreCheck:                 func() { testAccPreCheck(t) },
+				ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+				Steps: []resource.TestStep{
+					{
+						Config: acctest.LoadTestConfig(t, "testdata/region.tf.tmpl", map[string]string{
+							"Name":        projectName,
+							"Environment": "dev",
+							"HomeRegion":  region,
+						}),
+						Check: resource.ComposeAggregateTestCheckFunc(
+							resource.TestCheckResourceAttrSet("ory_project.test", "id"),
+							resource.TestCheckResourceAttr("ory_project.test", "name", projectName),
+							resource.TestCheckResourceAttr("ory_project.test", "environment", "dev"),
+							resource.TestCheckResourceAttr("ory_project.test", "home_region", region),
+							resource.TestCheckResourceAttrSet("ory_project.test", "slug"),
+							resource.TestCheckResourceAttr("ory_project.test", "state", "running"),
+						),
+					},
+					// ImportState
+					{
+						ResourceName:      "ory_project.test",
+						ImportState:       true,
+						ImportStateVerify: true,
+					},
+				},
+			})
+		})
+	}
+}
+
 // testProjectName generates a project name with the e2e prefix for hard deletion support.
 // The prefix is read from ORY_TEST_PROJECT_PREFIX env var (set by scripts/run-acceptance-tests.sh).
 func testProjectName(suffix string) string {

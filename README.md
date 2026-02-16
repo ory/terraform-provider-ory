@@ -26,7 +26,7 @@ A Terraform provider for managing [Ory Network](https://www.ory.sh/) resources u
 - **Event Streams**: Publish Ory events to external systems like AWS SNS (Enterprise)
 - **Organizations**: Multi-tenancy support for B2B applications
 - **Permissions (Keto)**: Manage relationship tuples for fine-grained authorization
-- **API Key Management**: Manage project and workspace API keys
+- **API Key Management**: Manage project API keys
 
 ## Requirements
 
@@ -152,7 +152,6 @@ resource "ory_action" "welcome_email" {
 | [`ory_social_provider`](docs/resources/social_provider.md)                                      | Social sign-in providers                  | All plans            |
 | [`ory_email_template`](docs/resources/email_template.md)                                        | Email template customization              | All plans            |
 | [`ory_project_api_key`](docs/resources/project_api_key.md)                                      | Project API keys                          | All plans            |
-| [`ory_workspace_api_key`](docs/resources/workspace_api_key.md)                                  | Workspace API keys (import-only)          | All plans            |
 | [`ory_json_web_key_set`](docs/resources/json_web_key_set.md)                                    | JSON Web Key Sets for signing             | All plans            |
 | [`ory_relationship`](docs/resources/relationship.md)                                            | Ory Permissions (Keto) relationships      | All plans            |
 | [`ory_event_stream`](docs/resources/event_stream.md)                                            | Event streams (e.g., AWS SNS)             | Enterprise           |
@@ -290,7 +289,6 @@ resource "ory_email_template" "recovery" {
 | `ory_identity_schema`                   | Immutable - content cannot be updated after creation                                |
 | `ory_identity_schema`                   | Delete not supported by Ory API (resource removed from state only)                  |
 | `ory_workspace`                         | Import-only; create/delete not supported by Ory API                                 |
-| `ory_workspace_api_key`                 | Import-only; must be created via Ory Console                                        |
 | `ory_oauth2_client`                     | `client_secret` only returned on create                                             |
 | `ory_oidc_dynamic_client`               | `client_secret`, `registration_access_token`, `registration_client_uri` only returned on create |
 | `ory_email_template`                    | Delete resets to Ory defaults                                                       |
@@ -407,7 +405,6 @@ templates/
 │   ├── oidc_dynamic_client.md.tmpl
 │   ├── event_stream.md.tmpl
 │   ├── trusted_oauth2_jwt_grant_issuer.md.tmpl
-│   ├── workspace_api_key.md.tmpl
 │   └── ...
 └── data-sources/
     ├── project.md.tmpl                            # Data source templates
