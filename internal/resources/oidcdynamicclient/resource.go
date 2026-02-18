@@ -32,29 +32,7 @@ type OIDCDynamicClientResource struct {
 	client *client.OryClient
 }
 
-// OIDCDynamicClientResourceModel describes the resource data model.
-type OIDCDynamicClientResourceModel struct {
-	ID                      types.String `tfsdk:"id"`
-	ClientID                types.String `tfsdk:"client_id"`
-	ClientSecret            types.String `tfsdk:"client_secret"`
-	RegistrationAccessToken types.String `tfsdk:"registration_access_token"`
-	RegistrationClientURI   types.String `tfsdk:"registration_client_uri"`
-	ClientName              types.String `tfsdk:"client_name"`
-	GrantTypes              types.List   `tfsdk:"grant_types"`
-	ResponseTypes           types.List   `tfsdk:"response_types"`
-	Scope                   types.String `tfsdk:"scope"`
-	RedirectURIs            types.List   `tfsdk:"redirect_uris"`
-	TokenEndpointAuthMethod types.String `tfsdk:"token_endpoint_auth_method"`
-}
-
-func (r *OIDCDynamicClientResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_oidc_dynamic_client"
-}
-
-func (r *OIDCDynamicClientResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages an Ory Network OIDC Dynamic Client via RFC 7591 Dynamic Client Registration.",
-		MarkdownDescription: `
+const oidcDynamicClientMarkdownDescription = `
 Manages an Ory Network OIDC Dynamic Client via RFC 7591 (Dynamic Client Registration).
 
 Dynamic clients are registered without prior authentication and receive a
@@ -99,7 +77,31 @@ terraform import ory_oidc_dynamic_client.app <client-id>
 
 **Note:** When importing, ` + "`client_secret`" + `, ` + "`registration_access_token`" + `,
 and ` + "`registration_client_uri`" + ` will not be available.
-`,
+`
+
+// OIDCDynamicClientResourceModel describes the resource data model.
+type OIDCDynamicClientResourceModel struct {
+	ID                      types.String `tfsdk:"id"`
+	ClientID                types.String `tfsdk:"client_id"`
+	ClientSecret            types.String `tfsdk:"client_secret"`
+	RegistrationAccessToken types.String `tfsdk:"registration_access_token"`
+	RegistrationClientURI   types.String `tfsdk:"registration_client_uri"`
+	ClientName              types.String `tfsdk:"client_name"`
+	GrantTypes              types.List   `tfsdk:"grant_types"`
+	ResponseTypes           types.List   `tfsdk:"response_types"`
+	Scope                   types.String `tfsdk:"scope"`
+	RedirectURIs            types.List   `tfsdk:"redirect_uris"`
+	TokenEndpointAuthMethod types.String `tfsdk:"token_endpoint_auth_method"`
+}
+
+func (r *OIDCDynamicClientResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_oidc_dynamic_client"
+}
+
+func (r *OIDCDynamicClientResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description:         "Manages an Ory Network OIDC Dynamic Client via RFC 7591 Dynamic Client Registration.",
+		MarkdownDescription: oidcDynamicClientMarkdownDescription,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "Internal Terraform ID (same as client_id).",

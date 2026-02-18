@@ -34,25 +34,7 @@ type EventStreamResource struct {
 	client *client.OryClient
 }
 
-// EventStreamResourceModel describes the resource data model.
-type EventStreamResourceModel struct {
-	ID        types.String `tfsdk:"id"`
-	ProjectID types.String `tfsdk:"project_id"`
-	Type      types.String `tfsdk:"type"`
-	TopicArn  types.String `tfsdk:"topic_arn"`
-	RoleArn   types.String `tfsdk:"role_arn"`
-	CreatedAt types.String `tfsdk:"created_at"`
-	UpdatedAt types.String `tfsdk:"updated_at"`
-}
-
-func (r *EventStreamResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_event_stream"
-}
-
-func (r *EventStreamResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages an Ory Network event stream.",
-		MarkdownDescription: `
+const eventStreamMarkdownDescription = `
 Manages an Ory Network event stream.
 
 Event streams allow you to receive real-time events from your Ory Network
@@ -78,7 +60,27 @@ Event streams can be imported using the format ` + "`project_id/event_stream_id`
 ` + "```shell" + `
 terraform import ory_event_stream.example <project-id>/<event-stream-id>
 ` + "```" + `
-`,
+`
+
+// EventStreamResourceModel describes the resource data model.
+type EventStreamResourceModel struct {
+	ID        types.String `tfsdk:"id"`
+	ProjectID types.String `tfsdk:"project_id"`
+	Type      types.String `tfsdk:"type"`
+	TopicArn  types.String `tfsdk:"topic_arn"`
+	RoleArn   types.String `tfsdk:"role_arn"`
+	CreatedAt types.String `tfsdk:"created_at"`
+	UpdatedAt types.String `tfsdk:"updated_at"`
+}
+
+func (r *EventStreamResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_event_stream"
+}
+
+func (r *EventStreamResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description:         "Manages an Ory Network event stream.",
+		MarkdownDescription: eventStreamMarkdownDescription,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "The unique identifier of the event stream.",

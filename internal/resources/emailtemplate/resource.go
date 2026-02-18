@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -242,6 +243,12 @@ func decodeTemplate(content string) string {
 	return content
 }
 
+// isURL checks whether the given string is a URL (has a scheme and host).
+func isURL(s string) bool {
+	u, err := url.Parse(s)
+	return err == nil && u.Scheme != "" && u.Host != ""
+}
+
 func (r *EmailTemplateResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state EmailTemplateResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -304,7 +311,7 @@ func (r *EmailTemplateResource) Read(ctx context.Context, req resource.ReadReque
 	// Read subject if present
 	if subject, ok := email["subject"].(string); ok && subject != "" {
 		// Skip URL references (e.g., GCS URLs on staging) - preserve user's config value
-		if !strings.HasPrefix(subject, "http://") && !strings.HasPrefix(subject, "https://") {
+		if !isURL(subject) {
 			state.Subject = types.StringValue(decodeTemplate(subject))
 		}
 	}
@@ -312,13 +319,12 @@ func (r *EmailTemplateResource) Read(ctx context.Context, req resource.ReadReque
 	// Read body
 	if body, ok := email["body"].(map[string]interface{}); ok {
 		if html, ok := body["html"].(string); ok && html != "" {
-			// Check if it's a URL reference (like with actions) - if so, preserve user's config
-			if !strings.HasPrefix(html, "http://") && !strings.HasPrefix(html, "https://") {
+			if !isURL(html) {
 				state.BodyHTML = types.StringValue(decodeTemplate(html))
 			}
 		}
 		if plaintext, ok := body["plaintext"].(string); ok && plaintext != "" {
-			if !strings.HasPrefix(plaintext, "http://") && !strings.HasPrefix(plaintext, "https://") {
+			if !isURL(plaintext) {
 				state.BodyPlaintext = types.StringValue(decodeTemplate(plaintext))
 			}
 		}
