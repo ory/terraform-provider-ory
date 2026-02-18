@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"regexp"
 
+	"strings"
+
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -15,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	ory "github.com/ory/client-go"
 
@@ -111,7 +115,83 @@ type ProjectConfigResourceModel struct {
 	AccountExperienceName       types.String `tfsdk:"account_experience_name"`
 	AccountExperienceStylesheet types.String `tfsdk:"account_experience_stylesheet"`
 	AccountExperienceLocale     types.String `tfsdk:"account_experience_default_locale"`
+
+	// Session Tokenizer Templates
+	SessionTokenizerTemplates types.Map `tfsdk:"session_tokenizer_templates"`
+
+	// Courier HTTP Delivery
+	CourierDeliveryStrategy  types.String `tfsdk:"courier_delivery_strategy"`
+	CourierHTTPRequestConfig types.Object `tfsdk:"courier_http_request_config"`
+	CourierChannels          types.List   `tfsdk:"courier_channels"`
 }
+
+// --- Nested model types for session tokenizer templates and courier HTTP ---
+
+// SessionTokenizerTemplateModel represents a single tokenizer template entry.
+type SessionTokenizerTemplateModel struct {
+	TTL             types.String `tfsdk:"ttl"`
+	JWKSURL         types.String `tfsdk:"jwks_url"`
+	ClaimsMapperURL types.String `tfsdk:"claims_mapper_url"`
+	SubjectSource   types.String `tfsdk:"subject_source"`
+}
+
+// CourierHTTPAuthModel represents the auth block for HTTP request configs.
+// This is a flattened discriminated union: set type + the fields for that type.
+type CourierHTTPAuthModel struct {
+	Type     types.String `tfsdk:"type"`
+	User     types.String `tfsdk:"user"`
+	Password types.String `tfsdk:"password"`
+	Name     types.String `tfsdk:"name"`
+	Value    types.String `tfsdk:"value"`
+	In       types.String `tfsdk:"in"`
+}
+
+// CourierHTTPRequestConfigModel represents an HTTP request configuration.
+type CourierHTTPRequestConfigModel struct {
+	URL     types.String `tfsdk:"url"`
+	Method  types.String `tfsdk:"method"`
+	Headers types.Map    `tfsdk:"headers"`
+	Body    types.String `tfsdk:"body"`
+	Auth    types.Object `tfsdk:"auth"`
+}
+
+// CourierChannelModel represents a single courier channel entry.
+type CourierChannelModel struct {
+	ID            types.String `tfsdk:"id"`
+	RequestConfig types.Object `tfsdk:"request_config"`
+}
+
+// Shared attr.Type maps for constructing types.Object / types.Map / types.List values.
+var (
+	tokenizerTemplateAttrTypes = map[string]attr.Type{
+		"ttl":               types.StringType,
+		"jwks_url":          types.StringType,
+		"claims_mapper_url": types.StringType,
+		"subject_source":    types.StringType,
+	}
+
+	courierHTTPAuthAttrTypes = map[string]attr.Type{
+		"type":     types.StringType,
+		"user":     types.StringType,
+		"password": types.StringType,
+		"name":     types.StringType,
+		"value":    types.StringType,
+		"in":       types.StringType,
+	}
+
+	courierHTTPRequestConfigAttrTypes = map[string]attr.Type{
+		"url":     types.StringType,
+		"method":  types.StringType,
+		"headers": types.MapType{ElemType: types.StringType},
+		"body":    types.StringType,
+		"auth":    types.ObjectType{AttrTypes: courierHTTPAuthAttrTypes},
+	}
+
+	courierChannelAttrTypes = map[string]attr.Type{
+		"id":             types.StringType,
+		"request_config": types.ObjectType{AttrTypes: courierHTTPRequestConfigAttrTypes},
+	}
+)
 
 func (r *ProjectConfigResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_project_config"
@@ -426,6 +506,150 @@ resource "ory_project_config" "main" {
 			"account_experience_default_locale": schema.StringAttribute{
 				Description: "Default locale for the hosted login UI (e.g., 'en', 'de').",
 				Optional:    true,
+			},
+
+			// Session Tokenizer Templates
+			"session_tokenizer_templates": schema.MapNestedAttribute{
+				Description: "JWT tokenizer templates for the /sessions/whoami endpoint. " +
+					"Each key is a template name, and the value configures how JWTs are generated.",
+				Optional: true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"ttl": schema.StringAttribute{
+							Description: "Token time-to-live duration (e.g., '1h', '30m'). Default: '1m'.",
+							Optional:    true,
+							Validators: []validator.String{
+								stringvalidator.RegexMatches(
+									regexp.MustCompile(`^[0-9]+(ns|us|ms|s|m|h)$`),
+									"must be a valid Go duration (e.g., '1h', '30m', '10s')",
+								),
+							},
+						},
+						"jwks_url": schema.StringAttribute{
+							Description: "JWKS URL for signing tokens. Must use base64:// scheme (e.g., 'base64://eyJrZXlzIjpbXX0=').",
+							Required:    true,
+							Sensitive:   true,
+							Validators: []validator.String{
+								stringvalidator.RegexMatches(
+									regexp.MustCompile(`^base64://`),
+									"must start with 'base64://'",
+								),
+							},
+						},
+						"claims_mapper_url": schema.StringAttribute{
+							Description: "Jsonnet claims mapper URL. Supports base64:// and https:// schemes.",
+							Optional:    true,
+						},
+						"subject_source": schema.StringAttribute{
+							Description: "Subject source for the JWT: 'id' (default) or 'external_id'.",
+							Optional:    true,
+							Validators: []validator.String{
+								stringvalidator.OneOf("id", "external_id"),
+							},
+						},
+					},
+				},
+			},
+
+			// Courier HTTP Delivery
+			"courier_delivery_strategy": schema.StringAttribute{
+				Description: "Courier delivery strategy: 'smtp' (default) or 'http'.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("smtp", "http"),
+				},
+			},
+			"courier_http_request_config": courierHTTPRequestConfigSchemaAttr(
+				"HTTP request configuration for courier message delivery (used when courier_delivery_strategy is 'http').",
+			),
+			"courier_channels": schema.ListNestedAttribute{
+				Description: "Per-channel courier delivery configurations (e.g., SMS via Twilio). " +
+					"Each channel overrides the default delivery for a specific message channel.",
+				Optional: true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"id": schema.StringAttribute{
+							Description: "Channel identifier (e.g., 'sms').",
+							Required:    true,
+						},
+						"request_config": courierHTTPRequestConfigSchemaAttr(
+							"HTTP request configuration for this channel.",
+						),
+					},
+				},
+			},
+		},
+	}
+}
+
+// courierHTTPAuthSchemaAttrs returns the schema attributes for the courier HTTP auth block.
+func courierHTTPAuthSchemaAttrs() map[string]schema.Attribute {
+	return map[string]schema.Attribute{
+		"type": schema.StringAttribute{
+			Description: "Authentication type: 'basic_auth' or 'api_key'.",
+			Required:    true,
+			Validators: []validator.String{
+				stringvalidator.OneOf("basic_auth", "api_key"),
+			},
+		},
+		"user": schema.StringAttribute{
+			Description: "Username for basic_auth.",
+			Optional:    true,
+		},
+		"password": schema.StringAttribute{
+			Description: "Password for basic_auth.",
+			Optional:    true,
+			Sensitive:   true,
+		},
+		"name": schema.StringAttribute{
+			Description: "Header/cookie/query parameter name for api_key auth.",
+			Optional:    true,
+		},
+		"value": schema.StringAttribute{
+			Description: "API key value for api_key auth.",
+			Optional:    true,
+			Sensitive:   true,
+		},
+		"in": schema.StringAttribute{
+			Description: "Where to send the API key: 'header', 'cookie', or 'query'.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.OneOf("header", "cookie", "query"),
+			},
+		},
+	}
+}
+
+// courierHTTPRequestConfigSchemaAttr returns a SingleNestedAttribute for HTTP request config.
+func courierHTTPRequestConfigSchemaAttr(description string) schema.SingleNestedAttribute {
+	return schema.SingleNestedAttribute{
+		Description: description,
+		Optional:    true,
+		Attributes: map[string]schema.Attribute{
+			"url": schema.StringAttribute{
+				Description: "Target URL for the HTTP request.",
+				Required:    true,
+			},
+			"method": schema.StringAttribute{
+				Description: "HTTP method (e.g., 'POST', 'PUT').",
+				Required:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("POST", "PUT", "PATCH", "GET"),
+				},
+			},
+			"headers": schema.MapAttribute{
+				Description: "Additional HTTP headers to include.",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"body": schema.StringAttribute{
+				Description: "Request body template. Supports base64:// scheme for Jsonnet templates.",
+				Optional:    true,
+			},
+			"auth": schema.SingleNestedAttribute{
+				Description: "Authentication configuration for the HTTP request.",
+				Optional:    true,
+				Attributes:  courierHTTPAuthSchemaAttrs(),
 			},
 		},
 	}
@@ -776,7 +1000,130 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 		})
 	}
 
+	// Session Tokenizer Templates
+	if !plan.SessionTokenizerTemplates.IsNull() && !plan.SessionTokenizerTemplates.IsUnknown() {
+		var templates map[string]SessionTokenizerTemplateModel
+		plan.SessionTokenizerTemplates.ElementsAs(ctx, &templates, false)
+		templatesMap := make(map[string]interface{}, len(templates))
+		for name, tmpl := range templates {
+			entry := map[string]interface{}{}
+			if !tmpl.TTL.IsNull() && !tmpl.TTL.IsUnknown() {
+				entry["ttl"] = tmpl.TTL.ValueString()
+			}
+			if !tmpl.JWKSURL.IsNull() && !tmpl.JWKSURL.IsUnknown() {
+				entry["jwks_url"] = tmpl.JWKSURL.ValueString()
+			}
+			if !tmpl.ClaimsMapperURL.IsNull() && !tmpl.ClaimsMapperURL.IsUnknown() {
+				entry["claims_mapper_url"] = tmpl.ClaimsMapperURL.ValueString()
+			}
+			if !tmpl.SubjectSource.IsNull() && !tmpl.SubjectSource.IsUnknown() {
+				entry["subject_source"] = tmpl.SubjectSource.ValueString()
+			}
+			templatesMap[name] = entry
+		}
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/session/whoami/tokenizer/templates",
+			Value: templatesMap,
+		})
+	}
+
+	// Courier Delivery Strategy
+	if !plan.CourierDeliveryStrategy.IsNull() && !plan.CourierDeliveryStrategy.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/courier/delivery_strategy",
+			Value: plan.CourierDeliveryStrategy.ValueString(),
+		})
+	}
+
+	// Courier HTTP Request Config
+	if !plan.CourierHTTPRequestConfig.IsNull() && !plan.CourierHTTPRequestConfig.IsUnknown() {
+		var reqConfig CourierHTTPRequestConfigModel
+		plan.CourierHTTPRequestConfig.As(ctx, &reqConfig, basetypes.ObjectAsOptions{})
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/courier/http/request_config",
+			Value: buildHTTPRequestConfigMap(ctx, &reqConfig),
+		})
+	}
+
+	// Courier Channels
+	if !plan.CourierChannels.IsNull() && !plan.CourierChannels.IsUnknown() {
+		var channels []CourierChannelModel
+		plan.CourierChannels.ElementsAs(ctx, &channels, false)
+		channelsList := make([]map[string]interface{}, 0, len(channels))
+		for _, ch := range channels {
+			chMap := map[string]interface{}{
+				"id": ch.ID.ValueString(),
+			}
+			if !ch.RequestConfig.IsNull() && !ch.RequestConfig.IsUnknown() {
+				var reqConfig CourierHTTPRequestConfigModel
+				ch.RequestConfig.As(ctx, &reqConfig, basetypes.ObjectAsOptions{})
+				chMap["request_config"] = buildHTTPRequestConfigMap(ctx, &reqConfig)
+			}
+			channelsList = append(channelsList, chMap)
+		}
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/courier/channels",
+			Value: channelsList,
+		})
+	}
+
 	return patches
+}
+
+// buildHTTPRequestConfigMap converts a CourierHTTPRequestConfigModel to a map for JSON Patch.
+func buildHTTPRequestConfigMap(ctx context.Context, cfg *CourierHTTPRequestConfigModel) map[string]interface{} {
+	result := map[string]interface{}{
+		"url":    cfg.URL.ValueString(),
+		"method": cfg.Method.ValueString(),
+	}
+	if !cfg.Body.IsNull() && !cfg.Body.IsUnknown() {
+		result["body"] = cfg.Body.ValueString()
+	}
+	if !cfg.Headers.IsNull() && !cfg.Headers.IsUnknown() {
+		var headers map[string]string
+		cfg.Headers.ElementsAs(ctx, &headers, false)
+		result["headers"] = headers
+	}
+	if !cfg.Auth.IsNull() && !cfg.Auth.IsUnknown() {
+		var auth CourierHTTPAuthModel
+		cfg.Auth.As(ctx, &auth, basetypes.ObjectAsOptions{})
+		result["auth"] = buildAuthConfigMap(&auth)
+	}
+	return result
+}
+
+// buildAuthConfigMap converts a flattened CourierHTTPAuthModel to the nested API format:
+// {"type": "...", "config": {...}}
+func buildAuthConfigMap(auth *CourierHTTPAuthModel) map[string]interface{} {
+	authType := auth.Type.ValueString()
+	config := map[string]interface{}{}
+	switch authType {
+	case "basic_auth":
+		if !auth.User.IsNull() && !auth.User.IsUnknown() {
+			config["user"] = auth.User.ValueString()
+		}
+		if !auth.Password.IsNull() && !auth.Password.IsUnknown() {
+			config["password"] = auth.Password.ValueString()
+		}
+	case "api_key":
+		if !auth.Name.IsNull() && !auth.Name.IsUnknown() {
+			config["name"] = auth.Name.ValueString()
+		}
+		if !auth.Value.IsNull() && !auth.Value.IsUnknown() {
+			config["value"] = auth.Value.ValueString()
+		}
+		if !auth.In.IsNull() && !auth.In.IsUnknown() {
+			config["in"] = auth.In.ValueString()
+		}
+	}
+	return map[string]interface{}{
+		"type":   authType,
+		"config": config,
+	}
 }
 
 func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -1102,6 +1449,108 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 				state.SessionWhoamiRequiredAAL = types.StringValue(v)
 			}
 		}
+
+		// Session Tokenizer Templates
+		if !state.SessionTokenizerTemplates.IsNull() {
+			if v := getNestedValue(identityConfig, "session", "whoami", "tokenizer", "templates"); v != nil {
+				if templatesRaw, ok := v.(map[string]interface{}); ok && len(templatesRaw) > 0 {
+					templateObjects := make(map[string]attr.Value, len(templatesRaw))
+					for name, tmplRaw := range templatesRaw {
+						tmplMap, ok := tmplRaw.(map[string]interface{})
+						if !ok {
+							continue
+						}
+						attrs := map[string]attr.Value{
+							"ttl":               types.StringNull(),
+							"jwks_url":          types.StringNull(),
+							"claims_mapper_url": types.StringNull(),
+							"subject_source":    types.StringNull(),
+						}
+						if s, ok := tmplMap["ttl"].(string); ok && s != "" {
+							// API normalizes durations (e.g. "1h" → "1h0m0s"), preserve state value
+							attrs["ttl"] = preserveTokenizerField(state, name, "ttl", s)
+						}
+						if _, ok := tmplMap["jwks_url"].(string); ok {
+							// jwks_url is sensitive — preserve state value to avoid diff
+							attrs["jwks_url"] = preserveTokenizerField(state, name, "jwks_url", "")
+						}
+						if s, ok := tmplMap["claims_mapper_url"].(string); ok && s != "" {
+							if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") {
+								// API may return GCS URL instead of base64 — preserve state value
+								attrs["claims_mapper_url"] = preserveTokenizerField(state, name, "claims_mapper_url", s)
+							} else {
+								attrs["claims_mapper_url"] = types.StringValue(s)
+							}
+						}
+						if s, ok := tmplMap["subject_source"].(string); ok && s != "" {
+							attrs["subject_source"] = types.StringValue(s)
+						}
+						objVal, diags := types.ObjectValue(tokenizerTemplateAttrTypes, attrs)
+						if !diags.HasError() {
+							templateObjects[name] = objVal
+						}
+					}
+					mapVal, diags := types.MapValue(types.ObjectType{AttrTypes: tokenizerTemplateAttrTypes}, templateObjects)
+					if !diags.HasError() {
+						state.SessionTokenizerTemplates = mapVal
+					}
+				}
+			}
+		}
+
+		// Courier Delivery Strategy
+		if !state.CourierDeliveryStrategy.IsNull() {
+			if v, ok := getNestedString(identityConfig, "courier", "delivery_strategy"); ok {
+				state.CourierDeliveryStrategy = types.StringValue(v)
+			}
+		}
+
+		// Courier HTTP Request Config
+		if !state.CourierHTTPRequestConfig.IsNull() {
+			if v := getNestedValue(identityConfig, "courier", "http", "request_config"); v != nil {
+				if reqCfgRaw, ok := v.(map[string]interface{}); ok {
+					objVal := readHTTPRequestConfigObject(ctx, reqCfgRaw, state.CourierHTTPRequestConfig)
+					if !objVal.IsNull() {
+						state.CourierHTTPRequestConfig = objVal
+					}
+				}
+			}
+		}
+
+		// Courier Channels
+		if !state.CourierChannels.IsNull() {
+			if v := getNestedValue(identityConfig, "courier", "channels"); v != nil {
+				if channelsRaw, ok := v.([]interface{}); ok && len(channelsRaw) > 0 {
+					channelObjects := make([]attr.Value, 0, len(channelsRaw))
+					for _, chRaw := range channelsRaw {
+						chMap, ok := chRaw.(map[string]interface{})
+						if !ok {
+							continue
+						}
+						attrs := map[string]attr.Value{
+							"id":             types.StringNull(),
+							"request_config": types.ObjectNull(courierHTTPRequestConfigAttrTypes),
+						}
+						if id, ok := chMap["id"].(string); ok {
+							attrs["id"] = types.StringValue(id)
+						}
+						if rc, ok := chMap["request_config"].(map[string]interface{}); ok {
+							// Find matching state channel to preserve sensitive fields
+							stateRC := findChannelRequestConfig(state.CourierChannels, attrs["id"])
+							attrs["request_config"] = readHTTPRequestConfigObject(ctx, rc, stateRC)
+						}
+						objVal, diags := types.ObjectValue(courierChannelAttrTypes, attrs)
+						if !diags.HasError() {
+							channelObjects = append(channelObjects, objVal)
+						}
+					}
+					listVal, diags := types.ListValue(types.ObjectType{AttrTypes: courierChannelAttrTypes}, channelObjects)
+					if !diags.HasError() {
+						state.CourierChannels = listVal
+					}
+				}
+			}
+		}
 	}
 
 	// OAuth2 service config
@@ -1162,6 +1611,191 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 			}
 		}
 	}
+}
+
+// preserveTokenizerField returns the value of a field from the existing state for a given template name.
+// Used for sensitive fields (jwks_url), fields where the API normalizes values (ttl),
+// and fields where the API returns GCS URLs instead of base64 (claims_mapper_url).
+// If no state value exists, falls back to the provided API value (or StringNull if empty).
+func preserveTokenizerField(state *ProjectConfigResourceModel, templateName, fieldName, apiValue string) basetypes.StringValue {
+	if state.SessionTokenizerTemplates.IsNull() || state.SessionTokenizerTemplates.IsUnknown() {
+		if apiValue != "" {
+			return types.StringValue(apiValue)
+		}
+		return types.StringNull()
+	}
+	elems := state.SessionTokenizerTemplates.Elements()
+	if tmplVal, ok := elems[templateName]; ok {
+		if objVal, ok := tmplVal.(types.Object); ok && !objVal.IsNull() {
+			attrs := objVal.Attributes()
+			if v, ok := attrs[fieldName]; ok {
+				if s, ok := v.(types.String); ok && !s.IsNull() {
+					return s
+				}
+			}
+		}
+	}
+	if apiValue != "" {
+		return types.StringValue(apiValue)
+	}
+	return types.StringNull()
+}
+
+// readHTTPRequestConfigObject reads an HTTP request config from the API response map
+// into a types.Object. Preserves sensitive auth fields from the existing state object.
+func readHTTPRequestConfigObject(_ context.Context, raw map[string]interface{}, stateObj basetypes.ObjectValue) basetypes.ObjectValue {
+	attrs := map[string]attr.Value{
+		"url":     types.StringNull(),
+		"method":  types.StringNull(),
+		"headers": types.MapNull(types.StringType),
+		"body":    types.StringNull(),
+		"auth":    types.ObjectNull(courierHTTPAuthAttrTypes),
+	}
+
+	if s, ok := raw["url"].(string); ok {
+		attrs["url"] = types.StringValue(s)
+	}
+	if s, ok := raw["method"].(string); ok {
+		attrs["method"] = types.StringValue(strings.ToUpper(s))
+	}
+	if s, ok := raw["body"].(string); ok && s != "" {
+		if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") {
+			// API may return GCS URL instead of base64 content — preserve state value
+			attrs["body"] = getStateRequestConfigField(stateObj, "body")
+		} else {
+			attrs["body"] = types.StringValue(s)
+		}
+	}
+	if hdrs, ok := raw["headers"].(map[string]interface{}); ok && len(hdrs) > 0 {
+		strHdrs := make(map[string]attr.Value, len(hdrs))
+		for k, v := range hdrs {
+			if s, ok := v.(string); ok {
+				strHdrs[k] = types.StringValue(s)
+			}
+		}
+		mapVal, diags := types.MapValue(types.StringType, strHdrs)
+		if !diags.HasError() {
+			attrs["headers"] = mapVal
+		}
+	}
+	if authRaw, ok := raw["auth"].(map[string]interface{}); ok {
+		attrs["auth"] = readAuthObject(authRaw, stateObj)
+	}
+
+	objVal, diags := types.ObjectValue(courierHTTPRequestConfigAttrTypes, attrs)
+	if diags.HasError() {
+		return types.ObjectNull(courierHTTPRequestConfigAttrTypes)
+	}
+	return objVal
+}
+
+// readAuthObject reads an auth config from the API response (nested {"type","config":{...}} format)
+// and returns a flat types.Object. Preserves sensitive fields (password, value) from state.
+func readAuthObject(raw map[string]interface{}, parentStateObj basetypes.ObjectValue) basetypes.ObjectValue {
+	attrs := map[string]attr.Value{
+		"type":     types.StringNull(),
+		"user":     types.StringNull(),
+		"password": types.StringNull(),
+		"name":     types.StringNull(),
+		"value":    types.StringNull(),
+		"in":       types.StringNull(),
+	}
+
+	authType, _ := raw["type"].(string)
+	if authType == "" {
+		return types.ObjectNull(courierHTTPAuthAttrTypes)
+	}
+	attrs["type"] = types.StringValue(authType)
+
+	config, _ := raw["config"].(map[string]interface{})
+	if config == nil {
+		config = map[string]interface{}{}
+	}
+
+	switch authType {
+	case "basic_auth":
+		if s, ok := config["user"].(string); ok {
+			attrs["user"] = types.StringValue(s)
+		}
+		// password is sensitive — preserve from state
+		attrs["password"] = getStateAuthField(parentStateObj, "password")
+	case "api_key":
+		if s, ok := config["name"].(string); ok {
+			attrs["name"] = types.StringValue(s)
+		}
+		if s, ok := config["in"].(string); ok {
+			attrs["in"] = types.StringValue(s)
+		}
+		// value is sensitive — preserve from state
+		attrs["value"] = getStateAuthField(parentStateObj, "value")
+	}
+
+	objVal, diags := types.ObjectValue(courierHTTPAuthAttrTypes, attrs)
+	if diags.HasError() {
+		return types.ObjectNull(courierHTTPAuthAttrTypes)
+	}
+	return objVal
+}
+
+// getStateRequestConfigField extracts a field from the existing state's request_config object.
+func getStateRequestConfigField(stateObj basetypes.ObjectValue, field string) basetypes.StringValue {
+	if stateObj.IsNull() || stateObj.IsUnknown() {
+		return types.StringNull()
+	}
+	attrs := stateObj.Attributes()
+	if v, ok := attrs[field]; ok {
+		if s, ok := v.(types.String); ok && !s.IsNull() {
+			return s
+		}
+	}
+	return types.StringNull()
+}
+
+// getStateAuthField extracts a sensitive auth field from the existing state's request_config.auth object.
+func getStateAuthField(parentStateObj basetypes.ObjectValue, field string) basetypes.StringValue {
+	if parentStateObj.IsNull() || parentStateObj.IsUnknown() {
+		return types.StringNull()
+	}
+	parentAttrs := parentStateObj.Attributes()
+	authVal, ok := parentAttrs["auth"]
+	if !ok {
+		return types.StringNull()
+	}
+	authObj, ok := authVal.(types.Object)
+	if !ok || authObj.IsNull() || authObj.IsUnknown() {
+		return types.StringNull()
+	}
+	authAttrs := authObj.Attributes()
+	if v, ok := authAttrs[field]; ok {
+		if s, ok := v.(types.String); ok && !s.IsNull() {
+			return s
+		}
+	}
+	return types.StringNull()
+}
+
+// findChannelRequestConfig finds the request_config object for a channel by ID from the state's courier_channels list.
+func findChannelRequestConfig(stateChannels basetypes.ListValue, channelID attr.Value) basetypes.ObjectValue {
+	if stateChannels.IsNull() || stateChannels.IsUnknown() {
+		return types.ObjectNull(courierHTTPRequestConfigAttrTypes)
+	}
+	idStr, ok := channelID.(types.String)
+	if !ok || idStr.IsNull() {
+		return types.ObjectNull(courierHTTPRequestConfigAttrTypes)
+	}
+	for _, elem := range stateChannels.Elements() {
+		chObj, ok := elem.(types.Object)
+		if !ok || chObj.IsNull() {
+			continue
+		}
+		chAttrs := chObj.Attributes()
+		if chID, ok := chAttrs["id"].(types.String); ok && chID.ValueString() == idStr.ValueString() {
+			if rc, ok := chAttrs["request_config"].(types.Object); ok {
+				return rc
+			}
+		}
+	}
+	return types.ObjectNull(courierHTTPRequestConfigAttrTypes)
 }
 
 func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {

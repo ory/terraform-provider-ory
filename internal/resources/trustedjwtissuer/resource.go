@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/boolvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -13,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
 
@@ -124,12 +127,18 @@ terraform import ory_trusted_oauth2_jwt_grant_issuer.example <issuer-id>
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("allow_any_subject")),
+				},
 			},
 			"allow_any_subject": schema.BoolAttribute{
 				Description: "When true, JWTs with any subject will be accepted from this issuer. Cannot be used together with subject.",
 				Optional:    true,
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.RequiresReplace(),
+				},
+				Validators: []validator.Bool{
+					boolvalidator.ConflictsWith(path.MatchRoot("subject")),
 				},
 			},
 			"jwk": schema.StringAttribute{
@@ -277,10 +286,16 @@ func (r *TrustedJwtIssuerResource) Read(ctx context.Context, req resource.ReadRe
 
 	if issuer.GetSubject() != "" {
 		state.Subject = types.StringValue(issuer.GetSubject())
+	} else if !state.Subject.IsNull() {
+		// Subject was cleared out-of-band; reflect this in state
+		state.Subject = types.StringNull()
 	}
 
 	if issuer.GetAllowAnySubject() {
 		state.AllowAnySubject = types.BoolValue(true)
+	} else if !state.AllowAnySubject.IsNull() {
+		// allow_any_subject was cleared out-of-band; reflect this in state
+		state.AllowAnySubject = types.BoolNull()
 	}
 
 	// JWK is sensitive and not returned by the read endpoint;

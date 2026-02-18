@@ -204,7 +204,10 @@ func (r *OIDCDynamicClientResource) Create(ctx context.Context, req resource.Cre
 
 	oauthClient := ory.OAuth2Client{
 		ClientName: ory.PtrString(plan.ClientName.ValueString()),
-		Scope:      ory.PtrString(plan.Scope.ValueString()),
+	}
+
+	if !plan.Scope.IsNull() && !plan.Scope.IsUnknown() {
+		oauthClient.Scope = ory.PtrString(plan.Scope.ValueString())
 	}
 
 	if !plan.GrantTypes.IsNull() && !plan.GrantTypes.IsUnknown() {
@@ -357,7 +360,10 @@ func (r *OIDCDynamicClientResource) Update(ctx context.Context, req resource.Upd
 	oauthClient := ory.OAuth2Client{
 		ClientId:   ory.PtrString(state.ClientID.ValueString()),
 		ClientName: ory.PtrString(plan.ClientName.ValueString()),
-		Scope:      ory.PtrString(plan.Scope.ValueString()),
+	}
+
+	if !plan.Scope.IsNull() && !plan.Scope.IsUnknown() {
+		oauthClient.Scope = ory.PtrString(plan.Scope.ValueString())
 	}
 
 	if !plan.GrantTypes.IsNull() && !plan.GrantTypes.IsUnknown() {

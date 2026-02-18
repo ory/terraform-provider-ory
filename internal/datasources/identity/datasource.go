@@ -114,16 +114,22 @@ func (d *IdentityDataSource) Read(ctx context.Context, req datasource.ReadReques
 
 	if identity.Traits != nil {
 		traitsJSON, err := json.Marshal(identity.Traits)
-		if err == nil {
-			data.Traits = types.StringValue(string(traitsJSON))
+		if err != nil {
+			resp.Diagnostics.AddError("Error Serializing Traits",
+				fmt.Sprintf("Could not serialize identity traits to JSON: %s", err.Error()))
+			return
 		}
+		data.Traits = types.StringValue(string(traitsJSON))
 	}
 
 	if identity.MetadataPublic != nil {
 		metadataJSON, err := json.Marshal(identity.MetadataPublic)
-		if err == nil {
-			data.MetadataPublic = types.StringValue(string(metadataJSON))
+		if err != nil {
+			resp.Diagnostics.AddError("Error Serializing Metadata",
+				fmt.Sprintf("Could not serialize identity metadata_public to JSON: %s", err.Error()))
+			return
 		}
+		data.MetadataPublic = types.StringValue(string(metadataJSON))
 	}
 
 	if identity.CreatedAt != nil {

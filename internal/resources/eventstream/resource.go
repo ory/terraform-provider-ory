@@ -195,6 +195,15 @@ func (r *EventStreamResource) Read(ctx context.Context, req resource.ReadRequest
 
 	stream, err := r.client.GetEventStream(ctx, projectID, state.ID.ValueString())
 	if err != nil {
+		errStr := err.Error()
+		if strings.Contains(errStr, "404") || strings.Contains(strings.ToLower(errStr), "not found") {
+			resp.Diagnostics.AddWarning(
+				"Event Stream Not Found",
+				fmt.Sprintf("Event stream %s was not found (possibly deleted outside Terraform). Removing from state.", state.ID.ValueString()),
+			)
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Error Reading Event Stream",
 			"Could not read event stream ID "+state.ID.ValueString()+": "+err.Error(),

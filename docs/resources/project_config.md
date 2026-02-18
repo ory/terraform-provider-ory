@@ -125,6 +125,68 @@ variable "smtp_connection_uri" {
   sensitive   = true
   description = "SMTP connection URI (e.g., smtps://user:pass@smtp.example.com:465)"
 }
+
+# Session tokenizer templates (JWT tokenization for /sessions/whoami)
+resource "ory_project_config" "with_tokenizer" {
+  session_tokenizer_templates = {
+    my_jwt = {
+      ttl               = "1h"
+      jwks_url          = "base64://eyJrZXlzIjpbXX0="
+      claims_mapper_url = "base64://bG9jYWwgcGF5bG9hZCA9IHN0ZC5leHRWYXIoJ3BheWxvYWQnLCB7fSk7CnsKICBzZXNzaW9uX2lkOiBwYXlsb2FkLnNlc3Npb24uaWQsCn0="
+      subject_source    = "id"
+    }
+    short_lived = {
+      ttl      = "5m"
+      jwks_url = "base64://eyJrZXlzIjpbXX0="
+    }
+  }
+}
+
+# Courier HTTP delivery (webhook-based email/SMS delivery)
+resource "ory_project_config" "with_courier_http" {
+  courier_delivery_strategy = "http"
+
+  courier_http_request_config = {
+    url    = "https://mail-api.example.com/send"
+    method = "POST"
+    body   = "base64://ewogICJyZWNpcGllbnQiOiAge3sgLnJlY2lwaWVudCB9fSwKICAiYm9keSI6IHt7IC5ib2R5IH19Cn0="
+    auth = {
+      type     = "basic_auth"
+      user     = "mailuser"
+      password = var.mail_password
+    }
+  }
+
+  # Per-channel delivery (e.g., SMS via Twilio)
+  courier_channels = [
+    {
+      id = "sms"
+      request_config = {
+        url    = "https://sms-api.example.com/send"
+        method = "POST"
+        body   = "base64://ewogICJ0byI6IHt7IC5yZWNpcGllbnQgfX0sCiAgIm1lc3NhZ2UiOiB7eyAuYm9keSB9fQp9"
+        auth = {
+          type  = "api_key"
+          name  = "Authorization"
+          value = var.sms_api_key
+          in    = "header"
+        }
+      }
+    }
+  ]
+}
+
+variable "mail_password" {
+  type        = string
+  sensitive   = true
+  description = "Password for courier HTTP basic auth"
+}
+
+variable "sms_api_key" {
+  type        = string
+  sensitive   = true
+  description = "API key for SMS delivery service"
+}
 ```
 
 ## Duration Format
@@ -223,6 +285,9 @@ Some Ory project settings are not yet available through this resource. For setti
 - `cors_admin_origins` (List of String) Allowed CORS origins for the admin API.
 - `cors_enabled` (Boolean) Enable CORS for the public API.
 - `cors_origins` (List of String) Allowed CORS origins.
+- `courier_channels` (Attributes List) Per-channel courier delivery configurations (e.g., SMS via Twilio). Each channel overrides the default delivery for a specific message channel. (see [below for nested schema](#nestedatt--courier_channels))
+- `courier_delivery_strategy` (String) Courier delivery strategy: 'smtp' (default) or 'http'.
+- `courier_http_request_config` (Attributes) HTTP request configuration for courier message delivery (used when courier_delivery_strategy is 'http'). (see [below for nested schema](#nestedatt--courier_http_request_config))
 - `default_return_url` (String) Default URL to redirect after flows.
 - `enable_code` (Boolean) Enable code-based authentication.
 - `enable_lookup_secret` (Boolean) Enable backup/recovery codes.
@@ -250,6 +315,7 @@ Some Ory project settings are not yet available through this resource. For setti
 - `session_cookie_persistent` (Boolean) Enable persistent session cookies (survive browser close).
 - `session_cookie_same_site` (String) SameSite cookie attribute (Lax, Strict, None).
 - `session_lifespan` (String) Session duration (e.g., '24h0m0s').
+- `session_tokenizer_templates` (Attributes Map) JWT tokenizer templates for the /sessions/whoami endpoint. Each key is a template name, and the value configures how JWTs are generated. (see [below for nested schema](#nestedatt--session_tokenizer_templates))
 - `session_whoami_required_aal` (String) Required AAL for session whoami endpoint: 'aal1', 'aal2', or 'highest_available'.
 - `settings_ui_url` (String) URL for the account settings UI.
 - `smtp_connection_uri` (String, Sensitive) SMTP connection URI for sending emails.
@@ -266,3 +332,90 @@ Some Ory project settings are not yet available through this resource. For setti
 ### Read-Only
 
 - `id` (String) Resource ID (same as project_id).
+
+<a id="nestedatt--courier_channels"></a>
+### Nested Schema for `courier_channels`
+
+Required:
+
+- `id` (String) Channel identifier (e.g., 'sms').
+
+Optional:
+
+- `request_config` (Attributes) HTTP request configuration for this channel. (see [below for nested schema](#nestedatt--courier_channels--request_config))
+
+<a id="nestedatt--courier_channels--request_config"></a>
+### Nested Schema for `courier_channels.request_config`
+
+Required:
+
+- `method` (String) HTTP method (e.g., 'POST', 'PUT').
+- `url` (String) Target URL for the HTTP request.
+
+Optional:
+
+- `auth` (Attributes) Authentication configuration for the HTTP request. (see [below for nested schema](#nestedatt--courier_channels--request_config--auth))
+- `body` (String) Request body template. Supports base64:// scheme for Jsonnet templates.
+- `headers` (Map of String) Additional HTTP headers to include.
+
+<a id="nestedatt--courier_channels--request_config--auth"></a>
+### Nested Schema for `courier_channels.request_config.auth`
+
+Required:
+
+- `type` (String) Authentication type: 'basic_auth' or 'api_key'.
+
+Optional:
+
+- `in` (String) Where to send the API key: 'header', 'cookie', or 'query'.
+- `name` (String) Header/cookie/query parameter name for api_key auth.
+- `password` (String, Sensitive) Password for basic_auth.
+- `user` (String) Username for basic_auth.
+- `value` (String, Sensitive) API key value for api_key auth.
+
+
+
+
+<a id="nestedatt--courier_http_request_config"></a>
+### Nested Schema for `courier_http_request_config`
+
+Required:
+
+- `method` (String) HTTP method (e.g., 'POST', 'PUT').
+- `url` (String) Target URL for the HTTP request.
+
+Optional:
+
+- `auth` (Attributes) Authentication configuration for the HTTP request. (see [below for nested schema](#nestedatt--courier_http_request_config--auth))
+- `body` (String) Request body template. Supports base64:// scheme for Jsonnet templates.
+- `headers` (Map of String) Additional HTTP headers to include.
+
+<a id="nestedatt--courier_http_request_config--auth"></a>
+### Nested Schema for `courier_http_request_config.auth`
+
+Required:
+
+- `type` (String) Authentication type: 'basic_auth' or 'api_key'.
+
+Optional:
+
+- `in` (String) Where to send the API key: 'header', 'cookie', or 'query'.
+- `name` (String) Header/cookie/query parameter name for api_key auth.
+- `password` (String, Sensitive) Password for basic_auth.
+- `user` (String) Username for basic_auth.
+- `value` (String, Sensitive) API key value for api_key auth.
+
+
+
+<a id="nestedatt--session_tokenizer_templates"></a>
+### Nested Schema for `session_tokenizer_templates`
+
+Required:
+
+- `jwks_url` (String, Sensitive) JWKS URL for signing tokens. Must use base64:// scheme (e.g., 'base64://eyJrZXlzIjpbXX0=').
+
+Optional:
+
+- `claims_mapper_url` (String) Jsonnet claims mapper URL. Supports base64:// and https:// schemes.
+- `subject_source` (String) Subject source for the JWT: 'id' (default) or 'external_id'.
+- `ttl` (String) Token time-to-live duration (e.g., '1h', '30m'). Default: '1m'.
