@@ -49,10 +49,7 @@ func (r *ProjectAPIKeyResource) Metadata(ctx context.Context, req resource.Metad
 	resp.TypeName = req.ProviderTypeName + "_project_api_key"
 }
 
-func (r *ProjectAPIKeyResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages an Ory Network project API key.",
-		MarkdownDescription: `
+const projectAPIKeyMarkdownDescription = `
 Manages an Ory Network project API key.
 
 API keys are used to authenticate API requests to a specific project.
@@ -81,7 +78,12 @@ resource "ory_project_api_key" "temporary" {
   expires_at = "2025-12-31T23:59:59Z"
 }
 ` + "```" + `
-`,
+`
+
+func (r *ProjectAPIKeyResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description:         "Manages an Ory Network project API key.",
+		MarkdownDescription: projectAPIKeyMarkdownDescription,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "The API key ID.",

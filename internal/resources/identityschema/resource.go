@@ -44,10 +44,7 @@ func (r *IdentitySchemaResource) Metadata(ctx context.Context, req resource.Meta
 	resp.TypeName = req.ProviderTypeName + "_identity_schema"
 }
 
-func (r *IdentitySchemaResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages an Ory Network identity schema.",
-		MarkdownDescription: `
+const identitySchemaMarkdownDescription = `
 Manages an Ory Network identity schema.
 
 ## Important Notes
@@ -99,7 +96,12 @@ resource "ory_identity_schema" "customer" {
   })
 }
 ` + "```" + `
-`,
+`
+
+func (r *IdentitySchemaResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description:         "Manages an Ory Network identity schema.",
+		MarkdownDescription: identitySchemaMarkdownDescription,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "Resource ID.",

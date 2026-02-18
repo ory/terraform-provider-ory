@@ -47,10 +47,7 @@ func (r *ProjectResource) Metadata(ctx context.Context, req resource.MetadataReq
 	resp.TypeName = req.ProviderTypeName + "_project"
 }
 
-func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages an Ory Network project.",
-		MarkdownDescription: `
+const projectMarkdownDescription = `
 Manages an Ory Network project.
 
 Projects are the top-level resource in Ory Network. Each project has its own
@@ -109,7 +106,12 @@ output "project_state" {
   value = ory_project.main.state
 }
 ` + "```" + `
-`,
+`
+
+func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description:         "Manages an Ory Network project.",
+		MarkdownDescription: projectMarkdownDescription,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description:         "The unique identifier of the project.",

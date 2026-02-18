@@ -55,10 +55,7 @@ func (r *TrustedJwtIssuerResource) Metadata(ctx context.Context, req resource.Me
 	resp.TypeName = req.ProviderTypeName + "_trusted_oauth2_jwt_grant_issuer"
 }
 
-func (r *TrustedJwtIssuerResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages a trusted OAuth2 JWT grant issuer in Ory Network.",
-		MarkdownDescription: `
+const trustedJwtIssuerMarkdownDescription = `
 Manages a trusted OAuth2 JWT grant issuer in Ory Network.
 
 A trusted JWT grant issuer allows exchanging JWTs signed by the issuer for
@@ -90,7 +87,12 @@ Trusted JWT grant issuers can be imported using their ID:
 ` + "```shell" + `
 terraform import ory_trusted_oauth2_jwt_grant_issuer.example <issuer-id>
 ` + "```" + `
-`,
+`
+
+func (r *TrustedJwtIssuerResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description:         "Manages a trusted OAuth2 JWT grant issuer in Ory Network.",
+		MarkdownDescription: trustedJwtIssuerMarkdownDescription,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "The unique identifier of the trusted JWT grant issuer.",

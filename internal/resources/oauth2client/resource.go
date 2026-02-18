@@ -91,10 +91,7 @@ func (r *OAuth2ClientResource) Metadata(ctx context.Context, req resource.Metada
 	resp.TypeName = req.ProviderTypeName + "_oauth2_client"
 }
 
-func (r *OAuth2ClientResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages an Ory Network OAuth2 client.",
-		MarkdownDescription: `
+const oauth2ClientMarkdownDescription = `
 Manages an Ory Network OAuth2 client.
 
 OAuth2 clients are used for machine-to-machine authentication or user-facing
@@ -132,7 +129,12 @@ terraform import ory_oauth2_client.api <client-id>
 ` + "```" + `
 
 **Note:** When importing, the ` + "`client_secret`" + ` will not be available.
-`,
+`
+
+func (r *OAuth2ClientResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description:         "Manages an Ory Network OAuth2 client.",
+		MarkdownDescription: oauth2ClientMarkdownDescription,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "Internal Terraform ID (same as client_id).",

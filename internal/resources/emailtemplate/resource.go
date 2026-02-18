@@ -63,10 +63,7 @@ func (r *EmailTemplateResource) Metadata(ctx context.Context, req resource.Metad
 	resp.TypeName = req.ProviderTypeName + "_email_template"
 }
 
-func (r *EmailTemplateResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages an Ory Network email template.",
-		MarkdownDescription: `Manages an Ory Network email template.
+const emailTemplateMarkdownDescription = `Manages an Ory Network email template.
 
 ## Template Types
 
@@ -103,7 +100,12 @@ resource "ory_email_template" "welcome" {
 ` + "```shell" + `
 terraform import ory_email_template.welcome registration_code_valid
 ` + "```" + `
-`,
+`
+
+func (r *EmailTemplateResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description:         "Manages an Ory Network email template.",
+		MarkdownDescription: emailTemplateMarkdownDescription,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "Resource ID (same as template_type).",

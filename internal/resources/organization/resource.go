@@ -46,10 +46,7 @@ func (r *OrganizationResource) Metadata(ctx context.Context, req resource.Metada
 	resp.TypeName = req.ProviderTypeName + "_organization"
 }
 
-func (r *OrganizationResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages an Ory Network organization for multi-tenancy.",
-		MarkdownDescription: `
+const organizationMarkdownDescription = `
 Manages an Ory Network organization.
 
 Organizations represent tenants in a multi-tenant application. They can have
@@ -82,7 +79,12 @@ Organizations can be imported using the organization ID:
 ` + "```shell" + `
 terraform import ory_organization.acme <organization-id>
 ` + "```" + `
-`,
+`
+
+func (r *OrganizationResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description:         "Manages an Ory Network organization for multi-tenancy.",
+		MarkdownDescription: organizationMarkdownDescription,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "The unique identifier of the organization.",

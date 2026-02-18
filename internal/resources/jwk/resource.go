@@ -49,10 +49,7 @@ func (r *JWKResource) Metadata(ctx context.Context, req resource.MetadataRequest
 	resp.TypeName = req.ProviderTypeName + "_json_web_key_set"
 }
 
-func (r *JWKResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages an Ory Network JSON Web Key Set.",
-		MarkdownDescription: `
+const jwkMarkdownDescription = `
 Manages an Ory Network JSON Web Key Set (JWKS).
 
 JSON Web Keys are used for signing and encrypting tokens. This resource allows you to
@@ -89,7 +86,12 @@ JWK sets can be imported using their set ID:
 ` + "```shell" + `
 terraform import ory_json_web_key_set.signing my-signing-keys
 ` + "```" + `
-`,
+`
+
+func (r *JWKResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description:         "Manages an Ory Network JSON Web Key Set.",
+		MarkdownDescription: jwkMarkdownDescription,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "Internal Terraform ID (same as set_id).",

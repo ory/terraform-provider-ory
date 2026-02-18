@@ -51,10 +51,7 @@ func (r *IdentityResource) Metadata(ctx context.Context, req resource.MetadataRe
 	resp.TypeName = req.ProviderTypeName + "_identity"
 }
 
-func (r *IdentityResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages an Ory Network identity (user).",
-		MarkdownDescription: `
+const identityMarkdownDescription = `
 Manages an Ory Network identity (user).
 
 Identities represent users in your application. Each identity has traits
@@ -137,7 +134,12 @@ terraform import ory_identity.user <identity-id>
 
 **Note**: If the identity is deleted outside of Terraform (e.g., via UI or API),
 the next ` + "`terraform plan`" + ` will detect this and remove it from state.
-`,
+`
+
+func (r *IdentityResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description:         "Manages an Ory Network identity (user).",
+		MarkdownDescription: identityMarkdownDescription,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "The unique identifier of the identity.",

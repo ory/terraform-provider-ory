@@ -197,10 +197,7 @@ func (r *ProjectConfigResource) Metadata(ctx context.Context, req resource.Metad
 	resp.TypeName = req.ProviderTypeName + "_project_config"
 }
 
-func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Configures an Ory Network project's settings.",
-		MarkdownDescription: `
+const projectConfigMarkdownDescription = `
 Configures an Ory Network project's settings.
 
 This resource manages the configuration of an Ory Network project, including authentication methods,
@@ -254,7 +251,12 @@ resource "ory_project_config" "main" {
 - Project config cannot be deleted - it always exists for a project
 - Deleting this resource from Terraform state does not reset the project configuration
 - The ` + "`project_id`" + ` attribute forces replacement if changed (you cannot move config to a different project)
-`,
+`
+
+func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description:         "Configures an Ory Network project's settings.",
+		MarkdownDescription: projectConfigMarkdownDescription,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "Resource ID (same as project_id).",

@@ -43,10 +43,7 @@ func (r *WorkspaceResource) Metadata(ctx context.Context, req resource.MetadataR
 	resp.TypeName = req.ProviderTypeName + "_workspace"
 }
 
-func (r *WorkspaceResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages an Ory Network workspace (import-only).",
-		MarkdownDescription: `
+const workspaceMarkdownDescription = `
 Manages an Ory Network workspace.
 
 Workspaces are organizational units that can contain multiple projects.
@@ -74,7 +71,12 @@ resource "ory_workspace" "main" {
   name = "My Workspace"
 }
 ` + "```" + `
-`,
+`
+
+func (r *WorkspaceResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description:         "Manages an Ory Network workspace (import-only).",
+		MarkdownDescription: workspaceMarkdownDescription,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "The unique identifier of the workspace.",

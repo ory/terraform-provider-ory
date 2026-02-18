@@ -49,10 +49,7 @@ func (r *RelationshipResource) Metadata(ctx context.Context, req resource.Metada
 	resp.TypeName = req.ProviderTypeName + "_relationship"
 }
 
-func (r *RelationshipResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages an Ory Keto relationship tuple.",
-		MarkdownDescription: `
+const relationshipMarkdownDescription = `
 Manages an Ory Keto relationship tuple for fine-grained authorization.
 
 Relationships are the foundation of Ory Keto's permission system. They define
@@ -102,7 +99,12 @@ is automatically a "viewer" of "doc-123" in the "documents" namespace.
 You must configure Ory Keto namespaces and permissions in your project
 configuration before creating relationships. Use ` + "`ory_project_config`" + ` or
 configure via the Ory Console.
-`,
+`
+
+func (r *RelationshipResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description:         "Manages an Ory Keto relationship tuple.",
+		MarkdownDescription: relationshipMarkdownDescription,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "Internal Terraform ID (composite of namespace:object#relation@subject).",

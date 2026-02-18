@@ -59,14 +59,7 @@ type ActionResourceModel struct {
 	CanInterrupt   types.Bool   `tfsdk:"can_interrupt"`
 }
 
-func (r *ActionResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_action"
-}
-
-func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages an Ory Action (webhook) for identity flows.",
-		MarkdownDescription: `
+const actionMarkdownDescription = `
 Manages an Ory Action (webhook) for identity flows.
 
 Actions allow you to trigger webhooks at specific points in identity flows (login, registration, etc.).
@@ -130,7 +123,16 @@ terraform import ory_action.welcome_email "550e8400-e29b-41d4-a716-446655440000:
 - **"Cannot import non-existent remote object"**: Verify all 5 components match exactly what's configured in Ory
 - **URL mismatch**: Ensure the URL matches exactly, including protocol (https://) and any trailing slashes
 - **auth_method not matching**: Actions created via UI default to "password" if not explicitly selected
-`,
+`
+
+func (r *ActionResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_action"
+}
+
+func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description:         "Manages an Ory Action (webhook) for identity flows.",
+		MarkdownDescription: actionMarkdownDescription,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "Resource ID.",
