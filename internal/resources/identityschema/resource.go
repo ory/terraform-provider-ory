@@ -276,6 +276,16 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		})
 	}
 
+	// If set_default is true, include the default_schema_id patch in the same
+	// API call to avoid a race condition with eventual consistency.
+	if plan.SetDefault.ValueBool() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "add",
+			Path:  "/services/identity/config/identity/default_schema_id",
+			Value: schemaID,
+		})
+	}
+
 	result, err := r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Creating Identity Schema", err.Error())
@@ -313,19 +323,6 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 
 	if actualID == "" {
 		actualID = schemaID
-	}
-
-	if plan.SetDefault.ValueBool() {
-		defaultPatches := []ory.JsonPatch{{
-			Op:    "add",
-			Path:  "/services/identity/config/identity/default_schema_id",
-			Value: actualID,
-		}}
-		_, err = r.client.PatchProject(ctx, projectID, defaultPatches)
-		if err != nil {
-			resp.Diagnostics.AddError("Error Setting Default Schema", err.Error())
-			return
-		}
 	}
 
 	plan.ID = types.StringValue(actualID)
@@ -462,12 +459,25 @@ func (r *IdentitySchemaResource) Update(ctx context.Context, req resource.Update
 	}
 
 	if plan.SetDefault.ValueBool() {
+		// Re-resolve the schema ID from the API to handle cases where the
+		// stored ID doesn't match what the API actually assigned (e.g., hash-based IDs).
+		schemas, err := r.getSchemas(ctx, projectID)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Getting Schemas", err.Error())
+			return
+		}
+
+		resolvedID := r.resolveSchemaID(schemas, apiID, plan.SchemaID.ValueString(), state.Schema)
+		if resolvedID != "" {
+			apiID = resolvedID
+		}
+
 		patches := []ory.JsonPatch{{
 			Op:    "add",
 			Path:  "/services/identity/config/identity/default_schema_id",
 			Value: apiID,
 		}}
-		_, err := r.client.PatchProject(ctx, projectID, patches)
+		_, err = r.client.PatchProject(ctx, projectID, patches)
 		if err != nil {
 			resp.Diagnostics.AddError("Error Setting Default Schema", err.Error())
 			return
@@ -490,6 +500,34 @@ func (r *IdentitySchemaResource) Delete(ctx context.Context, req resource.Delete
 		"Schema Not Deleted",
 		"Ory Network does not support deleting identity schemas. The schema has been removed from Terraform state but still exists in Ory Network.",
 	)
+}
+
+// resolveSchemaID tries to find the correct API-assigned ID for a schema by
+// searching with multiple strategies: stored ID, user-provided schema_id, and URL match.
+func (r *IdentitySchemaResource) resolveSchemaID(schemas []map[string]interface{}, storedID, schemaID string, schemaAttr types.String) string {
+	if idx := r.findSchemaIndex(schemas, storedID); idx >= 0 {
+		if id, ok := schemas[idx]["id"].(string); ok {
+			return id
+		}
+	}
+
+	if idx := r.findSchemaIndex(schemas, schemaID); idx >= 0 {
+		if id, ok := schemas[idx]["id"].(string); ok {
+			return id
+		}
+	}
+
+	if !schemaAttr.IsNull() && !schemaAttr.IsUnknown() {
+		if schemaURL, err := r.encodeSchema(schemaAttr.ValueString()); err == nil {
+			if idx := r.findSchemaByURL(schemas, schemaURL); idx >= 0 {
+				if id, ok := schemas[idx]["id"].(string); ok {
+					return id
+				}
+			}
+		}
+	}
+
+	return ""
 }
 
 // Note: ImportState is intentionally NOT implemented.
