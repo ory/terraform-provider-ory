@@ -11,6 +11,8 @@ Fetches information about an Ory project.
 
 This data source retrieves basic metadata about a project. It can look up the project configured in the provider, or a specific project by ID.
 
+-> **Plan:** Available on all Ory Network plans.
+
 ## Example Usage
 
 ```terraform

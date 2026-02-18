@@ -16,6 +16,9 @@
 #   ORY_SOCIAL_PROVIDER_TESTS_ENABLED - Enable social provider tests
 #   ORY_SCHEMA_TESTS_ENABLED         - Enable identity schema tests
 #   ORY_PROJECT_TESTS_ENABLED        - Enable project create/delete tests
+#   ORY_EVENT_STREAM_TESTS_ENABLED   - Enable event stream tests (requires Enterprise plan)
+#   ORY_EVENT_STREAM_TOPIC_ARN       - Real AWS SNS topic ARN (required for event stream tests)
+#   ORY_EVENT_STREAM_ROLE_ARN        - Real AWS IAM role ARN (required for event stream tests)
 
 set -euo pipefail
 
@@ -163,8 +166,8 @@ fi
 
 echo -e "${GREEN}Created API key for project${NC}"
 
-# Configure Keto namespaces for relationship tests
-echo -e "${GREEN}Configuring Keto namespaces...${NC}"
+# Configure Keto namespaces and enable dynamic client registration
+echo -e "${GREEN}Configuring project (Keto namespaces, DCR)...${NC}"
 
 patch_response=$(curl -s -w "\n%{http_code}" -X PATCH \
     "${CONSOLE_API_URL}/projects/${PROJECT_ID}" \
@@ -179,13 +182,18 @@ patch_response=$(curl -s -w "\n%{http_code}" -X PATCH \
             {"name": "groups", "id": 3},
             {"name": "users", "id": 4}
         ]
+    },
+    {
+        "op": "replace",
+        "path": "/services/oauth2/config/oidc/dynamic_client_registration/enabled",
+        "value": true
     }]')
 
 http_code=$(echo "$patch_response" | tail -n1)
 if [[ "$http_code" == "200" ]] || [[ "$http_code" == "204" ]]; then
-    echo -e "${GREEN}Configured Keto namespaces${NC}"
+    echo -e "${GREEN}Configured project (Keto namespaces, DCR)${NC}"
 else
-    echo -e "${YELLOW}Warning: Failed to configure Keto namespaces (HTTP ${http_code}) - relationship tests may fail${NC}"
+    echo -e "${YELLOW}Warning: Failed to configure project (HTTP ${http_code}) - some tests may fail${NC}"
 fi
 
 # Export environment variables for tests

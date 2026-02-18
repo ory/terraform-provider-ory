@@ -12,6 +12,8 @@ Manages an Ory Network project.
 Projects are the top-level resource in Ory Network. Each project has its own
 identity service, OAuth2 server, and configuration.
 
+-> **Plan:** Available on all Ory Network plans. The number of projects allowed depends on your workspace subscription.
+
 ~> **Warning:** Destroying this resource **permanently deletes** the project and **all associated data** (identities, OAuth2 clients, sessions, etc.). This action cannot be undone.
 
 ## Example Usage

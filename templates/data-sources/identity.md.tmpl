@@ -1,0 +1,22 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  Fetches information about an Ory identity.
+---
+
+# {{.Name}} ({{.Type}})
+
+Fetches information about an Ory identity.
+
+This data source retrieves details about a specific identity including its traits, metadata, schema, and state.
+
+The `traits` and `metadata_public` attributes are returned as JSON strings.
+
+-> **Plan:** Available on all Ory Network plans.
+
+## Example Usage
+
+{{ tffile "examples/data-sources/ory_identity/data-source.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}

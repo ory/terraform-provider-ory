@@ -11,6 +11,8 @@ Manages an Ory Network organization.
 
 Organizations represent tenants in a multi-tenant application. They can have associated SSO domains for automatic user routing and contain users (identities).
 
+-> **Plan:** Requires an Ory Network **Growth plan or higher** with B2B features enabled.
+
 ~> **Important:** Organizations require:
 - An Ory Network **Growth plan or higher** with B2B features enabled
 - The Terraform provider validates that the project environment is `prod` or `stage`. The `dev` environment is blocked by the provider, though the API may accept it in some cases.

@@ -37,6 +37,7 @@ jobs:
           ORY_SOCIAL_PROVIDER_TESTS_ENABLED: true
           ORY_SCHEMA_TESTS_ENABLED: true
           ORY_PROJECT_TESTS_ENABLED: true
+          ORY_EVENT_STREAM_TESTS_ENABLED: true
         run: ./scripts/run-acceptance-tests.sh -v -timeout 20m ./...
 
   goreleaser:

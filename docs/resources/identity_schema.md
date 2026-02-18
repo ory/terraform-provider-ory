@@ -11,6 +11,8 @@ Manages an Ory Network identity schema.
 
 Identity schemas define the structure of user profiles (traits) using [JSON Schema](https://json-schema.org/). Ory extends standard JSON Schema with `ory.sh/kratos` annotations for configuring credentials, verification, and recovery.
 
+-> **Plan:** Available on all Ory Network plans.
+
 ## Important Notes
 
 - **Schemas are immutable**: Identity schemas cannot be modified after creation. Any changes to the schema content or `schema_id` will require Terraform to destroy and recreate the resource.

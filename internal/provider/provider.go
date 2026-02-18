@@ -12,19 +12,27 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/ory/terraform-provider-ory/internal/client"
+	identityds "github.com/ory/terraform-provider-ory/internal/datasources/identity"
+	identityschemasds "github.com/ory/terraform-provider-ory/internal/datasources/identityschemas"
+	oauth2clientds "github.com/ory/terraform-provider-ory/internal/datasources/oauth2client"
+	organizationds "github.com/ory/terraform-provider-ory/internal/datasources/organization"
 	projectds "github.com/ory/terraform-provider-ory/internal/datasources/project"
+	workspaceds "github.com/ory/terraform-provider-ory/internal/datasources/workspace"
 	"github.com/ory/terraform-provider-ory/internal/resources/action"
 	"github.com/ory/terraform-provider-ory/internal/resources/emailtemplate"
+	"github.com/ory/terraform-provider-ory/internal/resources/eventstream"
 	"github.com/ory/terraform-provider-ory/internal/resources/identity"
 	"github.com/ory/terraform-provider-ory/internal/resources/identityschema"
 	"github.com/ory/terraform-provider-ory/internal/resources/jwk"
 	"github.com/ory/terraform-provider-ory/internal/resources/oauth2client"
+	"github.com/ory/terraform-provider-ory/internal/resources/oidcdynamicclient"
 	"github.com/ory/terraform-provider-ory/internal/resources/organization"
 	"github.com/ory/terraform-provider-ory/internal/resources/project"
 	"github.com/ory/terraform-provider-ory/internal/resources/projectapikey"
 	"github.com/ory/terraform-provider-ory/internal/resources/projectconfig"
 	"github.com/ory/terraform-provider-ory/internal/resources/relationship"
 	"github.com/ory/terraform-provider-ory/internal/resources/socialprovider"
+	"github.com/ory/terraform-provider-ory/internal/resources/trustedjwtissuer"
 	"github.com/ory/terraform-provider-ory/internal/resources/workspace"
 )
 
@@ -278,12 +286,20 @@ func (p *OryProvider) Resources(ctx context.Context) []func() resource.Resource 
 		projectapikey.NewResource,
 		jwk.NewResource,
 		relationship.NewResource,
+		eventstream.NewResource,
+		trustedjwtissuer.NewResource,
+		oidcdynamicclient.NewResource,
 	}
 }
 
 func (p *OryProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		projectds.NewDataSource,
+		workspaceds.NewDataSource,
+		identityds.NewDataSource,
+		oauth2clientds.NewDataSource,
+		organizationds.NewDataSource,
+		identityschemasds.NewDataSource,
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -62,10 +63,7 @@ func (r *EmailTemplateResource) Metadata(ctx context.Context, req resource.Metad
 	resp.TypeName = req.ProviderTypeName + "_email_template"
 }
 
-func (r *EmailTemplateResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages an Ory Network email template.",
-		MarkdownDescription: `Manages an Ory Network email template.
+const emailTemplateMarkdownDescription = `Manages an Ory Network email template.
 
 ## Template Types
 
@@ -102,7 +100,12 @@ resource "ory_email_template" "welcome" {
 ` + "```shell" + `
 terraform import ory_email_template.welcome registration_code_valid
 ` + "```" + `
-`,
+`
+
+func (r *EmailTemplateResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description:         "Manages an Ory Network email template.",
+		MarkdownDescription: emailTemplateMarkdownDescription,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "Resource ID (same as template_type).",
@@ -242,6 +245,12 @@ func decodeTemplate(content string) string {
 	return content
 }
 
+// isURL checks whether the given string is a URL (has a scheme and host).
+func isURL(s string) bool {
+	u, err := url.Parse(s)
+	return err == nil && u.Scheme != "" && u.Host != ""
+}
+
 func (r *EmailTemplateResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state EmailTemplateResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -303,19 +312,21 @@ func (r *EmailTemplateResource) Read(ctx context.Context, req resource.ReadReque
 
 	// Read subject if present
 	if subject, ok := email["subject"].(string); ok && subject != "" {
-		state.Subject = types.StringValue(decodeTemplate(subject))
+		// Skip URL references (e.g., GCS URLs on staging) - preserve user's config value
+		if !isURL(subject) {
+			state.Subject = types.StringValue(decodeTemplate(subject))
+		}
 	}
 
 	// Read body
 	if body, ok := email["body"].(map[string]interface{}); ok {
 		if html, ok := body["html"].(string); ok && html != "" {
-			// Check if it's a URL reference (like with actions) - if so, preserve user's config
-			if !strings.HasPrefix(html, "http://") && !strings.HasPrefix(html, "https://") {
+			if !isURL(html) {
 				state.BodyHTML = types.StringValue(decodeTemplate(html))
 			}
 		}
 		if plaintext, ok := body["plaintext"].(string); ok && plaintext != "" {
-			if !strings.HasPrefix(plaintext, "http://") && !strings.HasPrefix(plaintext, "https://") {
+			if !isURL(plaintext) {
 				state.BodyPlaintext = types.StringValue(decodeTemplate(plaintext))
 			}
 		}

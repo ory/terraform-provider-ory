@@ -1,0 +1,11 @@
+resource "ory_oauth2_client" "test" {
+  client_name = "ds-oauth2-test"
+
+  grant_types    = ["client_credentials"]
+  response_types = ["token"]
+  scope          = "api:read"
+}
+
+data "ory_oauth2_client" "test" {
+  id = ory_oauth2_client.test.client_id
+}

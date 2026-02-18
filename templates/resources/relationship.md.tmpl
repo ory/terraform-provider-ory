@@ -11,6 +11,8 @@ Manages an Ory Keto relationship tuple for fine-grained authorization.
 
 Relationships are the foundation of Ory Permissions (Keto), which implements [Google's Zanzibar](https://research.google/pubs/pub48190/) authorization model. They define who (subject) has what relation to which resource (object) in a namespace.
 
+-> **Plan:** Available on all Ory Network plans. Requires Ory Permissions (Keto) namespaces to be configured.
+
 ## Prerequisites
 
 ~> **Important:** You must configure Keto namespaces via `ory_project_config` **before** creating relationships. If the namespace doesn't exist, the API will return a 404 error.

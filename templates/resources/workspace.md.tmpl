@@ -11,6 +11,8 @@ Manages an Ory Network workspace.
 
 Workspaces are organizational units that can contain multiple projects. Each workspace has one subscription plan that determines available features and rate limits.
 
+-> **Plan:** Available on all Ory Network plans.
+
 ~> **Import-Only Resource:** Workspaces can only be created through the [Ory Console](https://console.ory.sh). Use this resource to import existing workspaces into Terraform and manage their name. The Ory API does not support workspace deletion, so destroying this resource will only remove it from Terraform state.
 
 ## Recommended Workflow

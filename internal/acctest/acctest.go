@@ -146,7 +146,7 @@ func loadProjectFromEnv(t *testing.T) {
 // This is called when running individual test packages without the wrapper script.
 func createSharedProject(t *testing.T) {
 	ctx := context.Background()
-	c, err := getOryClient()
+	c, err := GetOryClient()
 	if err != nil {
 		initError = fmt.Errorf("failed to create Ory client: %w", err)
 		return
@@ -184,7 +184,7 @@ func createSharedProject(t *testing.T) {
 		return
 	}
 
-	// Configure project with keto namespaces for relationship tests
+	// Configure project with keto namespaces and enable dynamic client registration
 	patches := []ory.JsonPatch{
 		{
 			Op:   "add",
@@ -196,10 +196,15 @@ func createSharedProject(t *testing.T) {
 				{"name": "users", "id": 4},
 			},
 		},
+		{
+			Op:    "replace",
+			Path:  "/services/oauth2/config/oidc/dynamic_client_registration/enabled",
+			Value: true,
+		},
 	}
 	_, err = c.PatchProject(ctx, project.GetId(), patches)
 	if err != nil {
-		t.Logf("Warning: Failed to configure keto namespaces: %v (relationship tests may fail)", err)
+		t.Logf("Warning: Failed to configure project: %v (some tests may fail)", err)
 	}
 
 	sharedTestProject = &TestProject{
@@ -221,7 +226,7 @@ func cleanupTestProject(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	c, err := getOryClient()
+	c, err := GetOryClient()
 	if err != nil {
 		t.Logf("Warning: Failed to create Ory client for cleanup: %v", err)
 		return
@@ -237,8 +242,8 @@ func cleanupTestProject(t *testing.T) {
 	sharedTestProject = nil
 }
 
-// getOryClient returns a shared Ory client for test setup/teardown.
-func getOryClient() (*client.OryClient, error) {
+// GetOryClient returns a shared Ory client for test setup/teardown.
+func GetOryClient() (*client.OryClient, error) {
 	if oryClient != nil {
 		return oryClient, nil
 	}
@@ -313,6 +318,12 @@ func RequireSocialProviderTests(t *testing.T) {
 func RequireProjectTests(t *testing.T) {
 	t.Helper()
 	SkipIfFeatureDisabled(t, "ORY_PROJECT_TESTS_ENABLED", "project")
+}
+
+// RequireEventStreamTests skips the test if ORY_EVENT_STREAM_TESTS_ENABLED is not "true".
+func RequireEventStreamTests(t *testing.T) {
+	t.Helper()
+	SkipIfFeatureDisabled(t, "ORY_EVENT_STREAM_TESTS_ENABLED", "event stream")
 }
 
 // RunTest runs an acceptance test.

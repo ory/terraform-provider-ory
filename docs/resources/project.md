@@ -12,16 +12,46 @@ Manages an Ory Network project.
 Projects are the top-level resource in Ory Network. Each project has its own
 identity service, OAuth2 server, and configuration.
 
+-> **Plan:** Available on all Ory Network plans. The number of projects allowed depends on your workspace subscription.
+
 ~> **Warning:** Destroying this resource **permanently deletes** the project and **all associated data** (identities, OAuth2 clients, sessions, etc.). This action cannot be undone.
 
 ## Example Usage
 
 ```terraform
-# Create a production project in a specific region
-resource "ory_project" "production" {
-  name        = "My Application - Production"
+# Create a production project in Europe (default region)
+resource "ory_project" "production_eu" {
+  name        = "My Application - Production EU"
   environment = "prod"
   home_region = "eu-central"
+}
+
+# Create a production project in US East
+resource "ory_project" "production_us_east" {
+  name        = "My Application - Production US East"
+  environment = "prod"
+  home_region = "us-east"
+}
+
+# Create a production project in US West
+resource "ory_project" "production_us_west" {
+  name        = "My Application - Production US West"
+  environment = "prod"
+  home_region = "us-west"
+}
+
+# Create a production project in Asia Pacific (Tokyo)
+resource "ory_project" "production_asia" {
+  name        = "My Application - Production Asia"
+  environment = "prod"
+  home_region = "asia-northeast"
+}
+
+# Create a global multi-region project
+resource "ory_project" "production_global" {
+  name        = "My Application - Production Global"
+  environment = "prod"
+  home_region = "global"
 }
 
 # Create a staging project
@@ -39,12 +69,12 @@ resource "ory_project" "dev" {
 
 # Output the project details
 output "production_project_id" {
-  value = ory_project.production.id
+  value = ory_project.production_eu.id
 }
 
 output "production_project_slug" {
   description = "Use this for ORY_PROJECT_SLUG"
-  value       = ory_project.production.slug
+  value       = ory_project.production_eu.slug
 }
 ```
 

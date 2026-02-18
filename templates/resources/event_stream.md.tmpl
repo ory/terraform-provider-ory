@@ -1,0 +1,36 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  Manages an Ory Network event stream for publishing events to external systems.
+---
+
+# {{.Name}} ({{.Type}})
+
+Manages an Ory Network event stream.
+
+Event streams allow you to publish Ory events (such as identity creation, session creation, etc.) to external messaging systems like AWS SNS.
+
+-> **Plan:** Requires an Ory Network **Enterprise plan**.
+
+~> **Authentication:** Event streams are managed via the Console API and require a `workspace_api_key` to be configured in the provider. A `project_api_key` alone is not sufficient.
+
+## Example Usage
+
+{{ tffile "examples/resources/ory_event_stream/resource.tf" }}
+
+## Import
+
+Event streams can be imported using the event stream ID (uses the provider's `project_id`):
+
+```shell
+terraform import ory_event_stream.example <event-stream-id>
+```
+
+Or with an explicit project ID:
+
+```shell
+terraform import ory_event_stream.example <project-id>/<event-stream-id>
+```
+
+{{ .SchemaMarkdown | trimspace }}

@@ -1,0 +1,31 @@
+resource "ory_project_config" "test" {
+  courier_delivery_strategy = "http"
+
+  courier_http_request_config = {
+    url    = "https://mail-api.example.com/send"
+    method = "POST"
+    body   = "base64://ewogICJyZWNpcGllbnQiOiAge3sgLnJlY2lwaWVudCB9fSwKICAiYm9keSI6IHt7IC5ib2R5IH19Cn0="
+    auth = {
+      type     = "basic_auth"
+      user     = "mailuser"
+      password = "test-password-123"
+    }
+  }
+
+  courier_channels = [
+    {
+      id = "sms"
+      request_config = {
+        url    = "https://sms-api.example.com/send"
+        method = "POST"
+        body   = "base64://ewogICJ0byI6IHt7IC5yZWNpcGllbnQgfX0sCiAgIm1lc3NhZ2UiOiB7eyAuYm9keSB9fQp9"
+        auth = {
+          type  = "api_key"
+          name  = "Authorization"
+          value = "test-api-key-456"
+          in    = "header"
+        }
+      }
+    }
+  ]
+}

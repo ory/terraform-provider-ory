@@ -102,3 +102,65 @@ variable "smtp_connection_uri" {
   sensitive   = true
   description = "SMTP connection URI (e.g., smtps://user:pass@smtp.example.com:465)"
 }
+
+# Session tokenizer templates (JWT tokenization for /sessions/whoami)
+resource "ory_project_config" "with_tokenizer" {
+  session_tokenizer_templates = {
+    my_jwt = {
+      ttl               = "1h"
+      jwks_url          = "base64://eyJrZXlzIjpbXX0="
+      claims_mapper_url = "base64://bG9jYWwgcGF5bG9hZCA9IHN0ZC5leHRWYXIoJ3BheWxvYWQnLCB7fSk7CnsKICBzZXNzaW9uX2lkOiBwYXlsb2FkLnNlc3Npb24uaWQsCn0="
+      subject_source    = "id"
+    }
+    short_lived = {
+      ttl      = "5m"
+      jwks_url = "base64://eyJrZXlzIjpbXX0="
+    }
+  }
+}
+
+# Courier HTTP delivery (webhook-based email/SMS delivery)
+resource "ory_project_config" "with_courier_http" {
+  courier_delivery_strategy = "http"
+
+  courier_http_request_config = {
+    url    = "https://mail-api.example.com/send"
+    method = "POST"
+    body   = "base64://ewogICJyZWNpcGllbnQiOiAge3sgLnJlY2lwaWVudCB9fSwKICAiYm9keSI6IHt7IC5ib2R5IH19Cn0="
+    auth = {
+      type     = "basic_auth"
+      user     = "mailuser"
+      password = var.mail_password
+    }
+  }
+
+  # Per-channel delivery (e.g., SMS via Twilio)
+  courier_channels = [
+    {
+      id = "sms"
+      request_config = {
+        url    = "https://sms-api.example.com/send"
+        method = "POST"
+        body   = "base64://ewogICJ0byI6IHt7IC5yZWNpcGllbnQgfX0sCiAgIm1lc3NhZ2UiOiB7eyAuYm9keSB9fQp9"
+        auth = {
+          type  = "api_key"
+          name  = "Authorization"
+          value = var.sms_api_key
+          in    = "header"
+        }
+      }
+    }
+  ]
+}
+
+variable "mail_password" {
+  type        = string
+  sensitive   = true
+  description = "Password for courier HTTP basic auth"
+}
+
+variable "sms_api_key" {
+  type        = string
+  sensitive   = true
+  description = "API key for SMS delivery service"
+}

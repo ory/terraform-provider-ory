@@ -91,3 +91,70 @@ func TestAccProjectConfigResource_adminCORS(t *testing.T) {
 		},
 	})
 }
+
+func TestAccProjectConfigResource_tokenizerTemplates(t *testing.T) {
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/tokenizer_templates.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_tokenizer_templates.my_jwt.ttl", "1h"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_tokenizer_templates.short_token.ttl", "5m"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_tokenizer_templates.short_token.subject_source", "external_id"),
+				),
+			},
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"session_tokenizer_templates",
+					"smtp_connection_uri",
+					"cors_enabled",
+					"password_min_length",
+				},
+			},
+		},
+	})
+}
+
+func TestAccProjectConfigResource_courierHTTP(t *testing.T) {
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/courier_http.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "courier_delivery_strategy", "http"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "courier_http_request_config.url", "https://mail-api.example.com/send"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "courier_http_request_config.method", "POST"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "courier_http_request_config.auth.type", "basic_auth"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "courier_http_request_config.auth.user", "mailuser"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "courier_channels.#", "1"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "courier_channels.0.id", "sms"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "courier_channels.0.request_config.url", "https://sms-api.example.com/send"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "courier_channels.0.request_config.auth.type", "api_key"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "courier_channels.0.request_config.auth.name", "Authorization"),
+				),
+			},
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"courier_delivery_strategy",
+					"courier_http_request_config",
+					"courier_channels",
+					"smtp_connection_uri",
+					"cors_enabled",
+					"password_min_length",
+				},
+			},
+		},
+	})
+}

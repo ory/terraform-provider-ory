@@ -11,6 +11,8 @@ Manages an Ory Network social sign-in provider (Google, GitHub, etc.).
 
 Social providers are configured as part of the project's OIDC authentication method. Each provider is identified by a unique `provider_id` that is used in callback URLs.
 
+-> **Plan:** Available on all Ory Network plans.
+
 ## Provider Types
 
 The `provider_type` attribute determines which OAuth2/OIDC integration to use:

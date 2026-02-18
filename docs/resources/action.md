@@ -11,6 +11,8 @@ Manages an Ory Action (webhook) for identity flows.
 
 Actions allow you to trigger webhooks at specific points in identity flows (login, registration, recovery, settings, verification).
 
+-> **Plan:** Available on all Ory Network plans.
+
 ## Example Usage
 
 ```terraform

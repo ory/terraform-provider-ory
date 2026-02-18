@@ -1,0 +1,36 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  Manages an Ory Network OIDC dynamic client via RFC 7591 Dynamic Client Registration.
+---
+
+# {{.Name}} ({{.Type}})
+
+Manages an Ory Network OIDC dynamic client.
+
+Dynamic clients are registered via RFC 7591 (Dynamic Client Registration). Unlike standard OAuth2 clients (`ory_oauth2_client`), dynamic clients are registered without prior authentication and receive a `registration_access_token` for RFC 7592 management.
+
+After creation, the Terraform provider manages the client via the Ory admin API (not RFC 7592), so the `registration_access_token` does not need to be preserved for Terraform to function. However, you may want to store it if you plan to manage the client outside of Terraform.
+
+-> **Plan:** Available on all Ory Network plans. Requires dynamic client registration to be enabled on the project.
+
+~> **Prerequisite:** Dynamic client registration must be enabled on your Ory project. Enable it in the Ory Console under **OAuth2 > OIDC > Dynamic Client Registration**, or via the API by setting `/services/oauth2/config/oidc/dynamic_client_registration/enabled` to `true`.
+
+~> **Important:** The `client_secret`, `registration_access_token`, and `registration_client_uri` are only returned when the client is created. They are not available after import or subsequent reads.
+
+## Example Usage
+
+{{ tffile "examples/resources/ory_oidc_dynamic_client/resource.tf" }}
+
+## Import
+
+OIDC dynamic clients can be imported using their client ID:
+
+```shell
+terraform import ory_oidc_dynamic_client.example <client-id>
+```
+
+**Note:** When importing, `client_secret`, `registration_access_token`, and `registration_client_uri` will not be available since these are only returned at creation time.
+
+{{ .SchemaMarkdown | trimspace }}

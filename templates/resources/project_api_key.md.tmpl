@@ -11,6 +11,8 @@ Manages an Ory Network project API key.
 
 API keys are used to authenticate API requests to a specific project. They are scoped to a single project and provide the same level of access as the project owner.
 
+-> **Plan:** Available on all Ory Network plans.
+
 ~> **Important:** The `value` (the actual API key string) is **only returned when the key is created**. It cannot be retrieved afterward. Store it securely immediately after creation (e.g., in a secrets manager or as a sensitive output).
 
 ## Example Usage

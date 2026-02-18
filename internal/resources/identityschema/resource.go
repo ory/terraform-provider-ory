@@ -44,10 +44,7 @@ func (r *IdentitySchemaResource) Metadata(ctx context.Context, req resource.Meta
 	resp.TypeName = req.ProviderTypeName + "_identity_schema"
 }
 
-func (r *IdentitySchemaResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "Manages an Ory Network identity schema.",
-		MarkdownDescription: `
+const identitySchemaMarkdownDescription = `
 Manages an Ory Network identity schema.
 
 ## Important Notes
@@ -99,7 +96,12 @@ resource "ory_identity_schema" "customer" {
   })
 }
 ` + "```" + `
-`,
+`
+
+func (r *IdentitySchemaResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description:         "Manages an Ory Network identity schema.",
+		MarkdownDescription: identitySchemaMarkdownDescription,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "Resource ID.",
@@ -276,56 +278,64 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		})
 	}
 
-	result, err := r.client.PatchProject(ctx, projectID, patches)
+	// If set_default is true, include the default_schema_id patch in the same
+	// API call to avoid a race condition with eventual consistency.
+	if plan.SetDefault.ValueBool() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "add",
+			Path:  "/services/identity/config/identity/default_schema_id",
+			Value: schemaID,
+		})
+	}
+
+	_, err = r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Creating Identity Schema", err.Error())
 		return
 	}
 
+	// Resolve the canonical schema ID using a fresh GetProject call.
+	// PatchProject's response may preserve our input name, but the API may
+	// internally assign a different ID (e.g., hash-based). A fresh GetProject
+	// returns the canonical IDs.
 	var actualID string
-	project := result.GetProject()
-	updatedSchemas := extractSchemasFromProject(&project)
-
-	if idx := r.findSchemaIndex(updatedSchemas, schemaID); idx >= 0 {
-		if id, ok := updatedSchemas[idx]["id"].(string); ok {
-			actualID = id
+	err = helpers.WaitForCondition(ctx, func() (bool, error) {
+		freshSchemas, err := r.getSchemas(ctx, projectID)
+		if err != nil {
+			return false, err
 		}
-	}
 
-	if actualID == "" {
-		if idx := r.findSchemaByURL(updatedSchemas, schemaURL); idx >= 0 {
-			if id, ok := updatedSchemas[idx]["id"].(string); ok {
+		// Try by user-provided schema_id
+		if idx := r.findSchemaIndex(freshSchemas, schemaID); idx >= 0 {
+			if id, ok := freshSchemas[idx]["id"].(string); ok {
 				actualID = id
+				return true, nil
 			}
 		}
-	}
 
-	if actualID == "" {
-		for _, s := range updatedSchemas {
+		// Try by URL match
+		if idx := r.findSchemaByURL(freshSchemas, schemaURL); idx >= 0 {
+			if id, ok := freshSchemas[idx]["id"].(string); ok {
+				actualID = id
+				return true, nil
+			}
+		}
+
+		// Try to find a new ID not in the pre-creation set
+		for _, s := range freshSchemas {
 			if id, ok := s["id"].(string); ok {
 				if !existingIDs[id] {
 					actualID = id
-					break
+					return true, nil
 				}
 			}
 		}
-	}
 
-	if actualID == "" {
+		return false, nil
+	})
+	if err != nil || actualID == "" {
+		// Fallback to user-provided schemaID if we can't resolve
 		actualID = schemaID
-	}
-
-	if plan.SetDefault.ValueBool() {
-		defaultPatches := []ory.JsonPatch{{
-			Op:    "add",
-			Path:  "/services/identity/config/identity/default_schema_id",
-			Value: actualID,
-		}}
-		_, err = r.client.PatchProject(ctx, projectID, defaultPatches)
-		if err != nil {
-			resp.Diagnostics.AddError("Error Setting Default Schema", err.Error())
-			return
-		}
 	}
 
 	plan.ID = types.StringValue(actualID)
@@ -462,14 +472,48 @@ func (r *IdentitySchemaResource) Update(ctx context.Context, req resource.Update
 	}
 
 	if plan.SetDefault.ValueBool() {
-		patches := []ory.JsonPatch{{
-			Op:    "add",
-			Path:  "/services/identity/config/identity/default_schema_id",
-			Value: apiID,
-		}}
-		_, err := r.client.PatchProject(ctx, projectID, patches)
+		// Re-resolve the schema ID from the API and retry to handle eventual consistency.
+		// After Create, the API may not immediately return the newly added schema,
+		// or may have assigned a different ID (e.g., hash-based).
+		var lastErr error
+		err := helpers.WaitForCondition(ctx, func() (bool, error) {
+			schemas, err := r.getSchemas(ctx, projectID)
+			if err != nil {
+				return false, fmt.Errorf("failed to get schemas: %w", err)
+			}
+
+			// Build list of candidate IDs to try: state ID, schema_id, and any URL-matched ID
+			candidateIDs := r.collectCandidateIDs(schemas, apiID, plan.SchemaID.ValueString(), state.Schema)
+			if len(candidateIDs) == 0 {
+				// Schema not found yet — may be eventual consistency
+				lastErr = fmt.Errorf("schema not found in project (looked for id=%q or schema_id=%q, available: %v)",
+					apiID, plan.SchemaID.ValueString(), schemaIDList(schemas))
+				return false, nil
+			}
+
+			// Try each candidate until one succeeds
+			for _, candidateID := range candidateIDs {
+				patches := []ory.JsonPatch{{
+					Op:    "add",
+					Path:  "/services/identity/config/identity/default_schema_id",
+					Value: candidateID,
+				}}
+				_, patchErr := r.client.PatchProject(ctx, projectID, patches)
+				if patchErr == nil {
+					apiID = candidateID
+					return true, nil
+				}
+				lastErr = patchErr
+			}
+			// All candidates failed — retry after delay
+			return false, nil
+		})
 		if err != nil {
-			resp.Diagnostics.AddError("Error Setting Default Schema", err.Error())
+			detail := err.Error()
+			if lastErr != nil {
+				detail = fmt.Sprintf("%s (last API error: %s)", detail, lastErr.Error())
+			}
+			resp.Diagnostics.AddError("Error Setting Default Schema", detail)
 			return
 		}
 	}
@@ -490,6 +534,62 @@ func (r *IdentitySchemaResource) Delete(ctx context.Context, req resource.Delete
 		"Schema Not Deleted",
 		"Ory Network does not support deleting identity schemas. The schema has been removed from Terraform state but still exists in Ory Network.",
 	)
+}
+
+// collectCandidateIDs returns a deduplicated list of schema IDs that could be our schema.
+// It tries: stored ID, user-provided schema_id, URL match, and all schema IDs as fallback.
+func (r *IdentitySchemaResource) collectCandidateIDs(schemas []map[string]interface{}, storedID, schemaID string, schemaAttr types.String) []string {
+	seen := make(map[string]bool)
+	var candidates []string
+	addCandidate := func(id string) {
+		if id != "" && !seen[id] {
+			seen[id] = true
+			candidates = append(candidates, id)
+		}
+	}
+
+	// Priority 1: stored ID from state
+	if idx := r.findSchemaIndex(schemas, storedID); idx >= 0 {
+		if id, ok := schemas[idx]["id"].(string); ok {
+			addCandidate(id)
+		}
+	}
+
+	// Priority 2: user-provided schema_id
+	if idx := r.findSchemaIndex(schemas, schemaID); idx >= 0 {
+		if id, ok := schemas[idx]["id"].(string); ok {
+			addCandidate(id)
+		}
+	}
+
+	// Priority 3: URL content match
+	if !schemaAttr.IsNull() && !schemaAttr.IsUnknown() {
+		if schemaURL, err := r.encodeSchema(schemaAttr.ValueString()); err == nil {
+			if idx := r.findSchemaByURL(schemas, schemaURL); idx >= 0 {
+				if id, ok := schemas[idx]["id"].(string); ok {
+					addCandidate(id)
+				}
+			}
+		}
+	}
+
+	// Priority 4: try storedID and schemaID directly even if not found in schema list
+	// (the API may accept them even if GetProject doesn't list them yet)
+	addCandidate(storedID)
+	addCandidate(schemaID)
+
+	return candidates
+}
+
+// schemaIDList extracts all schema IDs from a schema list for diagnostic messages.
+func schemaIDList(schemas []map[string]interface{}) []string {
+	ids := make([]string, 0, len(schemas))
+	for _, s := range schemas {
+		if id, ok := s["id"].(string); ok {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // Note: ImportState is intentionally NOT implemented.
