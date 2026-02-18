@@ -459,27 +459,48 @@ func (r *IdentitySchemaResource) Update(ctx context.Context, req resource.Update
 	}
 
 	if plan.SetDefault.ValueBool() {
-		// Re-resolve the schema ID from the API to handle cases where the
-		// stored ID doesn't match what the API actually assigned (e.g., hash-based IDs).
-		schemas, err := r.getSchemas(ctx, projectID)
-		if err != nil {
-			resp.Diagnostics.AddError("Error Getting Schemas", err.Error())
-			return
-		}
+		// Re-resolve the schema ID from the API and retry to handle eventual consistency.
+		// After Create, the API may not immediately return the newly added schema,
+		// or may have assigned a different ID (e.g., hash-based).
+		var lastErr error
+		err := helpers.WaitForCondition(ctx, func() (bool, error) {
+			schemas, err := r.getSchemas(ctx, projectID)
+			if err != nil {
+				return false, fmt.Errorf("failed to get schemas: %w", err)
+			}
 
-		resolvedID := r.resolveSchemaID(schemas, apiID, plan.SchemaID.ValueString(), state.Schema)
-		if resolvedID != "" {
-			apiID = resolvedID
-		}
+			// Build list of candidate IDs to try: state ID, schema_id, and any URL-matched ID
+			candidateIDs := r.collectCandidateIDs(schemas, apiID, plan.SchemaID.ValueString(), state.Schema)
+			if len(candidateIDs) == 0 {
+				// Schema not found yet — may be eventual consistency
+				lastErr = fmt.Errorf("schema not found in project (looked for id=%q or schema_id=%q, available: %v)",
+					apiID, plan.SchemaID.ValueString(), schemaIDList(schemas))
+				return false, nil
+			}
 
-		patches := []ory.JsonPatch{{
-			Op:    "add",
-			Path:  "/services/identity/config/identity/default_schema_id",
-			Value: apiID,
-		}}
-		_, err = r.client.PatchProject(ctx, projectID, patches)
+			// Try each candidate until one succeeds
+			for _, candidateID := range candidateIDs {
+				patches := []ory.JsonPatch{{
+					Op:    "add",
+					Path:  "/services/identity/config/identity/default_schema_id",
+					Value: candidateID,
+				}}
+				_, patchErr := r.client.PatchProject(ctx, projectID, patches)
+				if patchErr == nil {
+					apiID = candidateID
+					return true, nil
+				}
+				lastErr = patchErr
+			}
+			// All candidates failed — retry after delay
+			return false, nil
+		})
 		if err != nil {
-			resp.Diagnostics.AddError("Error Setting Default Schema", err.Error())
+			detail := err.Error()
+			if lastErr != nil {
+				detail = fmt.Sprintf("%s (last API error: %s)", detail, lastErr.Error())
+			}
+			resp.Diagnostics.AddError("Error Setting Default Schema", detail)
 			return
 		}
 	}
@@ -502,32 +523,60 @@ func (r *IdentitySchemaResource) Delete(ctx context.Context, req resource.Delete
 	)
 }
 
-// resolveSchemaID tries to find the correct API-assigned ID for a schema by
-// searching with multiple strategies: stored ID, user-provided schema_id, and URL match.
-func (r *IdentitySchemaResource) resolveSchemaID(schemas []map[string]interface{}, storedID, schemaID string, schemaAttr types.String) string {
+// collectCandidateIDs returns a deduplicated list of schema IDs that could be our schema.
+// It tries: stored ID, user-provided schema_id, URL match, and all schema IDs as fallback.
+func (r *IdentitySchemaResource) collectCandidateIDs(schemas []map[string]interface{}, storedID, schemaID string, schemaAttr types.String) []string {
+	seen := make(map[string]bool)
+	var candidates []string
+	addCandidate := func(id string) {
+		if id != "" && !seen[id] {
+			seen[id] = true
+			candidates = append(candidates, id)
+		}
+	}
+
+	// Priority 1: stored ID from state
 	if idx := r.findSchemaIndex(schemas, storedID); idx >= 0 {
 		if id, ok := schemas[idx]["id"].(string); ok {
-			return id
+			addCandidate(id)
 		}
 	}
 
+	// Priority 2: user-provided schema_id
 	if idx := r.findSchemaIndex(schemas, schemaID); idx >= 0 {
 		if id, ok := schemas[idx]["id"].(string); ok {
-			return id
+			addCandidate(id)
 		}
 	}
 
+	// Priority 3: URL content match
 	if !schemaAttr.IsNull() && !schemaAttr.IsUnknown() {
 		if schemaURL, err := r.encodeSchema(schemaAttr.ValueString()); err == nil {
 			if idx := r.findSchemaByURL(schemas, schemaURL); idx >= 0 {
 				if id, ok := schemas[idx]["id"].(string); ok {
-					return id
+					addCandidate(id)
 				}
 			}
 		}
 	}
 
-	return ""
+	// Priority 4: try storedID and schemaID directly even if not found in schema list
+	// (the API may accept them even if GetProject doesn't list them yet)
+	addCandidate(storedID)
+	addCandidate(schemaID)
+
+	return candidates
+}
+
+// schemaIDList extracts all schema IDs from a schema list for diagnostic messages.
+func schemaIDList(schemas []map[string]interface{}) []string {
+	ids := make([]string, 0, len(schemas))
+	for _, s := range schemas {
+		if id, ok := s["id"].(string); ok {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // Note: ImportState is intentionally NOT implemented.
