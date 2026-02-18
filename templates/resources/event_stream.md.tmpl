@@ -13,8 +13,6 @@ Event streams allow you to publish Ory events (such as identity creation, sessio
 
 -> **Plan:** Requires an Ory Network **Enterprise plan**.
 
-~> **Important:** Event streams require an Ory Network **Enterprise plan**.
-
 ~> **Authentication:** Event streams are managed via the Console API and require a `workspace_api_key` to be configured in the provider. A `project_api_key` alone is not sufficient.
 
 ## Example Usage

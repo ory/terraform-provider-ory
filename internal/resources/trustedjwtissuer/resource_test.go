@@ -4,6 +4,7 @@ package trustedjwtissuer_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 
@@ -11,6 +12,8 @@ import (
 )
 
 func TestAccTrustedOAuth2JwtGrantIssuerResource_basic(t *testing.T) {
+	expiresAt := time.Now().AddDate(5, 0, 0).UTC().Format(time.RFC3339)
+
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
@@ -19,7 +22,7 @@ func TestAccTrustedOAuth2JwtGrantIssuerResource_basic(t *testing.T) {
 			{
 				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{
 					"Issuer":    "https://jwt-idp.example.com",
-					"ExpiresAt": "2030-01-01T00:00:00Z",
+					"ExpiresAt": expiresAt,
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_trusted_oauth2_jwt_grant_issuer.test", "id"),

@@ -258,19 +258,19 @@ func (r *OIDCDynamicClientResource) Create(ctx context.Context, req resource.Cre
 	if created.ClientSecret != nil && *created.ClientSecret != "" {
 		plan.ClientSecret = types.StringValue(*created.ClientSecret)
 	} else {
-		plan.ClientSecret = types.StringValue("")
+		plan.ClientSecret = types.StringNull()
 	}
 
 	if created.RegistrationAccessToken != nil && *created.RegistrationAccessToken != "" {
 		plan.RegistrationAccessToken = types.StringValue(*created.RegistrationAccessToken)
 	} else {
-		plan.RegistrationAccessToken = types.StringValue("")
+		plan.RegistrationAccessToken = types.StringNull()
 	}
 
 	if created.RegistrationClientUri != nil && *created.RegistrationClientUri != "" {
 		plan.RegistrationClientURI = types.StringValue(*created.RegistrationClientUri)
 	} else {
-		plan.RegistrationClientURI = types.StringValue("")
+		plan.RegistrationClientURI = types.StringNull()
 	}
 
 	if created.TokenEndpointAuthMethod != nil {
