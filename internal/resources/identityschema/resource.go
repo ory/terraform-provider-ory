@@ -286,42 +286,53 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		})
 	}
 
-	result, err := r.client.PatchProject(ctx, projectID, patches)
+	_, err = r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Creating Identity Schema", err.Error())
 		return
 	}
 
+	// Resolve the canonical schema ID using a fresh GetProject call.
+	// PatchProject's response may preserve our input name, but the API may
+	// internally assign a different ID (e.g., hash-based). A fresh GetProject
+	// returns the canonical IDs.
 	var actualID string
-	project := result.GetProject()
-	updatedSchemas := extractSchemasFromProject(&project)
-
-	if idx := r.findSchemaIndex(updatedSchemas, schemaID); idx >= 0 {
-		if id, ok := updatedSchemas[idx]["id"].(string); ok {
-			actualID = id
+	err = helpers.WaitForCondition(ctx, func() (bool, error) {
+		freshSchemas, err := r.getSchemas(ctx, projectID)
+		if err != nil {
+			return false, err
 		}
-	}
 
-	if actualID == "" {
-		if idx := r.findSchemaByURL(updatedSchemas, schemaURL); idx >= 0 {
-			if id, ok := updatedSchemas[idx]["id"].(string); ok {
+		// Try by user-provided schema_id
+		if idx := r.findSchemaIndex(freshSchemas, schemaID); idx >= 0 {
+			if id, ok := freshSchemas[idx]["id"].(string); ok {
 				actualID = id
+				return true, nil
 			}
 		}
-	}
 
-	if actualID == "" {
-		for _, s := range updatedSchemas {
+		// Try by URL match
+		if idx := r.findSchemaByURL(freshSchemas, schemaURL); idx >= 0 {
+			if id, ok := freshSchemas[idx]["id"].(string); ok {
+				actualID = id
+				return true, nil
+			}
+		}
+
+		// Try to find a new ID not in the pre-creation set
+		for _, s := range freshSchemas {
 			if id, ok := s["id"].(string); ok {
 				if !existingIDs[id] {
 					actualID = id
-					break
+					return true, nil
 				}
 			}
 		}
-	}
 
-	if actualID == "" {
+		return false, nil
+	})
+	if err != nil || actualID == "" {
+		// Fallback to user-provided schemaID if we can't resolve
 		actualID = schemaID
 	}
 
