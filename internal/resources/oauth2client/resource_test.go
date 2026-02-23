@@ -177,7 +177,7 @@ func TestAccOAuth2ClientResource_withJWKS(t *testing.T) {
 				ResourceName:            "ory_oauth2_client.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"client_secret", "jwks"},
+				ImportStateVerifyIgnore: []string{"client_secret"},
 			},
 			// Update JWKS (change key ID and scope)
 			{
