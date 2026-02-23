@@ -734,6 +734,9 @@ func (r *OAuth2ClientResource) Read(ctx context.Context, req resource.ReadReques
 			state.Jwks = types.StringValue(string(jwksJSON))
 		}
 	}
+
+	// Reset JWKS URI in state by default to avoid keeping stale values when the remote JWKS URI is cleared.
+	state.JwksURI = types.StringNull()
 	if oauthClient.JwksUri != nil && *oauthClient.JwksUri != "" {
 		state.JwksURI = types.StringValue(*oauthClient.JwksUri)
 	}
