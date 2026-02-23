@@ -724,6 +724,9 @@ func (r *OAuth2ClientResource) Read(ctx context.Context, req resource.ReadReques
 	// Reset JWKS in state by default to avoid keeping stale values when the remote JWKS is cleared.
 	state.Jwks = types.StringNull()
 	if oauthClient.Jwks != nil && len(oauthClient.Jwks.Keys) > 0 {
+		// Normalize JWKS JSON to match Terraform's jsonencode() key ordering.
+		// Marshal the SDK struct, then round-trip through interface{} to get
+		// Go's map key ordering (alphabetical), which matches jsonencode.
 		jwksJSON, err := json.Marshal(oauthClient.Jwks)
 		if err != nil {
 			resp.Diagnostics.AddError(
@@ -731,6 +734,12 @@ func (r *OAuth2ClientResource) Read(ctx context.Context, req resource.ReadReques
 				fmt.Sprintf("Unable to marshal JWKS for OAuth2 client %q: %s", state.ID.ValueString(), err),
 			)
 		} else {
+			var normalized interface{}
+			if err := json.Unmarshal(jwksJSON, &normalized); err == nil {
+				if canonicalJSON, err := json.Marshal(normalized); err == nil {
+					jwksJSON = canonicalJSON
+				}
+			}
 			state.Jwks = types.StringValue(string(jwksJSON))
 		}
 	}
