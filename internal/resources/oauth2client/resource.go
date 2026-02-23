@@ -720,9 +720,16 @@ func (r *OAuth2ClientResource) Read(ctx context.Context, req resource.ReadReques
 	readNullableStringToState(oauthClient.RefreshTokenGrantIdTokenLifespan, &state.RefreshTokenGrantIdTokenLifespan)
 	readNullableStringToState(oauthClient.RefreshTokenGrantRefreshTokenLifespan, &state.RefreshTokenGrantRefreshTokenLifespan)
 
+	// Reset JWKS in state by default to avoid keeping stale values when the remote JWKS is cleared.
+	state.Jwks = types.StringNull()
 	if oauthClient.Jwks != nil && len(oauthClient.Jwks.Keys) > 0 {
 		jwksJSON, err := json.Marshal(oauthClient.Jwks)
-		if err == nil {
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error marshalling OAuth2 Client JWKS",
+				fmt.Sprintf("Unable to marshal JWKS for OAuth2 client %q: %s", state.Id.ValueString(), err),
+			)
+		} else {
 			state.Jwks = types.StringValue(string(jwksJSON))
 		}
 	}
