@@ -593,6 +593,29 @@ func (r *OAuth2ClientResource) Create(ctx context.Context, req resource.CreateRe
 		plan.BackchannelLogoutSessionRequired = types.BoolValue(false)
 	}
 
+	plan.Jwks = types.StringNull()
+	if created.Jwks != nil && len(created.Jwks.Keys) > 0 {
+		if jwksJSON, err := json.Marshal(created.Jwks); err == nil {
+			var normalized interface{}
+			if err := json.Unmarshal(jwksJSON, &normalized); err != nil {
+				resp.Diagnostics.AddWarning(
+					"Failed to normalize OAuth2 Client JWKS",
+					fmt.Sprintf("Unable to unmarshal JWKS for OAuth2 client %q during normalization. The JWKS will be kept in its original format. Error: %s", plan.ID.ValueString(), err),
+				)
+			} else {
+				if canonicalJSON, err := json.Marshal(normalized); err != nil {
+					resp.Diagnostics.AddWarning(
+						"Failed to normalize OAuth2 Client JWKS",
+						fmt.Sprintf("Unable to remarshal JWKS for OAuth2 client %q during normalization. The JWKS will be kept in its original format. Error: %s", plan.ID.ValueString(), err),
+					)
+				} else {
+					jwksJSON = canonicalJSON
+				}
+			}
+			plan.Jwks = types.StringValue(string(jwksJSON))
+		}
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
@@ -735,8 +758,18 @@ func (r *OAuth2ClientResource) Read(ctx context.Context, req resource.ReadReques
 			)
 		} else {
 			var normalized interface{}
-			if err := json.Unmarshal(jwksJSON, &normalized); err == nil {
-				if canonicalJSON, err := json.Marshal(normalized); err == nil {
+			if err := json.Unmarshal(jwksJSON, &normalized); err != nil {
+				resp.Diagnostics.AddWarning(
+					"Failed to normalize OAuth2 Client JWKS",
+					fmt.Sprintf("Unable to unmarshal JWKS for OAuth2 client %q during normalization. The JWKS will be kept in its original format. Error: %s", state.ID.ValueString(), err),
+				)
+			} else {
+				if canonicalJSON, err := json.Marshal(normalized); err != nil {
+					resp.Diagnostics.AddWarning(
+						"Failed to normalize OAuth2 Client JWKS",
+						fmt.Sprintf("Unable to remarshal JWKS for OAuth2 client %q during normalization. The JWKS will be kept in its original format. Error: %s", state.ID.ValueString(), err),
+					)
+				} else {
 					jwksJSON = canonicalJSON
 				}
 			}
@@ -994,6 +1027,29 @@ func (r *OAuth2ClientResource) Update(ctx context.Context, req resource.UpdateRe
 		plan.BackchannelLogoutSessionRequired = types.BoolValue(*updated.BackchannelLogoutSessionRequired)
 	} else {
 		plan.BackchannelLogoutSessionRequired = types.BoolValue(false)
+	}
+
+	plan.Jwks = types.StringNull()
+	if updated.Jwks != nil && len(updated.Jwks.Keys) > 0 {
+		if jwksJSON, err := json.Marshal(updated.Jwks); err == nil {
+			var normalized interface{}
+			if err := json.Unmarshal(jwksJSON, &normalized); err != nil {
+				resp.Diagnostics.AddWarning(
+					"Failed to normalize OAuth2 Client JWKS",
+					fmt.Sprintf("Unable to unmarshal JWKS for OAuth2 client %q during normalization. The JWKS will be kept in its original format. Error: %s", plan.ID.ValueString(), err),
+				)
+			} else {
+				if canonicalJSON, err := json.Marshal(normalized); err != nil {
+					resp.Diagnostics.AddWarning(
+						"Failed to normalize OAuth2 Client JWKS",
+						fmt.Sprintf("Unable to remarshal JWKS for OAuth2 client %q during normalization. The JWKS will be kept in its original format. Error: %s", plan.ID.ValueString(), err),
+					)
+				} else {
+					jwksJSON = canonicalJSON
+				}
+			}
+			plan.Jwks = types.StringValue(string(jwksJSON))
+		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
