@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
 
@@ -78,6 +80,7 @@ type OAuth2ClientResourceModel struct {
 	RefreshTokenGrantRefreshTokenLifespan        types.String `tfsdk:"refresh_token_grant_refresh_token_lifespan"`
 
 	// OIDC fields
+	Jwks                      types.String `tfsdk:"jwks"`
 	JwksURI                   types.String `tfsdk:"jwks_uri"`
 	UserinfoSignedResponseAlg types.String `tfsdk:"userinfo_signed_response_alg"`
 	RequestObjectSigningAlg   types.String `tfsdk:"request_object_signing_alg"`
@@ -314,9 +317,19 @@ func (r *OAuth2ClientResource) Schema(ctx context.Context, req resource.SchemaRe
 			},
 
 			// OIDC fields
-			"jwks_uri": schema.StringAttribute{
-				Description: "URL of the client's JSON Web Key Set for private_key_jwt authentication.",
+			"jwks": schema.StringAttribute{
+				Description: "Inline JSON Web Key Set (JWKS) as a JSON string. Use this to provide keys directly instead of via jwks_uri. Mutually exclusive with jwks_uri.",
 				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("jwks_uri")),
+				},
+			},
+			"jwks_uri": schema.StringAttribute{
+				Description: "URL of the client's JSON Web Key Set for private_key_jwt authentication. Mutually exclusive with jwks.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("jwks")),
+				},
 			},
 			"userinfo_signed_response_alg": schema.StringAttribute{
 				Description: "JWS algorithm for signing UserInfo responses (e.g., 'RS256', 'ES256').",
@@ -495,6 +508,17 @@ func (r *OAuth2ClientResource) Create(ctx context.Context, req resource.CreateRe
 	setNullableStringFromPlan(&oauthClient.RefreshTokenGrantIdTokenLifespan, plan.RefreshTokenGrantIdTokenLifespan)
 	setNullableStringFromPlan(&oauthClient.RefreshTokenGrantRefreshTokenLifespan, plan.RefreshTokenGrantRefreshTokenLifespan)
 
+	if !plan.Jwks.IsNull() && !plan.Jwks.IsUnknown() {
+		var jwks ory.JsonWebKeySet
+		if err := json.Unmarshal([]byte(plan.Jwks.ValueString()), &jwks); err != nil {
+			resp.Diagnostics.AddError(
+				"Invalid JWKS JSON",
+				"Could not parse jwks as JSON: "+err.Error(),
+			)
+			return
+		}
+		oauthClient.Jwks = &jwks
+	}
 	if !plan.JwksURI.IsNull() && !plan.JwksURI.IsUnknown() {
 		oauthClient.JwksUri = ory.PtrString(plan.JwksURI.ValueString())
 	}
@@ -696,6 +720,12 @@ func (r *OAuth2ClientResource) Read(ctx context.Context, req resource.ReadReques
 	readNullableStringToState(oauthClient.RefreshTokenGrantIdTokenLifespan, &state.RefreshTokenGrantIdTokenLifespan)
 	readNullableStringToState(oauthClient.RefreshTokenGrantRefreshTokenLifespan, &state.RefreshTokenGrantRefreshTokenLifespan)
 
+	if oauthClient.Jwks != nil && len(oauthClient.Jwks.Keys) > 0 {
+		jwksJSON, err := json.Marshal(oauthClient.Jwks)
+		if err == nil {
+			state.Jwks = types.StringValue(string(jwksJSON))
+		}
+	}
 	if oauthClient.JwksUri != nil && *oauthClient.JwksUri != "" {
 		state.JwksURI = types.StringValue(*oauthClient.JwksUri)
 	}
@@ -858,6 +888,17 @@ func (r *OAuth2ClientResource) Update(ctx context.Context, req resource.UpdateRe
 	setNullableStringFromPlan(&oauthClient.RefreshTokenGrantIdTokenLifespan, plan.RefreshTokenGrantIdTokenLifespan)
 	setNullableStringFromPlan(&oauthClient.RefreshTokenGrantRefreshTokenLifespan, plan.RefreshTokenGrantRefreshTokenLifespan)
 
+	if !plan.Jwks.IsNull() && !plan.Jwks.IsUnknown() {
+		var jwks ory.JsonWebKeySet
+		if err := json.Unmarshal([]byte(plan.Jwks.ValueString()), &jwks); err != nil {
+			resp.Diagnostics.AddError(
+				"Invalid JWKS JSON",
+				"Could not parse jwks as JSON: "+err.Error(),
+			)
+			return
+		}
+		oauthClient.Jwks = &jwks
+	}
 	if !plan.JwksURI.IsNull() && !plan.JwksURI.IsUnknown() {
 		oauthClient.JwksUri = ory.PtrString(plan.JwksURI.ValueString())
 	}
