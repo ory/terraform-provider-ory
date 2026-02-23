@@ -908,19 +908,29 @@ func (r *OAuth2ClientResource) Update(ctx context.Context, req resource.UpdateRe
 	setNullableStringFromPlan(&oauthClient.RefreshTokenGrantIdTokenLifespan, plan.RefreshTokenGrantIdTokenLifespan)
 	setNullableStringFromPlan(&oauthClient.RefreshTokenGrantRefreshTokenLifespan, plan.RefreshTokenGrantRefreshTokenLifespan)
 
-	if !plan.Jwks.IsNull() && !plan.Jwks.IsUnknown() {
-		var jwks ory.JsonWebKeySet
-		if err := json.Unmarshal([]byte(plan.Jwks.ValueString()), &jwks); err != nil {
-			resp.Diagnostics.AddError(
-				"Invalid JWKS JSON",
-				"Could not parse jwks as JSON: "+err.Error(),
-			)
-			return
+	if !plan.Jwks.IsUnknown() {
+		if plan.Jwks.IsNull() {
+			// Explicitly clear JWKS when removed from configuration.
+			oauthClient.Jwks = nil
+		} else {
+			var jwks ory.JsonWebKeySet
+			if err := json.Unmarshal([]byte(plan.Jwks.ValueString()), &jwks); err != nil {
+				resp.Diagnostics.AddError(
+					"Invalid JWKS JSON",
+					"Could not parse jwks as JSON: "+err.Error(),
+				)
+				return
+			}
+			oauthClient.Jwks = &jwks
 		}
-		oauthClient.Jwks = &jwks
 	}
-	if !plan.JwksURI.IsNull() && !plan.JwksURI.IsUnknown() {
-		oauthClient.JwksUri = ory.PtrString(plan.JwksURI.ValueString())
+	if !plan.JwksURI.IsUnknown() {
+		if plan.JwksURI.IsNull() {
+			// Explicitly clear JWKS URI when removed from configuration.
+			oauthClient.JwksUri = nil
+		} else {
+			oauthClient.JwksUri = ory.PtrString(plan.JwksURI.ValueString())
+		}
 	}
 	if !plan.UserinfoSignedResponseAlg.IsNull() && !plan.UserinfoSignedResponseAlg.IsUnknown() {
 		oauthClient.UserinfoSignedResponseAlg = ory.PtrString(plan.UserinfoSignedResponseAlg.ValueString())
