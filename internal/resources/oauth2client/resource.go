@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
 
@@ -78,6 +80,7 @@ type OAuth2ClientResourceModel struct {
 	RefreshTokenGrantRefreshTokenLifespan        types.String `tfsdk:"refresh_token_grant_refresh_token_lifespan"`
 
 	// OIDC fields
+	Jwks                      types.String `tfsdk:"jwks"`
 	JwksURI                   types.String `tfsdk:"jwks_uri"`
 	UserinfoSignedResponseAlg types.String `tfsdk:"userinfo_signed_response_alg"`
 	RequestObjectSigningAlg   types.String `tfsdk:"request_object_signing_alg"`
@@ -314,9 +317,20 @@ func (r *OAuth2ClientResource) Schema(ctx context.Context, req resource.SchemaRe
 			},
 
 			// OIDC fields
-			"jwks_uri": schema.StringAttribute{
-				Description: "URL of the client's JSON Web Key Set for private_key_jwt authentication.",
+			"jwks": schema.StringAttribute{
+				Description: "Inline JSON Web Key Set (JWKS) as a JSON string. Use this to provide keys directly instead of via jwks_uri. Mutually exclusive with jwks_uri. Marked sensitive because JWKS may contain private key material.",
 				Optional:    true,
+				Sensitive:   true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("jwks_uri")),
+				},
+			},
+			"jwks_uri": schema.StringAttribute{
+				Description: "URL of the client's JSON Web Key Set for private_key_jwt authentication. Mutually exclusive with jwks.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("jwks")),
+				},
 			},
 			"userinfo_signed_response_alg": schema.StringAttribute{
 				Description: "JWS algorithm for signing UserInfo responses (e.g., 'RS256', 'ES256').",
@@ -495,6 +509,17 @@ func (r *OAuth2ClientResource) Create(ctx context.Context, req resource.CreateRe
 	setNullableStringFromPlan(&oauthClient.RefreshTokenGrantIdTokenLifespan, plan.RefreshTokenGrantIdTokenLifespan)
 	setNullableStringFromPlan(&oauthClient.RefreshTokenGrantRefreshTokenLifespan, plan.RefreshTokenGrantRefreshTokenLifespan)
 
+	if !plan.Jwks.IsNull() && !plan.Jwks.IsUnknown() {
+		var jwks ory.JsonWebKeySet
+		if err := json.Unmarshal([]byte(plan.Jwks.ValueString()), &jwks); err != nil {
+			resp.Diagnostics.AddError(
+				"Invalid JWKS JSON",
+				"Could not parse jwks as JSON: "+err.Error(),
+			)
+			return
+		}
+		oauthClient.Jwks = &jwks
+	}
 	if !plan.JwksURI.IsNull() && !plan.JwksURI.IsUnknown() {
 		oauthClient.JwksUri = ory.PtrString(plan.JwksURI.ValueString())
 	}
@@ -566,6 +591,29 @@ func (r *OAuth2ClientResource) Create(ctx context.Context, req resource.CreateRe
 		plan.BackchannelLogoutSessionRequired = types.BoolValue(*created.BackchannelLogoutSessionRequired)
 	} else {
 		plan.BackchannelLogoutSessionRequired = types.BoolValue(false)
+	}
+
+	plan.Jwks = types.StringNull()
+	if created.Jwks != nil && len(created.Jwks.Keys) > 0 {
+		if jwksJSON, err := json.Marshal(created.Jwks); err == nil {
+			var normalized interface{}
+			if err := json.Unmarshal(jwksJSON, &normalized); err != nil {
+				resp.Diagnostics.AddWarning(
+					"Failed to normalize OAuth2 Client JWKS",
+					fmt.Sprintf("Unable to unmarshal JWKS for OAuth2 client %q during normalization. The JWKS will be kept in its original format. Error: %s", plan.ID.ValueString(), err),
+				)
+			} else {
+				if canonicalJSON, err := json.Marshal(normalized); err != nil {
+					resp.Diagnostics.AddWarning(
+						"Failed to normalize OAuth2 Client JWKS",
+						fmt.Sprintf("Unable to remarshal JWKS for OAuth2 client %q during normalization. The JWKS will be kept in its original format. Error: %s", plan.ID.ValueString(), err),
+					)
+				} else {
+					jwksJSON = canonicalJSON
+				}
+			}
+			plan.Jwks = types.StringValue(string(jwksJSON))
+		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
@@ -696,6 +744,41 @@ func (r *OAuth2ClientResource) Read(ctx context.Context, req resource.ReadReques
 	readNullableStringToState(oauthClient.RefreshTokenGrantIdTokenLifespan, &state.RefreshTokenGrantIdTokenLifespan)
 	readNullableStringToState(oauthClient.RefreshTokenGrantRefreshTokenLifespan, &state.RefreshTokenGrantRefreshTokenLifespan)
 
+	// Reset JWKS in state by default to avoid keeping stale values when the remote JWKS is cleared.
+	state.Jwks = types.StringNull()
+	if oauthClient.Jwks != nil && len(oauthClient.Jwks.Keys) > 0 {
+		// Normalize JWKS JSON to match Terraform's jsonencode() key ordering.
+		// Marshal the SDK struct, then round-trip through interface{} to get
+		// Go's map key ordering (alphabetical), which matches jsonencode.
+		jwksJSON, err := json.Marshal(oauthClient.Jwks)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error marshaling OAuth2 Client JWKS",
+				fmt.Sprintf("Unable to marshal JWKS for OAuth2 client %q: %s", state.ID.ValueString(), err),
+			)
+		} else {
+			var normalized interface{}
+			if err := json.Unmarshal(jwksJSON, &normalized); err != nil {
+				resp.Diagnostics.AddWarning(
+					"Failed to normalize OAuth2 Client JWKS",
+					fmt.Sprintf("Unable to unmarshal JWKS for OAuth2 client %q during normalization. The JWKS will be kept in its original format. Error: %s", state.ID.ValueString(), err),
+				)
+			} else {
+				if canonicalJSON, err := json.Marshal(normalized); err != nil {
+					resp.Diagnostics.AddWarning(
+						"Failed to normalize OAuth2 Client JWKS",
+						fmt.Sprintf("Unable to remarshal JWKS for OAuth2 client %q during normalization. The JWKS will be kept in its original format. Error: %s", state.ID.ValueString(), err),
+					)
+				} else {
+					jwksJSON = canonicalJSON
+				}
+			}
+			state.Jwks = types.StringValue(string(jwksJSON))
+		}
+	}
+
+	// Reset JWKS URI in state by default to avoid keeping stale values when the remote JWKS URI is cleared.
+	state.JwksURI = types.StringNull()
 	if oauthClient.JwksUri != nil && *oauthClient.JwksUri != "" {
 		state.JwksURI = types.StringValue(*oauthClient.JwksUri)
 	}
@@ -858,8 +941,29 @@ func (r *OAuth2ClientResource) Update(ctx context.Context, req resource.UpdateRe
 	setNullableStringFromPlan(&oauthClient.RefreshTokenGrantIdTokenLifespan, plan.RefreshTokenGrantIdTokenLifespan)
 	setNullableStringFromPlan(&oauthClient.RefreshTokenGrantRefreshTokenLifespan, plan.RefreshTokenGrantRefreshTokenLifespan)
 
-	if !plan.JwksURI.IsNull() && !plan.JwksURI.IsUnknown() {
-		oauthClient.JwksUri = ory.PtrString(plan.JwksURI.ValueString())
+	if !plan.Jwks.IsUnknown() {
+		if plan.Jwks.IsNull() {
+			// Explicitly clear JWKS when removed from configuration.
+			oauthClient.Jwks = nil
+		} else {
+			var jwks ory.JsonWebKeySet
+			if err := json.Unmarshal([]byte(plan.Jwks.ValueString()), &jwks); err != nil {
+				resp.Diagnostics.AddError(
+					"Invalid JWKS JSON",
+					"Could not parse jwks as JSON: "+err.Error(),
+				)
+				return
+			}
+			oauthClient.Jwks = &jwks
+		}
+	}
+	if !plan.JwksURI.IsUnknown() {
+		if plan.JwksURI.IsNull() {
+			// Explicitly clear JWKS URI when removed from configuration.
+			oauthClient.JwksUri = nil
+		} else {
+			oauthClient.JwksUri = ory.PtrString(plan.JwksURI.ValueString())
+		}
 	}
 	if !plan.UserinfoSignedResponseAlg.IsNull() && !plan.UserinfoSignedResponseAlg.IsUnknown() {
 		oauthClient.UserinfoSignedResponseAlg = ory.PtrString(plan.UserinfoSignedResponseAlg.ValueString())
@@ -923,6 +1027,29 @@ func (r *OAuth2ClientResource) Update(ctx context.Context, req resource.UpdateRe
 		plan.BackchannelLogoutSessionRequired = types.BoolValue(*updated.BackchannelLogoutSessionRequired)
 	} else {
 		plan.BackchannelLogoutSessionRequired = types.BoolValue(false)
+	}
+
+	plan.Jwks = types.StringNull()
+	if updated.Jwks != nil && len(updated.Jwks.Keys) > 0 {
+		if jwksJSON, err := json.Marshal(updated.Jwks); err == nil {
+			var normalized interface{}
+			if err := json.Unmarshal(jwksJSON, &normalized); err != nil {
+				resp.Diagnostics.AddWarning(
+					"Failed to normalize OAuth2 Client JWKS",
+					fmt.Sprintf("Unable to unmarshal JWKS for OAuth2 client %q during normalization. The JWKS will be kept in its original format. Error: %s", plan.ID.ValueString(), err),
+				)
+			} else {
+				if canonicalJSON, err := json.Marshal(normalized); err != nil {
+					resp.Diagnostics.AddWarning(
+						"Failed to normalize OAuth2 Client JWKS",
+						fmt.Sprintf("Unable to remarshal JWKS for OAuth2 client %q during normalization. The JWKS will be kept in its original format. Error: %s", plan.ID.ValueString(), err),
+					)
+				} else {
+					jwksJSON = canonicalJSON
+				}
+			}
+			plan.Jwks = types.StringValue(string(jwksJSON))
+		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
