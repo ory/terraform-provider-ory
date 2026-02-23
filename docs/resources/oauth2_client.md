@@ -111,6 +111,27 @@ resource "ory_oauth2_client" "spa" {
   scope                      = "openid profile email"
 }
 
+# Client with inline JWKS for private_key_jwt authentication
+resource "ory_oauth2_client" "with_jwks" {
+  client_name                = "Service with JWKS"
+  grant_types                = ["client_credentials"]
+  token_endpoint_auth_method = "private_key_jwt"
+  scope                      = "api:read api:write"
+
+  jwks = jsonencode({
+    keys = [
+      {
+        kid = "my-signing-key"
+        kty = "RSA"
+        alg = "RS256"
+        use = "sig"
+        e   = "AQAB"
+        n   = "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw"
+      }
+    ]
+  })
+}
+
 # Device Authorization flow (CLI tools, IoT devices)
 resource "ory_oauth2_client" "cli_tool" {
   client_name                = "CLI Tool"
@@ -201,9 +222,36 @@ If not set, the project-level defaults apply.
 
 | Attribute | Description |
 |-----------|-------------|
-| `jwks_uri` | URL of the client's JSON Web Key Set, used with `private_key_jwt` authentication |
+| `jwks` | Inline JSON Web Key Set as a JSON string. Provide keys directly for `private_key_jwt` authentication. Mutually exclusive with `jwks_uri`. |
+| `jwks_uri` | URL of the client's JSON Web Key Set, used with `private_key_jwt` authentication. Mutually exclusive with `jwks`. |
 | `userinfo_signed_response_alg` | JWS algorithm for signing UserInfo responses (e.g., `RS256`) |
 | `request_object_signing_alg` | JWS algorithm for signing request objects (e.g., `RS256`) |
+
+### Inline JWKS
+
+Use the `jwks` attribute to provide keys directly instead of hosting them at a URL:
+
+```hcl
+resource "ory_oauth2_client" "with_jwks" {
+  client_name                = "Client with Inline JWKS"
+  grant_types                = ["client_credentials"]
+  token_endpoint_auth_method = "private_key_jwt"
+  scope                      = "api:read"
+
+  jwks = jsonencode({
+    keys = [
+      {
+        kid = "my-key-1"
+        kty = "RSA"
+        alg = "RS256"
+        use = "sig"
+        e   = "AQAB"
+        n   = "your-rsa-modulus-base64url-encoded"
+      }
+    ]
+  })
+}
+```
 
 ## OIDC Logout
 
@@ -252,7 +300,8 @@ terraform import ory_oauth2_client.api <client-id>
 - `grant_types` (List of String) OAuth2 grant types: authorization_code, implicit, client_credentials, refresh_token.
 - `implicit_grant_access_token_lifespan` (String) Access token lifespan for implicit grant (e.g., '1h', '30m').
 - `implicit_grant_id_token_lifespan` (String) ID token lifespan for implicit grant (e.g., '1h', '30m').
-- `jwks_uri` (String) URL of the client's JSON Web Key Set for private_key_jwt authentication.
+- `jwks` (String) Inline JSON Web Key Set (JWKS) as a JSON string. Use this to provide keys directly instead of via jwks_uri. Mutually exclusive with jwks_uri.
+- `jwks_uri` (String) URL of the client's JSON Web Key Set for private_key_jwt authentication. Mutually exclusive with jwks.
 - `jwt_bearer_grant_access_token_lifespan` (String) Access token lifespan for JWT bearer grant (e.g., '1h', '30m').
 - `logo_uri` (String) URL of the client's logo.
 - `metadata` (String) Custom metadata as JSON string.

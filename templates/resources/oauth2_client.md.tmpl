@@ -90,9 +90,36 @@ If not set, the project-level defaults apply.
 
 | Attribute | Description |
 |-----------|-------------|
-| `jwks_uri` | URL of the client's JSON Web Key Set, used with `private_key_jwt` authentication |
+| `jwks` | Inline JSON Web Key Set as a JSON string. Provide keys directly for `private_key_jwt` authentication. Mutually exclusive with `jwks_uri`. |
+| `jwks_uri` | URL of the client's JSON Web Key Set, used with `private_key_jwt` authentication. Mutually exclusive with `jwks`. |
 | `userinfo_signed_response_alg` | JWS algorithm for signing UserInfo responses (e.g., `RS256`) |
 | `request_object_signing_alg` | JWS algorithm for signing request objects (e.g., `RS256`) |
+
+### Inline JWKS
+
+Use the `jwks` attribute to provide keys directly instead of hosting them at a URL:
+
+```hcl
+resource "ory_oauth2_client" "with_jwks" {
+  client_name                = "Client with Inline JWKS"
+  grant_types                = ["client_credentials"]
+  token_endpoint_auth_method = "private_key_jwt"
+  scope                      = "api:read"
+
+  jwks = jsonencode({
+    keys = [
+      {
+        kid = "my-key-1"
+        kty = "RSA"
+        alg = "RS256"
+        use = "sig"
+        e   = "AQAB"
+        n   = "your-rsa-modulus-base64url-encoded"
+      }
+    ]
+  })
+}
+```
 
 ## OIDC Logout
 
