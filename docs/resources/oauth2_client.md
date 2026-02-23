@@ -300,7 +300,7 @@ terraform import ory_oauth2_client.api <client-id>
 - `grant_types` (List of String) OAuth2 grant types: authorization_code, implicit, client_credentials, refresh_token.
 - `implicit_grant_access_token_lifespan` (String) Access token lifespan for implicit grant (e.g., '1h', '30m').
 - `implicit_grant_id_token_lifespan` (String) ID token lifespan for implicit grant (e.g., '1h', '30m').
-- `jwks` (String) Inline JSON Web Key Set (JWKS) as a JSON string. Use this to provide keys directly instead of via jwks_uri. Mutually exclusive with jwks_uri.
+- `jwks` (String, Sensitive) Inline JSON Web Key Set (JWKS) as a JSON string. Use this to provide keys directly instead of via jwks_uri. Mutually exclusive with jwks_uri. Marked sensitive because JWKS may contain private key material.
 - `jwks_uri` (String) URL of the client's JSON Web Key Set for private_key_jwt authentication. Mutually exclusive with jwks.
 - `jwt_bearer_grant_access_token_lifespan` (String) Access token lifespan for JWT bearer grant (e.g., '1h', '30m').
 - `logo_uri` (String) URL of the client's logo.

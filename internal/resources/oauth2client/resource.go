@@ -318,8 +318,9 @@ func (r *OAuth2ClientResource) Schema(ctx context.Context, req resource.SchemaRe
 
 			// OIDC fields
 			"jwks": schema.StringAttribute{
-				Description: "Inline JSON Web Key Set (JWKS) as a JSON string. Use this to provide keys directly instead of via jwks_uri. Mutually exclusive with jwks_uri.",
+				Description: "Inline JSON Web Key Set (JWKS) as a JSON string. Use this to provide keys directly instead of via jwks_uri. Mutually exclusive with jwks_uri. Marked sensitive because JWKS may contain private key material.",
 				Optional:    true,
+				Sensitive:   true,
 				Validators: []validator.String{
 					stringvalidator.ConflictsWith(path.MatchRoot("jwks_uri")),
 				},
@@ -726,8 +727,8 @@ func (r *OAuth2ClientResource) Read(ctx context.Context, req resource.ReadReques
 		jwksJSON, err := json.Marshal(oauthClient.Jwks)
 		if err != nil {
 			resp.Diagnostics.AddError(
-				"Error marshalling OAuth2 Client JWKS",
-				fmt.Sprintf("Unable to marshal JWKS for OAuth2 client %q: %s", state.Id.ValueString(), err),
+				"Error marshaling OAuth2 Client JWKS",
+				fmt.Sprintf("Unable to marshal JWKS for OAuth2 client %q: %s", state.ID.ValueString(), err),
 			)
 		} else {
 			state.Jwks = types.StringValue(string(jwksJSON))
