@@ -155,6 +155,46 @@ func TestAccOAuth2ClientResource_withConsentAndSubjectType(t *testing.T) {
 	})
 }
 
+func TestAccOAuth2ClientResource_withJWKS(t *testing.T) {
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with inline JWKS
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_jwks.tf.tmpl", map[string]string{
+					"Name": "Test Client with JWKS",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_oauth2_client.test", "id"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "client_name", "Test Client with JWKS"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "token_endpoint_auth_method", "private_key_jwt"),
+					resource.TestCheckResourceAttrSet("ory_oauth2_client.test", "jwks"),
+				),
+			},
+			// ImportState
+			{
+				ResourceName:            "ory_oauth2_client.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+			// Update JWKS (change key ID and scope)
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_jwks_updated.tf.tmpl", map[string]string{
+					"Name": "Test Client with JWKS Updated",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_oauth2_client.test", "id"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "client_name", "Test Client with JWKS Updated"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "scope", "api:read api:write"),
+					resource.TestCheckResourceAttrSet("ory_oauth2_client.test", "jwks"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccOAuth2ClientResource_withTokenLifespans(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
