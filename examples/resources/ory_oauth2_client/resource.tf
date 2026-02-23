@@ -91,6 +91,27 @@ resource "ory_oauth2_client" "spa" {
   scope                      = "openid profile email"
 }
 
+# Client with inline JWKS for private_key_jwt authentication
+resource "ory_oauth2_client" "with_jwks" {
+  client_name                = "Service with JWKS"
+  grant_types                = ["client_credentials"]
+  token_endpoint_auth_method = "private_key_jwt"
+  scope                      = "api:read api:write"
+
+  jwks = jsonencode({
+    keys = [
+      {
+        kid = "my-signing-key"
+        kty = "RSA"
+        alg = "RS256"
+        use = "sig"
+        e   = "AQAB"
+        n   = "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw"
+      }
+    ]
+  })
+}
+
 # Device Authorization flow (CLI tools, IoT devices)
 resource "ory_oauth2_client" "cli_tool" {
   client_name                = "CLI Tool"
