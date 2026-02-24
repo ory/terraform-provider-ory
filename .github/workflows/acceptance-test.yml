@@ -103,6 +103,7 @@ jobs:
           ORY_SCHEMA_TESTS_ENABLED: ${{ github.event_name == 'pull_request' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_schema_tests == 'true' }}
           ORY_PROJECT_TESTS_ENABLED: ${{ github.event_name == 'pull_request' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_project_tests == 'true' }}
           ORY_EVENT_STREAM_TESTS_ENABLED: ${{ github.event_name == 'pull_request' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_event_stream_tests == 'true' }}
+          ORY_EVENT_STREAM_PROJECT_ID: ${{ secrets.ORY_EVENT_STREAM_PROJECT_ID }}
           ORY_EVENT_STREAM_TOPIC_ARN: ${{ secrets.ORY_EVENT_STREAM_TOPIC_ARN }}
           ORY_EVENT_STREAM_ROLE_ARN: ${{ secrets.ORY_EVENT_STREAM_ROLE_ARN }}
         run: ./scripts/run-acceptance-tests.sh -v -timeout 20m ./...
