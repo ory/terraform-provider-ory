@@ -314,6 +314,172 @@ func TestIsRateLimitError(t *testing.T) {
 	}
 }
 
+func TestOryClient_EnsureProjectClient_NilWithoutCredentials(t *testing.T) {
+	cfg := OryClientConfig{
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   DefaultConsoleAPIURL,
+		// No ProjectAPIKey or ProjectSlug
+	}
+
+	client, err := NewOryClient(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if client.projectClient != nil {
+		t.Error("project client should be nil without credentials")
+	}
+
+	err = client.ensureProjectClient()
+	if err == nil {
+		t.Fatal("expected error from ensureProjectClient without credentials")
+	}
+	if !contains(err.Error(), "project_slug and project_api_key are required") {
+		t.Errorf("unexpected error message: %s", err.Error())
+	}
+}
+
+func TestOryClient_EnsureProjectClient_LazyInit(t *testing.T) {
+	cfg := OryClientConfig{
+		ProjectAPIKey: testutil.TestProjectAPIKey,
+		ProjectSlug:   testutil.TestProjectSlug,
+	}
+
+	client, err := NewOryClient(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Project client should already be initialized since credentials were provided at creation
+	if client.projectClient == nil {
+		t.Error("project client should be initialized when credentials provided at creation")
+	}
+
+	// ensureProjectClient should succeed (client already initialized)
+	if err := client.ensureProjectClient(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestOryClient_SetProjectCredentials(t *testing.T) {
+	cfg := OryClientConfig{
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   DefaultConsoleAPIURL,
+		// No project credentials initially
+	}
+
+	client, err := NewOryClient(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify project client is nil initially
+	if client.projectClient != nil {
+		t.Error("project client should be nil without credentials")
+	}
+
+	// Set credentials dynamically
+	client.SetProjectCredentials(testutil.TestProjectSlug, testutil.TestProjectAPIKey)
+
+	// Verify credentials were updated
+	if client.config.ProjectSlug != testutil.TestProjectSlug {
+		t.Errorf("expected slug '%s', got '%s'", testutil.TestProjectSlug, client.config.ProjectSlug)
+	}
+	if client.config.ProjectAPIKey != testutil.TestProjectAPIKey {
+		t.Errorf("expected API key '%s', got '%s'", testutil.TestProjectAPIKey, client.config.ProjectAPIKey)
+	}
+
+	// ensureProjectClient should now succeed and initialize the client
+	if err := client.ensureProjectClient(); err != nil {
+		t.Fatalf("unexpected error after setting credentials: %v", err)
+	}
+	if client.projectClient == nil {
+		t.Error("project client should be initialized after setting credentials")
+	}
+
+	// Verify the project client is configured with the correct URL
+	servers := client.projectClient.GetConfig().Servers
+	expectedURL := fmt.Sprintf(DefaultProjectAPIURL, testutil.TestProjectSlug)
+	if servers[0].URL != expectedURL {
+		t.Errorf("expected project URL '%s', got '%s'", expectedURL, servers[0].URL)
+	}
+}
+
+func TestOryClient_SetProjectCredentials_ReInitializes(t *testing.T) {
+	cfg := OryClientConfig{
+		ProjectAPIKey: testutil.TestProjectAPIKey,
+		ProjectSlug:   testutil.TestProjectSlug,
+	}
+
+	client, err := NewOryClient(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	originalClient := client.projectClient
+	if originalClient == nil {
+		t.Fatal("project client should be initialized")
+	}
+
+	// Set new credentials — should clear the existing client
+	client.SetProjectCredentials("new-slug", "new-key")
+
+	if client.projectClient != nil {
+		t.Error("project client should be nil after SetProjectCredentials (pending re-init)")
+	}
+
+	// ensureProjectClient should create a new client with the new slug
+	if err := client.ensureProjectClient(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	servers := client.projectClient.GetConfig().Servers
+	expectedURL := fmt.Sprintf(DefaultProjectAPIURL, "new-slug")
+	if servers[0].URL != expectedURL {
+		t.Errorf("expected new project URL '%s', got '%s'", expectedURL, servers[0].URL)
+	}
+}
+
+func TestOryClient_EnsureProjectClient_MissingSlugOnly(t *testing.T) {
+	cfg := OryClientConfig{
+		ProjectAPIKey: testutil.TestProjectAPIKey,
+		// ProjectSlug is empty
+	}
+
+	client, err := NewOryClient(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	err = client.ensureProjectClient()
+	if err == nil {
+		t.Fatal("expected error when slug is missing")
+	}
+	if !contains(err.Error(), "project_slug and project_api_key are required") {
+		t.Errorf("unexpected error message: %s", err.Error())
+	}
+}
+
+func TestOryClient_EnsureProjectClient_MissingKeyOnly(t *testing.T) {
+	cfg := OryClientConfig{
+		ProjectSlug: testutil.TestProjectSlug,
+		// ProjectAPIKey is empty
+	}
+
+	client, err := NewOryClient(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	err = client.ensureProjectClient()
+	if err == nil {
+		t.Fatal("expected error when API key is missing")
+	}
+	if !contains(err.Error(), "project_slug and project_api_key are required") {
+		t.Errorf("unexpected error message: %s", err.Error())
+	}
+}
+
 func TestIsRetryableError(t *testing.T) {
 	tests := []struct {
 		name     string
