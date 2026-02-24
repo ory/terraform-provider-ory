@@ -28,6 +28,9 @@ const (
 	// DefaultProjectAPIURL is the default Ory Project API URL template.
 	// The %s placeholder is replaced with the project slug.
 	DefaultProjectAPIURL = "https://%s.projects.oryapis.com"
+	// schemeHTTPS and schemeHTTP are used in URL scheme validation.
+	schemeHTTPS = "https"
+	schemeHTTP  = "http"
 )
 
 // oryAPIError represents the error structure returned by Ory APIs.
@@ -304,7 +307,8 @@ type OryClient struct {
 	consoleClient *ory.APIClient
 
 	// Project API client (for identities, OAuth2)
-	projectClient *ory.APIClient
+	projectClient   *ory.APIClient
+	projectClientMu sync.Mutex
 
 	// cachedProjects stores PatchProject responses to avoid stale GetProject reads.
 	// The Ory API has eventual consistency: GetProject may return stale data
@@ -324,7 +328,7 @@ func NewOryClient(cfg OryClientConfig) (*OryClient, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid console API URL %q: %w", cfg.ConsoleAPIURL, err)
 		}
-		if parsedURL.Scheme != "https" && parsedURL.Scheme != "http" {
+		if parsedURL.Scheme != schemeHTTPS && parsedURL.Scheme != schemeHTTP {
 			return nil, fmt.Errorf("invalid console API URL %q: must use http or https scheme", cfg.ConsoleAPIURL)
 		}
 
@@ -391,7 +395,7 @@ func NewOryClient(cfg OryClientConfig) (*OryClient, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid project API URL %q: %w", formattedURL, err)
 		}
-		if parsedURL.Scheme != "https" && parsedURL.Scheme != "http" {
+		if parsedURL.Scheme != schemeHTTPS && parsedURL.Scheme != schemeHTTP {
 			return nil, fmt.Errorf("invalid project API URL %q: must use http or https scheme", formattedURL)
 		}
 		projectCfg.Servers = ory.ServerConfigurations{
@@ -427,6 +431,57 @@ func (c *OryClient) ProjectID() string {
 // WorkspaceID returns the configured workspace ID.
 func (c *OryClient) WorkspaceID() string {
 	return c.config.WorkspaceID
+}
+
+// SetProjectCredentials dynamically sets the project slug and API key,
+// forcing re-initialization of the project client on next use.
+// This enables resource-level credential passing for cases where the
+// provider is configured before the project exists (e.g., creating a
+// project and OAuth2 client in the same apply).
+func (c *OryClient) SetProjectCredentials(slug, apiKey string) {
+	c.projectClientMu.Lock()
+	defer c.projectClientMu.Unlock()
+
+	c.config.ProjectSlug = slug
+	c.config.ProjectAPIKey = apiKey
+	c.projectClient = nil // Force re-initialization on next use
+}
+
+// ensureProjectClient lazily initializes the project API client.
+// Returns an error with a helpful message if credentials are missing.
+func (c *OryClient) ensureProjectClient() error {
+	c.projectClientMu.Lock()
+	defer c.projectClientMu.Unlock()
+
+	if c.projectClient != nil {
+		return nil
+	}
+
+	if c.config.ProjectSlug == "" || c.config.ProjectAPIKey == "" {
+		return fmt.Errorf("project API client not configured: project_slug and project_api_key are required. " +
+			"Set them on the provider or pass them as resource-level attributes (project_slug, project_api_key)")
+	}
+
+	projectCfg := ory.NewConfiguration()
+	projectAPIURL := c.config.ProjectAPIURL
+	if projectAPIURL == "" {
+		projectAPIURL = DefaultProjectAPIURL
+	}
+	formattedURL := fmt.Sprintf(projectAPIURL, c.config.ProjectSlug)
+	parsedURL, err := urlx.Parse(formattedURL)
+	if err != nil {
+		return fmt.Errorf("invalid project API URL %q: %w", formattedURL, err)
+	}
+	if parsedURL.Scheme != schemeHTTPS && parsedURL.Scheme != schemeHTTP {
+		return fmt.Errorf("invalid project API URL %q: must use http or https scheme", formattedURL)
+	}
+	projectCfg.Servers = ory.ServerConfigurations{
+		{URL: formattedURL},
+	}
+	projectCfg.AddDefaultHeader("Authorization", "Bearer "+c.config.ProjectAPIKey)
+	c.projectClient = ory.NewAPIClient(projectCfg)
+
+	return nil
 }
 
 // =============================================================================
@@ -715,6 +770,9 @@ func (c *OryClient) DeleteOrganization(ctx context.Context, projectID, orgID str
 
 // CreateIdentity creates a new identity with retry on rate limit.
 func (c *OryClient) CreateIdentity(ctx context.Context, body ory.CreateIdentityBody) (*ory.Identity, error) {
+	if err := c.ensureProjectClient(); err != nil {
+		return nil, fmt.Errorf("creating identity: %w", err)
+	}
 	return retryWithBackoff(ctx, "creating identity", func() (*ory.Identity, error) {
 		identity, httpResp, err := c.projectClient.IdentityAPI.CreateIdentity(ctx).CreateIdentityBody(body).Execute()
 		if httpResp != nil {
@@ -726,6 +784,9 @@ func (c *OryClient) CreateIdentity(ctx context.Context, body ory.CreateIdentityB
 
 // GetIdentity retrieves an identity by ID with retry on rate limit.
 func (c *OryClient) GetIdentity(ctx context.Context, identityID string) (*ory.Identity, error) {
+	if err := c.ensureProjectClient(); err != nil {
+		return nil, fmt.Errorf("getting identity: %w", err)
+	}
 	return retryWithBackoff(ctx, "getting identity", func() (*ory.Identity, error) {
 		identity, httpResp, err := c.projectClient.IdentityAPI.GetIdentity(ctx, identityID).Execute()
 		if httpResp != nil {
@@ -737,6 +798,9 @@ func (c *OryClient) GetIdentity(ctx context.Context, identityID string) (*ory.Id
 
 // UpdateIdentity updates an identity with retry on rate limit.
 func (c *OryClient) UpdateIdentity(ctx context.Context, identityID string, body ory.UpdateIdentityBody) (*ory.Identity, error) {
+	if err := c.ensureProjectClient(); err != nil {
+		return nil, fmt.Errorf("updating identity: %w", err)
+	}
 	return retryWithBackoff(ctx, "updating identity", func() (*ory.Identity, error) {
 		identity, httpResp, err := c.projectClient.IdentityAPI.UpdateIdentity(ctx, identityID).UpdateIdentityBody(body).Execute()
 		if httpResp != nil {
@@ -748,6 +812,9 @@ func (c *OryClient) UpdateIdentity(ctx context.Context, identityID string, body 
 
 // DeleteIdentity deletes an identity with retry on rate limit.
 func (c *OryClient) DeleteIdentity(ctx context.Context, identityID string) error {
+	if err := c.ensureProjectClient(); err != nil {
+		return fmt.Errorf("deleting identity: %w", err)
+	}
 	_, err := retryWithBackoff(ctx, "deleting identity", func() (struct{}, error) {
 		httpResp, err := c.projectClient.IdentityAPI.DeleteIdentity(ctx, identityID).Execute()
 		if httpResp != nil {
@@ -764,6 +831,9 @@ func (c *OryClient) DeleteIdentity(ctx context.Context, identityID string) error
 
 // CreateOAuth2Client creates a new OAuth2 client.
 func (c *OryClient) CreateOAuth2Client(ctx context.Context, oauthClient ory.OAuth2Client) (*ory.OAuth2Client, error) {
+	if err := c.ensureProjectClient(); err != nil {
+		return nil, fmt.Errorf("creating OAuth2 client: %w", err)
+	}
 	result, httpResp, err := c.projectClient.OAuth2API.CreateOAuth2Client(ctx).OAuth2Client(oauthClient).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -773,6 +843,9 @@ func (c *OryClient) CreateOAuth2Client(ctx context.Context, oauthClient ory.OAut
 
 // GetOAuth2Client retrieves an OAuth2 client by ID.
 func (c *OryClient) GetOAuth2Client(ctx context.Context, clientID string) (*ory.OAuth2Client, error) {
+	if err := c.ensureProjectClient(); err != nil {
+		return nil, fmt.Errorf("reading OAuth2 client: %w", err)
+	}
 	oauthClient, httpResp, err := c.projectClient.OAuth2API.GetOAuth2Client(ctx, clientID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -782,6 +855,9 @@ func (c *OryClient) GetOAuth2Client(ctx context.Context, clientID string) (*ory.
 
 // UpdateOAuth2Client updates an OAuth2 client.
 func (c *OryClient) UpdateOAuth2Client(ctx context.Context, clientID string, oauthClient ory.OAuth2Client) (*ory.OAuth2Client, error) {
+	if err := c.ensureProjectClient(); err != nil {
+		return nil, fmt.Errorf("updating OAuth2 client: %w", err)
+	}
 	result, httpResp, err := c.projectClient.OAuth2API.SetOAuth2Client(ctx, clientID).OAuth2Client(oauthClient).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -791,6 +867,9 @@ func (c *OryClient) UpdateOAuth2Client(ctx context.Context, clientID string, oau
 
 // DeleteOAuth2Client deletes an OAuth2 client.
 func (c *OryClient) DeleteOAuth2Client(ctx context.Context, clientID string) error {
+	if err := c.ensureProjectClient(); err != nil {
+		return fmt.Errorf("deleting OAuth2 client: %w", err)
+	}
 	httpResp, err := c.projectClient.OAuth2API.DeleteOAuth2Client(ctx, clientID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -864,6 +943,9 @@ func (c *OryClient) DeleteProjectAPIKey(ctx context.Context, projectID, keyID st
 
 // CreateJsonWebKeySet creates a new JWK set.
 func (c *OryClient) CreateJsonWebKeySet(ctx context.Context, setID string, body ory.CreateJsonWebKeySet) (*ory.JsonWebKeySet, error) {
+	if err := c.ensureProjectClient(); err != nil {
+		return nil, fmt.Errorf("creating JWK set: %w", err)
+	}
 	jwks, httpResp, err := c.projectClient.JwkAPI.CreateJsonWebKeySet(ctx, setID).CreateJsonWebKeySet(body).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -873,6 +955,9 @@ func (c *OryClient) CreateJsonWebKeySet(ctx context.Context, setID string, body 
 
 // GetJsonWebKeySet retrieves a JWK set by ID.
 func (c *OryClient) GetJsonWebKeySet(ctx context.Context, setID string) (*ory.JsonWebKeySet, error) {
+	if err := c.ensureProjectClient(); err != nil {
+		return nil, fmt.Errorf("reading JWK set: %w", err)
+	}
 	jwks, httpResp, err := c.projectClient.JwkAPI.GetJsonWebKeySet(ctx, setID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -882,6 +967,9 @@ func (c *OryClient) GetJsonWebKeySet(ctx context.Context, setID string) (*ory.Js
 
 // DeleteJsonWebKeySet deletes a JWK set.
 func (c *OryClient) DeleteJsonWebKeySet(ctx context.Context, setID string) error {
+	if err := c.ensureProjectClient(); err != nil {
+		return fmt.Errorf("deleting JWK set: %w", err)
+	}
 	httpResp, err := c.projectClient.JwkAPI.DeleteJsonWebKeySet(ctx, setID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -895,6 +983,9 @@ func (c *OryClient) DeleteJsonWebKeySet(ctx context.Context, setID string) error
 
 // CreateRelationship creates a new relationship tuple.
 func (c *OryClient) CreateRelationship(ctx context.Context, body ory.CreateRelationshipBody) (*ory.Relationship, error) {
+	if err := c.ensureProjectClient(); err != nil {
+		return nil, fmt.Errorf("creating relationship: %w", err)
+	}
 	rel, httpResp, err := c.projectClient.RelationshipAPI.CreateRelationship(ctx).CreateRelationshipBody(body).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -904,6 +995,9 @@ func (c *OryClient) CreateRelationship(ctx context.Context, body ory.CreateRelat
 
 // GetRelationships queries relationships.
 func (c *OryClient) GetRelationships(ctx context.Context, namespace string, object *string, relation *string, subjectID *string) (*ory.Relationships, error) {
+	if err := c.ensureProjectClient(); err != nil {
+		return nil, fmt.Errorf("getting relationships: %w", err)
+	}
 	req := c.projectClient.RelationshipAPI.GetRelationships(ctx).Namespace(namespace)
 	if object != nil {
 		req = req.Object(*object)
@@ -923,6 +1017,9 @@ func (c *OryClient) GetRelationships(ctx context.Context, namespace string, obje
 
 // DeleteRelationships deletes relationships matching the query.
 func (c *OryClient) DeleteRelationships(ctx context.Context, namespace string, object *string, relation *string, subjectID *string) error {
+	if err := c.ensureProjectClient(); err != nil {
+		return fmt.Errorf("deleting relationships: %w", err)
+	}
 	req := c.projectClient.RelationshipAPI.DeleteRelationships(ctx).Namespace(namespace)
 	if object != nil {
 		req = req.Object(*object)
@@ -1014,6 +1111,9 @@ func (c *OryClient) ListEventStreams(ctx context.Context, projectID string) ([]o
 
 // TrustOAuth2JwtGrantIssuer creates a new trust relationship for a JWT issuer.
 func (c *OryClient) TrustOAuth2JwtGrantIssuer(ctx context.Context, body ory.TrustOAuth2JwtGrantIssuer) (*ory.TrustedOAuth2JwtGrantIssuer, error) {
+	if err := c.ensureProjectClient(); err != nil {
+		return nil, fmt.Errorf("trusting JWT grant issuer: %w", err)
+	}
 	issuer, httpResp, err := c.projectClient.OAuth2API.TrustOAuth2JwtGrantIssuer(ctx).TrustOAuth2JwtGrantIssuer(body).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1026,6 +1126,9 @@ func (c *OryClient) TrustOAuth2JwtGrantIssuer(ctx context.Context, body ory.Trus
 
 // GetTrustedOAuth2JwtGrantIssuer retrieves a trusted JWT grant issuer by ID.
 func (c *OryClient) GetTrustedOAuth2JwtGrantIssuer(ctx context.Context, id string) (*ory.TrustedOAuth2JwtGrantIssuer, error) {
+	if err := c.ensureProjectClient(); err != nil {
+		return nil, fmt.Errorf("getting trusted JWT grant issuer: %w", err)
+	}
 	issuer, httpResp, err := c.projectClient.OAuth2API.GetTrustedOAuth2JwtGrantIssuer(ctx, id).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1038,6 +1141,9 @@ func (c *OryClient) GetTrustedOAuth2JwtGrantIssuer(ctx context.Context, id strin
 
 // DeleteTrustedOAuth2JwtGrantIssuer deletes a trusted JWT grant issuer.
 func (c *OryClient) DeleteTrustedOAuth2JwtGrantIssuer(ctx context.Context, id string) error {
+	if err := c.ensureProjectClient(); err != nil {
+		return fmt.Errorf("deleting trusted JWT grant issuer: %w", err)
+	}
 	httpResp, err := c.projectClient.OAuth2API.DeleteTrustedOAuth2JwtGrantIssuer(ctx, id).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1047,6 +1153,9 @@ func (c *OryClient) DeleteTrustedOAuth2JwtGrantIssuer(ctx context.Context, id st
 
 // ListTrustedOAuth2JwtGrantIssuers lists all trusted JWT grant issuers.
 func (c *OryClient) ListTrustedOAuth2JwtGrantIssuers(ctx context.Context) ([]ory.TrustedOAuth2JwtGrantIssuer, error) {
+	if err := c.ensureProjectClient(); err != nil {
+		return nil, fmt.Errorf("listing trusted JWT grant issuers: %w", err)
+	}
 	issuers, httpResp, err := c.projectClient.OAuth2API.ListTrustedOAuth2JwtGrantIssuers(ctx).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1063,6 +1172,9 @@ func (c *OryClient) ListTrustedOAuth2JwtGrantIssuers(ctx context.Context) ([]ory
 
 // CreateOIDCDynamicClient registers a new dynamic OAuth2 client via RFC 7591.
 func (c *OryClient) CreateOIDCDynamicClient(ctx context.Context, oauthClient ory.OAuth2Client) (*ory.OAuth2Client, error) {
+	if err := c.ensureProjectClient(); err != nil {
+		return nil, fmt.Errorf("creating OIDC dynamic client: %w", err)
+	}
 	result, httpResp, err := c.projectClient.OidcAPI.CreateOidcDynamicClient(ctx).OAuth2Client(oauthClient).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1078,6 +1190,9 @@ func (c *OryClient) CreateOIDCDynamicClient(ctx context.Context, oauthClient ory
 // (/oauth2/register/{id}) because the RFC 7592 endpoint requires a registration_access_token
 // which is only available at creation time. The admin API uses the project API key.
 func (c *OryClient) GetOIDCDynamicClient(ctx context.Context, clientID string) (*ory.OAuth2Client, error) {
+	if err := c.ensureProjectClient(); err != nil {
+		return nil, fmt.Errorf("getting OIDC dynamic client: %w", err)
+	}
 	result, httpResp, err := c.projectClient.OAuth2API.GetOAuth2Client(ctx, clientID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1091,6 +1206,9 @@ func (c *OryClient) GetOIDCDynamicClient(ctx context.Context, clientID string) (
 // UpdateOIDCDynamicClient updates a dynamic client.
 // Uses the admin OAuth2 API instead of RFC 7592 (see GetOIDCDynamicClient comment).
 func (c *OryClient) UpdateOIDCDynamicClient(ctx context.Context, clientID string, oauthClient ory.OAuth2Client) (*ory.OAuth2Client, error) {
+	if err := c.ensureProjectClient(); err != nil {
+		return nil, fmt.Errorf("updating OIDC dynamic client: %w", err)
+	}
 	result, httpResp, err := c.projectClient.OAuth2API.SetOAuth2Client(ctx, clientID).OAuth2Client(oauthClient).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1104,6 +1222,9 @@ func (c *OryClient) UpdateOIDCDynamicClient(ctx context.Context, clientID string
 // DeleteOIDCDynamicClient deletes a dynamic client.
 // Uses the admin OAuth2 API instead of RFC 7592 (see GetOIDCDynamicClient comment).
 func (c *OryClient) DeleteOIDCDynamicClient(ctx context.Context, clientID string) error {
+	if err := c.ensureProjectClient(); err != nil {
+		return fmt.Errorf("deleting OIDC dynamic client: %w", err)
+	}
 	httpResp, err := c.projectClient.OAuth2API.DeleteOAuth2Client(ctx, clientID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1117,6 +1238,9 @@ func (c *OryClient) DeleteOIDCDynamicClient(ctx context.Context, clientID string
 
 // ListOAuth2Clients lists all OAuth2 clients.
 func (c *OryClient) ListOAuth2Clients(ctx context.Context) ([]ory.OAuth2Client, error) {
+	if err := c.ensureProjectClient(); err != nil {
+		return nil, fmt.Errorf("listing OAuth2 clients: %w", err)
+	}
 	clients, httpResp, err := c.projectClient.OAuth2API.ListOAuth2Clients(ctx).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1141,6 +1265,9 @@ func (c *OryClient) ListOrganizations(ctx context.Context, projectID string) ([]
 
 // ListIdentitySchemas lists all identity schemas for a project.
 func (c *OryClient) ListIdentitySchemas(ctx context.Context) ([]ory.IdentitySchemaContainer, error) {
+	if err := c.ensureProjectClient(); err != nil {
+		return nil, fmt.Errorf("listing identity schemas: %w", err)
+	}
 	schemas, httpResp, err := c.projectClient.IdentityAPI.ListIdentitySchemas(ctx).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
