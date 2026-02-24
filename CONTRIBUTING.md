@@ -48,29 +48,37 @@ make test-short     # Run unit tests in short mode
 
 ### Acceptance Tests
 
-Acceptance tests are **self-contained** - they automatically create a temporary Ory project, run tests against it, and clean up when done.
+Acceptance tests run against a **pre-created Ory project**. The project must be configured with keto namespaces and dynamic client registration enabled (the CI project already has this).
 
-#### Required Environment Variables
+#### Setup
+
+1. Copy `.env.example` to `.env` and fill in your credentials:
 
 ```bash
-export ORY_WORKSPACE_API_KEY="ory_wak_..."  # Workspace API key
-export ORY_WORKSPACE_ID="..."               # Workspace ID
+cp .env.example .env
+```
+
+The `.env` file is gitignored and automatically loaded by `make` targets. At minimum you need:
+
+```bash
+# Workspace credentials
+ORY_WORKSPACE_API_KEY=ory_wak_...
+ORY_WORKSPACE_ID=...
+
+# Pre-created test project
+ORY_PROJECT_ID=...
+ORY_PROJECT_SLUG=...
+ORY_PROJECT_API_KEY=ory_pat_...
+ORY_PROJECT_ENVIRONMENT=prod
 ```
 
 #### Running Acceptance Tests
 
 ```bash
-# Standard acceptance tests
-make test-acc
-
-# With debug logging
-make test-acc-verbose
-
-# Run all tests with all features enabled
-make test-acc-all
-
-# Run specific resource tests
-ORY_KETO_TESTS_ENABLED=true make test-acc-keto
+make test-acc              # Standard acceptance tests
+make test-acc-verbose      # With debug logging
+make test-acc-all          # All tests with all features enabled
+make test-acc-keto         # Run specific resource tests
 ```
 
 #### Optional Feature Flags
@@ -84,13 +92,24 @@ Some tests require specific Ory plan features. Enable them with environment vari
 | `ORY_SOCIAL_PROVIDER_TESTS_ENABLED=true` | Run social provider tests |
 | `ORY_SCHEMA_TESTS_ENABLED=true` | Run identity schema tests |
 | `ORY_PROJECT_TESTS_ENABLED=true` | Run project creation/deletion tests |
+| `ORY_EVENT_STREAM_TESTS_ENABLED=true` | Run event stream tests (requires Enterprise plan + AWS setup below) |
 
-#### API URL Overrides (for local development)
+#### Event Stream Tests
+
+Event stream tests have additional requirements beyond a feature flag because they interact with real AWS infrastructure:
+
+1. **AWS SNS topic** — a real SNS topic to receive events
+2. **AWS IAM role** — with `sns:Publish` permission on the topic and a trust policy allowing Ory's AWS account to assume it
+3. **IAM trust policy ExternalId** — must match `ORY_PROJECT_ID`. The Ory API validates that the trust policy includes a `StringEquals` condition on `sts:ExternalId` matching the project UUID, so the test project and IAM role are tightly coupled.
 
 ```bash
-export ORY_CONSOLE_API_URL="https://api.console.ory.sh"      # Console API
-export ORY_PROJECT_API_URL="https://%s.projects.oryapis.com" # Project API template
+# Add to .env (in addition to the required vars above):
+ORY_EVENT_STREAM_TESTS_ENABLED=true
+ORY_EVENT_STREAM_TOPIC_ARN=arn:aws:sns:...
+ORY_EVENT_STREAM_ROLE_ARN=arn:aws:iam::...:role/...
 ```
+
+See the [Ory live events documentation](https://www.ory.com/docs/actions/live-events) for full AWS setup instructions.
 
 ### Writing Acceptance Tests
 
