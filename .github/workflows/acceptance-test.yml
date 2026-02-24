@@ -81,6 +81,10 @@ jobs:
       ORY_WORKSPACE_ID: ${{ secrets.ORY_WORKSPACE_ID }}
       ORY_CONSOLE_API_URL: ${{ secrets.ORY_CONSOLE_API_URL }}
       ORY_PROJECT_API_URL: ${{ secrets.ORY_PROJECT_API_URL }}
+      ORY_PROJECT_ID: ${{ secrets.ORY_PROJECT_ID }}
+      ORY_PROJECT_SLUG: ${{ secrets.ORY_PROJECT_SLUG }}
+      ORY_PROJECT_API_KEY: ${{ secrets.ORY_PROJECT_API_KEY }}
+      ORY_PROJECT_ENVIRONMENT: ${{ secrets.ORY_PROJECT_ENVIRONMENT }}
 
     steps:
       - name: Checkout
