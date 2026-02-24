@@ -37,7 +37,6 @@ help: ## Show this help
 deps: ## Install all dependencies (Go modules, tools)
 	go mod download
 	@command -v golangci-lint >/dev/null 2>&1 || { echo "Installing golangci-lint..."; go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; }
-	@command -v jq >/dev/null 2>&1 || { echo "jq not found. Please install: brew install jq (macOS) or apt-get install jq (Linux)"; }
 
 .PHONY: deps-ci
 deps-ci: ## Install dependencies for CI environment
