@@ -1322,13 +1322,23 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 				if v, ok := getNestedString(identityConfig, "selfservice", "default_browser_return_url"); ok {
 					state.DefaultReturnURL = types.StringValue(v)
 				}
+			} else if v, ok := getNestedString(identityConfig, "selfservice", "default_browser_return_url"); ok && v != "" {
+				tflog.Warn(ctx, "API returned non-empty default_browser_return_url after remove patch; preserving empty state value", map[string]interface{}{
+					"api_value": v,
+				})
 			}
 		}
 		if !state.AllowedReturnURLs.IsNull() {
 			// If the user explicitly set an empty list, preserve it in state
 			// even if the API returns server-generated defaults.
 			if len(state.AllowedReturnURLs.Elements()) == 0 {
-				// Empty list — keep as-is
+				if v := getNestedValue(identityConfig, "selfservice", "allowed_return_urls"); v != nil {
+					if apiURLs, ok := v.([]interface{}); ok && len(apiURLs) > 0 {
+						tflog.Warn(ctx, "API returned non-empty allowed_return_urls after remove patch; preserving empty state value", map[string]interface{}{
+							"api_url_count": len(apiURLs),
+						})
+					}
+				}
 			} else if v := getNestedValue(identityConfig, "selfservice", "allowed_return_urls"); v != nil {
 				if apiURLs, ok := v.([]interface{}); ok && len(apiURLs) > 0 {
 					// Build a set of API URLs for lookup
