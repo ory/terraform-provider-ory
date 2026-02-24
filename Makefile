@@ -136,7 +136,7 @@ export
 endif
 
 .PHONY: test-acc
-test-acc: env-check ## Run acceptance tests (creates ephemeral project automatically)
+test-acc: env-check ## Run acceptance tests
 	@echo "Running acceptance tests..."
 	TF_ACC=1 go test -tags acceptance -p 1 -v -timeout 30m ./...
 

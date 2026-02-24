@@ -121,7 +121,6 @@ func TestAccProjectResource_regions(t *testing.T) {
 }
 
 // testProjectName generates a project name with the e2e prefix for hard deletion support.
-// The prefix is read from ORY_TEST_PROJECT_PREFIX env var (set by scripts/run-acceptance-tests.sh).
 func testProjectName(suffix string) string {
 	prefix := os.Getenv("ORY_TEST_PROJECT_PREFIX")
 	if prefix != "" {
