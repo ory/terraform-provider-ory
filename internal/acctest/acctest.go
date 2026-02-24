@@ -114,13 +114,6 @@ func initTestProject(t *testing.T) {
 
 	// Fallback: create an ephemeral project if no pre-created project is configured
 	createSharedProject(t)
-
-	// Register cleanup only when we created the project ourselves
-	if sharedTestProject != nil {
-		t.Cleanup(func() {
-			cleanupTestProject(t)
-		})
-	}
 }
 
 // loadProjectFromEnv loads the test project from environment variables.
@@ -142,8 +135,10 @@ func loadProjectFromEnv(t *testing.T) {
 	}
 }
 
-// createSharedProject creates the shared test project.
-// This is called when running individual test packages without the wrapper script.
+// createSharedProject creates an ephemeral test project as a fallback when no
+// pre-created project is configured. The project uses the testProjectPrefix so
+// it can be automatically purged by the the automated cleanup job if not
+// deleted. Cleanup is best-effort via CleanupEphemeralProject().
 func createSharedProject(t *testing.T) {
 	ctx := context.Background()
 	c, err := GetOryClient()
@@ -209,12 +204,20 @@ func createSharedProject(t *testing.T) {
 	}
 }
 
-// cleanupTestProject deletes the shared test project.
-func cleanupTestProject(t *testing.T) {
+// CleanupEphemeralProject deletes the shared test project if it was created
+// ephemerally (not loaded from env vars). This is safe to call multiple times.
+// In practice, cleanup is handled by the the automated purge job, so failing
+// to call this is not catastrophic.
+func CleanupEphemeralProject(t *testing.T) {
 	projectMutex.Lock()
 	defer projectMutex.Unlock()
 
 	if sharedTestProject == nil {
+		return
+	}
+
+	// Never delete pre-created projects
+	if sharedTestProject.Name == "pre-created" {
 		return
 	}
 
@@ -225,11 +228,11 @@ func cleanupTestProject(t *testing.T) {
 		return
 	}
 
-	t.Logf("Cleaning up shared test project: %s", sharedTestProject.ID)
+	t.Logf("Cleaning up ephemeral test project: %s", sharedTestProject.ID)
 	if err := c.DeleteProject(ctx, sharedTestProject.ID); err != nil {
 		t.Logf("Warning: Failed to delete test project: %v", err)
 	} else {
-		t.Logf("Successfully deleted shared test project: %s", sharedTestProject.ID)
+		t.Logf("Successfully deleted ephemeral test project: %s", sharedTestProject.ID)
 	}
 
 	sharedTestProject = nil
