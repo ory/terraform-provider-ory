@@ -18,6 +18,11 @@ import (
 	"github.com/ory/terraform-provider-ory/internal/provider"
 )
 
+// testProjectPrefix is used to name ephemeral test projects so that the cloud
+// repo's e2e cleanup job can automatically purge stale ones.
+// DO NOT CHANGE — must match the pattern in cloud/backoffice/backoffice/x/patterns.go.
+const testProjectPrefix = "ory-cy-e2e-da2f162d-af61-42dd-90dc-e3fcfa7c84a0"
+
 // TestProject holds information about a test project created for acceptance tests.
 type TestProject struct {
 	ID          string
@@ -80,9 +85,9 @@ func AccPreCheck(t *testing.T) {
 // GetTestProject returns the shared test project, loading from env vars or creating if necessary.
 // This ensures all tests in a single test run share the same project.
 //
-// When ORY_TEST_PROJECT_PRECREATED=1 is set (by scripts/run-acceptance-tests.sh), the project
-// details are loaded from environment variables. Otherwise, a new project is created.
-// The project is created as a "prod" environment to support all features including organizations.
+// If ORY_PROJECT_ID, ORY_PROJECT_SLUG, and ORY_PROJECT_API_KEY are all set, the project
+// is loaded from those env vars (useful for local dev with a persistent project).
+// Otherwise, an ephemeral project is created and cleaned up when tests finish.
 func GetTestProject(t *testing.T) *TestProject {
 	t.Helper()
 
@@ -101,13 +106,13 @@ func GetTestProject(t *testing.T) *TestProject {
 
 // initTestProject initializes the test project, either from env vars or by creating a new one.
 func initTestProject(t *testing.T) {
-	// Check if project was pre-created by the wrapper script
-	if os.Getenv("ORY_TEST_PROJECT_PRECREATED") == "1" {
+	// If project credentials are provided, use them directly (no ephemeral project)
+	if os.Getenv("ORY_PROJECT_ID") != "" && os.Getenv("ORY_PROJECT_SLUG") != "" && os.Getenv("ORY_PROJECT_API_KEY") != "" {
 		loadProjectFromEnv(t)
 		return
 	}
 
-	// Otherwise, create a new project (for running individual test packages)
+	// Otherwise, create an ephemeral project
 	createSharedProject(t)
 
 	// Register cleanup only when we created the project ourselves
@@ -119,17 +124,12 @@ func initTestProject(t *testing.T) {
 }
 
 // loadProjectFromEnv loads the test project from environment variables.
-// This is used when the project was pre-created by scripts/run-acceptance-tests.sh.
+// This is used when running against a persistent project (e.g., local smoke testing).
 func loadProjectFromEnv(t *testing.T) {
 	projectID := os.Getenv("ORY_PROJECT_ID")
 	projectSlug := os.Getenv("ORY_PROJECT_SLUG")
 	projectAPIKey := os.Getenv("ORY_PROJECT_API_KEY")
 	projectEnv := os.Getenv("ORY_PROJECT_ENVIRONMENT")
-
-	if projectID == "" || projectSlug == "" || projectAPIKey == "" {
-		initError = fmt.Errorf("ORY_TEST_PROJECT_PRECREATED=1 but missing required env vars: ORY_PROJECT_ID, ORY_PROJECT_SLUG, ORY_PROJECT_API_KEY")
-		return
-	}
 
 	t.Logf("Using pre-created test project: %s (slug: %s, environment: %s)", projectID, projectSlug, projectEnv)
 
@@ -152,14 +152,7 @@ func createSharedProject(t *testing.T) {
 		return
 	}
 
-	// Use prefix from env var (set by scripts/run-acceptance-tests.sh) for auto-cleanup support
-	prefix := os.Getenv("ORY_TEST_PROJECT_PREFIX")
-	var projectName string
-	if prefix != "" {
-		projectName = fmt.Sprintf("%s-tf-%d", prefix, time.Now().UnixNano())
-	} else {
-		projectName = fmt.Sprintf("tf-acc-test-%d", time.Now().UnixNano())
-	}
+	projectName := fmt.Sprintf("%s-tf-%d", testProjectPrefix, time.Now().UnixNano())
 	t.Logf("Creating test project: %s (environment: prod)", projectName)
 
 	// Create as "prod" environment to support all features including organizations

@@ -9,11 +9,41 @@ description: |-
 
 Manages an Ory Network event stream.
 
-Event streams allow you to publish Ory events (such as identity creation, session creation, etc.) to external messaging systems like AWS SNS.
+Event streams allow you to publish Ory events (such as identity creation, session creation, etc.) to external messaging systems like AWS SNS. See [Live Event Streams](https://www.ory.com/docs/actions/live-events) for full setup instructions.
 
 -> **Plan:** Requires an Ory Network **Enterprise plan**.
 
 ~> **Authentication:** Event streams are managed via the Console API and require a `workspace_api_key` to be configured in the provider. A `project_api_key` alone is not sufficient.
+
+## AWS SNS Setup
+
+To stream events to AWS SNS, you need:
+
+1. **An SNS topic** in your AWS account
+2. **An IAM role** with `sns:Publish` permission on the topic
+3. **A trust policy** on the role allowing Ory's AWS account (`601538168777`) to assume it, with your Ory project UUID as the `sts:ExternalId`
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::601538168777:root"
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": {
+          "sts:ExternalId": "<your-ory-project-uuid>"
+        }
+      }
+    }
+  ]
+}
+```
+
+See the [Ory documentation](https://www.ory.com/docs/actions/live-events#stream-to-aws-sns) for complete setup instructions.
 
 ## Example Usage
 
