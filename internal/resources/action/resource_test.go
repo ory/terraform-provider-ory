@@ -31,21 +31,9 @@ func TestAccActionResource_basic(t *testing.T) {
 			},
 			// Import using the new 6-part format: project_id:flow:timing:auth_method:method:url
 			{
-				ResourceName: "ory_action.test",
-				ImportState:  true,
-				ImportStateIdFunc: func(s *terraform.State) (string, error) {
-					rs, ok := s.RootModule().Resources["ory_action.test"]
-					if !ok {
-						return "", fmt.Errorf("resource not found: ory_action.test")
-					}
-					projectID := rs.Primary.Attributes["project_id"]
-					flow := rs.Primary.Attributes["flow"]
-					timing := rs.Primary.Attributes["timing"]
-					authMethod := rs.Primary.Attributes["auth_method"]
-					method := rs.Primary.Attributes["method"]
-					url := rs.Primary.Attributes["url"]
-					return fmt.Sprintf("%s:%s:%s:%s:%s:%s", projectID, flow, timing, authMethod, method, url), nil
-				},
+				ResourceName:      "ory_action.test",
+				ImportState:       true,
+				ImportStateIdFunc: actionImportStateIDFunc,
 				ImportStateVerify: true,
 			},
 		},

@@ -25,16 +25,19 @@ import (
 
 // Constants for repeated string values
 const (
-	defaultHTTPMethod = "POST"
-	defaultAuthMethod = "password"
-	timingBefore      = "before"
-	timingAfter       = "after"
+	defaultHTTPMethod    = "POST"
+	defaultAuthMethod    = "password"
+	timingBefore         = "before"
+	timingAfter          = "after"
+	webhookAuthBasicAuth = "basic_auth"
+	webhookAuthAPIKey    = "api_key"
 )
 
 var (
-	_ resource.Resource                = &ActionResource{}
-	_ resource.ResourceWithConfigure   = &ActionResource{}
-	_ resource.ResourceWithImportState = &ActionResource{}
+	_ resource.Resource                   = &ActionResource{}
+	_ resource.ResourceWithConfigure      = &ActionResource{}
+	_ resource.ResourceWithImportState    = &ActionResource{}
+	_ resource.ResourceWithValidateConfig = &ActionResource{}
 )
 
 func NewResource() resource.Resource {
@@ -158,10 +161,10 @@ resource "ory_action" "api_key_webhook" {
 
 ## Import
 
-Actions use a composite ID format: ` + "`project_id:flow:timing:auth_method:url`" + `
+Actions use a composite ID format: ` + "`project_id:flow:timing:auth_method:method:url`" + `
 
 ` + "```shell" + `
-terraform import ory_action.welcome_email "550e8400-e29b-41d4-a716-446655440000:registration:after:password:https://api.example.com/webhooks/welcome"
+terraform import ory_action.welcome_email "550e8400-e29b-41d4-a716-446655440000:registration:after:password:POST:https://api.example.com/webhooks/welcome"
 ` + "```" + `
 
 ### Finding Import Values from Ory Console
@@ -275,7 +278,7 @@ func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				Description: "Webhook authentication type: 'basic_auth' or 'api_key'.",
 				Optional:    true,
 				Validators: []validator.String{
-					stringvalidator.OneOf("basic_auth", "api_key"),
+					stringvalidator.OneOf(webhookAuthBasicAuth, webhookAuthAPIKey),
 				},
 			},
 			"webhook_auth_basic_auth_user": schema.StringAttribute{
@@ -355,6 +358,59 @@ func (r *ActionResource) Configure(ctx context.Context, req resource.ConfigureRe
 	r.client = oryClient
 }
 
+func (r *ActionResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var config ActionResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if config.WebhookAuthType.IsNull() || config.WebhookAuthType.IsUnknown() {
+		return
+	}
+
+	authType := config.WebhookAuthType.ValueString()
+	switch authType {
+	case webhookAuthBasicAuth:
+		if config.WebhookAuthBasicAuthUser.IsNull() || config.WebhookAuthBasicAuthUser.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("webhook_auth_basic_auth_user"),
+				"Missing Required Attribute",
+				"webhook_auth_basic_auth_user is required when webhook_auth_type is \"basic_auth\".",
+			)
+		}
+		if config.WebhookAuthBasicAuthPassword.IsNull() || config.WebhookAuthBasicAuthPassword.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("webhook_auth_basic_auth_password"),
+				"Missing Required Attribute",
+				"webhook_auth_basic_auth_password is required when webhook_auth_type is \"basic_auth\".",
+			)
+		}
+	case webhookAuthAPIKey:
+		if config.WebhookAuthAPIKeyName.IsNull() || config.WebhookAuthAPIKeyName.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("webhook_auth_api_key_name"),
+				"Missing Required Attribute",
+				"webhook_auth_api_key_name is required when webhook_auth_type is \"api_key\".",
+			)
+		}
+		if config.WebhookAuthAPIKeyValue.IsNull() || config.WebhookAuthAPIKeyValue.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("webhook_auth_api_key_value"),
+				"Missing Required Attribute",
+				"webhook_auth_api_key_value is required when webhook_auth_type is \"api_key\".",
+			)
+		}
+		if config.WebhookAuthAPIKeyIn.IsNull() || config.WebhookAuthAPIKeyIn.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("webhook_auth_api_key_in"),
+				"Missing Required Attribute",
+				"webhook_auth_api_key_in is required when webhook_auth_type is \"api_key\".",
+			)
+		}
+	}
+}
+
 func (r *ActionResource) buildHookValue(plan *ActionResourceModel) map[string]interface{} {
 	hookConfig := map[string]interface{}{
 		"url":    plan.URL.ValueString(),
@@ -385,34 +441,36 @@ func (r *ActionResource) buildHookValue(plan *ActionResourceModel) map[string]in
 		hookConfig["can_interrupt"] = plan.CanInterrupt.ValueBool()
 	}
 
-	// Build auth config if webhook_auth_type is set
+	// Build auth config if webhook_auth_type is set and all required fields are present
 	if !plan.WebhookAuthType.IsNull() && !plan.WebhookAuthType.IsUnknown() {
 		authType := plan.WebhookAuthType.ValueString()
 		authCfg := map[string]interface{}{}
+		hasValidAuthConfig := false
 
 		switch authType {
-		case "basic_auth":
-			if !plan.WebhookAuthBasicAuthUser.IsNull() && !plan.WebhookAuthBasicAuthUser.IsUnknown() {
+		case webhookAuthBasicAuth:
+			if !plan.WebhookAuthBasicAuthUser.IsNull() && !plan.WebhookAuthBasicAuthUser.IsUnknown() &&
+				!plan.WebhookAuthBasicAuthPassword.IsNull() && !plan.WebhookAuthBasicAuthPassword.IsUnknown() {
 				authCfg["user"] = plan.WebhookAuthBasicAuthUser.ValueString()
-			}
-			if !plan.WebhookAuthBasicAuthPassword.IsNull() && !plan.WebhookAuthBasicAuthPassword.IsUnknown() {
 				authCfg["password"] = plan.WebhookAuthBasicAuthPassword.ValueString()
+				hasValidAuthConfig = true
 			}
-		case "api_key":
-			if !plan.WebhookAuthAPIKeyName.IsNull() && !plan.WebhookAuthAPIKeyName.IsUnknown() {
+		case webhookAuthAPIKey:
+			if !plan.WebhookAuthAPIKeyName.IsNull() && !plan.WebhookAuthAPIKeyName.IsUnknown() &&
+				!plan.WebhookAuthAPIKeyValue.IsNull() && !plan.WebhookAuthAPIKeyValue.IsUnknown() &&
+				!plan.WebhookAuthAPIKeyIn.IsNull() && !plan.WebhookAuthAPIKeyIn.IsUnknown() {
 				authCfg["name"] = plan.WebhookAuthAPIKeyName.ValueString()
-			}
-			if !plan.WebhookAuthAPIKeyValue.IsNull() && !plan.WebhookAuthAPIKeyValue.IsUnknown() {
 				authCfg["value"] = plan.WebhookAuthAPIKeyValue.ValueString()
-			}
-			if !plan.WebhookAuthAPIKeyIn.IsNull() && !plan.WebhookAuthAPIKeyIn.IsUnknown() {
 				authCfg["in"] = plan.WebhookAuthAPIKeyIn.ValueString()
+				hasValidAuthConfig = true
 			}
 		}
 
-		hookConfig["auth"] = map[string]interface{}{
-			"type":   authType,
-			"config": authCfg,
+		if hasValidAuthConfig {
+			hookConfig["auth"] = map[string]interface{}{
+				"type":   authType,
+				"config": authCfg,
+			}
 		}
 	}
 
@@ -754,37 +812,75 @@ func (r *ActionResource) Read(ctx context.Context, req resource.ReadRequest, res
 		state.CanInterrupt = types.BoolValue(false)
 	}
 
-	// Read auth config
+	// Read auth config - explicitly null all fields first, then set from remote state
 	if auth, ok := config["auth"].(map[string]interface{}); ok {
 		if authType, ok := auth["type"].(string); ok && authType != "" {
 			state.WebhookAuthType = types.StringValue(authType)
 
-			if authCfg, ok := auth["config"].(map[string]interface{}); ok {
-				switch authType {
-				case "basic_auth":
-					if user, ok := authCfg["user"].(string); ok {
-						state.WebhookAuthBasicAuthUser = types.StringValue(user)
-					}
-					// Password is sensitive - the API may not return it.
-					// Preserve the existing state value to avoid drift.
-					if password, ok := authCfg["password"].(string); ok && password != "" {
-						state.WebhookAuthBasicAuthPassword = types.StringValue(password)
-					}
-				case "api_key":
-					if name, ok := authCfg["name"].(string); ok {
-						state.WebhookAuthAPIKeyName = types.StringValue(name)
-					}
-					// Value is sensitive - the API may not return it.
-					// Preserve the existing state value to avoid drift.
-					if value, ok := authCfg["value"].(string); ok && value != "" {
-						state.WebhookAuthAPIKeyValue = types.StringValue(value)
-					}
-					if in, ok := authCfg["in"].(string); ok {
-						state.WebhookAuthAPIKeyIn = types.StringValue(in)
-					}
-				}
+			authCfg, _ := auth["config"].(map[string]interface{})
+			if authCfg == nil {
+				authCfg = map[string]interface{}{}
 			}
+
+			switch authType {
+			case webhookAuthBasicAuth:
+				if user, ok := authCfg["user"].(string); ok && user != "" {
+					state.WebhookAuthBasicAuthUser = types.StringValue(user)
+				} else {
+					state.WebhookAuthBasicAuthUser = types.StringNull()
+				}
+				// Password is sensitive - the API may not return it.
+				// Preserve the existing state value to avoid drift when omitted.
+				if password, ok := authCfg["password"].(string); ok && password != "" {
+					state.WebhookAuthBasicAuthPassword = types.StringValue(password)
+				}
+				// Clear unrelated auth-type fields
+				state.WebhookAuthAPIKeyName = types.StringNull()
+				state.WebhookAuthAPIKeyValue = types.StringNull()
+				state.WebhookAuthAPIKeyIn = types.StringNull()
+			case webhookAuthAPIKey:
+				if name, ok := authCfg["name"].(string); ok && name != "" {
+					state.WebhookAuthAPIKeyName = types.StringValue(name)
+				} else {
+					state.WebhookAuthAPIKeyName = types.StringNull()
+				}
+				// Value is sensitive - the API may not return it.
+				// Preserve the existing state value to avoid drift when omitted.
+				if value, ok := authCfg["value"].(string); ok && value != "" {
+					state.WebhookAuthAPIKeyValue = types.StringValue(value)
+				}
+				if in, ok := authCfg["in"].(string); ok && in != "" {
+					state.WebhookAuthAPIKeyIn = types.StringValue(in)
+				} else {
+					state.WebhookAuthAPIKeyIn = types.StringNull()
+				}
+				// Clear unrelated auth-type fields
+				state.WebhookAuthBasicAuthUser = types.StringNull()
+				state.WebhookAuthBasicAuthPassword = types.StringNull()
+			default:
+				state.WebhookAuthType = types.StringNull()
+				state.WebhookAuthBasicAuthUser = types.StringNull()
+				state.WebhookAuthBasicAuthPassword = types.StringNull()
+				state.WebhookAuthAPIKeyName = types.StringNull()
+				state.WebhookAuthAPIKeyValue = types.StringNull()
+				state.WebhookAuthAPIKeyIn = types.StringNull()
+			}
+		} else {
+			state.WebhookAuthType = types.StringNull()
+			state.WebhookAuthBasicAuthUser = types.StringNull()
+			state.WebhookAuthBasicAuthPassword = types.StringNull()
+			state.WebhookAuthAPIKeyName = types.StringNull()
+			state.WebhookAuthAPIKeyValue = types.StringNull()
+			state.WebhookAuthAPIKeyIn = types.StringNull()
 		}
+	} else {
+		// No auth block - clear all auth fields so removed auth is detected as drift
+		state.WebhookAuthType = types.StringNull()
+		state.WebhookAuthBasicAuthUser = types.StringNull()
+		state.WebhookAuthBasicAuthPassword = types.StringNull()
+		state.WebhookAuthAPIKeyName = types.StringNull()
+		state.WebhookAuthAPIKeyValue = types.StringNull()
+		state.WebhookAuthAPIKeyIn = types.StringNull()
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
