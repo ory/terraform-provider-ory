@@ -1327,19 +1327,34 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 		if !state.AllowedReturnURLs.IsNull() {
 			// If the user explicitly set an empty list, preserve it in state
 			// even if the API returns server-generated defaults.
-			if len(state.AllowedReturnURLs.Elements()) > 0 {
-				if v := getNestedValue(identityConfig, "selfservice", "allowed_return_urls"); v != nil {
-					if urls, ok := v.([]interface{}); ok && len(urls) > 0 {
-						strs := make([]string, 0, len(urls))
-						for _, u := range urls {
-							if s, ok := u.(string); ok {
-								strs = append(strs, s)
-							}
+			if len(state.AllowedReturnURLs.Elements()) == 0 {
+				// Empty list — keep as-is
+			} else if v := getNestedValue(identityConfig, "selfservice", "allowed_return_urls"); v != nil {
+				if apiURLs, ok := v.([]interface{}); ok && len(apiURLs) > 0 {
+					// Build a set of API URLs for lookup
+					apiSet := make(map[string]struct{}, len(apiURLs))
+					for _, u := range apiURLs {
+						if s, ok := u.(string); ok {
+							apiSet[s] = struct{}{}
 						}
-						urlsList, diags := types.ListValueFrom(ctx, types.StringType, strs)
-						if !diags.HasError() {
-							state.AllowedReturnURLs = urlsList
+					}
+
+					// Keep only the user-configured URLs that still exist in the API response.
+					// The Ory API appends server-generated defaults (e.g., /ui/logout, project URLs)
+					// to the list, which would cause a perpetual diff if included in state.
+					var stateURLs []string
+					state.AllowedReturnURLs.ElementsAs(ctx, &stateURLs, false)
+
+					filtered := make([]string, 0, len(stateURLs))
+					for _, u := range stateURLs {
+						if _, exists := apiSet[u]; exists {
+							filtered = append(filtered, u)
 						}
+					}
+
+					urlsList, diags := types.ListValueFrom(ctx, types.StringType, filtered)
+					if !diags.HasError() {
+						state.AllowedReturnURLs = urlsList
 					}
 				}
 			}

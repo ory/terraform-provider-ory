@@ -144,6 +144,43 @@ func TestAccProjectConfigResource_emptyReturnURLs(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_returnURLsWithServerDefaults(t *testing.T) {
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Step 1: Set specific return URLs (API will append server defaults)
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_return_urls.tf.tmpl", map[string]string{"AppURL": testutil.ExampleAppURL}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "default_return_url", testutil.ExampleAppURL),
+					resource.TestCheckResourceAttr("ory_project_config.test", "allowed_return_urls.#", "1"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "allowed_return_urls.0", testutil.ExampleAppURL),
+				),
+			},
+			// Step 2: Verify no perpetual diff despite API appending server defaults
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_return_urls.tf.tmpl", map[string]string{"AppURL": testutil.ExampleAppURL}),
+				PlanOnly: true,
+			},
+			// Step 3: Clear to empty values
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/empty_return_urls.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "default_return_url", ""),
+					resource.TestCheckResourceAttr("ory_project_config.test", "allowed_return_urls.#", "0"),
+				),
+			},
+			// Step 4: Verify no perpetual diff after clearing
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/empty_return_urls.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_courierHTTP(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
