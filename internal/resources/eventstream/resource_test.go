@@ -26,21 +26,26 @@ func importStateEventStreamID(s *terraform.State) (string, error) {
 func testAccPreCheckEventStream(t *testing.T) {
 	acctest.AccPreCheck(t)
 	acctest.RequireEventStreamTests(t)
-	// Event stream creation requires real AWS resources because the API validates
-	// connectivity by assuming the IAM role and publishing a test message to SNS.
-	if os.Getenv("ORY_EVENT_STREAM_TOPIC_ARN") == "" || os.Getenv("ORY_EVENT_STREAM_ROLE_ARN") == "" {
-		t.Skip("ORY_EVENT_STREAM_TOPIC_ARN and ORY_EVENT_STREAM_ROLE_ARN must be set with real AWS ARNs")
+	// Event stream tests require the project UUID to be registered as the
+	// ExternalId in the IAM role's trust policy. The Ory API validates this.
+	for _, env := range []string{"ORY_EVENT_STREAM_TOPIC_ARN", "ORY_EVENT_STREAM_ROLE_ARN", "ORY_PROJECT_ID"} {
+		if os.Getenv(env) == "" {
+			t.Skipf("%s must be set for event stream tests", env)
+		}
 	}
 }
 
 // TestAccEventStreamResource_basic tests the full CRUD lifecycle of an event stream.
-// Requires real AWS SNS topic and IAM role because the API validates connectivity.
+// Requires real AWS SNS topic, IAM role, and a dedicated Ory project whose UUID
+// is registered as the ExternalId in the IAM role's trust policy.
 //
 // Required environment variables:
 //
+//	ORY_PROJECT_ID             - Ory project ID (UUID in IAM trust policy ExternalId)
 //	ORY_EVENT_STREAM_TOPIC_ARN - Real AWS SNS topic ARN
 //	ORY_EVENT_STREAM_ROLE_ARN  - Real AWS IAM role ARN with trust policy for Ory
 func TestAccEventStreamResource_basic(t *testing.T) {
+	projectID := os.Getenv("ORY_PROJECT_ID")
 	topicArn := os.Getenv("ORY_EVENT_STREAM_TOPIC_ARN")
 	roleArn := os.Getenv("ORY_EVENT_STREAM_ROLE_ARN")
 
@@ -51,11 +56,13 @@ func TestAccEventStreamResource_basic(t *testing.T) {
 			// Create and Read
 			{
 				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{
-					"TopicArn": topicArn,
-					"RoleArn":  roleArn,
+					"ProjectID": projectID,
+					"TopicArn":  topicArn,
+					"RoleArn":   roleArn,
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_event_stream.test", "id"),
+					resource.TestCheckResourceAttr("ory_event_stream.test", "project_id", projectID),
 					resource.TestCheckResourceAttr("ory_event_stream.test", "type", "sns"),
 					resource.TestCheckResourceAttr("ory_event_stream.test", "topic_arn", topicArn),
 					resource.TestCheckResourceAttr("ory_event_stream.test", "role_arn", roleArn),
