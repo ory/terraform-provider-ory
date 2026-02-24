@@ -3,19 +3,99 @@
 package action_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 	"github.com/ory/terraform-provider-ory/internal/testutil"
 )
 
+// cleanupDanglingWebhook removes a webhook left behind by a previous failed test run.
+// This makes the test idempotent when sharing a single smoke-test project.
+func cleanupDanglingWebhook(t *testing.T, hookPath, webhookURL string) {
+	t.Helper()
+
+	c, err := acctest.GetOryClient()
+	if err != nil {
+		t.Logf("Warning: could not create client for cleanup: %v", err)
+		return
+	}
+
+	project := acctest.GetTestProject(t)
+	ctx := context.Background()
+
+	p, err := c.GetProject(ctx, project.ID)
+	if err != nil {
+		t.Logf("Warning: could not get project for cleanup: %v", err)
+		return
+	}
+
+	// Navigate to the hooks via the identity config
+	configMap := p.Services.Identity.Config
+	if configMap == nil {
+		return
+	}
+
+	// Walk the hookPath segments (e.g. "registration", "after", "password")
+	// to find the hooks array.
+	segments := []string{"selfservice", "flows", "registration", "after", "password"}
+	var current interface{} = configMap
+	for _, seg := range segments {
+		m, ok := current.(map[string]interface{})
+		if !ok {
+			return
+		}
+		current = m[seg]
+	}
+
+	hooksSlice, ok := current.(map[string]interface{})["hooks"].([]interface{})
+	if !ok || len(hooksSlice) == 0 {
+		return
+	}
+
+	// Check if our test webhook is in there
+	found := false
+	for _, h := range hooksSlice {
+		hm, _ := h.(map[string]interface{})
+		if hm["hook"] == "web_hook" {
+			cfg, _ := hm["config"].(map[string]interface{})
+			if url, _ := cfg["url"].(string); url == webhookURL {
+				found = true
+				break
+			}
+		}
+	}
+
+	if !found {
+		return
+	}
+
+	t.Logf("Cleaning up dangling webhook at %s: %s", hookPath, webhookURL)
+	patches := []ory.JsonPatch{{
+		Op:    "replace",
+		Path:  hookPath,
+		Value: []interface{}{},
+	}}
+	_, err = c.PatchProject(ctx, project.ID, patches)
+	if err != nil {
+		t.Logf("Warning: failed to clean up dangling webhook: %v", err)
+	}
+}
+
 func TestAccActionResource_basic(t *testing.T) {
+	webhookURL := testutil.ExampleWebhookURL + "/user-registered"
+	hookPath := "/services/identity/config/selfservice/flows/registration/after/password/hooks"
+
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			cleanupDanglingWebhook(t, hookPath, webhookURL)
+		},
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			// Create and Read
