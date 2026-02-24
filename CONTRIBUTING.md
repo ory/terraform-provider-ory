@@ -48,7 +48,7 @@ make test-short     # Run unit tests in short mode
 
 ### Acceptance Tests
 
-Acceptance tests are **self-contained** — they automatically create an ephemeral Ory project, run tests against it, and clean up when done. You can also use a pre-created project to skip project creation/teardown.
+Acceptance tests run against a **pre-created Ory project**. The project must be configured with keto namespaces and dynamic client registration enabled (the CI project already has this).
 
 #### Setup
 
@@ -56,46 +56,30 @@ Acceptance tests are **self-contained** — they automatically create an ephemer
 
 ```bash
 cp .env.example .env
-# Edit .env with your ORY_WORKSPACE_API_KEY and ORY_WORKSPACE_ID
 ```
 
-The `.env` file is gitignored and automatically loaded by `make` targets.
-
-2. Or export environment variables directly:
+The `.env` file is gitignored and automatically loaded by `make` targets. At minimum you need:
 
 ```bash
-export ORY_WORKSPACE_API_KEY="ory_wak_..."
-export ORY_WORKSPACE_ID="..."
+# Workspace credentials
+ORY_WORKSPACE_API_KEY=ory_wak_...
+ORY_WORKSPACE_ID=...
+
+# Pre-created test project
+ORY_PROJECT_ID=...
+ORY_PROJECT_SLUG=...
+ORY_PROJECT_API_KEY=ory_pat_...
+ORY_PROJECT_ENVIRONMENT=prod
 ```
 
 #### Running Acceptance Tests
 
 ```bash
-# Standard acceptance tests (creates ephemeral project)
-make test-acc
-
-# With debug logging
-make test-acc-verbose
-
-# Run all tests with all features enabled
-make test-acc-all
-
-# Run specific resource tests
-ORY_KETO_TESTS_ENABLED=true make test-acc-keto
+make test-acc              # Standard acceptance tests
+make test-acc-verbose      # With debug logging
+make test-acc-all          # All tests with all features enabled
+make test-acc-keto         # Run specific resource tests
 ```
-
-#### Using a Pre-Created Project
-
-To skip ephemeral project creation (faster, reuses an existing project):
-
-```bash
-# Add to .env:
-ORY_PROJECT_ID=...
-ORY_PROJECT_SLUG=...
-ORY_PROJECT_API_KEY=ory_pat_...
-```
-
-When all three are set, the test framework uses the existing project instead of creating a new one.
 
 #### Optional Feature Flags
 
@@ -108,7 +92,24 @@ Some tests require specific Ory plan features. Enable them with environment vari
 | `ORY_SOCIAL_PROVIDER_TESTS_ENABLED=true` | Run social provider tests |
 | `ORY_SCHEMA_TESTS_ENABLED=true` | Run identity schema tests |
 | `ORY_PROJECT_TESTS_ENABLED=true` | Run project creation/deletion tests |
-| `ORY_EVENT_STREAM_TESTS_ENABLED=true` | Run event stream tests (requires Enterprise plan + AWS) |
+| `ORY_EVENT_STREAM_TESTS_ENABLED=true` | Run event stream tests (requires Enterprise plan + AWS setup below) |
+
+#### Event Stream Tests
+
+Event stream tests have additional requirements beyond a feature flag because they interact with real AWS infrastructure:
+
+1. **AWS SNS topic** — a real SNS topic to receive events
+2. **AWS IAM role** — with `sns:Publish` permission on the topic and a trust policy allowing Ory's AWS account to assume it
+3. **IAM trust policy ExternalId** — must match `ORY_PROJECT_ID`. The Ory API validates that the trust policy includes a `StringEquals` condition on `sts:ExternalId` matching the project UUID, so the test project and IAM role are tightly coupled.
+
+```bash
+# Add to .env (in addition to the required vars above):
+ORY_EVENT_STREAM_TESTS_ENABLED=true
+ORY_EVENT_STREAM_TOPIC_ARN=arn:aws:sns:...
+ORY_EVENT_STREAM_ROLE_ARN=arn:aws:iam::...:role/...
+```
+
+See the [Ory live events documentation](https://www.ory.com/docs/actions/live-events) for full AWS setup instructions.
 
 ### Writing Acceptance Tests
 
