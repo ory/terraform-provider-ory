@@ -37,13 +37,10 @@ help: ## Show this help
 deps: ## Install all dependencies (Go modules, tools)
 	go mod download
 	@command -v golangci-lint >/dev/null 2>&1 || { echo "Installing golangci-lint..."; go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; }
-	@command -v jq >/dev/null 2>&1 || { echo "jq not found. Please install: brew install jq (macOS) or apt-get install jq (Linux)"; }
 
 .PHONY: deps-ci
 deps-ci: ## Install dependencies for CI environment
 	go mod download
-	@echo "Installing jq..."
-	@if command -v apt-get >/dev/null 2>&1; then sudo apt-get update && sudo apt-get install -y jq; fi
 
 # Ory CLI for dependency management
 .bin/ory:
@@ -130,30 +127,38 @@ test: ## Run unit tests (no API calls)
 test-short: ## Run unit tests in short mode
 	go test -v -short ./...
 
+# Source .env file if it exists (for local acceptance tests).
+# Copy .env.example to .env and fill in your credentials.
+ifneq (,$(wildcard .env))
+include .env
+export
+endif
+
 .PHONY: test-acc
-test-acc: env-check ## Run acceptance tests (creates single shared project)
-	@echo "Running acceptance tests with shared project..."
-	./scripts/run-acceptance-tests.sh -p 1 -v -timeout 30m ./...
+test-acc: env-check ## Run acceptance tests
+	@echo "Running acceptance tests..."
+	TF_ACC=1 go test -tags acceptance -p 1 -v -timeout 30m ./...
 
 .PHONY: test-acc-verbose
 test-acc-verbose: env-check ## Run acceptance tests with debug logging
 	@echo "Running acceptance tests with debug logging..."
-	TF_LOG=DEBUG ./scripts/run-acceptance-tests.sh -p 1 -v -timeout 30m ./...
+	TF_ACC=1 TF_LOG=DEBUG go test -tags acceptance -p 1 -v -timeout 30m ./...
 
 .PHONY: test-acc-keto
 test-acc-keto: env-check ## Run only keto/relationship tests
 	@echo "Running relationship/keto tests..."
-	ORY_KETO_TESTS_ENABLED=true ./scripts/run-acceptance-tests.sh -p 1 -v -timeout 30m ./internal/resources/relationship/...
+	TF_ACC=1 ORY_KETO_TESTS_ENABLED=true go test -tags acceptance -p 1 -v -timeout 30m ./internal/resources/relationship/...
 
 .PHONY: test-acc-all
 test-acc-all: env-check ## Run all acceptance tests including optional ones
 	@echo "Running all acceptance tests with all features enabled..."
-	ORY_KETO_TESTS_ENABLED=true \
+	TF_ACC=1 \
+		ORY_KETO_TESTS_ENABLED=true \
 		ORY_B2B_ENABLED=true \
 		ORY_SOCIAL_PROVIDER_TESTS_ENABLED=true \
 		ORY_SCHEMA_TESTS_ENABLED=true \
 		ORY_EVENT_STREAM_TESTS_ENABLED=true \
-		./scripts/run-acceptance-tests.sh -p 1 -v -timeout 30m ./...
+		go test -tags acceptance -p 1 -v -timeout 30m ./...
 
 # ==============================================================================
 # SECURITY SCANNING
