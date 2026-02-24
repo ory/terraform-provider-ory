@@ -18,6 +18,11 @@ import (
 	"github.com/ory/terraform-provider-ory/internal/provider"
 )
 
+// testProjectPrefix is used to name ephemeral test projects so that the cloud
+// automated cleanup job can automatically purge stale ones.
+// DO NOT CHANGE — must match the pattern in internal cleanup patterns.
+const testProjectPrefix = "ory-cy-e2e-da2f162d-af61-42dd-90dc-e3fcfa7c84a0"
+
 // TestProject holds information about a test project created for acceptance tests.
 type TestProject struct {
 	ID          string
@@ -80,9 +85,9 @@ func AccPreCheck(t *testing.T) {
 // GetTestProject returns the shared test project, loading from env vars or creating if necessary.
 // This ensures all tests in a single test run share the same project.
 //
-// When ORY_TEST_PROJECT_PRECREATED=1 is set (by scripts/run-acceptance-tests.sh), the project
-// details are loaded from environment variables. Otherwise, a new project is created.
-// The project is created as a "prod" environment to support all features including organizations.
+// ORY_PROJECT_ID, ORY_PROJECT_SLUG, and ORY_PROJECT_API_KEY should be set to use a
+// pre-created project (the standard path for both CI and local development).
+// If not set, a fallback ephemeral project is created and cleaned up when tests finish.
 func GetTestProject(t *testing.T) *TestProject {
 	t.Helper()
 
@@ -101,35 +106,23 @@ func GetTestProject(t *testing.T) *TestProject {
 
 // initTestProject initializes the test project, either from env vars or by creating a new one.
 func initTestProject(t *testing.T) {
-	// Check if project was pre-created by the wrapper script
-	if os.Getenv("ORY_TEST_PROJECT_PRECREATED") == "1" {
+	// If project credentials are provided, use the pre-created project
+	if os.Getenv("ORY_PROJECT_ID") != "" && os.Getenv("ORY_PROJECT_SLUG") != "" && os.Getenv("ORY_PROJECT_API_KEY") != "" {
 		loadProjectFromEnv(t)
 		return
 	}
 
-	// Otherwise, create a new project (for running individual test packages)
+	// Fallback: create an ephemeral project if no pre-created project is configured
 	createSharedProject(t)
-
-	// Register cleanup only when we created the project ourselves
-	if sharedTestProject != nil {
-		t.Cleanup(func() {
-			cleanupTestProject(t)
-		})
-	}
 }
 
 // loadProjectFromEnv loads the test project from environment variables.
-// This is used when the project was pre-created by scripts/run-acceptance-tests.sh.
+// This is the standard path for both CI and local development.
 func loadProjectFromEnv(t *testing.T) {
 	projectID := os.Getenv("ORY_PROJECT_ID")
 	projectSlug := os.Getenv("ORY_PROJECT_SLUG")
 	projectAPIKey := os.Getenv("ORY_PROJECT_API_KEY")
 	projectEnv := os.Getenv("ORY_PROJECT_ENVIRONMENT")
-
-	if projectID == "" || projectSlug == "" || projectAPIKey == "" {
-		initError = fmt.Errorf("ORY_TEST_PROJECT_PRECREATED=1 but missing required env vars: ORY_PROJECT_ID, ORY_PROJECT_SLUG, ORY_PROJECT_API_KEY")
-		return
-	}
 
 	t.Logf("Using pre-created test project: %s (slug: %s, environment: %s)", projectID, projectSlug, projectEnv)
 
@@ -142,8 +135,10 @@ func loadProjectFromEnv(t *testing.T) {
 	}
 }
 
-// createSharedProject creates the shared test project.
-// This is called when running individual test packages without the wrapper script.
+// createSharedProject creates an ephemeral test project as a fallback when no
+// pre-created project is configured. The project uses the testProjectPrefix so
+// it can be automatically purged by the the automated cleanup job if not
+// deleted. Cleanup is best-effort via CleanupEphemeralProject().
 func createSharedProject(t *testing.T) {
 	ctx := context.Background()
 	c, err := GetOryClient()
@@ -152,14 +147,7 @@ func createSharedProject(t *testing.T) {
 		return
 	}
 
-	// Use prefix from env var (set by scripts/run-acceptance-tests.sh) for auto-cleanup support
-	prefix := os.Getenv("ORY_TEST_PROJECT_PREFIX")
-	var projectName string
-	if prefix != "" {
-		projectName = fmt.Sprintf("%s-tf-%d", prefix, time.Now().UnixNano())
-	} else {
-		projectName = fmt.Sprintf("tf-acc-test-%d", time.Now().UnixNano())
-	}
+	projectName := fmt.Sprintf("%s-tf-%d", testProjectPrefix, time.Now().UnixNano())
 	t.Logf("Creating test project: %s (environment: prod)", projectName)
 
 	// Create as "prod" environment to support all features including organizations
@@ -216,12 +204,20 @@ func createSharedProject(t *testing.T) {
 	}
 }
 
-// cleanupTestProject deletes the shared test project.
-func cleanupTestProject(t *testing.T) {
+// CleanupEphemeralProject deletes the shared test project if it was created
+// ephemerally (not loaded from env vars). This is safe to call multiple times.
+// In practice, cleanup is handled by the the automated purge job, so failing
+// to call this is not catastrophic.
+func CleanupEphemeralProject(t *testing.T) {
 	projectMutex.Lock()
 	defer projectMutex.Unlock()
 
 	if sharedTestProject == nil {
+		return
+	}
+
+	// Never delete pre-created projects
+	if sharedTestProject.Name == "pre-created" {
 		return
 	}
 
@@ -232,11 +228,11 @@ func cleanupTestProject(t *testing.T) {
 		return
 	}
 
-	t.Logf("Cleaning up shared test project: %s", sharedTestProject.ID)
+	t.Logf("Cleaning up ephemeral test project: %s", sharedTestProject.ID)
 	if err := c.DeleteProject(ctx, sharedTestProject.ID); err != nil {
 		t.Logf("Warning: Failed to delete test project: %v", err)
 	} else {
-		t.Logf("Successfully deleted shared test project: %s", sharedTestProject.ID)
+		t.Logf("Successfully deleted ephemeral test project: %s", sharedTestProject.ID)
 	}
 
 	sharedTestProject = nil
