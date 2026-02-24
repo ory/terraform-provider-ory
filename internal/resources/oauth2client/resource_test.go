@@ -195,6 +195,38 @@ func TestAccOAuth2ClientResource_withJWKS(t *testing.T) {
 	})
 }
 
+func TestAccOAuth2ClientResource_withResourceCredentials(t *testing.T) {
+	project := acctest.GetTestProject(t)
+
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with resource-level project credentials
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_resource_credentials.tf.tmpl", map[string]string{
+					"Name":          "Test Client Resource Creds",
+					"ProjectSlug":   project.Slug,
+					"ProjectAPIKey": project.APIKey,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_oauth2_client.test", "id"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "client_name", "Test Client Resource Creds"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "project_slug", project.Slug),
+					resource.TestCheckResourceAttrSet("ory_oauth2_client.test", "client_secret"),
+				),
+			},
+			// ImportState — ignore resource-level credentials (not in API response)
+			{
+				ResourceName:            "ory_oauth2_client.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret", "project_slug", "project_api_key"},
+			},
+		},
+	})
+}
+
 func TestAccOAuth2ClientResource_withTokenLifespans(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },

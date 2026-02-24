@@ -314,6 +314,191 @@ func TestIsRateLimitError(t *testing.T) {
 	}
 }
 
+func TestOryClient_EnsureProjectClient_NilWithoutCredentials(t *testing.T) {
+	cfg := OryClientConfig{
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   DefaultConsoleAPIURL,
+		// No ProjectAPIKey or ProjectSlug
+	}
+
+	client, err := NewOryClient(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if client.projectClient != nil {
+		t.Error("project client should be nil without credentials")
+	}
+
+	err = client.ensureProjectClient()
+	if err == nil {
+		t.Fatal("expected error from ensureProjectClient without credentials")
+	}
+	if !contains(err.Error(), "project_slug and project_api_key are required") {
+		t.Errorf("unexpected error message: %s", err.Error())
+	}
+}
+
+func TestOryClient_EnsureProjectClient_LazyInit(t *testing.T) {
+	cfg := OryClientConfig{
+		ProjectAPIKey: testutil.TestProjectAPIKey,
+		ProjectSlug:   testutil.TestProjectSlug,
+	}
+
+	client, err := NewOryClient(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Project client should already be initialized since credentials were provided at creation
+	if client.projectClient == nil {
+		t.Error("project client should be initialized when credentials provided at creation")
+	}
+
+	// ensureProjectClient should succeed (client already initialized)
+	if err := client.ensureProjectClient(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestOryClient_WithProjectCredentials(t *testing.T) {
+	cfg := OryClientConfig{
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   DefaultConsoleAPIURL,
+		// No project credentials initially
+	}
+
+	parent, err := NewOryClient(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Create a child client with project credentials
+	child := parent.WithProjectCredentials(testutil.TestProjectSlug, testutil.TestProjectAPIKey)
+
+	// Parent should still have no project credentials
+	if parent.config.ProjectSlug != "" {
+		t.Error("parent config should not be modified")
+	}
+
+	// Child should have the new credentials
+	if child.config.ProjectSlug != testutil.TestProjectSlug {
+		t.Errorf("expected slug '%s', got '%s'", testutil.TestProjectSlug, child.config.ProjectSlug)
+	}
+	if child.config.ProjectAPIKey != testutil.TestProjectAPIKey {
+		t.Errorf("expected API key '%s', got '%s'", testutil.TestProjectAPIKey, child.config.ProjectAPIKey)
+	}
+
+	// Child should share the parent's console client
+	if child.consoleClient != parent.consoleClient {
+		t.Error("child should share the parent's console client")
+	}
+
+	// Child's project client should be lazily initialized
+	if child.projectClient != nil {
+		t.Error("child project client should be nil before first use")
+	}
+
+	// ensureProjectClient should initialize the child's project client
+	if err := child.ensureProjectClient(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if child.projectClient == nil {
+		t.Error("child project client should be initialized after ensureProjectClient")
+	}
+
+	// Verify the child's project client URL
+	servers := child.projectClient.GetConfig().Servers
+	expectedURL := fmt.Sprintf(DefaultProjectAPIURL, testutil.TestProjectSlug)
+	if servers[0].URL != expectedURL {
+		t.Errorf("expected project URL '%s', got '%s'", expectedURL, servers[0].URL)
+	}
+}
+
+func TestOryClient_WithProjectCredentials_Isolation(t *testing.T) {
+	cfg := OryClientConfig{
+		ProjectAPIKey: testutil.TestProjectAPIKey,
+		ProjectSlug:   testutil.TestProjectSlug,
+	}
+
+	parent, err := NewOryClient(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Create two children with different credentials
+	child1 := parent.WithProjectCredentials("slug-one", "key-one")
+	child2 := parent.WithProjectCredentials("slug-two", "key-two")
+
+	// Initialize both
+	if err := child1.ensureProjectClient(); err != nil {
+		t.Fatalf("unexpected error for child1: %v", err)
+	}
+	if err := child2.ensureProjectClient(); err != nil {
+		t.Fatalf("unexpected error for child2: %v", err)
+	}
+
+	// Verify each child has its own project client with correct URL
+	servers1 := child1.projectClient.GetConfig().Servers
+	expectedURL1 := fmt.Sprintf(DefaultProjectAPIURL, "slug-one")
+	if servers1[0].URL != expectedURL1 {
+		t.Errorf("child1: expected project URL '%s', got '%s'", expectedURL1, servers1[0].URL)
+	}
+
+	servers2 := child2.projectClient.GetConfig().Servers
+	expectedURL2 := fmt.Sprintf(DefaultProjectAPIURL, "slug-two")
+	if servers2[0].URL != expectedURL2 {
+		t.Errorf("child2: expected project URL '%s', got '%s'", expectedURL2, servers2[0].URL)
+	}
+
+	// Parent should still have its original project client
+	parentServers := parent.projectClient.GetConfig().Servers
+	expectedParent := fmt.Sprintf(DefaultProjectAPIURL, testutil.TestProjectSlug)
+	if parentServers[0].URL != expectedParent {
+		t.Errorf("parent: expected project URL '%s', got '%s'", expectedParent, parentServers[0].URL)
+	}
+}
+
+func TestOryClient_EnsureProjectClient_MissingSlugOnly(t *testing.T) {
+	cfg := OryClientConfig{
+		ProjectAPIKey: testutil.TestProjectAPIKey,
+		// ProjectSlug is empty
+	}
+
+	client, err := NewOryClient(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	err = client.ensureProjectClient()
+	if err == nil {
+		t.Fatal("expected error when slug is missing")
+	}
+	if !contains(err.Error(), "project_slug and project_api_key are required") {
+		t.Errorf("unexpected error message: %s", err.Error())
+	}
+}
+
+func TestOryClient_EnsureProjectClient_MissingKeyOnly(t *testing.T) {
+	cfg := OryClientConfig{
+		ProjectSlug: testutil.TestProjectSlug,
+		// ProjectAPIKey is empty
+	}
+
+	client, err := NewOryClient(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	err = client.ensureProjectClient()
+	if err == nil {
+		t.Fatal("expected error when API key is missing")
+	}
+	if !contains(err.Error(), "project_slug and project_api_key are required") {
+		t.Errorf("unexpected error message: %s", err.Error())
+	}
+}
+
 func TestIsRetryableError(t *testing.T) {
 	tests := []struct {
 		name     string
