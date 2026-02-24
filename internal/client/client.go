@@ -433,18 +433,22 @@ func (c *OryClient) WorkspaceID() string {
 	return c.config.WorkspaceID
 }
 
-// SetProjectCredentials dynamically sets the project slug and API key,
-// forcing re-initialization of the project client on next use.
-// This enables resource-level credential passing for cases where the
-// provider is configured before the project exists (e.g., creating a
-// project and OAuth2 client in the same apply).
-func (c *OryClient) SetProjectCredentials(slug, apiKey string) {
-	c.projectClientMu.Lock()
-	defer c.projectClientMu.Unlock()
+// WithProjectCredentials returns a new OryClient that uses the given project
+// credentials. The returned client shares the console client with the parent
+// but has its own isolated project client (lazily initialized).
+// This avoids race conditions from mutating shared state and is safe for
+// concurrent use by multiple resources with different credentials.
+func (c *OryClient) WithProjectCredentials(slug, apiKey string) *OryClient {
+	newConfig := c.config
+	newConfig.ProjectSlug = slug
+	newConfig.ProjectAPIKey = apiKey
 
-	c.config.ProjectSlug = slug
-	c.config.ProjectAPIKey = apiKey
-	c.projectClient = nil // Force re-initialization on next use
+	return &OryClient{
+		config:        newConfig,
+		consoleClient: c.consoleClient,
+		// projectClient is nil — ensureProjectClient will lazily initialize it
+		// projectClientMu and cachedProjects are zero-valued (valid)
+	}
 }
 
 // ensureProjectClient lazily initializes the project API client.

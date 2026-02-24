@@ -361,82 +361,101 @@ func TestOryClient_EnsureProjectClient_LazyInit(t *testing.T) {
 	}
 }
 
-func TestOryClient_SetProjectCredentials(t *testing.T) {
+func TestOryClient_WithProjectCredentials(t *testing.T) {
 	cfg := OryClientConfig{
 		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
 		ConsoleAPIURL:   DefaultConsoleAPIURL,
 		// No project credentials initially
 	}
 
-	client, err := NewOryClient(cfg)
+	parent, err := NewOryClient(cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify project client is nil initially
-	if client.projectClient != nil {
-		t.Error("project client should be nil without credentials")
+	// Create a child client with project credentials
+	child := parent.WithProjectCredentials(testutil.TestProjectSlug, testutil.TestProjectAPIKey)
+
+	// Parent should still have no project credentials
+	if parent.config.ProjectSlug != "" {
+		t.Error("parent config should not be modified")
 	}
 
-	// Set credentials dynamically
-	client.SetProjectCredentials(testutil.TestProjectSlug, testutil.TestProjectAPIKey)
-
-	// Verify credentials were updated
-	if client.config.ProjectSlug != testutil.TestProjectSlug {
-		t.Errorf("expected slug '%s', got '%s'", testutil.TestProjectSlug, client.config.ProjectSlug)
+	// Child should have the new credentials
+	if child.config.ProjectSlug != testutil.TestProjectSlug {
+		t.Errorf("expected slug '%s', got '%s'", testutil.TestProjectSlug, child.config.ProjectSlug)
 	}
-	if client.config.ProjectAPIKey != testutil.TestProjectAPIKey {
-		t.Errorf("expected API key '%s', got '%s'", testutil.TestProjectAPIKey, client.config.ProjectAPIKey)
+	if child.config.ProjectAPIKey != testutil.TestProjectAPIKey {
+		t.Errorf("expected API key '%s', got '%s'", testutil.TestProjectAPIKey, child.config.ProjectAPIKey)
 	}
 
-	// ensureProjectClient should now succeed and initialize the client
-	if err := client.ensureProjectClient(); err != nil {
-		t.Fatalf("unexpected error after setting credentials: %v", err)
-	}
-	if client.projectClient == nil {
-		t.Error("project client should be initialized after setting credentials")
+	// Child should share the parent's console client
+	if child.consoleClient != parent.consoleClient {
+		t.Error("child should share the parent's console client")
 	}
 
-	// Verify the project client is configured with the correct URL
-	servers := client.projectClient.GetConfig().Servers
+	// Child's project client should be lazily initialized
+	if child.projectClient != nil {
+		t.Error("child project client should be nil before first use")
+	}
+
+	// ensureProjectClient should initialize the child's project client
+	if err := child.ensureProjectClient(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if child.projectClient == nil {
+		t.Error("child project client should be initialized after ensureProjectClient")
+	}
+
+	// Verify the child's project client URL
+	servers := child.projectClient.GetConfig().Servers
 	expectedURL := fmt.Sprintf(DefaultProjectAPIURL, testutil.TestProjectSlug)
 	if servers[0].URL != expectedURL {
 		t.Errorf("expected project URL '%s', got '%s'", expectedURL, servers[0].URL)
 	}
 }
 
-func TestOryClient_SetProjectCredentials_ReInitializes(t *testing.T) {
+func TestOryClient_WithProjectCredentials_Isolation(t *testing.T) {
 	cfg := OryClientConfig{
 		ProjectAPIKey: testutil.TestProjectAPIKey,
 		ProjectSlug:   testutil.TestProjectSlug,
 	}
 
-	client, err := NewOryClient(cfg)
+	parent, err := NewOryClient(cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	originalClient := client.projectClient
-	if originalClient == nil {
-		t.Fatal("project client should be initialized")
+	// Create two children with different credentials
+	child1 := parent.WithProjectCredentials("slug-one", "key-one")
+	child2 := parent.WithProjectCredentials("slug-two", "key-two")
+
+	// Initialize both
+	if err := child1.ensureProjectClient(); err != nil {
+		t.Fatalf("unexpected error for child1: %v", err)
+	}
+	if err := child2.ensureProjectClient(); err != nil {
+		t.Fatalf("unexpected error for child2: %v", err)
 	}
 
-	// Set new credentials — should clear the existing client
-	client.SetProjectCredentials("new-slug", "new-key")
-
-	if client.projectClient != nil {
-		t.Error("project client should be nil after SetProjectCredentials (pending re-init)")
+	// Verify each child has its own project client with correct URL
+	servers1 := child1.projectClient.GetConfig().Servers
+	expectedURL1 := fmt.Sprintf(DefaultProjectAPIURL, "slug-one")
+	if servers1[0].URL != expectedURL1 {
+		t.Errorf("child1: expected project URL '%s', got '%s'", expectedURL1, servers1[0].URL)
 	}
 
-	// ensureProjectClient should create a new client with the new slug
-	if err := client.ensureProjectClient(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	servers2 := child2.projectClient.GetConfig().Servers
+	expectedURL2 := fmt.Sprintf(DefaultProjectAPIURL, "slug-two")
+	if servers2[0].URL != expectedURL2 {
+		t.Errorf("child2: expected project URL '%s', got '%s'", expectedURL2, servers2[0].URL)
 	}
 
-	servers := client.projectClient.GetConfig().Servers
-	expectedURL := fmt.Sprintf(DefaultProjectAPIURL, "new-slug")
-	if servers[0].URL != expectedURL {
-		t.Errorf("expected new project URL '%s', got '%s'", expectedURL, servers[0].URL)
+	// Parent should still have its original project client
+	parentServers := parent.projectClient.GetConfig().Servers
+	expectedParent := fmt.Sprintf(DefaultProjectAPIURL, testutil.TestProjectSlug)
+	if parentServers[0].URL != expectedParent {
+		t.Errorf("parent: expected project URL '%s', got '%s'", expectedParent, parentServers[0].URL)
 	}
 }
 

@@ -367,11 +367,13 @@ func (r *OAuth2ClientResource) Schema(ctx context.Context, req resource.SchemaRe
 	}
 }
 
-// setResourceCredentials sets project credentials from resource-level attributes if provided.
+// setResourceCredentials creates an isolated client with resource-level project credentials.
 // This enables creating OAuth2 clients in the same apply as the project they belong to.
+// The new client shares the console API client but has its own project API client,
+// avoiding race conditions when multiple resources use different credentials.
 func (r *OAuth2ClientResource) setResourceCredentials(slug, apiKey types.String) {
 	if !slug.IsNull() && !slug.IsUnknown() && !apiKey.IsNull() && !apiKey.IsUnknown() {
-		r.client.SetProjectCredentials(slug.ValueString(), apiKey.ValueString())
+		r.client = r.client.WithProjectCredentials(slug.ValueString(), apiKey.ValueString())
 	}
 }
 
