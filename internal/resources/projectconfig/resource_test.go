@@ -121,6 +121,29 @@ func TestAccProjectConfigResource_tokenizerTemplates(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_emptyReturnURLs(t *testing.T) {
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Step 1: Set return URLs to empty values (clears any server defaults)
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/empty_return_urls.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "default_return_url", ""),
+					resource.TestCheckResourceAttr("ory_project_config.test", "allowed_return_urls.#", "0"),
+				),
+			},
+			// Step 2: Re-apply same config to verify no perpetual diff
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/empty_return_urls.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_courierHTTP(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },

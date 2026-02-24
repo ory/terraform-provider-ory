@@ -769,20 +769,34 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 
 	// URLs
 	if !plan.DefaultReturnURL.IsNull() && !plan.DefaultReturnURL.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/default_browser_return_url",
-			Value: plan.DefaultReturnURL.ValueString(),
-		})
+		if plan.DefaultReturnURL.ValueString() == "" {
+			patches = append(patches, ory.JsonPatch{
+				Op:   "remove",
+				Path: "/services/identity/config/selfservice/default_browser_return_url",
+			})
+		} else {
+			patches = append(patches, ory.JsonPatch{
+				Op:    "replace",
+				Path:  "/services/identity/config/selfservice/default_browser_return_url",
+				Value: plan.DefaultReturnURL.ValueString(),
+			})
+		}
 	}
 	if !plan.AllowedReturnURLs.IsNull() && !plan.AllowedReturnURLs.IsUnknown() {
 		var urls []string
 		plan.AllowedReturnURLs.ElementsAs(ctx, &urls, false)
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/allowed_return_urls",
-			Value: urls,
-		})
+		if len(urls) == 0 {
+			patches = append(patches, ory.JsonPatch{
+				Op:   "remove",
+				Path: "/services/identity/config/selfservice/allowed_return_urls",
+			})
+		} else {
+			patches = append(patches, ory.JsonPatch{
+				Op:    "replace",
+				Path:  "/services/identity/config/selfservice/allowed_return_urls",
+				Value: urls,
+			})
+		}
 	}
 
 	urlMappings := map[*types.String]string{
@@ -1302,22 +1316,30 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 
 		// URLs
 		if !state.DefaultReturnURL.IsNull() {
-			if v, ok := getNestedString(identityConfig, "selfservice", "default_browser_return_url"); ok {
-				state.DefaultReturnURL = types.StringValue(v)
+			// If the user explicitly set an empty string, preserve it in state
+			// even if the API returns server-generated defaults.
+			if state.DefaultReturnURL.ValueString() != "" {
+				if v, ok := getNestedString(identityConfig, "selfservice", "default_browser_return_url"); ok {
+					state.DefaultReturnURL = types.StringValue(v)
+				}
 			}
 		}
 		if !state.AllowedReturnURLs.IsNull() {
-			if v := getNestedValue(identityConfig, "selfservice", "allowed_return_urls"); v != nil {
-				if urls, ok := v.([]interface{}); ok && len(urls) > 0 {
-					strs := make([]string, 0, len(urls))
-					for _, u := range urls {
-						if s, ok := u.(string); ok {
-							strs = append(strs, s)
+			// If the user explicitly set an empty list, preserve it in state
+			// even if the API returns server-generated defaults.
+			if len(state.AllowedReturnURLs.Elements()) > 0 {
+				if v := getNestedValue(identityConfig, "selfservice", "allowed_return_urls"); v != nil {
+					if urls, ok := v.([]interface{}); ok && len(urls) > 0 {
+						strs := make([]string, 0, len(urls))
+						for _, u := range urls {
+							if s, ok := u.(string); ok {
+								strs = append(strs, s)
+							}
 						}
-					}
-					urlsList, diags := types.ListValueFrom(ctx, types.StringType, strs)
-					if !diags.HasError() {
-						state.AllowedReturnURLs = urlsList
+						urlsList, diags := types.ListValueFrom(ctx, types.StringType, strs)
+						if !diags.HasError() {
+							state.AllowedReturnURLs = urlsList
+						}
 					}
 				}
 			}
