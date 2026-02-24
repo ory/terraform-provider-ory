@@ -48,19 +48,30 @@ make test-short     # Run unit tests in short mode
 
 ### Acceptance Tests
 
-Acceptance tests are **self-contained** - they automatically create a temporary Ory project, run tests against it, and clean up when done.
+Acceptance tests are **self-contained** — they automatically create an ephemeral Ory project, run tests against it, and clean up when done. You can also use a pre-created project to skip project creation/teardown.
 
-#### Required Environment Variables
+#### Setup
+
+1. Copy `.env.example` to `.env` and fill in your credentials:
 
 ```bash
-export ORY_WORKSPACE_API_KEY="ory_wak_..."  # Workspace API key
-export ORY_WORKSPACE_ID="..."               # Workspace ID
+cp .env.example .env
+# Edit .env with your ORY_WORKSPACE_API_KEY and ORY_WORKSPACE_ID
+```
+
+The `.env` file is gitignored and automatically loaded by `make` targets.
+
+2. Or export environment variables directly:
+
+```bash
+export ORY_WORKSPACE_API_KEY="ory_wak_..."
+export ORY_WORKSPACE_ID="..."
 ```
 
 #### Running Acceptance Tests
 
 ```bash
-# Standard acceptance tests
+# Standard acceptance tests (creates ephemeral project)
 make test-acc
 
 # With debug logging
@@ -73,6 +84,19 @@ make test-acc-all
 ORY_KETO_TESTS_ENABLED=true make test-acc-keto
 ```
 
+#### Using a Pre-Created Project
+
+To skip ephemeral project creation (faster, reuses an existing project):
+
+```bash
+# Add to .env:
+ORY_PROJECT_ID=...
+ORY_PROJECT_SLUG=...
+ORY_PROJECT_API_KEY=ory_pat_...
+```
+
+When all three are set, the test framework uses the existing project instead of creating a new one.
+
 #### Optional Feature Flags
 
 Some tests require specific Ory plan features. Enable them with environment variables:
@@ -84,13 +108,7 @@ Some tests require specific Ory plan features. Enable them with environment vari
 | `ORY_SOCIAL_PROVIDER_TESTS_ENABLED=true` | Run social provider tests |
 | `ORY_SCHEMA_TESTS_ENABLED=true` | Run identity schema tests |
 | `ORY_PROJECT_TESTS_ENABLED=true` | Run project creation/deletion tests |
-
-#### API URL Overrides (for local development)
-
-```bash
-export ORY_CONSOLE_API_URL="https://api.console.ory.sh"      # Console API
-export ORY_PROJECT_API_URL="https://%s.projects.oryapis.com" # Project API template
-```
+| `ORY_EVENT_STREAM_TESTS_ENABLED=true` | Run event stream tests (requires Enterprise plan + AWS) |
 
 ### Writing Acceptance Tests
 

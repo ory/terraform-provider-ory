@@ -288,18 +288,23 @@ make test-acc-keto
 make test-acc-all
 ```
 
-Or run directly with go test:
+Or run directly with `go test`:
 
 ```bash
 # Unit tests
 go test -short ./...
 
-# Acceptance tests
-TF_ACC=1 go test -p 1 -v -timeout 30m ./...
+# Acceptance tests (creates ephemeral project automatically)
+TF_ACC=1 go test -tags acceptance -p 1 -v -timeout 30m ./...
 
 # Specific resource tests
-TF_ACC=1 go test -p 1 -v ./internal/resources/identity/...
-TF_ACC=1 go test -p 1 -v ./internal/resources/oauth2client/...
+TF_ACC=1 go test -tags acceptance -p 1 -v ./internal/resources/identity/...
+
+# Use a pre-created project (skips project creation/teardown)
+export ORY_PROJECT_ID="..."
+export ORY_PROJECT_SLUG="..."
+export ORY_PROJECT_API_KEY="ory_pat_..."
+TF_ACC=1 go test -tags acceptance -p 1 -v -timeout 30m ./...
 ```
 
 #### Optional Test Feature Flags
