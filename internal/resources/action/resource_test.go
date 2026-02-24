@@ -5,6 +5,7 @@ package action_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -15,8 +16,10 @@ import (
 	"github.com/ory/terraform-provider-ory/internal/testutil"
 )
 
-// cleanupDanglingWebhook removes a webhook left behind by a previous failed test run.
-// This makes the test idempotent when sharing a single smoke-test project.
+// cleanupDanglingWebhook removes a specific webhook left behind by a previous
+// failed test run. Only the matching webhook is removed; other hooks at the
+// same path are preserved. hookPath must be a full JSON Patch path ending in
+// "/hooks" (e.g. "/services/identity/config/selfservice/flows/registration/after/password/hooks").
 func cleanupDanglingWebhook(t *testing.T, hookPath, webhookURL string) {
 	t.Helper()
 
@@ -35,15 +38,19 @@ func cleanupDanglingWebhook(t *testing.T, hookPath, webhookURL string) {
 		return
 	}
 
-	// Navigate to the hooks via the identity config
 	configMap := p.Services.Identity.Config
 	if configMap == nil {
 		return
 	}
 
-	// Walk the hookPath segments (e.g. "registration", "after", "password")
-	// to find the hooks array.
-	segments := []string{"selfservice", "flows", "registration", "after", "password"}
+	// Derive navigation segments from hookPath.
+	// e.g. "/services/identity/config/selfservice/flows/registration/after/password/hooks"
+	// → strip prefix "/services/identity/config/" and suffix "/hooks"
+	// → segments: ["selfservice", "flows", "registration", "after", "password"]
+	trimmed := strings.TrimPrefix(hookPath, "/services/identity/config/")
+	trimmed = strings.TrimSuffix(trimmed, "/hooks")
+	segments := strings.Split(trimmed, "/")
+
 	var current interface{} = configMap
 	for _, seg := range segments {
 		m, ok := current.(map[string]interface{})
@@ -51,6 +58,9 @@ func cleanupDanglingWebhook(t *testing.T, hookPath, webhookURL string) {
 			return
 		}
 		current = m[seg]
+		if current == nil {
+			return
+		}
 	}
 
 	hooksSlice, ok := current.(map[string]interface{})["hooks"].([]interface{})
@@ -58,7 +68,8 @@ func cleanupDanglingWebhook(t *testing.T, hookPath, webhookURL string) {
 		return
 	}
 
-	// Check if our test webhook is in there
+	// Build a new hooks list without the dangling test webhook.
+	filtered := make([]interface{}, 0, len(hooksSlice))
 	found := false
 	for _, h := range hooksSlice {
 		hm, _ := h.(map[string]interface{})
@@ -66,9 +77,10 @@ func cleanupDanglingWebhook(t *testing.T, hookPath, webhookURL string) {
 			cfg, _ := hm["config"].(map[string]interface{})
 			if url, _ := cfg["url"].(string); url == webhookURL {
 				found = true
-				break
+				continue // skip the dangling webhook
 			}
 		}
+		filtered = append(filtered, h)
 	}
 
 	if !found {
@@ -79,7 +91,7 @@ func cleanupDanglingWebhook(t *testing.T, hookPath, webhookURL string) {
 	patches := []ory.JsonPatch{{
 		Op:    "replace",
 		Path:  hookPath,
-		Value: []interface{}{},
+		Value: filtered,
 	}}
 	_, err = c.PatchProject(ctx, project.ID, patches)
 	if err != nil {
