@@ -26,10 +26,9 @@ func importStateEventStreamID(s *terraform.State) (string, error) {
 func testAccPreCheckEventStream(t *testing.T) {
 	acctest.AccPreCheck(t)
 	acctest.RequireEventStreamTests(t)
-	// Event stream tests require a dedicated project whose UUID is registered as
-	// the ExternalId in the IAM role's trust policy. The Ory API validates the
-	// trust policy for security, so ephemeral projects cannot be used.
-	for _, env := range []string{"ORY_EVENT_STREAM_TOPIC_ARN", "ORY_EVENT_STREAM_ROLE_ARN", "ORY_EVENT_STREAM_PROJECT_ID"} {
+	// Event stream tests require the project UUID to be registered as the
+	// ExternalId in the IAM role's trust policy. The Ory API validates this.
+	for _, env := range []string{"ORY_EVENT_STREAM_TOPIC_ARN", "ORY_EVENT_STREAM_ROLE_ARN", "ORY_PROJECT_ID"} {
 		if os.Getenv(env) == "" {
 			t.Skipf("%s must be set for event stream tests", env)
 		}
@@ -42,11 +41,11 @@ func testAccPreCheckEventStream(t *testing.T) {
 //
 // Required environment variables:
 //
-//	ORY_EVENT_STREAM_PROJECT_ID - Dedicated Ory project ID (UUID in IAM trust policy ExternalId)
-//	ORY_EVENT_STREAM_TOPIC_ARN  - Real AWS SNS topic ARN
-//	ORY_EVENT_STREAM_ROLE_ARN   - Real AWS IAM role ARN with trust policy for Ory
+//	ORY_PROJECT_ID             - Ory project ID (UUID in IAM trust policy ExternalId)
+//	ORY_EVENT_STREAM_TOPIC_ARN - Real AWS SNS topic ARN
+//	ORY_EVENT_STREAM_ROLE_ARN  - Real AWS IAM role ARN with trust policy for Ory
 func TestAccEventStreamResource_basic(t *testing.T) {
-	projectID := os.Getenv("ORY_EVENT_STREAM_PROJECT_ID")
+	projectID := os.Getenv("ORY_PROJECT_ID")
 	topicArn := os.Getenv("ORY_EVENT_STREAM_TOPIC_ARN")
 	roleArn := os.Getenv("ORY_EVENT_STREAM_ROLE_ARN")
 
