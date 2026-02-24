@@ -121,6 +121,18 @@ resource "ory_oauth2_client" "cli_tool" {
   scope                      = "openid offline_access"
 }
 
+# Same-apply: Create project and OAuth2 client together
+# Use resource-level credentials when the project doesn't exist yet
+resource "ory_oauth2_client" "same_apply" {
+  project_slug    = ory_project.main.slug
+  project_api_key = ory_project_api_key.main.value
+
+  client_name                = "Created with Project"
+  grant_types                = ["client_credentials"]
+  token_endpoint_auth_method = "client_secret_post"
+  scope                      = "api:read api:write"
+}
+
 output "api_service_client_id" {
   value = ory_oauth2_client.api_service.client_id
 }

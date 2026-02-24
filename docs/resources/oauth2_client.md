@@ -141,6 +141,18 @@ resource "ory_oauth2_client" "cli_tool" {
   scope                      = "openid offline_access"
 }
 
+# Same-apply: Create project and OAuth2 client together
+# Use resource-level credentials when the project doesn't exist yet
+resource "ory_oauth2_client" "same_apply" {
+  project_slug    = ory_project.main.slug
+  project_api_key = ory_project_api_key.main.value
+
+  client_name                = "Created with Project"
+  grant_types                = ["client_credentials"]
+  token_endpoint_auth_method = "client_secret_post"
+  scope                      = "api:read api:write"
+}
+
 output "api_service_client_id" {
   value = ory_oauth2_client.api_service.client_id
 }
@@ -262,6 +274,33 @@ The provider supports both OIDC front-channel and back-channel logout:
 - `frontchannel_logout_session_required` — Whether the client requires a session identifier (`sid`) in front-channel logout notifications.
 - `backchannel_logout_session_required` — Whether the client requires a session identifier (`sid`) in back-channel logout notifications.
 
+## Resource-Level Credentials (Same-Apply with Project Creation)
+
+When creating an `ory_oauth2_client` in the same `terraform apply` as the `ory_project` it belongs to, the provider may not have project credentials at configuration time. Use the `project_slug` and `project_api_key` attributes to pass credentials directly to the resource:
+
+```hcl
+resource "ory_project" "main" {
+  name        = "my-project"
+  environment = "prod"
+}
+
+resource "ory_project_api_key" "main" {
+  project_id = ory_project.main.id
+  name       = "terraform-key"
+}
+
+resource "ory_oauth2_client" "api" {
+  project_slug    = ory_project.main.slug
+  project_api_key = ory_project_api_key.main.value
+
+  client_name   = "API Client"
+  grant_types   = ["client_credentials"]
+  scope         = "read write"
+}
+```
+
+These attributes override the provider-level `project_slug` and `project_api_key`. If the provider already has valid project credentials, you do not need to set them on the resource.
+
 ## Import
 
 OAuth2 clients can be imported using their client ID:
@@ -307,6 +346,8 @@ terraform import ory_oauth2_client.api <client-id>
 - `metadata` (String) Custom metadata as JSON string.
 - `policy_uri` (String) URL of the client's privacy policy.
 - `post_logout_redirect_uris` (List of String) List of allowed post-logout redirect URIs for OpenID Connect logout.
+- `project_api_key` (String, Sensitive) Project API key for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and OAuth2 client in the same apply). Overrides the provider-level project_api_key.
+- `project_slug` (String) Project slug for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and OAuth2 client in the same apply). Overrides the provider-level project_slug.
 - `redirect_uris` (List of String) List of allowed redirect URIs for authorization code flow.
 - `refresh_token_grant_access_token_lifespan` (String) Access token lifespan for refresh token grant (e.g., '1h', '30m').
 - `refresh_token_grant_id_token_lifespan` (String) ID token lifespan for refresh token grant (e.g., '1h', '30m').
