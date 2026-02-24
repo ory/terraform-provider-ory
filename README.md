@@ -275,7 +275,7 @@ export ORY_WORKSPACE_ID="..."                # Workspace ID
 # Unit tests only (no credentials needed)
 make test
 
-# All acceptance tests (creates temp project, runs tests, cleans up)
+# All acceptance tests
 make test-acc
 
 # Acceptance tests with debug logging
@@ -294,17 +294,11 @@ Or run directly with `go test`:
 # Unit tests
 go test -short ./...
 
-# Acceptance tests (creates ephemeral project automatically)
+# Acceptance tests
 TF_ACC=1 go test -tags acceptance -p 1 -v -timeout 30m ./...
 
 # Specific resource tests
 TF_ACC=1 go test -tags acceptance -p 1 -v ./internal/resources/identity/...
-
-# Use a pre-created project (skips project creation/teardown)
-export ORY_PROJECT_ID="..."
-export ORY_PROJECT_SLUG="..."
-export ORY_PROJECT_API_KEY="ory_pat_..."
-TF_ACC=1 go test -tags acceptance -p 1 -v -timeout 30m ./...
 ```
 
 #### Optional Test Feature Flags

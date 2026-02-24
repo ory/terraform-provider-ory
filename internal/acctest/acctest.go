@@ -85,9 +85,9 @@ func AccPreCheck(t *testing.T) {
 // GetTestProject returns the shared test project, loading from env vars or creating if necessary.
 // This ensures all tests in a single test run share the same project.
 //
-// If ORY_PROJECT_ID, ORY_PROJECT_SLUG, and ORY_PROJECT_API_KEY are all set, the project
-// is loaded from those env vars (useful for local dev with a persistent project).
-// Otherwise, an ephemeral project is created and cleaned up when tests finish.
+// ORY_PROJECT_ID, ORY_PROJECT_SLUG, and ORY_PROJECT_API_KEY should be set to use a
+// pre-created project (the standard path for both CI and local development).
+// If not set, a fallback ephemeral project is created and cleaned up when tests finish.
 func GetTestProject(t *testing.T) *TestProject {
 	t.Helper()
 
@@ -106,13 +106,13 @@ func GetTestProject(t *testing.T) *TestProject {
 
 // initTestProject initializes the test project, either from env vars or by creating a new one.
 func initTestProject(t *testing.T) {
-	// If project credentials are provided, use them directly (no ephemeral project)
+	// If project credentials are provided, use the pre-created project
 	if os.Getenv("ORY_PROJECT_ID") != "" && os.Getenv("ORY_PROJECT_SLUG") != "" && os.Getenv("ORY_PROJECT_API_KEY") != "" {
 		loadProjectFromEnv(t)
 		return
 	}
 
-	// Otherwise, create an ephemeral project
+	// Fallback: create an ephemeral project if no pre-created project is configured
 	createSharedProject(t)
 
 	// Register cleanup only when we created the project ourselves
@@ -124,7 +124,7 @@ func initTestProject(t *testing.T) {
 }
 
 // loadProjectFromEnv loads the test project from environment variables.
-// This is used when running against a persistent project (e.g., local smoke testing).
+// This is the standard path for both CI and local development.
 func loadProjectFromEnv(t *testing.T) {
 	projectID := os.Getenv("ORY_PROJECT_ID")
 	projectSlug := os.Getenv("ORY_PROJECT_SLUG")
