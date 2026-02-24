@@ -43,6 +43,8 @@ type OAuth2ClientResourceModel struct {
 	ClientID                types.String `tfsdk:"client_id"`
 	ClientSecret            types.String `tfsdk:"client_secret"`
 	ClientName              types.String `tfsdk:"client_name"`
+	ProjectSlug             types.String `tfsdk:"project_slug"`
+	ProjectAPIKey           types.String `tfsdk:"project_api_key"`
 	GrantTypes              types.List   `tfsdk:"grant_types"`
 	ResponseTypes           types.List   `tfsdk:"response_types"`
 	Scope                   types.String `tfsdk:"scope"`
@@ -160,6 +162,15 @@ func (r *OAuth2ClientResource) Schema(ctx context.Context, req resource.SchemaRe
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
+			},
+			"project_slug": schema.StringAttribute{
+				Description: "Project slug for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and OAuth2 client in the same apply). Overrides the provider-level project_slug.",
+				Optional:    true,
+			},
+			"project_api_key": schema.StringAttribute{
+				Description: "Project API key for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and OAuth2 client in the same apply). Overrides the provider-level project_api_key.",
+				Optional:    true,
+				Sensitive:   true,
 			},
 			"client_name": schema.StringAttribute{
 				Description: "Human-readable name for the client.",
@@ -356,6 +367,16 @@ func (r *OAuth2ClientResource) Schema(ctx context.Context, req resource.SchemaRe
 	}
 }
 
+// setResourceCredentials creates an isolated client with resource-level project credentials.
+// This enables creating OAuth2 clients in the same apply as the project they belong to.
+// The new client shares the console API client but has its own project API client,
+// avoiding race conditions when multiple resources use different credentials.
+func (r *OAuth2ClientResource) setResourceCredentials(slug, apiKey types.String) {
+	if !slug.IsNull() && !slug.IsUnknown() && !apiKey.IsNull() && !apiKey.IsUnknown() {
+		r.client = r.client.WithProjectCredentials(slug.ValueString(), apiKey.ValueString())
+	}
+}
+
 func (r *OAuth2ClientResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
@@ -536,6 +557,9 @@ func (r *OAuth2ClientResource) Create(ctx context.Context, req resource.CreateRe
 		oauthClient.BackchannelLogoutSessionRequired = ory.PtrBool(plan.BackchannelLogoutSessionRequired.ValueBool())
 	}
 
+	// Set resource-level credentials if provided (enables same-apply with project creation)
+	r.setResourceCredentials(plan.ProjectSlug, plan.ProjectAPIKey)
+
 	created, err := r.client.CreateOAuth2Client(ctx, oauthClient)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -626,6 +650,9 @@ func (r *OAuth2ClientResource) Read(ctx context.Context, req resource.ReadReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Set resource-level credentials if provided
+	r.setResourceCredentials(state.ProjectSlug, state.ProjectAPIKey)
 
 	oauthClient, err := r.client.GetOAuth2Client(ctx, state.ClientID.ValueString())
 	if err != nil {
@@ -978,6 +1005,9 @@ func (r *OAuth2ClientResource) Update(ctx context.Context, req resource.UpdateRe
 		oauthClient.BackchannelLogoutSessionRequired = ory.PtrBool(plan.BackchannelLogoutSessionRequired.ValueBool())
 	}
 
+	// Set resource-level credentials if provided
+	r.setResourceCredentials(plan.ProjectSlug, plan.ProjectAPIKey)
+
 	updated, err := r.client.UpdateOAuth2Client(ctx, state.ClientID.ValueString(), oauthClient)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -1062,6 +1092,9 @@ func (r *OAuth2ClientResource) Delete(ctx context.Context, req resource.DeleteRe
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Set resource-level credentials if provided
+	r.setResourceCredentials(state.ProjectSlug, state.ProjectAPIKey)
 
 	err := r.client.DeleteOAuth2Client(ctx, state.ClientID.ValueString())
 	if err != nil {
