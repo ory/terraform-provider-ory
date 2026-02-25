@@ -16,17 +16,30 @@ A Terraform provider for managing [Ory Network](https://www.ory.sh/) resources u
 
 ## Features
 
+### Resources
+
+- **Project & Workspace Management**: Create and manage Ory Network projects and workspaces
+- **Project Configuration**: CORS, session settings, password policies, MFA, OAuth2/Hydra settings
 - **Identity Management**: Create and manage user identities with custom schemas
+- **Identity Schemas**: Define custom identity schemas for your project
 - **Authentication Flows**: Configure social providers (Google, GitHub, Microsoft, Apple, OIDC)
-- **Project Configuration**: CORS, session settings, password policies, MFA
 - **Webhooks/Actions**: Trigger webhooks on identity flow events
 - **Email Templates**: Customize verification, recovery, and login code emails
 - **OAuth2 Clients**: Manage OAuth2/OIDC client applications and dynamic client registration (RFC 7591)
+- **JSON Web Key Sets**: Manage JWK sets for token signing and verification
 - **JWT Grant Trust**: Trust external identity providers for RFC 7523 JWT Bearer grants
 - **Event Streams**: Publish Ory events to external systems like AWS SNS (Enterprise)
 - **Organizations**: Multi-tenancy support for B2B applications
 - **Permissions (Keto)**: Manage relationship tuples for fine-grained authorization
 - **API Key Management**: Manage project API keys
+
+### Data Sources
+
+- **Project** / **Workspace** — Look up existing projects and workspaces
+- **Identity** — Query user identities
+- **Identity Schemas** — List available identity schemas
+- **OAuth2 Client** — Look up OAuth2 client details
+- **Organization** — Look up organization details
 
 ## Requirements
 
@@ -53,7 +66,7 @@ terraform {
 ```bash
 git clone https://github.com/ory/terraform-provider-ory.git
 cd terraform-provider-ory
-go build -o terraform-provider-ory
+make build
 ```
 
 Then configure Terraform to use the local provider:
@@ -123,7 +136,7 @@ resource "ory_social_provider" "google" {
   provider_id   = "google"
   client_id     = var.google_client_id
   client_secret = var.google_client_secret
-  scopes        = ["email", "profile"]
+  scope         = ["email", "profile"]
 }
 
 # Create a webhook for new registrations
@@ -251,49 +264,70 @@ resource "ory_email_template" "recovery" {
 
 ## Development
 
-### Building
+### Setup
 
 ```bash
-go build -o terraform-provider-ory
+git clone https://github.com/ory/terraform-provider-ory.git
+cd terraform-provider-ory
+
+# Install dependencies and development tools (linters, doc generators, security scanners)
+make deps
+
+# Set up git hooks (conventional commit validation, pre-push checks)
+git config core.hooksPath .githooks
+
+# Build the provider
+make build
+
+# Install to local Terraform plugins directory
+make install
 ```
 
 ### Testing
 
-Acceptance tests are **self-contained** - they automatically create a temporary Ory project, run tests against it, and clean up when done.
+#### Unit Tests
 
-#### Required Environment Variables
+Unit tests run without any credentials:
 
 ```bash
-# Required for acceptance tests
-export ORY_WORKSPACE_API_KEY="ory_wak_..."  # Workspace API key
-export ORY_WORKSPACE_ID="..."                # Workspace ID
+make test           # Run all unit tests
+make test-short     # Run unit tests in short mode
 ```
 
-#### Running Tests
+#### Acceptance Tests
+
+Acceptance tests run against a **pre-created Ory project**. Copy `.env.example` to `.env` and fill in your credentials:
 
 ```bash
-# Unit tests only (no credentials needed)
-make test
+cp .env.example .env
+```
 
-# All acceptance tests
-make test-acc
+At minimum you need:
 
-# Acceptance tests with debug logging
-make test-acc-verbose
+```bash
+# Workspace credentials
+ORY_WORKSPACE_API_KEY=ory_wak_...
+ORY_WORKSPACE_ID=...
 
-# Only Keto/relationship tests
-make test-acc-keto
+# Pre-created test project
+ORY_PROJECT_ID=...
+ORY_PROJECT_SLUG=...
+ORY_PROJECT_API_KEY=ory_pat_...
+ORY_PROJECT_ENVIRONMENT=prod
+```
 
-# All tests with all features enabled
-make test-acc-all
+The `.env` file is gitignored and automatically loaded by `make` targets.
+
+```bash
+make test-acc              # Standard acceptance tests
+make test-acc-verbose      # With debug logging
+make test-acc-keto         # Run only Keto/relationship tests
+make test-acc-all          # All tests with all features enabled
 ```
 
 Or run directly with `go test`:
 
 ```bash
-# Unit tests
-go test -short ./...
-
 # Acceptance tests
 TF_ACC=1 go test -tags acceptance -p 1 -v -timeout 30m ./...
 
@@ -334,6 +368,25 @@ Some tests require additional feature flags or specific Ory plan features:
 
 \*Organizations require B2B features to be enabled on your plan.
 
+### Duration Format
+
+Time-based attributes (e.g., `session_lifespan`, `oauth2_access_token_lifespan`) use Go duration strings. The Ory API normalizes durations on write, so use the full normalized format to avoid perpetual diffs in `terraform plan`:
+
+| Write | API Returns | Use in Config |
+|-------|-------------|---------------|
+| `1h` | `1h0m0s` | `1h0m0s` |
+| `30m` | `30m0s` | `30m0s` |
+| `720h` | `720h0m0s` | `720h0m0s` |
+
+### Known Limitations
+
+- `ory_identity_schema`: Content is immutable; changes require resource replacement. Delete not supported by Ory API (resource removed from state only).
+- `ory_workspace`: Delete not supported by Ory API.
+- `ory_oauth2_client`: `client_secret` only returned on initial creation.
+- `ory_email_template`: Delete resets to Ory defaults rather than removing.
+- `ory_relationship`: Requires Ory Permissions (Keto) to be enabled on the project.
+- `ory_project_config`: Cannot be deleted — it always exists for a project. Only attributes present in your Terraform configuration are tracked for drift.
+
 ### Documentation
 
 Documentation is auto-generated from **templates** using [tfplugindocs](https://github.com/hashicorp/terraform-plugin-docs). Do NOT edit files in `docs/` directly — they are overwritten on every build.
@@ -352,30 +405,64 @@ Templates use Go template syntax with these variables:
 ```
 templates/
 ├── index.md.tmpl                                  # Provider-level docs
-├── resources/
-│   ├── oauth2_client.md.tmpl                      # Each resource has a template
-│   ├── oidc_dynamic_client.md.tmpl
+├── resources/                                     # 16 resource templates
+│   ├── action.md.tmpl
+│   ├── email_template.md.tmpl
 │   ├── event_stream.md.tmpl
+│   ├── identity.md.tmpl
+│   ├── identity_schema.md.tmpl
+│   ├── json_web_key_set.md.tmpl
+│   ├── oauth2_client.md.tmpl
+│   ├── oidc_dynamic_client.md.tmpl
+│   ├── organization.md.tmpl
+│   ├── project.md.tmpl
+│   ├── project_api_key.md.tmpl
+│   ├── project_config.md.tmpl
+│   ├── relationship.md.tmpl
+│   ├── social_provider.md.tmpl
 │   ├── trusted_oauth2_jwt_grant_issuer.md.tmpl
-│   └── ...
-└── data-sources/
-    ├── project.md.tmpl                            # Data source templates
-    ├── workspace.md.tmpl
+│   └── workspace.md.tmpl
+└── data-sources/                                  # 6 data source templates
     ├── identity.md.tmpl
+    ├── identity_schemas.md.tmpl
     ├── oauth2_client.md.tmpl
     ├── organization.md.tmpl
-    ├── identity_schemas.md.tmpl
-    └── ...
+    ├── project.md.tmpl
+    └── workspace.md.tmpl
+```
+
+### Pre-Commit Checklist
+
+Run these checks locally before committing. They mirror what CI runs on every push.
+
+```bash
+# Minimum before committing:
+make build && make format && make test
+
+# Full CI-equivalent check:
+make build && make format && make test && make sec && make licenses
+```
+
+`make format` runs several tools in sequence: `go fmt`, `gofmt -s`, `terraform fmt`, `go mod tidy`, `tfplugindocs generate`, and `golangci-lint --fix`.
+
+### Security Scanning
+
+```bash
+make sec            # Run all security scans
+make sec-vuln       # govulncheck — known Go vulnerabilities
+make sec-gosec      # gosec — Go security patterns
+make sec-gitleaks   # gitleaks — hardcoded secrets
+make sec-trivy      # trivy — vulnerability and misconfig scanning
 ```
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on development setup, testing, writing acceptance tests, and the contribution checklist.
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
+3. Run checks: `make build && make format && make test`
+4. Commit using [Conventional Commits](https://www.conventionalcommits.org/) format
 5. Open a Pull Request
 
 ## Related Links
