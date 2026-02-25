@@ -41,6 +41,34 @@ func TestAccProjectConfigResource_basic(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_hydraConfig(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/hydra_config.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_access_token_lifespan", "1h0m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_refresh_token_lifespan", "720h0m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_auth_code_lifespan", "30m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_id_token_lifespan", "1h0m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_login_consent_request_lifespan", "30m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_access_token_strategy", "jwt"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_jwt_scope_claim", "list"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_scope_strategy", "wildcard"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_pkce_enforced", "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_pkce_enforced_for_public_clients", "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_session_encrypt_at_rest", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_allowed_top_level_claims.#", "2"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_mirror_top_level_claims", "false"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_mfaPolicy(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
