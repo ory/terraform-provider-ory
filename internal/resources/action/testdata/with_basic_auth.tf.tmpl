@@ -1,0 +1,11 @@
+resource "ory_action" "test" {
+  flow        = "registration"
+  timing      = "after"
+  auth_method = "password"
+  url         = "[[ .WebhookURL ]]/basic-auth-webhook"
+  method      = "POST"
+
+  webhook_auth_type                = "basic_auth"
+  webhook_auth_basic_auth_user     = "webhook-user"
+  webhook_auth_basic_auth_password = "webhook-password"
+}
