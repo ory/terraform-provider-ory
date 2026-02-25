@@ -143,6 +143,17 @@ variable "smtp_connection_uri" {
   description = "SMTP connection URI (e.g., smtps://user:pass@smtp.example.com:465)"
 }
 
+# Native-only flows: explicitly clear browser return URLs
+# Useful when the project only supports native (mobile/CLI) login flows
+# and should not have any browser redirect URLs configured.
+resource "ory_project_config" "native_only" {
+  default_return_url  = ""
+  allowed_return_urls = []
+
+  enable_password = true
+  enable_code     = true
+}
+
 # Session tokenizer templates (JWT tokenization for /sessions/whoami)
 resource "ory_project_config" "with_tokenizer" {
   session_tokenizer_templates = {
@@ -257,6 +268,19 @@ This resource supports CORS configuration for both public and admin endpoints:
 
 - **Public CORS** (`cors_enabled`, `cors_origins`) — Controls CORS for public-facing endpoints (login, registration, etc.)
 - **Admin CORS** (`cors_admin_enabled`, `cors_admin_origins`) — Controls CORS for admin API endpoints
+
+## Clearing Return URLs
+
+To explicitly clear `default_return_url` and `allowed_return_urls` (e.g., for native-only flows with no browser redirects), set them to empty values:
+
+```hcl
+resource "ory_project_config" "native_only" {
+  default_return_url  = ""
+  allowed_return_urls = []
+}
+```
+
+Omitting these attributes entirely (or setting them to `null`) leaves the existing API values unchanged.
 
 ## Notes
 
