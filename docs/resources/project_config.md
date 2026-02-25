@@ -26,7 +26,7 @@ resource "ory_project_config" "basic" {
   cors_enabled        = true
   cors_origins        = ["https://app.example.com"]
   password_min_length = 10
-  session_lifespan    = "720h" # 30 days
+  session_lifespan    = "720h0m0s" # 30 days
 }
 
 # Full security configuration
@@ -40,7 +40,7 @@ resource "ory_project_config" "secure" {
   cors_admin_origins = ["https://admin.example.com"]
 
   # Sessions
-  session_lifespan          = "168h" # 7 days
+  session_lifespan          = "168h0m0s" # 7 days
   session_cookie_same_site  = "Strict"
   session_cookie_persistent = true
 
@@ -87,11 +87,11 @@ resource "ory_project_config" "secure" {
   account_experience_default_locale = "en"
 
   # OAuth2 Token Lifespans
-  oauth2_access_token_lifespan          = "1h"
-  oauth2_refresh_token_lifespan         = "720h"
-  oauth2_auth_code_lifespan             = "30m"
-  oauth2_id_token_lifespan              = "1h"
-  oauth2_login_consent_request_lifespan = "30m"
+  oauth2_access_token_lifespan          = "1h0m0s"
+  oauth2_refresh_token_lifespan         = "720h0m0s"
+  oauth2_auth_code_lifespan             = "30m0s"
+  oauth2_id_token_lifespan              = "1h0m0s"
+  oauth2_login_consent_request_lifespan = "30m0s"
 
   # OAuth2 Strategies
   oauth2_access_token_strategy = "jwt"
@@ -267,7 +267,7 @@ This resource supports CORS configuration for both public and admin endpoints:
 
 ## Coverage and Limitations
 
-This resource exposes **60+ attributes** across 11 configuration categories:
+This resource exposes **75+ attributes** across these configuration categories:
 
 | Category | Examples |
 |----------|---------|
@@ -328,7 +328,7 @@ Some Ory project settings are not yet available through this resource. For setti
 - `oauth2_consent_url` (String) OAuth2 consent endpoint URL.
 - `oauth2_error_url` (String) OAuth2 error endpoint URL.
 - `oauth2_id_token_lifespan` (String) OAuth2 ID token lifespan (e.g., '1h'). Requires Hydra service.
-- `oauth2_jwt_scope_claim` (String) How scopes are represented in JWT access tokens ('list' or 'string').
+- `oauth2_jwt_scope_claim` (String) How scopes are represented in JWT access tokens ('list', 'string', or 'both').
 - `oauth2_login_consent_request_lifespan` (String) OAuth2 login/consent request lifespan (e.g., '30m'). Requires Hydra service.
 - `oauth2_login_url` (String) OAuth2 login endpoint URL.
 - `oauth2_logout_url` (String) OAuth2 logout endpoint URL.

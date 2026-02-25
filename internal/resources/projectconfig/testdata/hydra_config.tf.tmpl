@@ -21,4 +21,10 @@ resource "ory_project_config" "test" {
   # Claims
   oauth2_allowed_top_level_claims = ["amr", "acr"]
   oauth2_mirror_top_level_claims  = false
+
+  # OAuth2 flow URLs
+  oauth2_login_url   = "https://example.com/login"
+  oauth2_consent_url = "https://example.com/consent"
+  oauth2_logout_url  = "https://example.com/logout"
+  oauth2_error_url   = "https://example.com/error"
 }
