@@ -120,6 +120,17 @@ variable "smtp_connection_uri" {
   description = "SMTP connection URI (e.g., smtps://user:pass@smtp.example.com:465)"
 }
 
+# Native-only flows: explicitly clear browser return URLs
+# Useful when the project only supports native (mobile/CLI) login flows
+# and should not have any browser redirect URLs configured.
+resource "ory_project_config" "native_only" {
+  default_return_url  = ""
+  allowed_return_urls = []
+
+  enable_password = true
+  enable_code     = true
+}
+
 # Session tokenizer templates (JWT tokenization for /sessions/whoami)
 resource "ory_project_config" "with_tokenizer" {
   session_tokenizer_templates = {
