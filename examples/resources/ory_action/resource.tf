@@ -57,3 +57,30 @@ resource "ory_action" "enrich_identity" {
     }
   JSONNET
 }
+
+# Webhook with basic auth
+resource "ory_action" "with_basic_auth" {
+  flow        = "registration"
+  timing      = "after"
+  auth_method = "password"
+  url         = "https://api.example.com/webhooks/secured"
+  method      = "POST"
+
+  webhook_auth_type                = "basic_auth"
+  webhook_auth_basic_auth_user     = var.webhook_user
+  webhook_auth_basic_auth_password = var.webhook_password
+}
+
+# Webhook with API key auth (sent as header)
+resource "ory_action" "with_api_key" {
+  flow        = "login"
+  timing      = "after"
+  auth_method = "password"
+  url         = "https://api.example.com/webhooks/login"
+  method      = "POST"
+
+  webhook_auth_type          = "api_key"
+  webhook_auth_api_key_name  = "X-API-KEY"
+  webhook_auth_api_key_value = var.api_key
+  webhook_auth_api_key_in    = "header"
+}
