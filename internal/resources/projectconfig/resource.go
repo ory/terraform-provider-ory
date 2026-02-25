@@ -61,8 +61,23 @@ type ProjectConfigResourceModel struct {
 	SessionCookiePersistent types.Bool   `tfsdk:"session_cookie_persistent"`
 
 	// OAuth2/Hydra
-	OAuth2AccessTokenLifespan  types.String `tfsdk:"oauth2_access_token_lifespan"`
-	OAuth2RefreshTokenLifespan types.String `tfsdk:"oauth2_refresh_token_lifespan"`
+	OAuth2AccessTokenLifespan          types.String `tfsdk:"oauth2_access_token_lifespan"`
+	OAuth2RefreshTokenLifespan         types.String `tfsdk:"oauth2_refresh_token_lifespan"`
+	OAuth2AuthCodeLifespan             types.String `tfsdk:"oauth2_auth_code_lifespan"`
+	OAuth2IDTokenLifespan              types.String `tfsdk:"oauth2_id_token_lifespan"`
+	OAuth2LoginConsentRequestLifespan  types.String `tfsdk:"oauth2_login_consent_request_lifespan"`
+	OAuth2AllowedTopLevelClaims        types.List   `tfsdk:"oauth2_allowed_top_level_claims"`
+	OAuth2MirrorTopLevelClaims         types.Bool   `tfsdk:"oauth2_mirror_top_level_claims"`
+	OAuth2PKCEEnforced                 types.Bool   `tfsdk:"oauth2_pkce_enforced"`
+	OAuth2PKCEEnforcedForPublicClients types.Bool   `tfsdk:"oauth2_pkce_enforced_for_public_clients"`
+	OAuth2SessionEncryptAtRest         types.Bool   `tfsdk:"oauth2_session_encrypt_at_rest"`
+	OAuth2AccessTokenStrategy          types.String `tfsdk:"oauth2_access_token_strategy"`
+	OAuth2JWTScopeClaim                types.String `tfsdk:"oauth2_jwt_scope_claim"`
+	OAuth2ScopeStrategy                types.String `tfsdk:"oauth2_scope_strategy"`
+	OAuth2ConsentURL                   types.String `tfsdk:"oauth2_consent_url"`
+	OAuth2LoginURL                     types.String `tfsdk:"oauth2_login_url"`
+	OAuth2LogoutURL                    types.String `tfsdk:"oauth2_logout_url"`
+	OAuth2ErrorURL                     types.String `tfsdk:"oauth2_error_url"`
 
 	// URLs
 	DefaultReturnURL  types.String `tfsdk:"default_return_url"`
@@ -330,6 +345,70 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 			},
 			"oauth2_refresh_token_lifespan": schema.StringAttribute{
 				Description: "OAuth2 refresh token lifespan (e.g., '720h' for 30 days). Requires Hydra service.",
+				Optional:    true,
+			},
+			"oauth2_auth_code_lifespan": schema.StringAttribute{
+				Description: "OAuth2 authorization code lifespan (e.g., '30m'). Requires Hydra service.",
+				Optional:    true,
+			},
+			"oauth2_id_token_lifespan": schema.StringAttribute{
+				Description: "OAuth2 ID token lifespan (e.g., '1h'). Requires Hydra service.",
+				Optional:    true,
+			},
+			"oauth2_login_consent_request_lifespan": schema.StringAttribute{
+				Description: "OAuth2 login/consent request lifespan (e.g., '30m'). Requires Hydra service.",
+				Optional:    true,
+			},
+			"oauth2_allowed_top_level_claims": schema.ListAttribute{
+				Description: "List of allowed top-level claims in OAuth2 access tokens (e.g., 'amr', 'acr').",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"oauth2_mirror_top_level_claims": schema.BoolAttribute{
+				Description: "Mirror top-level claims in OAuth2 ID tokens.",
+				Optional:    true,
+			},
+			"oauth2_pkce_enforced": schema.BoolAttribute{
+				Description: "Enforce PKCE for all OAuth2 clients.",
+				Optional:    true,
+			},
+			"oauth2_pkce_enforced_for_public_clients": schema.BoolAttribute{
+				Description: "Enforce PKCE for public OAuth2 clients only.",
+				Optional:    true,
+			},
+			"oauth2_session_encrypt_at_rest": schema.BoolAttribute{
+				Description: "Encrypt OAuth2 sessions at rest.",
+				Optional:    true,
+			},
+			"oauth2_access_token_strategy": schema.StringAttribute{
+				Description: "OAuth2 access token strategy ('jwt' or 'opaque').",
+				Optional:    true,
+				Validators:  []validator.String{stringvalidator.OneOf("jwt", "opaque")},
+			},
+			"oauth2_jwt_scope_claim": schema.StringAttribute{
+				Description: "How scopes are represented in JWT access tokens ('list' or 'string').",
+				Optional:    true,
+				Validators:  []validator.String{stringvalidator.OneOf("list", "string", "both")},
+			},
+			"oauth2_scope_strategy": schema.StringAttribute{
+				Description: "OAuth2 scope matching strategy ('exact', 'wildcard').",
+				Optional:    true,
+				Validators:  []validator.String{stringvalidator.OneOf("exact", "wildcard", "DEPRECATED_HIERARCHICAL_SCOPE_STRATEGY")},
+			},
+			"oauth2_consent_url": schema.StringAttribute{
+				Description: "OAuth2 consent endpoint URL.",
+				Optional:    true,
+			},
+			"oauth2_login_url": schema.StringAttribute{
+				Description: "OAuth2 login endpoint URL.",
+				Optional:    true,
+			},
+			"oauth2_logout_url": schema.StringAttribute{
+				Description: "OAuth2 logout endpoint URL.",
+				Optional:    true,
+			},
+			"oauth2_error_url": schema.StringAttribute{
+				Description: "OAuth2 error endpoint URL.",
 				Optional:    true,
 			},
 
@@ -770,6 +849,70 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 			Path:  "/services/oauth2/config/ttl/refresh_token",
 			Value: plan.OAuth2RefreshTokenLifespan.ValueString(),
 		})
+	}
+
+	// OAuth2/Hydra additional TTLs
+	oauth2TTLMappings := map[*types.String]string{
+		&plan.OAuth2AuthCodeLifespan:            "/services/oauth2/config/ttl/auth_code",
+		&plan.OAuth2IDTokenLifespan:             "/services/oauth2/config/ttl/id_token",
+		&plan.OAuth2LoginConsentRequestLifespan: "/services/oauth2/config/ttl/login_consent_request",
+	}
+	for field, path := range oauth2TTLMappings {
+		if !field.IsNull() && !field.IsUnknown() {
+			patches = append(patches, ory.JsonPatch{
+				Op:    "replace",
+				Path:  path,
+				Value: field.ValueString(),
+			})
+		}
+	}
+
+	// OAuth2/Hydra claims
+	if !plan.OAuth2AllowedTopLevelClaims.IsNull() && !plan.OAuth2AllowedTopLevelClaims.IsUnknown() {
+		var claims []string
+		plan.OAuth2AllowedTopLevelClaims.ElementsAs(ctx, &claims, false)
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/oauth2/config/oauth2/allowed_top_level_claims",
+			Value: claims,
+		})
+	}
+
+	// OAuth2/Hydra boolean settings
+	oauth2BoolMappings := map[*types.Bool]string{
+		&plan.OAuth2MirrorTopLevelClaims:         "/services/oauth2/config/oauth2/mirror_top_level_claims",
+		&plan.OAuth2PKCEEnforced:                 "/services/oauth2/config/oauth2/pkce/enforced",
+		&plan.OAuth2PKCEEnforcedForPublicClients: "/services/oauth2/config/oauth2/pkce/enforced_for_public_clients",
+		&plan.OAuth2SessionEncryptAtRest:         "/services/oauth2/config/oauth2/session/encrypt_at_rest",
+	}
+	for field, path := range oauth2BoolMappings {
+		if !field.IsNull() && !field.IsUnknown() {
+			patches = append(patches, ory.JsonPatch{
+				Op:    "replace",
+				Path:  path,
+				Value: field.ValueBool(),
+			})
+		}
+	}
+
+	// OAuth2/Hydra strategies and URLs
+	oauth2StringMappings := map[*types.String]string{
+		&plan.OAuth2AccessTokenStrategy: "/services/oauth2/config/strategies/access_token",
+		&plan.OAuth2JWTScopeClaim:       "/services/oauth2/config/strategies/jwt/scope_claim",
+		&plan.OAuth2ScopeStrategy:       "/services/oauth2/config/strategies/scope",
+		&plan.OAuth2ConsentURL:          "/services/oauth2/config/urls/consent",
+		&plan.OAuth2LoginURL:            "/services/oauth2/config/urls/login",
+		&plan.OAuth2LogoutURL:           "/services/oauth2/config/urls/logout",
+		&plan.OAuth2ErrorURL:            "/services/oauth2/config/urls/error",
+	}
+	for field, path := range oauth2StringMappings {
+		if !field.IsNull() && !field.IsUnknown() {
+			patches = append(patches, ory.JsonPatch{
+				Op:    "replace",
+				Path:  path,
+				Value: field.ValueString(),
+			})
+		}
 	}
 
 	// URLs
@@ -1574,6 +1717,71 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 		if !state.OAuth2RefreshTokenLifespan.IsNull() {
 			if v, ok := getNestedString(oauth2Config, "ttl", "refresh_token"); ok {
 				state.OAuth2RefreshTokenLifespan = types.StringValue(v)
+			}
+		}
+
+		// Additional TTLs
+		oauth2TTLReadMappings := map[*types.String][]string{
+			&state.OAuth2AuthCodeLifespan:            {"ttl", "auth_code"},
+			&state.OAuth2IDTokenLifespan:             {"ttl", "id_token"},
+			&state.OAuth2LoginConsentRequestLifespan: {"ttl", "login_consent_request"},
+		}
+		for field, keys := range oauth2TTLReadMappings {
+			if !field.IsNull() {
+				if v, ok := getNestedString(oauth2Config, keys...); ok {
+					*field = types.StringValue(v)
+				}
+			}
+		}
+
+		// Claims
+		if !state.OAuth2AllowedTopLevelClaims.IsNull() {
+			if v := getNestedValue(oauth2Config, "oauth2", "allowed_top_level_claims"); v != nil {
+				if claims, ok := v.([]interface{}); ok && len(claims) > 0 {
+					strs := make([]string, 0, len(claims))
+					for _, c := range claims {
+						if s, ok := c.(string); ok {
+							strs = append(strs, s)
+						}
+					}
+					claimsList, diags := types.ListValueFrom(ctx, types.StringType, strs)
+					if !diags.HasError() {
+						state.OAuth2AllowedTopLevelClaims = claimsList
+					}
+				}
+			}
+		}
+
+		// Boolean settings
+		oauth2BoolReadMappings := map[*types.Bool][]string{
+			&state.OAuth2MirrorTopLevelClaims:         {"oauth2", "mirror_top_level_claims"},
+			&state.OAuth2PKCEEnforced:                 {"oauth2", "pkce", "enforced"},
+			&state.OAuth2PKCEEnforcedForPublicClients: {"oauth2", "pkce", "enforced_for_public_clients"},
+			&state.OAuth2SessionEncryptAtRest:         {"oauth2", "session", "encrypt_at_rest"},
+		}
+		for field, keys := range oauth2BoolReadMappings {
+			if !field.IsNull() {
+				if v, ok := getNestedBool(oauth2Config, keys...); ok {
+					*field = types.BoolValue(v)
+				}
+			}
+		}
+
+		// Strategies and URLs
+		oauth2StringReadMappings := map[*types.String][]string{
+			&state.OAuth2AccessTokenStrategy: {"strategies", "access_token"},
+			&state.OAuth2JWTScopeClaim:       {"strategies", "jwt", "scope_claim"},
+			&state.OAuth2ScopeStrategy:       {"strategies", "scope"},
+			&state.OAuth2ConsentURL:          {"urls", "consent"},
+			&state.OAuth2LoginURL:            {"urls", "login"},
+			&state.OAuth2LogoutURL:           {"urls", "logout"},
+			&state.OAuth2ErrorURL:            {"urls", "error"},
+		}
+		for field, keys := range oauth2StringReadMappings {
+			if !field.IsNull() {
+				if v, ok := getNestedString(oauth2Config, keys...); ok {
+					*field = types.StringValue(v)
+				}
 			}
 		}
 	}
