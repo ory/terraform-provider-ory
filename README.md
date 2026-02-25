@@ -274,7 +274,7 @@ cd terraform-provider-ory
 make tools
 
 # Set up git hooks (conventional commit validation, pre-push checks)
-make hooks
+git config core.hooksPath .githooks
 
 # Build the provider
 make build
