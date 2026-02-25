@@ -53,6 +53,7 @@ resource "ory_project_config" "secure" {
   # Authentication Methods
   enable_password = true
   enable_code     = true
+  enable_oidc     = true # Required for social providers (Google, GitHub, etc.)
   enable_passkey  = true
 
   # Flow Controls
@@ -281,7 +282,7 @@ This resource exposes **60+ attributes** across 11 configuration categories:
 | Password settings | min length, identifier similarity, max breaches, haveibeenpwned |
 | Session settings | cookie same site, lifespan, whoami-required AAL |
 | CORS | public and admin origins, enabled/disabled |
-| Authentication | passwordless, code, TOTP, passkey, WebAuthn, lookup secrets |
+| Authentication | passwordless, code, OIDC (social sign-in), TOTP, passkey, WebAuthn, lookup secrets |
 | Recovery / Verification | enabled, methods, notify unknown recipients |
 | Account enumeration | mitigation enabled |
 | Keto | namespace configuration |
@@ -315,6 +316,7 @@ Some Ory project settings are not yet available through this resource. For setti
 - `default_return_url` (String) Default URL to redirect after flows.
 - `enable_code` (Boolean) Enable code-based authentication.
 - `enable_lookup_secret` (Boolean) Enable backup/recovery codes.
+- `enable_oidc` (Boolean) Enable OIDC (OpenID Connect) social sign-in. Must be enabled for social providers (e.g. Google, GitHub) to work.
 - `enable_passkey` (Boolean) Enable Passkey authentication.
 - `enable_password` (Boolean) Enable password authentication.
 - `enable_recovery` (Boolean) Enable password recovery flow.
