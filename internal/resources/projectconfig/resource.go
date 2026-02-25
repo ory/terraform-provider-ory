@@ -77,6 +77,7 @@ type ProjectConfigResourceModel struct {
 	// Auth methods
 	EnablePassword     types.Bool `tfsdk:"enable_password"`
 	EnableCode         types.Bool `tfsdk:"enable_code"`
+	EnableOIDC         types.Bool `tfsdk:"enable_oidc"`
 	EnableTOTP         types.Bool `tfsdk:"enable_totp"`
 	EnableWebAuthn     types.Bool `tfsdk:"enable_webauthn"`
 	EnablePasskey      types.Bool `tfsdk:"enable_passkey"`
@@ -374,6 +375,10 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 			},
 			"enable_code": schema.BoolAttribute{
 				Description: "Enable code-based authentication.",
+				Optional:    true,
+			},
+			"enable_oidc": schema.BoolAttribute{
+				Description: "Enable OIDC (OpenID Connect) social sign-in. Must be enabled for social providers (e.g. Google, GitHub) to work.",
 				Optional:    true,
 			},
 			"enable_totp": schema.BoolAttribute{
@@ -821,6 +826,7 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 	methodMappings := map[*types.Bool]string{
 		&plan.EnablePassword:     "/services/identity/config/selfservice/methods/password/enabled",
 		&plan.EnableCode:         "/services/identity/config/selfservice/methods/code/enabled",
+		&plan.EnableOIDC:         "/services/identity/config/selfservice/methods/oidc/enabled",
 		&plan.EnableTOTP:         "/services/identity/config/selfservice/methods/totp/enabled",
 		&plan.EnableWebAuthn:     "/services/identity/config/selfservice/methods/webauthn/enabled",
 		&plan.EnablePasskey:      "/services/identity/config/selfservice/methods/passkey/enabled",
@@ -1390,6 +1396,7 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 		methodReadMappings := map[*types.Bool][]string{
 			&state.EnablePassword:     {"selfservice", "methods", "password", "enabled"},
 			&state.EnableCode:         {"selfservice", "methods", "code", "enabled"},
+			&state.EnableOIDC:         {"selfservice", "methods", "oidc", "enabled"},
 			&state.EnableTOTP:         {"selfservice", "methods", "totp", "enabled"},
 			&state.EnableWebAuthn:     {"selfservice", "methods", "webauthn", "enabled"},
 			&state.EnablePasskey:      {"selfservice", "methods", "passkey", "enabled"},

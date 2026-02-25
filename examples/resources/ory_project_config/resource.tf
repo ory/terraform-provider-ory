@@ -30,6 +30,7 @@ resource "ory_project_config" "secure" {
   # Authentication Methods
   enable_password = true
   enable_code     = true
+  enable_oidc     = true # Required for social providers (Google, GitHub, etc.)
   enable_passkey  = true
 
   # Flow Controls

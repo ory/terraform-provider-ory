@@ -75,6 +75,33 @@ resource "ory_action" "enrich_identity" {
     }
   JSONNET
 }
+
+# Webhook with basic auth
+resource "ory_action" "with_basic_auth" {
+  flow        = "registration"
+  timing      = "after"
+  auth_method = "password"
+  url         = "https://api.example.com/webhooks/secured"
+  method      = "POST"
+
+  webhook_auth_type                = "basic_auth"
+  webhook_auth_basic_auth_user     = var.webhook_user
+  webhook_auth_basic_auth_password = var.webhook_password
+}
+
+# Webhook with API key auth (sent as header)
+resource "ory_action" "with_api_key" {
+  flow        = "login"
+  timing      = "after"
+  auth_method = "password"
+  url         = "https://api.example.com/webhooks/login"
+  method      = "POST"
+
+  webhook_auth_type          = "api_key"
+  webhook_auth_api_key_name  = "X-API-KEY"
+  webhook_auth_api_key_value = var.api_key
+  webhook_auth_api_key_in    = "header"
+}
 ```
 
 ## Authentication Methods
@@ -92,6 +119,52 @@ The `auth_method` attribute specifies which authentication method triggers the w
 | `lookup_secret` | Recovery/backup codes |
 
 ~> **Note:** `auth_method` is only used for `timing = "after"` webhooks. For `timing = "before"` hooks, the webhook runs before any authentication method is invoked.
+
+## Webhook Authentication
+
+Webhooks can be configured with authentication to secure the endpoint. Two types are supported:
+
+### Basic Auth
+
+```hcl
+resource "ory_action" "secured_webhook" {
+  flow        = "registration"
+  timing      = "after"
+  auth_method = "password"
+  url         = "https://api.example.com/webhooks/welcome"
+  method      = "POST"
+
+  webhook_auth_type                = "basic_auth"
+  webhook_auth_basic_auth_user     = var.webhook_user
+  webhook_auth_basic_auth_password = var.webhook_password
+}
+```
+
+### API Key
+
+```hcl
+resource "ory_action" "api_key_webhook" {
+  flow        = "login"
+  timing      = "after"
+  auth_method = "password"
+  url         = "https://api.example.com/webhooks/login"
+  method      = "POST"
+
+  webhook_auth_type          = "api_key"
+  webhook_auth_api_key_name  = "X-API-KEY"
+  webhook_auth_api_key_value = var.api_key
+  webhook_auth_api_key_in    = "header"
+}
+```
+
+| Attribute | Description |
+|-----------|-------------|
+| `webhook_auth_type` | Authentication type: `basic_auth` or `api_key` |
+| `webhook_auth_basic_auth_user` | Username for basic auth |
+| `webhook_auth_basic_auth_password` | Password for basic auth (sensitive) |
+| `webhook_auth_api_key_name` | Header or cookie name for the API key |
+| `webhook_auth_api_key_value` | The API key value (sensitive) |
+| `webhook_auth_api_key_in` | Where to send the API key: `header` or `cookie` |
 
 ## HTTP Method
 
@@ -172,6 +245,12 @@ Common issues:
 - `project_id` (String) Project ID. If not set, uses provider's project_id.
 - `response_ignore` (Boolean) Run webhook async without waiting (default: false).
 - `response_parse` (Boolean) Parse response to modify identity (default: false).
+- `webhook_auth_api_key_in` (String) Where to send the API key: 'header' or 'cookie'.
+- `webhook_auth_api_key_name` (String) Header or cookie name for API key webhook authentication.
+- `webhook_auth_api_key_value` (String, Sensitive) API key value for API key webhook authentication.
+- `webhook_auth_basic_auth_password` (String, Sensitive) Password for basic auth webhook authentication.
+- `webhook_auth_basic_auth_user` (String) Username for basic auth webhook authentication.
+- `webhook_auth_type` (String) Webhook authentication type: 'basic_auth' or 'api_key'.
 
 ### Read-Only
 
