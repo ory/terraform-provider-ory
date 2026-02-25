@@ -386,7 +386,7 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 				Validators:  []validator.String{stringvalidator.OneOf("jwt", "opaque")},
 			},
 			"oauth2_jwt_scope_claim": schema.StringAttribute{
-				Description: "How scopes are represented in JWT access tokens ('list' or 'string').",
+				Description: "How scopes are represented in JWT access tokens ('list', 'string', or 'both').",
 				Optional:    true,
 				Validators:  []validator.String{stringvalidator.OneOf("list", "string", "both")},
 			},
