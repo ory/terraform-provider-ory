@@ -26,7 +26,7 @@ resource "ory_project_config" "basic" {
   cors_enabled        = true
   cors_origins        = ["https://app.example.com"]
   password_min_length = 10
-  session_lifespan    = "720h" # 30 days
+  session_lifespan    = "720h0m0s" # 30 days
 }
 
 # Full security configuration
@@ -40,7 +40,7 @@ resource "ory_project_config" "secure" {
   cors_admin_origins = ["https://admin.example.com"]
 
   # Sessions
-  session_lifespan          = "168h" # 7 days
+  session_lifespan          = "168h0m0s" # 7 days
   session_cookie_same_site  = "Strict"
   session_cookie_persistent = true
 
@@ -87,8 +87,24 @@ resource "ory_project_config" "secure" {
   account_experience_default_locale = "en"
 
   # OAuth2 Token Lifespans
-  oauth2_access_token_lifespan  = "1h"
-  oauth2_refresh_token_lifespan = "720h"
+  oauth2_access_token_lifespan          = "1h0m0s"
+  oauth2_refresh_token_lifespan         = "720h0m0s"
+  oauth2_auth_code_lifespan             = "30m0s"
+  oauth2_id_token_lifespan              = "1h0m0s"
+  oauth2_login_consent_request_lifespan = "30m0s"
+
+  # OAuth2 Strategies
+  oauth2_access_token_strategy = "jwt"
+  oauth2_jwt_scope_claim       = "list"
+  oauth2_scope_strategy        = "wildcard"
+
+  # OAuth2 PKCE
+  oauth2_pkce_enforced                    = false
+  oauth2_pkce_enforced_for_public_clients = true
+
+  # OAuth2 Claims
+  oauth2_allowed_top_level_claims = ["amr", "acr"]
+  oauth2_mirror_top_level_claims  = false
 
   # Keto Namespaces (for fine-grained authorization)
   keto_namespaces = ["documents", "folders", "groups"]
@@ -251,7 +267,7 @@ This resource supports CORS configuration for both public and admin endpoints:
 
 ## Coverage and Limitations
 
-This resource exposes **60+ attributes** across 11 configuration categories:
+This resource exposes **75+ attributes** across these configuration categories:
 
 | Category | Examples |
 |----------|---------|
@@ -259,6 +275,7 @@ This resource exposes **60+ attributes** across 11 configuration categories:
 | Session settings | cookie same site, lifespan, whoami-required AAL |
 | CORS | public and admin origins, enabled/disabled |
 | Authentication | passwordless, code, OIDC (social sign-in), TOTP, passkey, WebAuthn, lookup secrets |
+| OAuth2/Hydra | token lifespans, access token strategy, PKCE, claims, scope strategy, consent/login URLs |
 | Recovery / Verification | enabled, methods, notify unknown recipients |
 | Account enumeration | mitigation enabled |
 | Keto | namespace configuration |
@@ -305,7 +322,22 @@ Some Ory project settings are not yet available through this resource. For setti
 - `login_ui_url` (String) URL for the login UI.
 - `mfa_enforcement` (String) MFA enforcement level: 'none', 'optional', or 'required'.
 - `oauth2_access_token_lifespan` (String) OAuth2 access token lifespan (e.g., '1h', '30m'). Requires Hydra service.
+- `oauth2_access_token_strategy` (String) OAuth2 access token strategy ('jwt' or 'opaque').
+- `oauth2_allowed_top_level_claims` (List of String) List of allowed top-level claims in OAuth2 access tokens (e.g., 'amr', 'acr').
+- `oauth2_auth_code_lifespan` (String) OAuth2 authorization code lifespan (e.g., '30m'). Requires Hydra service.
+- `oauth2_consent_url` (String) OAuth2 consent endpoint URL.
+- `oauth2_error_url` (String) OAuth2 error endpoint URL.
+- `oauth2_id_token_lifespan` (String) OAuth2 ID token lifespan (e.g., '1h'). Requires Hydra service.
+- `oauth2_jwt_scope_claim` (String) How scopes are represented in JWT access tokens ('list', 'string', or 'both').
+- `oauth2_login_consent_request_lifespan` (String) OAuth2 login/consent request lifespan (e.g., '30m'). Requires Hydra service.
+- `oauth2_login_url` (String) OAuth2 login endpoint URL.
+- `oauth2_logout_url` (String) OAuth2 logout endpoint URL.
+- `oauth2_mirror_top_level_claims` (Boolean) Mirror top-level claims in OAuth2 ID tokens.
+- `oauth2_pkce_enforced` (Boolean) Enforce PKCE for all OAuth2 clients.
+- `oauth2_pkce_enforced_for_public_clients` (Boolean) Enforce PKCE for public OAuth2 clients only.
 - `oauth2_refresh_token_lifespan` (String) OAuth2 refresh token lifespan (e.g., '720h' for 30 days). Requires Hydra service.
+- `oauth2_scope_strategy` (String) OAuth2 scope matching strategy ('exact', 'wildcard').
+- `oauth2_session_encrypt_at_rest` (Boolean) Encrypt OAuth2 sessions at rest.
 - `password_check_haveibeenpwned` (Boolean) Check passwords against HaveIBeenPwned.
 - `password_identifier_similarity` (Boolean) Check password similarity to identifier.
 - `password_max_breaches` (Number) Maximum allowed breaches in HaveIBeenPwned.

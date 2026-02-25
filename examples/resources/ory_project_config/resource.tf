@@ -3,7 +3,7 @@ resource "ory_project_config" "basic" {
   cors_enabled        = true
   cors_origins        = ["https://app.example.com"]
   password_min_length = 10
-  session_lifespan    = "720h" # 30 days
+  session_lifespan    = "720h0m0s" # 30 days
 }
 
 # Full security configuration
@@ -17,7 +17,7 @@ resource "ory_project_config" "secure" {
   cors_admin_origins = ["https://admin.example.com"]
 
   # Sessions
-  session_lifespan          = "168h" # 7 days
+  session_lifespan          = "168h0m0s" # 7 days
   session_cookie_same_site  = "Strict"
   session_cookie_persistent = true
 
@@ -64,8 +64,24 @@ resource "ory_project_config" "secure" {
   account_experience_default_locale = "en"
 
   # OAuth2 Token Lifespans
-  oauth2_access_token_lifespan  = "1h"
-  oauth2_refresh_token_lifespan = "720h"
+  oauth2_access_token_lifespan          = "1h0m0s"
+  oauth2_refresh_token_lifespan         = "720h0m0s"
+  oauth2_auth_code_lifespan             = "30m0s"
+  oauth2_id_token_lifespan              = "1h0m0s"
+  oauth2_login_consent_request_lifespan = "30m0s"
+
+  # OAuth2 Strategies
+  oauth2_access_token_strategy = "jwt"
+  oauth2_jwt_scope_claim       = "list"
+  oauth2_scope_strategy        = "wildcard"
+
+  # OAuth2 PKCE
+  oauth2_pkce_enforced                    = false
+  oauth2_pkce_enforced_for_public_clients = true
+
+  # OAuth2 Claims
+  oauth2_allowed_top_level_claims = ["amr", "acr"]
+  oauth2_mirror_top_level_claims  = false
 
   # Keto Namespaces (for fine-grained authorization)
   keto_namespaces = ["documents", "folders", "groups"]
