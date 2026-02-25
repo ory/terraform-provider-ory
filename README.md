@@ -270,8 +270,8 @@ resource "ory_email_template" "recovery" {
 git clone https://github.com/ory/terraform-provider-ory.git
 cd terraform-provider-ory
 
-# Install development tools (linters, doc generators, security scanners)
-make tools
+# Install dependencies and development tools (linters, doc generators, security scanners)
+make deps
 
 # Set up git hooks (conventional commit validation, pre-push checks)
 git config core.hooksPath .githooks
