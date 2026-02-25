@@ -1,0 +1,12 @@
+resource "ory_action" "test" {
+  flow        = "registration"
+  timing      = "after"
+  auth_method = "password"
+  url         = "[[ .WebhookURL ]]/api-key-webhook"
+  method      = "POST"
+
+  webhook_auth_type          = "api_key"
+  webhook_auth_api_key_name  = "X-API-KEY"
+  webhook_auth_api_key_value = "test-api-key-value"
+  webhook_auth_api_key_in    = "header"
+}
