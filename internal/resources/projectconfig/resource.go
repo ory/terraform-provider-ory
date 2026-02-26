@@ -59,6 +59,8 @@ type ProjectConfigResourceModel struct {
 	SessionLifespan         types.String `tfsdk:"session_lifespan"`
 	SessionCookieSameSite   types.String `tfsdk:"session_cookie_same_site"`
 	SessionCookiePersistent types.Bool   `tfsdk:"session_cookie_persistent"`
+	SessionCookieDomain     types.String `tfsdk:"session_cookie_domain"`
+	SessionCookiePath       types.String `tfsdk:"session_cookie_path"`
 
 	// OAuth2/Hydra
 	OAuth2AccessTokenLifespan          types.String `tfsdk:"oauth2_access_token_lifespan"`
@@ -335,6 +337,14 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 			},
 			"session_cookie_persistent": schema.BoolAttribute{
 				Description: "Enable persistent session cookies (survive browser close).",
+				Optional:    true,
+			},
+			"session_cookie_domain": schema.StringAttribute{
+				Description: "Domain for session cookies. Useful for sharing sessions across subdomains (e.g., '.example.com').",
+				Optional:    true,
+			},
+			"session_cookie_path": schema.StringAttribute{
+				Description: "Path for session cookies (e.g., '/').",
 				Optional:    true,
 			},
 
@@ -832,6 +842,20 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 			Op:    "replace",
 			Path:  "/services/identity/config/session/cookie/persistent",
 			Value: plan.SessionCookiePersistent.ValueBool(),
+		})
+	}
+	if !plan.SessionCookieDomain.IsNull() && !plan.SessionCookieDomain.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/session/cookie/domain",
+			Value: plan.SessionCookieDomain.ValueString(),
+		})
+	}
+	if !plan.SessionCookiePath.IsNull() && !plan.SessionCookiePath.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/session/cookie/path",
+			Value: plan.SessionCookiePath.ValueString(),
 		})
 	}
 
@@ -1460,6 +1484,21 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 		if !state.SessionCookiePersistent.IsNull() {
 			if v, ok := getNestedBool(identityConfig, "session", "cookie", "persistent"); ok {
 				state.SessionCookiePersistent = types.BoolValue(v)
+			}
+		}
+		// The API returns the effective/computed cookie domain (e.g., the project's
+		// platform-assigned domain) rather than the user-configured override.
+		// We preserve the user's configured value and log when they diverge.
+		if !state.SessionCookieDomain.IsNull() {
+			if v, ok := getNestedString(identityConfig, "session", "cookie", "domain"); ok && v != state.SessionCookieDomain.ValueString() {
+				tflog.Debug(ctx, "API returned different session cookie domain than configured; preserving configured value",
+					map[string]interface{}{"api_value": v, "configured_value": state.SessionCookieDomain.ValueString()})
+			}
+		}
+		if !state.SessionCookiePath.IsNull() {
+			if v, ok := getNestedString(identityConfig, "session", "cookie", "path"); ok && v != state.SessionCookiePath.ValueString() {
+				tflog.Debug(ctx, "API returned different session cookie path than configured; preserving configured value",
+					map[string]interface{}{"api_value": v, "configured_value": state.SessionCookiePath.ValueString()})
 			}
 		}
 

@@ -90,6 +90,41 @@ func TestAccProjectConfigResource_mfaPolicy(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_sessionCookie(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with session cookie domain and path
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/session_cookie.tf.tmpl", map[string]string{
+					"Domain": ".example.com",
+					"Path":   "/",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_cookie_domain", ".example.com"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_cookie_path", "/"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_cookie_same_site", "Lax"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_cookie_persistent", "true"),
+				),
+			},
+			// Update domain and same_site
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/session_cookie_updated.tf.tmpl", map[string]string{
+					"Domain": ".updated-example.com",
+					"Path":   "/app",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_cookie_domain", ".updated-example.com"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_cookie_path", "/app"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_cookie_same_site", "Strict"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_oidc(t *testing.T) {
 	acctest.RequireSocialProviderTests(t)
 	resource.Test(t, resource.TestCase{
