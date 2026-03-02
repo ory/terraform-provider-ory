@@ -70,10 +70,14 @@ resource "ory_custom_domain" "auth" {
 
 ## Import
 
-Custom domains can be imported using the format ` + "`project_id/custom_domain_id`" + `:
+Custom domains can be imported using either format:
 
 ` + "```shell" + `
+# Import with explicit project ID
 terraform import ory_custom_domain.auth <project-id>/<custom-domain-id>
+
+# Import using provider-level project_id
+terraform import ory_custom_domain.auth <custom-domain-id>
 ` + "```" + `
 `
 
@@ -272,6 +276,13 @@ func (r *CustomDomainResource) Read(ctx context.Context, req resource.ReadReques
 	}
 
 	projectID := r.resolveProjectID(state.ProjectID)
+	if projectID == "" {
+		resp.Diagnostics.AddError(
+			"Missing Project ID",
+			"project_id must be set either in the resource or provider configuration.",
+		)
+		return
+	}
 
 	domain, err := r.client.GetCustomDomain(ctx, projectID, state.ID.ValueString())
 	if err != nil {
@@ -363,6 +374,13 @@ func (r *CustomDomainResource) Delete(ctx context.Context, req resource.DeleteRe
 	}
 
 	projectID := r.resolveProjectID(state.ProjectID)
+	if projectID == "" {
+		resp.Diagnostics.AddError(
+			"Missing Project ID",
+			"project_id must be set either in the resource or provider configuration.",
+		)
+		return
+	}
 
 	err := r.client.DeleteCustomDomain(ctx, projectID, state.ID.ValueString())
 	if err != nil {
@@ -404,17 +422,31 @@ func (r *CustomDomainResource) mapDomainToState(ctx context.Context, domain *ory
 	state.ID = types.StringValue(domain.GetId())
 	state.ProjectID = types.StringValue(projectID)
 	state.Hostname = types.StringValue(domain.GetHostname())
-	state.CookieDomain = types.StringValue(domain.GetCookieDomain())
 	state.CorsEnabled = types.BoolValue(domain.GetCorsEnabled())
-	state.CustomUIBaseURL = types.StringValue(domain.GetCustomUiBaseUrl())
 	state.VerificationStatus = types.StringValue(domain.GetVerificationStatus())
 	state.SSLStatus = types.StringValue(domain.GetSslStatus())
 
+	// Use null for empty optional fields to avoid "locking in" empty strings.
+	if v := domain.GetCookieDomain(); v != "" {
+		state.CookieDomain = types.StringValue(v)
+	} else {
+		state.CookieDomain = types.StringNull()
+	}
+	if v := domain.GetCustomUiBaseUrl(); v != "" {
+		state.CustomUIBaseURL = types.StringValue(v)
+	} else {
+		state.CustomUIBaseURL = types.StringNull()
+	}
+
 	if domain.HasCreatedAt() {
 		state.CreatedAt = types.StringValue(domain.GetCreatedAt().String())
+	} else {
+		state.CreatedAt = types.StringNull()
 	}
 	if domain.HasUpdatedAt() {
 		state.UpdatedAt = types.StringValue(domain.GetUpdatedAt().String())
+	} else {
+		state.UpdatedAt = types.StringNull()
 	}
 
 	// Map list fields
