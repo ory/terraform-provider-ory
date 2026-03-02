@@ -34,8 +34,11 @@ func testAccPreCheckCustomDomain(t *testing.T) {
 //
 // Required environment variables:
 //
-//	ORY_CUSTOM_DOMAIN_HOSTNAME    - Hostname to use (e.g., test.example-e2e.orycname.dev)
-//	ORY_CUSTOM_DOMAIN_COOKIE_DOMAIN - Cookie domain (e.g., example-e2e.orycname.dev)
+//	ORY_CUSTOM_DOMAIN_HOSTNAME      - Hostname to use (e.g., test.example-e2e.orycname.dev)
+//
+// Optional environment variables:
+//
+//	ORY_CUSTOM_DOMAIN_COOKIE_DOMAIN - Cookie domain (default: example.com)
 func TestAccCustomDomainResource_basic(t *testing.T) {
 	hostname := os.Getenv("ORY_CUSTOM_DOMAIN_HOSTNAME")
 	cookieDomain := os.Getenv("ORY_CUSTOM_DOMAIN_COOKIE_DOMAIN")
