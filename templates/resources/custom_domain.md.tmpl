@@ -1,0 +1,33 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  Manages an Ory Network custom domain.
+---
+
+# {{.Name}} ({{.Type}})
+
+Manages an Ory Network custom domain.
+
+Custom domains allow you to expose Ory APIs on your own domain (e.g., `auth.example.com`) instead of the default
+`{slug}.projects.oryapis.com` domain. This is the correct way to configure session cookie domains on Ory Network —
+the reverse proxy rewrites cookies to use the `cookie_domain` you specify.
+
+-> **Plan:** Custom domains may require specific Ory Network plan features. Check your plan's quota for available custom domains.
+
+~> **DNS Required:** After creating a custom domain, you must add a CNAME record pointing your hostname to Ory.
+Monitor the `verification_status` attribute to track DNS verification progress.
+
+## Example Usage
+
+{{ tffile "examples/resources/ory_custom_domain/resource.tf" }}
+
+## Import
+
+Custom domains can be imported using the format `project_id/custom_domain_id`:
+
+```shell
+terraform import ory_custom_domain.auth <project-id>/<custom-domain-id>
+```
+
+{{ .SchemaMarkdown | trimspace }}

@@ -20,8 +20,6 @@ resource "ory_project_config" "secure" {
   session_lifespan          = "168h0m0s" # 7 days
   session_cookie_same_site  = "Strict"
   session_cookie_persistent = true
-  session_cookie_domain     = ".example.com" # share cookies across subdomains
-  session_cookie_path       = "/"
 
   # Password Policy
   password_min_length            = 12

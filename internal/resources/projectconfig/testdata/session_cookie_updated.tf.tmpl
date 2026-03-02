@@ -1,7 +1,0 @@
-resource "ory_project_config" "test" {
-  session_lifespan          = "720h0m0s"
-  session_cookie_same_site  = "Strict"
-  session_cookie_persistent = true
-  session_cookie_domain     = "[[ .Domain ]]"
-  session_cookie_path       = "[[ .Path ]]"
-}
