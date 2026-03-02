@@ -318,6 +318,13 @@ func (r *CustomDomainResource) Update(ctx context.Context, req resource.UpdateRe
 	if projectID == "" {
 		projectID = r.resolveProjectID(state.ProjectID)
 	}
+	if projectID == "" {
+		resp.Diagnostics.AddError(
+			"Missing Project ID",
+			"project_id must be set either in the resource or provider configuration.",
+		)
+		return
+	}
 
 	body := ory.SetCustomDomainBody{}
 	body.SetHostname(plan.Hostname.ValueString())
@@ -449,11 +456,15 @@ func (r *CustomDomainResource) mapDomainToState(ctx context.Context, domain *ory
 		state.UpdatedAt = types.StringNull()
 	}
 
-	// Map list fields
+	// Map list fields — use null for empty optional lists to avoid locking in empty values.
 	origins := domain.GetCorsAllowedOrigins()
-	originValues, d := types.ListValueFrom(ctx, types.StringType, origins)
-	diags.Append(d...)
-	state.CorsAllowedOrigins = originValues
+	if len(origins) == 0 {
+		state.CorsAllowedOrigins = types.ListNull(types.StringType)
+	} else {
+		originValues, d := types.ListValueFrom(ctx, types.StringType, origins)
+		diags.Append(d...)
+		state.CorsAllowedOrigins = originValues
+	}
 
 	verErrors := domain.GetVerificationErrors()
 	errorValues, d := types.ListValueFrom(ctx, types.StringType, verErrors)
