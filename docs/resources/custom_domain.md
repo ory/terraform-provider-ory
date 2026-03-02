@@ -68,4 +68,4 @@ terraform import ory_custom_domain.auth <project-id>/<custom-domain-id>
 - `ssl_status` (String) SSL certificate status of the custom domain.
 - `updated_at` (String) Timestamp when the custom domain was last updated.
 - `verification_errors` (List of String) DNS verification errors, if any.
-- `verification_status` (String) DNS verification status of the custom domain (e.g., 'PENDING', 'ACTIVE').
+- `verification_status` (String) DNS verification status of the custom domain (e.g., 'pending', 'active').
