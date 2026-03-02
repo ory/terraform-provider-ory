@@ -43,8 +43,6 @@ resource "ory_project_config" "secure" {
   session_lifespan          = "168h0m0s" # 7 days
   session_cookie_same_site  = "Strict"
   session_cookie_persistent = true
-  session_cookie_domain     = ".example.com" # share cookies across subdomains
-  session_cookie_path       = "/"
 
   # Password Policy
   password_min_length            = 12
@@ -298,7 +296,7 @@ This resource exposes **75+ attributes** across these configuration categories:
 | Category | Examples |
 |----------|---------|
 | Password settings | min length, identifier similarity, max breaches, haveibeenpwned |
-| Session settings | cookie domain, path, same site, persistent, lifespan, whoami-required AAL |
+| Session settings | cookie same site, lifespan, whoami-required AAL |
 | CORS | public and admin origins, enabled/disabled |
 | Authentication | passwordless, code, OIDC (social sign-in), TOTP, passkey, WebAuthn, lookup secrets |
 | OAuth2/Hydra | token lifespans, access token strategy, PKCE, claims, scope strategy, consent/login URLs |
@@ -372,8 +370,6 @@ Some Ory project settings are not yet available through this resource. For setti
 - `recovery_ui_url` (String) URL for the password recovery UI.
 - `registration_ui_url` (String) URL for the registration UI.
 - `required_aal` (String) Required Authenticator Assurance Level for protected resources: 'aal1' or 'aal2'.
-- `session_cookie_domain` (String) Domain for session cookies. Useful for sharing sessions across subdomains (e.g., '.example.com').
-- `session_cookie_path` (String) Path for session cookies (e.g., '/').
 - `session_cookie_persistent` (Boolean) Enable persistent session cookies (survive browser close).
 - `session_cookie_same_site` (String) SameSite cookie attribute (Lax, Strict, None).
 - `session_lifespan` (String) Session duration (e.g., '24h0m0s').

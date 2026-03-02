@@ -1,0 +1,88 @@
+//go:build acceptance
+
+package customdomain_test
+
+import (
+	"fmt"
+	"os"
+	"testing"
+
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
+
+	"github.com/ory/terraform-provider-ory/internal/acctest"
+)
+
+func importStateCustomDomainID(s *terraform.State) (string, error) {
+	rs, ok := s.RootModule().Resources["ory_custom_domain.test"]
+	if !ok {
+		return "", fmt.Errorf("resource not found: ory_custom_domain.test")
+	}
+	projectID := rs.Primary.Attributes["project_id"]
+	domainID := rs.Primary.ID
+	return fmt.Sprintf("%s/%s", projectID, domainID), nil
+}
+
+func testAccPreCheckCustomDomain(t *testing.T) {
+	acctest.AccPreCheck(t)
+	if os.Getenv("ORY_CUSTOM_DOMAIN_HOSTNAME") == "" {
+		t.Skip("ORY_CUSTOM_DOMAIN_HOSTNAME must be set for custom domain tests (e.g., test.example-e2e.orycname.dev)")
+	}
+}
+
+// TestAccCustomDomainResource_basic tests the full CRUD lifecycle of a custom domain.
+//
+// Required environment variables:
+//
+//	ORY_CUSTOM_DOMAIN_HOSTNAME    - Hostname to use (e.g., test.example-e2e.orycname.dev)
+//	ORY_CUSTOM_DOMAIN_COOKIE_DOMAIN - Cookie domain (e.g., example-e2e.orycname.dev)
+func TestAccCustomDomainResource_basic(t *testing.T) {
+	hostname := os.Getenv("ORY_CUSTOM_DOMAIN_HOSTNAME")
+	cookieDomain := os.Getenv("ORY_CUSTOM_DOMAIN_COOKIE_DOMAIN")
+	if cookieDomain == "" {
+		cookieDomain = "example.com"
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheckCustomDomain(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create and Read
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{
+					"Hostname":     hostname,
+					"CookieDomain": cookieDomain,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_custom_domain.test", "id"),
+					resource.TestCheckResourceAttr("ory_custom_domain.test", "hostname", hostname),
+					resource.TestCheckResourceAttr("ory_custom_domain.test", "cookie_domain", cookieDomain),
+					resource.TestCheckResourceAttrSet("ory_custom_domain.test", "verification_status"),
+					resource.TestCheckResourceAttrSet("ory_custom_domain.test", "created_at"),
+					resource.TestCheckResourceAttrSet("ory_custom_domain.test", "updated_at"),
+				),
+			},
+			// Update - add CORS and custom UI base URL
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/updated.tf.tmpl", map[string]string{
+					"Hostname":     hostname,
+					"CookieDomain": cookieDomain,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_custom_domain.test", "hostname", hostname),
+					resource.TestCheckResourceAttr("ory_custom_domain.test", "cors_enabled", "true"),
+					resource.TestCheckResourceAttr("ory_custom_domain.test", "cors_allowed_origins.0", "https://app.example.com"),
+					resource.TestCheckResourceAttr("ory_custom_domain.test", "custom_ui_base_url", "https://"+hostname),
+				),
+			},
+			// ImportState
+			{
+				ResourceName:            "ory_custom_domain.test",
+				ImportState:             true,
+				ImportStateIdFunc:       importStateCustomDomainID,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"created_at", "updated_at"},
+			},
+		},
+	})
+}
