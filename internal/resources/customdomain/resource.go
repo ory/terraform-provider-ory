@@ -2,6 +2,7 @@ package customdomain
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -274,8 +275,7 @@ func (r *CustomDomainResource) Read(ctx context.Context, req resource.ReadReques
 
 	domain, err := r.client.GetCustomDomain(ctx, projectID, state.ID.ValueString())
 	if err != nil {
-		errStr := err.Error()
-		if strings.Contains(errStr, "404") || strings.Contains(strings.ToLower(errStr), "not found") {
+		if errors.Is(err, client.ErrCustomDomainNotFound) {
 			resp.Diagnostics.AddWarning(
 				"Custom Domain Not Found",
 				fmt.Sprintf("Custom domain %s was not found (possibly deleted outside Terraform). Removing from state.", state.ID.ValueString()),

@@ -17,6 +17,9 @@ import (
 	"github.com/ory/x/urlx"
 )
 
+// ErrCustomDomainNotFound is returned when a custom domain ID is not found in the project's domain list.
+var ErrCustomDomainNotFound = errors.New("custom domain not found")
+
 const (
 	// maxRetries is the maximum number of retry attempts for rate-limited requests.
 	maxRetries = 3
@@ -1293,8 +1296,12 @@ func (c *OryClient) consoleHTTPDo(ctx context.Context, method, path string, body
 	if c.config.WorkspaceAPIKey == "" || c.config.ConsoleAPIURL == "" {
 		return nil, fmt.Errorf("workspace_api_key and console_api_url must be configured for custom domain operations")
 	}
-	url := c.config.ConsoleAPIURL + path
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	baseURL, err := url.Parse(c.config.ConsoleAPIURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid console_api_url %q: %w", c.config.ConsoleAPIURL, err)
+	}
+	requestURL := baseURL.JoinPath(path)
+	req, err := http.NewRequestWithContext(ctx, method, requestURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -1313,7 +1320,7 @@ func (c *OryClient) consoleHTTPDo(ctx context.Context, method, path string, body
 
 // ListCustomDomains lists all custom domains for a project.
 func (c *OryClient) ListCustomDomains(ctx context.Context, projectID string) ([]ory.CustomDomain, error) {
-	httpResp, err := c.consoleHTTPDo(ctx, http.MethodGet, "/projects/"+url.PathEscape(projectID)+"/cname", nil)
+	httpResp, err := c.consoleHTTPDo(ctx, http.MethodGet, "/projects/"+projectID+"/cname", nil)
 	if err != nil {
 		return nil, wrapAPIError(err, "listing custom domains")
 	}
@@ -1342,7 +1349,7 @@ func (c *OryClient) GetCustomDomain(ctx context.Context, projectID, domainID str
 			return &domains[i], nil
 		}
 	}
-	return nil, fmt.Errorf("custom domain %s not found in project %s", domainID, projectID)
+	return nil, fmt.Errorf("%w: %s in project %s", ErrCustomDomainNotFound, domainID, projectID)
 }
 
 // CreateCustomDomain creates a new custom domain for a project.
@@ -1352,7 +1359,7 @@ func (c *OryClient) CreateCustomDomain(ctx context.Context, projectID string, bo
 		return nil, fmt.Errorf("creating custom domain: marshaling body: %w", err)
 	}
 
-	httpResp, err := c.consoleHTTPDo(ctx, http.MethodPost, "/projects/"+url.PathEscape(projectID)+"/cname", bytes.NewReader(bodyBytes))
+	httpResp, err := c.consoleHTTPDo(ctx, http.MethodPost, "/projects/"+projectID+"/cname", bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, wrapAPIError(err, "creating custom domain")
 	}
@@ -1377,7 +1384,7 @@ func (c *OryClient) UpdateCustomDomain(ctx context.Context, projectID, domainID 
 		return nil, fmt.Errorf("updating custom domain: marshaling body: %w", err)
 	}
 
-	httpResp, err := c.consoleHTTPDo(ctx, http.MethodPut, "/projects/"+url.PathEscape(projectID)+"/cname/"+url.PathEscape(domainID), bytes.NewReader(bodyBytes))
+	httpResp, err := c.consoleHTTPDo(ctx, http.MethodPut, "/projects/"+projectID+"/cname/"+domainID, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, wrapAPIError(err, "updating custom domain")
 	}
@@ -1397,7 +1404,7 @@ func (c *OryClient) UpdateCustomDomain(ctx context.Context, projectID, domainID 
 
 // DeleteCustomDomain deletes a custom domain.
 func (c *OryClient) DeleteCustomDomain(ctx context.Context, projectID, domainID string) error {
-	httpResp, err := c.consoleHTTPDo(ctx, http.MethodDelete, "/projects/"+url.PathEscape(projectID)+"/cname/"+url.PathEscape(domainID), nil)
+	httpResp, err := c.consoleHTTPDo(ctx, http.MethodDelete, "/projects/"+projectID+"/cname/"+domainID, nil)
 	if err != nil {
 		return wrapAPIError(err, "deleting custom domain")
 	}
