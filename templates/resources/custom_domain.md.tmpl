@@ -24,10 +24,14 @@ Monitor the `verification_status` attribute to track DNS verification progress.
 
 ## Import
 
-Custom domains can be imported using the format `project_id/custom_domain_id`:
+Custom domains can be imported using either format:
 
 ```shell
+# Import with explicit project ID
 terraform import ory_custom_domain.auth <project-id>/<custom-domain-id>
+
+# Import using provider-level project_id
+terraform import ory_custom_domain.auth <custom-domain-id>
 ```
 
 {{ .SchemaMarkdown | trimspace }}
