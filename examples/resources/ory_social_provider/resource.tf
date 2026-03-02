@@ -26,13 +26,15 @@ resource "ory_social_provider" "microsoft" {
   scope         = ["openid", "profile", "email"]
 }
 
-# Apple Sign-In
+# Apple Sign-In (using Apple-specific credentials)
 resource "ory_social_provider" "apple" {
-  provider_id   = "apple"
-  provider_type = "apple"
-  client_id     = var.apple_client_id
-  client_secret = var.apple_client_secret
-  scope         = ["email", "name"]
+  provider_id          = "apple"
+  provider_type        = "apple"
+  client_id            = var.apple_service_id
+  apple_team_id        = var.apple_team_id
+  apple_private_key_id = var.apple_private_key_id
+  apple_private_key    = var.apple_private_key
+  scope                = ["email", "name"]
 }
 
 # Generic OIDC Provider with custom claims mapping
@@ -91,13 +93,25 @@ variable "azure_tenant_id" {
   type = string
 }
 
-variable "apple_client_id" {
-  type = string
+variable "apple_service_id" {
+  description = "Apple Service ID (e.g., com.example.auth)"
+  type        = string
 }
 
-variable "apple_client_secret" {
-  type      = string
-  sensitive = true
+variable "apple_team_id" {
+  description = "Apple Developer Team ID"
+  type        = string
+}
+
+variable "apple_private_key_id" {
+  description = "Apple private key ID from the Developer portal"
+  type        = string
+}
+
+variable "apple_private_key" {
+  description = "Apple private key in PEM format (.p8 file contents)"
+  type        = string
+  sensitive   = true
 }
 
 variable "sso_client_id" {
