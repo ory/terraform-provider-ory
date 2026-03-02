@@ -155,7 +155,7 @@ func (r *CustomDomainResource) Schema(ctx context.Context, req resource.SchemaRe
 				},
 			},
 			"verification_status": schema.StringAttribute{
-				Description: "DNS verification status of the custom domain (e.g., 'PENDING', 'ACTIVE').",
+				Description: "DNS verification status of the custom domain (e.g., 'pending', 'active').",
 				Computed:    true,
 			},
 			"verification_errors": schema.ListAttribute{
@@ -251,6 +251,11 @@ func (r *CustomDomainResource) Create(ctx context.Context, req resource.CreateRe
 	fullDomain, err := r.client.GetCustomDomain(ctx, projectID, domainID)
 	if err == nil {
 		domain = fullDomain
+	} else {
+		resp.Diagnostics.AddWarning(
+			"Partial Custom Domain State After Create",
+			fmt.Sprintf("Custom domain %s was created, but a follow-up read failed: %s. Some computed fields may be incomplete until the next refresh.", domainID, err),
+		)
 	}
 
 	r.mapDomainToState(ctx, domain, &plan, projectID, &resp.Diagnostics)
@@ -337,6 +342,11 @@ func (r *CustomDomainResource) Update(ctx context.Context, req resource.UpdateRe
 	fullDomain, err := r.client.GetCustomDomain(ctx, projectID, state.ID.ValueString())
 	if err == nil {
 		domain = fullDomain
+	} else {
+		resp.Diagnostics.AddWarning(
+			"Partial Custom Domain State After Update",
+			fmt.Sprintf("Custom domain %s was updated, but a follow-up read failed: %s. Some computed fields may be incomplete until the next refresh.", state.ID.ValueString(), err),
+		)
 	}
 
 	r.mapDomainToState(ctx, domain, &plan, projectID, &resp.Diagnostics)
