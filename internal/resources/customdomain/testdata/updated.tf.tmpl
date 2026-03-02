@@ -1,0 +1,8 @@
+resource "ory_custom_domain" "test" {
+  hostname      = "[[ .Hostname ]]"
+  cookie_domain = "[[ .CookieDomain ]]"
+
+  cors_enabled         = true
+  cors_allowed_origins = ["https://app.example.com"]
+  custom_ui_base_url   = "https://[[ .Hostname ]]"
+}

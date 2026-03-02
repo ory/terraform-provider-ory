@@ -19,6 +19,7 @@ import (
 	projectds "github.com/ory/terraform-provider-ory/internal/datasources/project"
 	workspaceds "github.com/ory/terraform-provider-ory/internal/datasources/workspace"
 	"github.com/ory/terraform-provider-ory/internal/resources/action"
+	"github.com/ory/terraform-provider-ory/internal/resources/customdomain"
 	"github.com/ory/terraform-provider-ory/internal/resources/emailtemplate"
 	"github.com/ory/terraform-provider-ory/internal/resources/eventstream"
 	"github.com/ory/terraform-provider-ory/internal/resources/identity"
@@ -289,6 +290,7 @@ func (p *OryProvider) Resources(ctx context.Context) []func() resource.Resource 
 		eventstream.NewResource,
 		trustedjwtissuer.NewResource,
 		oidcdynamicclient.NewResource,
+		customdomain.NewResource,
 	}
 }
 

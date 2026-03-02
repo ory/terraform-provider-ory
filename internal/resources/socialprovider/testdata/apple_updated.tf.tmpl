@@ -1,0 +1,11 @@
+resource "ory_social_provider" "test_apple" {
+  provider_id          = "test-apple"
+  provider_type        = "apple"
+  client_id            = "com.example.auth.service.updated"
+  apple_team_id        = "UPDATEDTID"
+  apple_private_key_id = "UPDATEDKID"
+  apple_private_key    = <<-EOT
+[[ .PrivateKey ]]
+EOT
+  scope                = ["email", "name", "openid"]
+}
