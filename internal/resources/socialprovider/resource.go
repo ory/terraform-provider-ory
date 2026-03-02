@@ -18,9 +18,10 @@ import (
 )
 
 var (
-	_ resource.Resource                = &SocialProviderResource{}
-	_ resource.ResourceWithConfigure   = &SocialProviderResource{}
-	_ resource.ResourceWithImportState = &SocialProviderResource{}
+	_ resource.Resource                   = &SocialProviderResource{}
+	_ resource.ResourceWithConfigure      = &SocialProviderResource{}
+	_ resource.ResourceWithImportState    = &SocialProviderResource{}
+	_ resource.ResourceWithValidateConfig = &SocialProviderResource{}
 )
 
 func NewResource() resource.Resource {
@@ -32,18 +33,21 @@ type SocialProviderResource struct {
 }
 
 type SocialProviderResourceModel struct {
-	ID           types.String `tfsdk:"id"`
-	ProjectID    types.String `tfsdk:"project_id"`
-	ProviderID   types.String `tfsdk:"provider_id"`
-	ProviderType types.String `tfsdk:"provider_type"`
-	ClientID     types.String `tfsdk:"client_id"`
-	ClientSecret types.String `tfsdk:"client_secret"`
-	IssuerURL    types.String `tfsdk:"issuer_url"`
-	Scope        types.List   `tfsdk:"scope"`
-	MapperURL    types.String `tfsdk:"mapper_url"`
-	AuthURL      types.String `tfsdk:"auth_url"`
-	TokenURL     types.String `tfsdk:"token_url"`
-	Tenant       types.String `tfsdk:"tenant"`
+	ID                types.String `tfsdk:"id"`
+	ProjectID         types.String `tfsdk:"project_id"`
+	ProviderID        types.String `tfsdk:"provider_id"`
+	ProviderType      types.String `tfsdk:"provider_type"`
+	ClientID          types.String `tfsdk:"client_id"`
+	ClientSecret      types.String `tfsdk:"client_secret"`
+	IssuerURL         types.String `tfsdk:"issuer_url"`
+	Scope             types.List   `tfsdk:"scope"`
+	MapperURL         types.String `tfsdk:"mapper_url"`
+	AuthURL           types.String `tfsdk:"auth_url"`
+	TokenURL          types.String `tfsdk:"token_url"`
+	Tenant            types.String `tfsdk:"tenant"`
+	AppleTeamID       types.String `tfsdk:"apple_team_id"`
+	ApplePrivateKeyID types.String `tfsdk:"apple_private_key_id"`
+	ApplePrivateKey   types.String `tfsdk:"apple_private_key"`
 }
 
 func (r *SocialProviderResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -89,8 +93,8 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				Required:    true,
 			},
 			"client_secret": schema.StringAttribute{
-				Description: "OAuth2 client secret from the provider.",
-				Required:    true,
+				Description: "OAuth2 client secret from the provider. Required for all providers except Apple (where Ory generates the secret from apple_team_id, apple_private_key_id, and apple_private_key).",
+				Optional:    true,
 				Sensitive:   true,
 			},
 			"issuer_url": schema.StringAttribute{
@@ -118,6 +122,19 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				Description: "Tenant ID (for Microsoft/Azure providers).",
 				Optional:    true,
 			},
+			"apple_team_id": schema.StringAttribute{
+				Description: "Apple Developer Team ID (e.g., \"KP76DQS54M\"). Required when provider_type is \"apple\" and client_secret is not set.",
+				Optional:    true,
+			},
+			"apple_private_key_id": schema.StringAttribute{
+				Description: "Apple private key ID from the Apple Developer portal (e.g., \"UX56C66723\"). Required when provider_type is \"apple\" and client_secret is not set.",
+				Optional:    true,
+			},
+			"apple_private_key": schema.StringAttribute{
+				Description: "Apple private key in PEM format (contents of the .p8 file). Required when provider_type is \"apple\" and client_secret is not set. Ory uses this to generate the JWT client secret automatically.",
+				Optional:    true,
+				Sensitive:   true,
+			},
 		},
 	}
 }
@@ -135,6 +152,88 @@ func (r *SocialProviderResource) Configure(ctx context.Context, req resource.Con
 	r.client = oryClient
 }
 
+func (r *SocialProviderResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var config SocialProviderResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Ensure provider_type is specified and known, since it is required to build the API payload.
+	if config.ProviderType.IsNull() {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("provider_type"),
+			"Missing Required Attribute",
+			"provider_type must be specified.",
+		)
+		return
+	}
+	if config.ProviderType.IsUnknown() {
+		// Cannot validate attribute combinations when provider_type is unknown.
+		return
+	}
+
+	providerType := config.ProviderType.ValueString()
+
+	// Treat attributes as "configured" only when they are both non-null and non-unknown.
+	// This ensures validation aligns with buildProviderConfig, which drops unknown values.
+	hasClientSecret := !config.ClientSecret.IsNull() && !config.ClientSecret.IsUnknown()
+	hasAppleTeamID := !config.AppleTeamID.IsNull() && !config.AppleTeamID.IsUnknown()
+	hasApplePrivateKeyID := !config.ApplePrivateKeyID.IsNull() && !config.ApplePrivateKeyID.IsUnknown()
+	hasApplePrivateKey := !config.ApplePrivateKey.IsNull() && !config.ApplePrivateKey.IsUnknown()
+	hasAnyAppleField := hasAppleTeamID || hasApplePrivateKeyID || hasApplePrivateKey
+	hasAllAppleFields := hasAppleTeamID && hasApplePrivateKeyID && hasApplePrivateKey
+
+	// Validate that known values are not empty strings
+	if hasClientSecret && config.ClientSecret.ValueString() == "" {
+		resp.Diagnostics.AddAttributeError(path.Root("client_secret"), "Invalid Attribute Value", "client_secret must not be an empty string.")
+	}
+	if hasAppleTeamID && config.AppleTeamID.ValueString() == "" {
+		resp.Diagnostics.AddAttributeError(path.Root("apple_team_id"), "Invalid Attribute Value", "apple_team_id must not be an empty string.")
+	}
+	if hasApplePrivateKeyID && config.ApplePrivateKeyID.ValueString() == "" {
+		resp.Diagnostics.AddAttributeError(path.Root("apple_private_key_id"), "Invalid Attribute Value", "apple_private_key_id must not be an empty string.")
+	}
+	if hasApplePrivateKey && config.ApplePrivateKey.ValueString() == "" {
+		resp.Diagnostics.AddAttributeError(path.Root("apple_private_key"), "Invalid Attribute Value", "apple_private_key must not be an empty string.")
+	}
+
+	if providerType == "apple" {
+		// Apple: needs either client_secret OR all three Apple-specific fields
+		if !hasClientSecret && !hasAllAppleFields {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("client_secret"),
+				"Missing Apple Provider Configuration",
+				"Apple providers require either client_secret or all three Apple-specific attributes: apple_team_id, apple_private_key_id, and apple_private_key.",
+			)
+		}
+		if hasAnyAppleField && !hasAllAppleFields {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("apple_team_id"),
+				"Incomplete Apple Provider Configuration",
+				"When using Apple-specific attributes, all three must be set: apple_team_id, apple_private_key_id, and apple_private_key.",
+			)
+		}
+	} else {
+		// Non-Apple: client_secret is required
+		if !hasClientSecret {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("client_secret"),
+				"Missing Required Attribute",
+				fmt.Sprintf("client_secret is required for provider_type %q.", providerType),
+			)
+		}
+		// Non-Apple: Apple-specific fields should not be set
+		if hasAnyAppleField {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("provider_type"),
+				"Invalid Attribute Combination",
+				"apple_team_id, apple_private_key_id, and apple_private_key are only valid when provider_type is \"apple\".",
+			)
+		}
+	}
+}
+
 // defaultMapperURL returns the default Jsonnet mapper for common providers.
 // This is a simple mapper that extracts email and subject from the claims.
 // The base64-encoded Jsonnet maps claims to identity traits.
@@ -142,12 +241,14 @@ const defaultMapperURL = "base64://bG9jYWwgY2xhaW1zID0gc3RkLmV4dFZhcignY2xhaW1zJ
 
 func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *SocialProviderResourceModel) map[string]interface{} {
 	config := map[string]interface{}{
-		"id":            plan.ProviderID.ValueString(),
-		"provider":      plan.ProviderType.ValueString(),
-		"client_id":     plan.ClientID.ValueString(),
-		"client_secret": plan.ClientSecret.ValueString(),
+		"id":        plan.ProviderID.ValueString(),
+		"provider":  plan.ProviderType.ValueString(),
+		"client_id": plan.ClientID.ValueString(),
 	}
 
+	if !plan.ClientSecret.IsNull() && !plan.ClientSecret.IsUnknown() && plan.ClientSecret.ValueString() != "" {
+		config["client_secret"] = plan.ClientSecret.ValueString()
+	}
 	if !plan.IssuerURL.IsNull() && !plan.IssuerURL.IsUnknown() {
 		config["issuer_url"] = plan.IssuerURL.ValueString()
 	}
@@ -170,6 +271,17 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 	}
 	if !plan.Tenant.IsNull() && !plan.Tenant.IsUnknown() {
 		config["microsoft_tenant"] = plan.Tenant.ValueString()
+	}
+
+	// Apple-specific fields — skip empty strings to avoid sending blank credentials
+	if !plan.AppleTeamID.IsNull() && !plan.AppleTeamID.IsUnknown() && plan.AppleTeamID.ValueString() != "" {
+		config["apple_team_id"] = plan.AppleTeamID.ValueString()
+	}
+	if !plan.ApplePrivateKeyID.IsNull() && !plan.ApplePrivateKeyID.IsUnknown() && plan.ApplePrivateKeyID.ValueString() != "" {
+		config["apple_private_key_id"] = plan.ApplePrivateKeyID.ValueString()
+	}
+	if !plan.ApplePrivateKey.IsNull() && !plan.ApplePrivateKey.IsUnknown() && plan.ApplePrivateKey.ValueString() != "" {
+		config["apple_private_key"] = plan.ApplePrivateKey.ValueString()
 	}
 
 	return config
@@ -428,6 +540,19 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 	if tenant, ok := provider["microsoft_tenant"].(string); ok && tenant != "" {
 		state.Tenant = types.StringValue(tenant)
 	}
+
+	// Read Apple-specific fields, clearing stale state when not returned by the API
+	if teamID, ok := provider["apple_team_id"].(string); ok && teamID != "" {
+		state.AppleTeamID = types.StringValue(teamID)
+	} else {
+		state.AppleTeamID = types.StringNull()
+	}
+	if keyID, ok := provider["apple_private_key_id"].(string); ok && keyID != "" {
+		state.ApplePrivateKeyID = types.StringValue(keyID)
+	} else {
+		state.ApplePrivateKeyID = types.StringNull()
+	}
+	// Don't read back apple_private_key for security - it's sensitive
 
 	// Always ensure ID and ProjectID are set in state
 	state.ID = types.StringValue(providerID)
