@@ -1288,6 +1288,9 @@ func (c *OryClient) ListIdentitySchemas(ctx context.Context) ([]ory.IdentitySche
 
 // consoleHTTPDo executes a raw HTTP request against the console API.
 func (c *OryClient) consoleHTTPDo(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
+	if c.config.WorkspaceAPIKey == "" || c.config.ConsoleAPIURL == "" {
+		return nil, fmt.Errorf("workspace_api_key and console_api_url must be configured for custom domain operations")
+	}
 	url := c.config.ConsoleAPIURL + path
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
@@ -1298,8 +1301,10 @@ func (c *OryClient) consoleHTTPDo(ctx context.Context, method, path string, body
 		req.Header.Set("Content-Type", "application/json")
 	}
 	httpClient := http.DefaultClient
-	if cfg := c.consoleClient.GetConfig(); cfg.HTTPClient != nil {
-		httpClient = cfg.HTTPClient
+	if c.consoleClient != nil {
+		if cfg := c.consoleClient.GetConfig(); cfg.HTTPClient != nil {
+			httpClient = cfg.HTTPClient
+		}
 	}
 	return httpClient.Do(req) // #nosec G704 -- URL is constructed from trusted provider configuration
 }
