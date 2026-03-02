@@ -1328,7 +1328,10 @@ func (c *OryClient) ListCustomDomains(ctx context.Context, projectID string) ([]
 
 	if httpResp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(httpResp.Body)
-		return nil, fmt.Errorf("listing custom domains: unexpected status %d: %s", httpResp.StatusCode, string(respBody))
+		return nil, wrapAPIError(
+			fmt.Errorf("unexpected status %d: %s", httpResp.StatusCode, string(respBody)),
+			"listing custom domains",
+		)
 	}
 
 	var domains []ory.CustomDomain
@@ -1367,7 +1370,10 @@ func (c *OryClient) CreateCustomDomain(ctx context.Context, projectID string, bo
 
 	if httpResp.StatusCode != http.StatusCreated {
 		respBody, _ := io.ReadAll(httpResp.Body)
-		return nil, fmt.Errorf("creating custom domain: unexpected status %d: %s", httpResp.StatusCode, string(respBody))
+		return nil, wrapAPIError(
+			fmt.Errorf("unexpected status %d: %s", httpResp.StatusCode, string(respBody)),
+			"creating custom domain",
+		)
 	}
 
 	var domain ory.CustomDomain
@@ -1392,7 +1398,10 @@ func (c *OryClient) UpdateCustomDomain(ctx context.Context, projectID, domainID 
 
 	if httpResp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(httpResp.Body)
-		return nil, fmt.Errorf("updating custom domain: unexpected status %d: %s", httpResp.StatusCode, string(respBody))
+		return nil, wrapAPIError(
+			fmt.Errorf("unexpected status %d: %s", httpResp.StatusCode, string(respBody)),
+			"updating custom domain",
+		)
 	}
 
 	var domain ory.CustomDomain
@@ -1412,7 +1421,10 @@ func (c *OryClient) DeleteCustomDomain(ctx context.Context, projectID, domainID 
 
 	if httpResp.StatusCode != http.StatusNoContent {
 		respBody, _ := io.ReadAll(httpResp.Body)
-		return fmt.Errorf("deleting custom domain: unexpected status %d: %s", httpResp.StatusCode, string(respBody))
+		return wrapAPIError(
+			fmt.Errorf("unexpected status %d: %s", httpResp.StatusCode, string(respBody)),
+			"deleting custom domain",
+		)
 	}
 	return nil
 }
