@@ -1,0 +1,4 @@
+resource "ory_custom_domain" "test" {
+  hostname      = "[[ .Hostname ]]"
+  cookie_domain = "[[ .CookieDomain ]]"
+}
