@@ -45,7 +45,7 @@ Unit tests can be run without any credentials:
 
 ```bash
 make test           # Run all unit tests with coverage
-make test-short     # Run unit tests in short mode (this is what CI runs)
+make test-short     # Run unit tests in short mode (CI runs these with coverage enabled)
 ```
 
 ### Acceptance Tests
@@ -102,7 +102,7 @@ Some tests require specific Ory plan features. Enable them with environment vari
 | `ORY_PROJECT_TESTS_ENABLED=true` | Run project creation/deletion tests |
 | `ORY_EVENT_STREAM_TESTS_ENABLED=true` | Run event stream tests (requires Enterprise plan + AWS setup below) |
 
-> **Note:** CI enables **all** feature flags on pull requests. `make test-acc-all` enables all flags except `ORY_PROJECT_TESTS_ENABLED` (project creation/deletion tests are excluded because they are slow and potentially destructive). To run those locally, set `ORY_PROJECT_TESTS_ENABLED=true` explicitly.
+> **Note:** CI enables **all** feature flags, including `ORY_PROJECT_TESTS_ENABLED`, on pull requests. Locally, `make test-acc-all` enables all flags **except** `ORY_PROJECT_TESTS_ENABLED` by default (project creation/deletion tests are excluded because they are slow and potentially destructive). To run those locally, set `ORY_PROJECT_TESTS_ENABLED=true` explicitly.
 
 #### Event Stream Tests
 
