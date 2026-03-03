@@ -26,7 +26,12 @@ if [ -x ".bin/golangci-lint" ]; then
 elif command -v golangci-lint &> /dev/null; then
     golangci-lint run
 else
-    echo "Warning: golangci-lint not found, skipping. Install with: make deps"
+    GOPATH_BIN="$(go env GOPATH 2>/dev/null)/bin/golangci-lint"
+    if [ -n "$GOPATH_BIN" ] && [ -x "$GOPATH_BIN" ]; then
+        "$GOPATH_BIN" run
+    else
+        echo "Warning: golangci-lint not found, skipping. Install with: make deps"
+    fi
 fi
 
 # Build check
