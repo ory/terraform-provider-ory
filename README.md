@@ -44,7 +44,7 @@ A Terraform provider for managing [Ory Network](https://www.ory.sh/) resources u
 ## Requirements
 
 - [Terraform](https://www.terraform.io/downloads) >= 1.0
-- [Go](https://golang.org/doc/install) >= 1.21 (for building from source)
+- [Go](https://golang.org/doc/install) (see version in `go.mod`; for building from source)
 - An [Ory Network](https://console.ory.sh/) account
 
 ## Installation
@@ -302,21 +302,23 @@ Acceptance tests run against a **pre-created Ory project**. Copy `.env.example` 
 cp .env.example .env
 ```
 
-At minimum you need:
+The `.env` file is gitignored and automatically loaded by `make` targets.
+
+**Required** (validated by `make env-check`):
 
 ```bash
-# Workspace credentials
 ORY_WORKSPACE_API_KEY=ory_wak_...
 ORY_WORKSPACE_ID=...
+```
 
-# Pre-created test project
+**Recommended** (needed by most resource tests):
+
+```bash
 ORY_PROJECT_ID=...
 ORY_PROJECT_SLUG=...
 ORY_PROJECT_API_KEY=ory_pat_...
 ORY_PROJECT_ENVIRONMENT=prod
 ```
-
-The `.env` file is gitignored and automatically loaded by `make` targets.
 
 ```bash
 make test-acc              # Standard acceptance tests
@@ -433,14 +435,14 @@ templates/
 
 ### Pre-Commit Checklist
 
-Run these checks locally before committing. They mirror what CI runs on every push.
+Run these checks locally before committing. They mirror what CI runs on every pull request.
 
 ```bash
 # Minimum before committing:
-make build && make format && make test
+make build && make format && make test-short
 
 # Full CI-equivalent check:
-make build && make format && make test && make sec && make licenses
+make build && make format && make test-short && make sec && make sec-trivy && make licenses
 ```
 
 `make format` runs several tools in sequence: `go fmt`, `gofmt -s`, `terraform fmt`, `go mod tidy`, `tfplugindocs generate`, and `golangci-lint --fix`.
@@ -448,11 +450,11 @@ make build && make format && make test && make sec && make licenses
 ### Security Scanning
 
 ```bash
-make sec            # Run all security scans
+make sec            # Run security scans (govulncheck + gosec + gitleaks)
 make sec-vuln       # govulncheck — known Go vulnerabilities
 make sec-gosec      # gosec — Go security patterns
 make sec-gitleaks   # gitleaks — hardcoded secrets
-make sec-trivy      # trivy — vulnerability and misconfig scanning
+make sec-trivy      # trivy — vulnerability and misconfig scanning (not included in `make sec`)
 ```
 
 ## Contributing
@@ -461,7 +463,7 @@ Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed g
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Run checks: `make build && make format && make test`
+3. Run checks: `make build && make format && make test-short`
 4. Commit using [Conventional Commits](https://www.conventionalcommits.org/) format
 5. Open a Pull Request
 

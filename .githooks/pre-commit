@@ -11,7 +11,7 @@ if [ -n "$(gofmt -l .)" ]; then
     echo "Error: The following files are not formatted:"
     gofmt -l .
     echo ""
-    echo "Run 'make fmt' to fix formatting."
+    echo "Run 'make format' to fix formatting."
     exit 1
 fi
 
@@ -21,12 +21,12 @@ go vet ./...
 
 # Lint
 echo "Running golangci-lint..."
-if command -v golangci-lint &> /dev/null; then
+if [ -x ".bin/golangci-lint" ]; then
+    .bin/golangci-lint run
+elif command -v golangci-lint &> /dev/null; then
     golangci-lint run
-elif [ -x "$(go env GOPATH)/bin/golangci-lint" ]; then
-    "$(go env GOPATH)/bin/golangci-lint" run
 else
-    echo "Warning: golangci-lint not found, skipping. Install with: make tools"
+    echo "Warning: golangci-lint not found, skipping. Install with: make deps"
 fi
 
 # Build check

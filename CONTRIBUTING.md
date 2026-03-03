@@ -6,9 +6,9 @@ Thank you for your interest in contributing to the Ory Terraform Provider!
 
 ### Prerequisites
 
-- [Go](https://golang.org/doc/install) >= 1.21
+- [Go](https://golang.org/doc/install) (see version in `go.mod`)
 - [Terraform](https://www.terraform.io/downloads) >= 1.0
-- An [Ory Network](https://console.ory.sh/) account for testing
+- An [Ory Network](https://console.ory.sh/) account for acceptance testing
 
 ### Building
 
@@ -17,14 +17,16 @@ Thank you for your interest in contributing to the Ory Terraform Provider!
 git clone https://github.com/ory/terraform-provider-ory.git
 cd terraform-provider-ory
 
-# Install development tools and set up git hooks
-make tools
-make hooks
+# Install dependencies
+make deps
+
+# Set up pre-commit hooks
+git config core.hooksPath .githooks
 
 # Build
 make build
 
-# Install locally
+# Install locally (to ~/.terraform.d/plugins/)
 make install
 ```
 
@@ -42,8 +44,8 @@ The provider has two types of tests:
 Unit tests can be run without any credentials:
 
 ```bash
-make test           # Run all unit tests
-make test-short     # Run unit tests in short mode
+make test           # Run all unit tests with coverage
+make test-short     # Run unit tests in short mode (this is what CI runs)
 ```
 
 ### Acceptance Tests
@@ -58,19 +60,25 @@ Acceptance tests run against a **pre-created Ory project**. The project must be 
 cp .env.example .env
 ```
 
-The `.env` file is gitignored and automatically loaded by `make` targets. At minimum you need:
+The `.env` file is gitignored and automatically loaded by `make` targets.
+
+**Required** (validated by `make env-check`):
 
 ```bash
-# Workspace credentials
 ORY_WORKSPACE_API_KEY=ory_wak_...
 ORY_WORKSPACE_ID=...
+```
 
-# Pre-created test project
+**Recommended** (needed by most resource tests):
+
+```bash
 ORY_PROJECT_ID=...
 ORY_PROJECT_SLUG=...
 ORY_PROJECT_API_KEY=ory_pat_...
 ORY_PROJECT_ENVIRONMENT=prod
 ```
+
+When set, tests use this persistent project instead of creating ephemeral ones. The project must have keto namespaces and dynamic client registration configured. See `.env.example` for the full list of variables.
 
 #### Running Acceptance Tests
 
@@ -93,6 +101,8 @@ Some tests require specific Ory plan features. Enable them with environment vari
 | `ORY_SCHEMA_TESTS_ENABLED=true` | Run identity schema tests |
 | `ORY_PROJECT_TESTS_ENABLED=true` | Run project creation/deletion tests |
 | `ORY_EVENT_STREAM_TESTS_ENABLED=true` | Run event stream tests (requires Enterprise plan + AWS setup below) |
+
+> **Note:** CI enables **all** feature flags on pull requests. `make test-acc-all` enables all flags except `ORY_PROJECT_TESTS_ENABLED` (project creation/deletion tests are excluded because they are slow and potentially destructive). To run those locally, set `ORY_PROJECT_TESTS_ENABLED=true` explicitly.
 
 #### Event Stream Tests
 
@@ -208,7 +218,7 @@ To use a locally built provider, create a `~/.terraformrc` file:
 ```hcl
 provider_installation {
   dev_overrides {
-    "ory/terraform-provider-ory" = "/path/to/terraform-provider-ory"
+    "ory/ory" = "/path/to/terraform-provider-ory"
   }
   direct {}
 }
@@ -267,14 +277,14 @@ After editing templates, run `make format` to regenerate docs.
 
 ### Pre-Commit Checklist
 
-Run these checks locally before committing. They mirror what CI runs on every push.
+Run these checks locally before committing. They mirror what CI runs on every pull request.
 
 #### Required
 
 ```bash
 make build          # Verify the provider compiles
 make format         # Format code, tidy modules, regenerate docs, fix lint issues
-make test           # Run unit tests (no API calls needed)
+make test-short     # Run unit tests in short mode (matches CI)
 ```
 
 `make format` runs several tools in sequence:
@@ -287,7 +297,8 @@ make test           # Run unit tests (no API calls needed)
 #### Recommended
 
 ```bash
-make sec            # Run all security scans (govulncheck + gosec + gitleaks)
+make sec            # Run security scans (govulncheck + gosec + gitleaks)
+make sec-trivy      # Run trivy vulnerability scan (requires build first)
 make licenses       # Check dependency licenses
 ```
 
@@ -298,16 +309,18 @@ You can also run security scans individually:
 | `make sec-vuln` | govulncheck | Known Go vulnerabilities |
 | `make sec-gosec` | gosec | Go security patterns (injection, file traversal, etc.) |
 | `make sec-gitleaks` | gitleaks | Hardcoded secrets and credentials |
-| `make sec-trivy` | trivy | Vulnerability, secret, and misconfig scanning |
+| `make sec-trivy` | trivy | Vulnerability, secret, and misconfig scanning (not included in `make sec`) |
+
+> **Note:** `make sec-trivy` is **not** included in `make sec` — it must be run separately and requires a prior `make build`.
 
 #### Quick Reference
 
 ```bash
 # Minimum before committing:
-make build && make format && make test
+make build && make format && make test-short
 
 # Full CI-equivalent check:
-make build && make format && make test && make sec && make licenses
+make build && make format && make test-short && make sec && make sec-trivy && make licenses
 ```
 
 ### Code Style
@@ -332,7 +345,7 @@ docs: add algorithm guidance to JWK docs
 1. Fork the repository
 2. Create a feature branch from `main`
 3. Make your changes
-4. Run checks: `make build && make format && make test`
+4. Run checks: `make build && make format && make test-short`
 5. Submit a pull request using the PR template
 
 Please include:
