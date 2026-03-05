@@ -108,3 +108,67 @@ func TestBuildPatches_NullAllowedReturnURLs(t *testing.T) {
 		t.Error("expected no patch for null allowed_return_urls")
 	}
 }
+
+func TestBuildPatches_OAuth2IssuerURL(t *testing.T) {
+	r := &ProjectConfigResource{}
+	plan := &ProjectConfigResourceModel{
+		OAuth2IssuerURL: types.StringValue("https://auth.example.com"),
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/oauth2/config/urls/self/issuer")
+	if p == nil {
+		t.Fatal("expected a patch for oauth2_issuer_url, got none")
+	}
+	if p.Op != "replace" {
+		t.Errorf("expected op 'replace', got %q", p.Op)
+	}
+	if p.Value != "https://auth.example.com" {
+		t.Errorf("expected value 'https://auth.example.com', got %v", p.Value)
+	}
+}
+
+func TestBuildPatches_OAuth2CookiesSameSiteMode(t *testing.T) {
+	r := &ProjectConfigResource{}
+	plan := &ProjectConfigResourceModel{
+		OAuth2CookiesSameSiteMode: types.StringValue("Strict"),
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/oauth2/config/serve/cookies/same_site_mode")
+	if p == nil {
+		t.Fatal("expected a patch for oauth2_cookies_same_site_mode, got none")
+	}
+	if p.Value != "Strict" {
+		t.Errorf("expected value 'Strict', got %v", p.Value)
+	}
+}
+
+func TestBuildPatches_OAuth2CookiesSameSiteLegacyWorkaround(t *testing.T) {
+	r := &ProjectConfigResource{}
+	plan := &ProjectConfigResourceModel{
+		OAuth2CookiesSameSiteLegacyWorkaround: types.BoolValue(true),
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/oauth2/config/serve/cookies/same_site_legacy_workaround")
+	if p == nil {
+		t.Fatal("expected a patch for oauth2_cookies_same_site_legacy_workaround, got none")
+	}
+	if p.Value != true {
+		t.Errorf("expected value true, got %v", p.Value)
+	}
+}
+
+func TestBuildPatches_NullOAuth2IssuerURL(t *testing.T) {
+	r := &ProjectConfigResource{}
+	plan := &ProjectConfigResourceModel{
+		OAuth2IssuerURL: types.StringNull(),
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/oauth2/config/urls/self/issuer")
+	if p != nil {
+		t.Error("expected no patch for null oauth2_issuer_url")
+	}
+}
