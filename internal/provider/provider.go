@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -243,11 +242,7 @@ For more information: https://www.ory.sh/docs/guides/api-keys`,
 		return
 	}
 
-	tfVersion := req.TerraformVersion
-	userAgent := fmt.Sprintf("Terraform/%s (+https://www.terraform.io) terraform-provider-ory/%s", tfVersion, p.version)
-	if appendUserAgent := os.Getenv("TF_APPEND_USER_AGENT"); appendUserAgent != "" {
-		userAgent = fmt.Sprintf("%s %s", userAgent, appendUserAgent)
-	}
+	userAgent := buildUserAgent(req.TerraformVersion, p.version)
 
 	// Reuse the existing client if the config hasn't changed.
 	// This preserves cached project state across Terraform operations
@@ -314,6 +309,15 @@ func (p *OryProvider) DataSources(ctx context.Context) []func() datasource.DataS
 }
 
 // Helper functions
+
+// buildUserAgent constructs the User-Agent string for API requests.
+func buildUserAgent(tfVersion, providerVersion string) string {
+	ua := "Terraform/" + tfVersion + " (+https://www.terraform.io) terraform-provider-ory/" + providerVersion
+	if appendUA := os.Getenv("TF_APPEND_USER_AGENT"); appendUA != "" {
+		ua += " " + appendUA
+	}
+	return ua
+}
 
 func resolveString(tfValue types.String, envVar string) string {
 	if !tfValue.IsNull() && !tfValue.IsUnknown() {
