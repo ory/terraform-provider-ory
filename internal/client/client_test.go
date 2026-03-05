@@ -1,7 +1,10 @@
 package client
 
 import (
+	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/ory/terraform-provider-ory/internal/testutil"
@@ -580,4 +583,53 @@ func TestIsRetryableError(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestProviderUserAgent(t *testing.T) {
+	expectedUserAgent := "Terraform/1.5.0 (+https://www.terraform.io) terraform-provider-ory/1.0.0"
+	userAgentChan := make(chan string, 1)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userAgentChan <- r.Header.Get("User-Agent")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer mockServer.Close()
+
+	mockConfig := OryClientConfig{
+		ConsoleAPIURL:   mockServer.URL + "/?%s",
+		ProjectAPIURL:   mockServer.URL + "/?%s",
+		ProjectSlug:     "dummy-project-slug",
+		ProjectAPIKey:   "dummy-project-api-key",
+		WorkspaceAPIKey: "dummy-workspace-api-key",
+		UserAgent:       expectedUserAgent,
+	}
+
+	c, err := NewOryClient(mockConfig)
+	if err != nil {
+		t.Fatalf("Could not set up client: %v", err)
+	}
+
+	t.Run("ProjectAPI", func(t *testing.T) {
+		_, _, err := c.ProjectAPI().ProjectAPI.GetProject(context.Background(), "dummy-project-id").Execute()
+		if err != nil {
+			t.Logf("Expected error from mock response: %v", err)
+		}
+
+		capturedUserAgent := <-userAgentChan
+		if capturedUserAgent != expectedUserAgent {
+			t.Errorf("Expected User-Agent %q, but got %q", expectedUserAgent, capturedUserAgent)
+		}
+	})
+
+	t.Run("ConsoleAPI", func(t *testing.T) {
+		_, _, err := c.ConsoleAPI().ProjectAPI.GetProject(context.Background(), "dummy-project-id").Execute()
+		if err != nil {
+			t.Logf("Expected error from mock response: %v", err)
+		}
+
+		capturedUserAgent := <-userAgentChan
+		if capturedUserAgent != expectedUserAgent {
+			t.Errorf("Expected User-Agent %q, but got %q", expectedUserAgent, capturedUserAgent)
+		}
+	})
 }

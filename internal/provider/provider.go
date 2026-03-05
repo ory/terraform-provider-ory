@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -242,6 +243,12 @@ For more information: https://www.ory.sh/docs/guides/api-keys`,
 		return
 	}
 
+	tfVersion := req.TerraformVersion
+	userAgent := fmt.Sprintf("Terraform/%s (+https://www.terraform.io) terraform-provider-ory/%s", tfVersion, p.version)
+	if appendUserAgent := os.Getenv("TF_APPEND_USER_AGENT"); appendUserAgent != "" {
+		userAgent = fmt.Sprintf("%s %s", userAgent, appendUserAgent)
+	}
+
 	// Reuse the existing client if the config hasn't changed.
 	// This preserves cached project state across Terraform operations
 	// (apply → plan/refresh) within the same provider server lifecycle.
@@ -253,6 +260,7 @@ For more information: https://www.ory.sh/docs/guides/api-keys`,
 		WorkspaceID:     workspaceID,
 		ConsoleAPIURL:   consoleAPIURL,
 		ProjectAPIURL:   projectAPIURL,
+		UserAgent:       userAgent,
 	}
 
 	if p.oryClient == nil || p.lastConfig != newConfig {
