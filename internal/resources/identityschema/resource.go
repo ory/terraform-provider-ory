@@ -222,19 +222,19 @@ func (r *IdentitySchemaResource) findSchemaByURL(schemas []map[string]interface{
 // identical JSON content. Returns the schema's API-assigned ID if found, or "".
 // This is used to detect and reuse existing schemas, preventing duplicates
 // when re-applying after a destroy.
-func (r *IdentitySchemaResource) findExistingSchemaByContent(ctx context.Context, schemaJSON string) string {
+func (r *IdentitySchemaResource) findExistingSchemaByContent(ctx context.Context, schemaJSON string) (string, error) {
 	var target interface{}
 	if err := json.Unmarshal([]byte(schemaJSON), &target); err != nil {
-		return ""
+		return "", fmt.Errorf("failed to parse schema JSON for content-based lookup: %w", err)
 	}
 	targetNormalized, err := json.Marshal(target)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("failed to normalize schema JSON for content-based lookup: %w", err)
 	}
 
 	schemas, err := r.client.ListIdentitySchemas(ctx)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("failed to list identity schemas for content-based lookup: %w", err)
 	}
 
 	for _, s := range schemas {
@@ -243,10 +243,10 @@ func (r *IdentitySchemaResource) findExistingSchemaByContent(ctx context.Context
 			continue
 		}
 		if string(targetNormalized) == string(storedNormalized) {
-			return s.GetId()
+			return s.GetId(), nil
 		}
 	}
-	return ""
+	return "", nil
 }
 
 func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -277,32 +277,6 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	// Check if a schema with identical content already exists in the project
-	// via the Identity API. This prevents creating duplicates when re-applying
-	// after a destroy, since Ory does not support deleting schemas.
-	// We use ListIdentitySchemas (not GetProject) because the project config
-	// stores schemas with GCS URLs that can't be content-matched.
-	if existingID := r.findExistingSchemaByContent(ctx, schemaJSON); existingID != "" {
-		// Schema with identical content already exists — adopt it
-		if plan.SetDefault.ValueBool() {
-			patches := []ory.JsonPatch{{
-				Op:    "add",
-				Path:  "/services/identity/config/identity/default_schema_id",
-				Value: existingID,
-			}}
-			_, patchErr := r.client.PatchProject(ctx, projectID, patches)
-			if patchErr != nil {
-				resp.Diagnostics.AddError("Error Setting Default Schema", patchErr.Error())
-				return
-			}
-		}
-
-		plan.ID = types.StringValue(existingID)
-		plan.ProjectID = types.StringValue(projectID)
-		resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
-		return
-	}
-
 	existingIDs := make(map[string]bool)
 	for _, s := range existingSchemas {
 		if id, ok := s["id"].(string); ok {
@@ -313,6 +287,37 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 	var patches []ory.JsonPatch
 
 	existingIndex := r.findSchemaIndex(existingSchemas, schemaID)
+
+	// Only perform content-based deduplication when the schema ID does not
+	// already exist in the project configuration. This avoids an extra
+	// ListIdentitySchemas call when we're simply replacing an existing schema.
+	if existingIndex < 0 {
+		existingID, err := r.findExistingSchemaByContent(ctx, schemaJSON)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Checking for Duplicate Schemas", err.Error())
+			return
+		}
+		if existingID != "" {
+			// Schema with identical content already exists — adopt it
+			if plan.SetDefault.ValueBool() {
+				patches := []ory.JsonPatch{{
+					Op:    "add",
+					Path:  "/services/identity/config/identity/default_schema_id",
+					Value: existingID,
+				}}
+				_, patchErr := r.client.PatchProject(ctx, projectID, patches)
+				if patchErr != nil {
+					resp.Diagnostics.AddError("Error Setting Default Schema", patchErr.Error())
+					return
+				}
+			}
+
+			plan.ID = types.StringValue(existingID)
+			plan.ProjectID = types.StringValue(projectID)
+			resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
+			return
+		}
+	}
 	if existingIndex >= 0 {
 		// Replace existing
 		patches = append(patches, ory.JsonPatch{
