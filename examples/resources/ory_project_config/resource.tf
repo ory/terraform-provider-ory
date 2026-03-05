@@ -83,6 +83,13 @@ resource "ory_project_config" "secure" {
   oauth2_allowed_top_level_claims = ["amr", "acr"]
   oauth2_mirror_top_level_claims  = false
 
+  # OAuth2 Issuer URL (custom issuer for OAuth2/OIDC tokens)
+  oauth2_issuer_url = "https://auth.example.com"
+
+  # OAuth2 Cookie Settings
+  oauth2_cookies_same_site_mode              = "Strict"
+  oauth2_cookies_same_site_legacy_workaround = false
+
   # Keto Namespaces (for fine-grained authorization)
   keto_namespaces = ["documents", "folders", "groups"]
 }

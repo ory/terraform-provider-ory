@@ -61,23 +61,26 @@ type ProjectConfigResourceModel struct {
 	SessionCookiePersistent types.Bool   `tfsdk:"session_cookie_persistent"`
 
 	// OAuth2/Hydra
-	OAuth2AccessTokenLifespan          types.String `tfsdk:"oauth2_access_token_lifespan"`
-	OAuth2RefreshTokenLifespan         types.String `tfsdk:"oauth2_refresh_token_lifespan"`
-	OAuth2AuthCodeLifespan             types.String `tfsdk:"oauth2_auth_code_lifespan"`
-	OAuth2IDTokenLifespan              types.String `tfsdk:"oauth2_id_token_lifespan"`
-	OAuth2LoginConsentRequestLifespan  types.String `tfsdk:"oauth2_login_consent_request_lifespan"`
-	OAuth2AllowedTopLevelClaims        types.List   `tfsdk:"oauth2_allowed_top_level_claims"`
-	OAuth2MirrorTopLevelClaims         types.Bool   `tfsdk:"oauth2_mirror_top_level_claims"`
-	OAuth2PKCEEnforced                 types.Bool   `tfsdk:"oauth2_pkce_enforced"`
-	OAuth2PKCEEnforcedForPublicClients types.Bool   `tfsdk:"oauth2_pkce_enforced_for_public_clients"`
-	OAuth2SessionEncryptAtRest         types.Bool   `tfsdk:"oauth2_session_encrypt_at_rest"`
-	OAuth2AccessTokenStrategy          types.String `tfsdk:"oauth2_access_token_strategy"`
-	OAuth2JWTScopeClaim                types.String `tfsdk:"oauth2_jwt_scope_claim"`
-	OAuth2ScopeStrategy                types.String `tfsdk:"oauth2_scope_strategy"`
-	OAuth2ConsentURL                   types.String `tfsdk:"oauth2_consent_url"`
-	OAuth2LoginURL                     types.String `tfsdk:"oauth2_login_url"`
-	OAuth2LogoutURL                    types.String `tfsdk:"oauth2_logout_url"`
-	OAuth2ErrorURL                     types.String `tfsdk:"oauth2_error_url"`
+	OAuth2AccessTokenLifespan             types.String `tfsdk:"oauth2_access_token_lifespan"`
+	OAuth2RefreshTokenLifespan            types.String `tfsdk:"oauth2_refresh_token_lifespan"`
+	OAuth2AuthCodeLifespan                types.String `tfsdk:"oauth2_auth_code_lifespan"`
+	OAuth2IDTokenLifespan                 types.String `tfsdk:"oauth2_id_token_lifespan"`
+	OAuth2LoginConsentRequestLifespan     types.String `tfsdk:"oauth2_login_consent_request_lifespan"`
+	OAuth2AllowedTopLevelClaims           types.List   `tfsdk:"oauth2_allowed_top_level_claims"`
+	OAuth2MirrorTopLevelClaims            types.Bool   `tfsdk:"oauth2_mirror_top_level_claims"`
+	OAuth2PKCEEnforced                    types.Bool   `tfsdk:"oauth2_pkce_enforced"`
+	OAuth2PKCEEnforcedForPublicClients    types.Bool   `tfsdk:"oauth2_pkce_enforced_for_public_clients"`
+	OAuth2SessionEncryptAtRest            types.Bool   `tfsdk:"oauth2_session_encrypt_at_rest"`
+	OAuth2AccessTokenStrategy             types.String `tfsdk:"oauth2_access_token_strategy"`
+	OAuth2JWTScopeClaim                   types.String `tfsdk:"oauth2_jwt_scope_claim"`
+	OAuth2ScopeStrategy                   types.String `tfsdk:"oauth2_scope_strategy"`
+	OAuth2ConsentURL                      types.String `tfsdk:"oauth2_consent_url"`
+	OAuth2LoginURL                        types.String `tfsdk:"oauth2_login_url"`
+	OAuth2LogoutURL                       types.String `tfsdk:"oauth2_logout_url"`
+	OAuth2ErrorURL                        types.String `tfsdk:"oauth2_error_url"`
+	OAuth2IssuerURL                       types.String `tfsdk:"oauth2_issuer_url"`
+	OAuth2CookiesSameSiteMode             types.String `tfsdk:"oauth2_cookies_same_site_mode"`
+	OAuth2CookiesSameSiteLegacyWorkaround types.Bool   `tfsdk:"oauth2_cookies_same_site_legacy_workaround"`
 
 	// URLs
 	DefaultReturnURL  types.String `tfsdk:"default_return_url"`
@@ -410,6 +413,21 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 			"oauth2_error_url": schema.StringAttribute{
 				Description: "OAuth2 error endpoint URL.",
 				Optional:    true,
+			},
+			"oauth2_issuer_url": schema.StringAttribute{
+				Description: "OAuth2 issuer URL. Overrides the default project URL used as the OAuth2/OIDC issuer.",
+				Optional:    true,
+			},
+			"oauth2_cookies_same_site_mode": schema.StringAttribute{
+				Description: "SameSite attribute for OAuth2 cookies ('Lax', 'Strict', 'None').",
+				Optional:    true,
+				Validators:  []validator.String{stringvalidator.OneOf("Lax", "Strict", "None")},
+			},
+			"oauth2_cookies_same_site_legacy_workaround": schema.BoolAttribute{
+				Description: "Enable the SameSite=None legacy workaround for OAuth2 cookies. " +
+					"When enabled, a fallback cookie without SameSite is set alongside the main cookie " +
+					"for clients that don't support SameSite=None.",
+				Optional: true,
 			},
 
 			// URLs
@@ -880,10 +898,11 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 
 	// OAuth2/Hydra boolean settings
 	oauth2BoolMappings := map[*types.Bool]string{
-		&plan.OAuth2MirrorTopLevelClaims:         "/services/oauth2/config/oauth2/mirror_top_level_claims",
-		&plan.OAuth2PKCEEnforced:                 "/services/oauth2/config/oauth2/pkce/enforced",
-		&plan.OAuth2PKCEEnforcedForPublicClients: "/services/oauth2/config/oauth2/pkce/enforced_for_public_clients",
-		&plan.OAuth2SessionEncryptAtRest:         "/services/oauth2/config/oauth2/session/encrypt_at_rest",
+		&plan.OAuth2MirrorTopLevelClaims:            "/services/oauth2/config/oauth2/mirror_top_level_claims",
+		&plan.OAuth2PKCEEnforced:                    "/services/oauth2/config/oauth2/pkce/enforced",
+		&plan.OAuth2PKCEEnforcedForPublicClients:    "/services/oauth2/config/oauth2/pkce/enforced_for_public_clients",
+		&plan.OAuth2SessionEncryptAtRest:            "/services/oauth2/config/oauth2/session/encrypt_at_rest",
+		&plan.OAuth2CookiesSameSiteLegacyWorkaround: "/services/oauth2/config/serve/cookies/same_site_legacy_workaround",
 	}
 	for field, path := range oauth2BoolMappings {
 		if !field.IsNull() && !field.IsUnknown() {
@@ -895,7 +914,7 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 		}
 	}
 
-	// OAuth2/Hydra strategies and URLs
+	// OAuth2/Hydra strategies, URLs, and cookie settings
 	oauth2StringMappings := map[*types.String]string{
 		&plan.OAuth2AccessTokenStrategy: "/services/oauth2/config/strategies/access_token",
 		&plan.OAuth2JWTScopeClaim:       "/services/oauth2/config/strategies/jwt/scope_claim",
@@ -904,6 +923,8 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 		&plan.OAuth2LoginURL:            "/services/oauth2/config/urls/login",
 		&plan.OAuth2LogoutURL:           "/services/oauth2/config/urls/logout",
 		&plan.OAuth2ErrorURL:            "/services/oauth2/config/urls/error",
+		&plan.OAuth2IssuerURL:           "/services/oauth2/config/urls/self/issuer",
+		&plan.OAuth2CookiesSameSiteMode: "/services/oauth2/config/serve/cookies/same_site_mode",
 	}
 	for field, path := range oauth2StringMappings {
 		if !field.IsNull() && !field.IsUnknown() {
@@ -1801,10 +1822,11 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 
 		// Boolean settings
 		oauth2BoolReadMappings := map[*types.Bool][]string{
-			&state.OAuth2MirrorTopLevelClaims:         {"oauth2", "mirror_top_level_claims"},
-			&state.OAuth2PKCEEnforced:                 {"oauth2", "pkce", "enforced"},
-			&state.OAuth2PKCEEnforcedForPublicClients: {"oauth2", "pkce", "enforced_for_public_clients"},
-			&state.OAuth2SessionEncryptAtRest:         {"oauth2", "session", "encrypt_at_rest"},
+			&state.OAuth2MirrorTopLevelClaims:            {"oauth2", "mirror_top_level_claims"},
+			&state.OAuth2PKCEEnforced:                    {"oauth2", "pkce", "enforced"},
+			&state.OAuth2PKCEEnforcedForPublicClients:    {"oauth2", "pkce", "enforced_for_public_clients"},
+			&state.OAuth2SessionEncryptAtRest:            {"oauth2", "session", "encrypt_at_rest"},
+			&state.OAuth2CookiesSameSiteLegacyWorkaround: {"serve", "cookies", "same_site_legacy_workaround"},
 		}
 		for field, keys := range oauth2BoolReadMappings {
 			if !field.IsNull() {
@@ -1814,7 +1836,7 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 			}
 		}
 
-		// Strategies and URLs
+		// Strategies, URLs, and cookie settings
 		oauth2StringReadMappings := map[*types.String][]string{
 			&state.OAuth2AccessTokenStrategy: {"strategies", "access_token"},
 			&state.OAuth2JWTScopeClaim:       {"strategies", "jwt", "scope_claim"},
@@ -1823,6 +1845,8 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 			&state.OAuth2LoginURL:            {"urls", "login"},
 			&state.OAuth2LogoutURL:           {"urls", "logout"},
 			&state.OAuth2ErrorURL:            {"urls", "error"},
+			&state.OAuth2IssuerURL:           {"urls", "self", "issuer"},
+			&state.OAuth2CookiesSameSiteMode: {"serve", "cookies", "same_site_mode"},
 		}
 		for field, keys := range oauth2StringReadMappings {
 			if !field.IsNull() {

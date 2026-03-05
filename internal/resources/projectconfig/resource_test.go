@@ -73,6 +73,75 @@ func TestAccProjectConfigResource_hydraConfig(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_oauth2Cookies(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with Strict mode
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_cookies.tf.tmpl", map[string]string{
+					"SameSiteMode":     "Strict",
+					"LegacyWorkaround": "false",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_cookies_same_site_mode", "Strict"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_cookies_same_site_legacy_workaround", "false"),
+				),
+			},
+			// Update to Lax with legacy workaround
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_cookies.tf.tmpl", map[string]string{
+					"SameSiteMode":     "Lax",
+					"LegacyWorkaround": "true",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_cookies_same_site_mode", "Lax"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_cookies_same_site_legacy_workaround", "true"),
+				),
+			},
+			// Verify no perpetual diff
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_cookies.tf.tmpl", map[string]string{
+					"SameSiteMode":     "Lax",
+					"LegacyWorkaround": "true",
+				}),
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
+func TestAccProjectConfigResource_oauth2IssuerURL(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_issuer.tf.tmpl", map[string]string{
+					"IssuerURL": "https://auth.example.com",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_issuer_url", "https://auth.example.com"),
+				),
+			},
+			// ImportState
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"oauth2_issuer_url",
+					"cors_enabled", "password_min_length",
+					"smtp_connection_uri",
+				},
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_mfaPolicy(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
