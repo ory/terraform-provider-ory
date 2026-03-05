@@ -1,0 +1,4 @@
+resource "ory_project_config" "test" {
+  oauth2_cookies_same_site_mode                 = "[[ .SameSiteMode ]]"
+  oauth2_cookies_same_site_legacy_workaround    = [[ .LegacyWorkaround ]]
+}
