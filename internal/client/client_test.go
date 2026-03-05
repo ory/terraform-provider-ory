@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -610,7 +611,10 @@ func TestProviderUserAgent(t *testing.T) {
 	}
 
 	t.Run("ProjectAPI", func(t *testing.T) {
-		_, _, err := c.ProjectAPI().ProjectAPI.GetProject(context.Background(), "dummy-project-id").Execute()
+		_, resp, err := c.ProjectAPI().ProjectAPI.GetProject(context.Background(), "dummy-project-id").Execute()
+		if resp != nil && resp.Body != nil {
+			err = errors.Join(resp.Body.Close(), err)
+		}
 		if err != nil {
 			t.Logf("Expected error from mock response: %v", err)
 		}
@@ -622,7 +626,10 @@ func TestProviderUserAgent(t *testing.T) {
 	})
 
 	t.Run("ConsoleAPI", func(t *testing.T) {
-		_, _, err := c.ConsoleAPI().ProjectAPI.GetProject(context.Background(), "dummy-project-id").Execute()
+		_, resp, err := c.ConsoleAPI().ProjectAPI.GetProject(context.Background(), "dummy-project-id").Execute()
+		if resp != nil && resp.Body != nil {
+			err = errors.Join(resp.Body.Close(), err)
+		}
 		if err != nil {
 			t.Logf("Expected error from mock response: %v", err)
 		}
