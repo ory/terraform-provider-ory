@@ -106,6 +106,13 @@ resource "ory_project_config" "secure" {
   oauth2_allowed_top_level_claims = ["amr", "acr"]
   oauth2_mirror_top_level_claims  = false
 
+  # OAuth2 Issuer URL (custom issuer for OAuth2/OIDC tokens)
+  oauth2_issuer_url = "https://auth.example.com"
+
+  # OAuth2 Cookie Settings
+  oauth2_cookies_same_site_mode              = "Strict"
+  oauth2_cookies_same_site_legacy_workaround = false
+
   # Keto Namespaces (for fine-grained authorization)
   keto_namespaces = ["documents", "folders", "groups"]
 }
@@ -350,8 +357,11 @@ Some Ory project settings are not yet available through this resource. For setti
 - `oauth2_allowed_top_level_claims` (List of String) List of allowed top-level claims in OAuth2 access tokens (e.g., 'amr', 'acr').
 - `oauth2_auth_code_lifespan` (String) OAuth2 authorization code lifespan (e.g., '30m'). Requires Hydra service.
 - `oauth2_consent_url` (String) OAuth2 consent endpoint URL.
+- `oauth2_cookies_same_site_legacy_workaround` (Boolean) Enable the SameSite=None legacy workaround for OAuth2 cookies. When enabled, a fallback cookie without SameSite is set alongside the main cookie for clients that don't support SameSite=None.
+- `oauth2_cookies_same_site_mode` (String) SameSite attribute for OAuth2 cookies ('Lax', 'Strict', 'None').
 - `oauth2_error_url` (String) OAuth2 error endpoint URL.
 - `oauth2_id_token_lifespan` (String) OAuth2 ID token lifespan (e.g., '1h'). Requires Hydra service.
+- `oauth2_issuer_url` (String) OAuth2 issuer URL. Overrides the default project URL used as the OAuth2/OIDC issuer.
 - `oauth2_jwt_scope_claim` (String) How scopes are represented in JWT access tokens ('list', 'string', or 'both').
 - `oauth2_login_consent_request_lifespan` (String) OAuth2 login/consent request lifespan (e.g., '30m'). Requires Hydra service.
 - `oauth2_login_url` (String) OAuth2 login endpoint URL.
