@@ -1822,10 +1822,11 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 
 		// Boolean settings
 		oauth2BoolReadMappings := map[*types.Bool][]string{
-			&state.OAuth2MirrorTopLevelClaims:         {"oauth2", "mirror_top_level_claims"},
-			&state.OAuth2PKCEEnforced:                 {"oauth2", "pkce", "enforced"},
-			&state.OAuth2PKCEEnforcedForPublicClients: {"oauth2", "pkce", "enforced_for_public_clients"},
-			&state.OAuth2SessionEncryptAtRest:         {"oauth2", "session", "encrypt_at_rest"},
+			&state.OAuth2MirrorTopLevelClaims:            {"oauth2", "mirror_top_level_claims"},
+			&state.OAuth2PKCEEnforced:                    {"oauth2", "pkce", "enforced"},
+			&state.OAuth2PKCEEnforcedForPublicClients:    {"oauth2", "pkce", "enforced_for_public_clients"},
+			&state.OAuth2SessionEncryptAtRest:            {"oauth2", "session", "encrypt_at_rest"},
+			&state.OAuth2CookiesSameSiteLegacyWorkaround: {"serve", "cookies", "same_site_legacy_workaround"},
 		}
 		for field, keys := range oauth2BoolReadMappings {
 			if !field.IsNull() {
@@ -1852,13 +1853,6 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 				if v, ok := getNestedString(oauth2Config, keys...); ok {
 					*field = types.StringValue(v)
 				}
-			}
-		}
-
-		// OAuth2 cookie boolean settings
-		if !state.OAuth2CookiesSameSiteLegacyWorkaround.IsNull() {
-			if v, ok := getNestedBool(oauth2Config, "serve", "cookies", "same_site_legacy_workaround"); ok {
-				state.OAuth2CookiesSameSiteLegacyWorkaround = types.BoolValue(v)
 			}
 		}
 	}
