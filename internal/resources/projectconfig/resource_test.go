@@ -299,6 +299,46 @@ func TestAccProjectConfigResource_returnURLsWithServerDefaults(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_loginStyle(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with identifier_first
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/login_style.tf.tmpl", map[string]string{"LoginStyle": "identifier_first"}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "login_style", "identifier_first"),
+				),
+			},
+			// ImportState
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"login_style", "enable_password",
+					"cors_enabled", "password_min_length",
+					"smtp_connection_uri",
+				},
+			},
+			// Update to unified
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/login_style.tf.tmpl", map[string]string{"LoginStyle": "unified"}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "login_style", "unified"),
+				),
+			},
+			// Verify no perpetual diff
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/login_style.tf.tmpl", map[string]string{"LoginStyle": "unified"}),
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_courierHTTP(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },

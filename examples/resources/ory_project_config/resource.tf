@@ -94,6 +94,13 @@ resource "ory_project_config" "secure" {
   keto_namespaces = ["documents", "folders", "groups"]
 }
 
+# Identifier-first login style (collects email/username before showing auth methods)
+resource "ory_project_config" "identifier_first" {
+  login_style     = "identifier_first"
+  enable_password = true
+  enable_code     = true
+}
+
 # Self-hosted UI configuration (custom login/registration pages)
 resource "ory_project_config" "self_hosted_ui" {
   login_ui_url        = "https://auth.example.com/login"
