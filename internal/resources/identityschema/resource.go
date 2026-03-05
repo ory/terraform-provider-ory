@@ -233,16 +233,16 @@ func (r *IdentitySchemaResource) findExistingSchemaByContent(ctx context.Context
 	}
 
 	var schemas []ory.IdentitySchemaContainer
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
 		schemas, err = r.client.ListIdentitySchemas(ctx)
 		if err == nil {
 			break
 		}
-		if attempt < 2 {
+		if attempt < helpers.ReadRetryMaxAttempts-1 {
 			select {
 			case <-ctx.Done():
 				return "", ctx.Err()
-			case <-time.After(time.Second):
+			case <-time.After(helpers.EventualConsistencyDelay):
 			}
 		}
 	}
@@ -311,7 +311,12 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 			return
 		}
 		if existingID != "" {
-			// Schema with identical content already exists — adopt it
+			// Schema with identical content already exists — adopt it.
+			// We intentionally do NOT add a new schema entry to the project
+			// config here because that would create a duplicate (same content,
+			// different schema_id). The existing schema is already registered
+			// in the project config under its original ID, and Read will find
+			// it by the hash-based ID stored in state.
 			if plan.SetDefault.ValueBool() {
 				defaultPatches := []ory.JsonPatch{{
 					Op:    "add",
