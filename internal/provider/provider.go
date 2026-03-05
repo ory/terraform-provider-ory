@@ -244,10 +244,7 @@ For more information: https://www.ory.sh/docs/guides/api-keys`,
 	}
 
 	tfVersion := req.TerraformVersion
-	userAgent := fmt.Sprintf("Terraform/%s (+https://www.terraform.io) terraform-provider-ory/%s", tfVersion, p.version)
-	if appendUserAgent := os.Getenv("TF_APPEND_USER_AGENT"); appendUserAgent != "" {
-		userAgent = fmt.Sprintf("%s %s", userAgent, appendUserAgent)
-	}
+	userAgent := buildUserAgent(tfVersion, p.version)
 
 	// Reuse the existing client if the config hasn't changed.
 	// This preserves cached project state across Terraform operations
@@ -330,4 +327,12 @@ func resolveStringDefault(tfValue types.String, envVar, defaultValue string) str
 		return v
 	}
 	return defaultValue
+}
+
+func buildUserAgent(tfVersion, providerVersion string) string {
+	ua := fmt.Sprintf("Terraform/%s (+https://www.terraform.io) terraform-provider-ory/%s", tfVersion, providerVersion)
+	if appendUA := os.Getenv("TF_APPEND_USER_AGENT"); appendUA != "" {
+		ua = fmt.Sprintf("%s %s", ua, appendUA)
+	}
+	return ua
 }

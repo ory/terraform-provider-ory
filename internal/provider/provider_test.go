@@ -175,3 +175,47 @@ func TestProviderModelAttributes(t *testing.T) {
 		t.Error("ProjectAPIURL not set correctly")
 	}
 }
+
+func TestBuildUserAgent(t *testing.T) {
+	tests := []struct {
+		name            string
+		tfVersion       string
+		providerVersion string
+		appendEnv       string
+		expected        string
+	}{
+		{
+			name:            "basic user agent without append",
+			tfVersion:       "1.5.0",
+			providerVersion: "1.0.0",
+			expected:        "Terraform/1.5.0 (+https://www.terraform.io) terraform-provider-ory/1.0.0",
+		},
+		{
+			name:            "user agent with TF_APPEND_USER_AGENT",
+			tfVersion:       "1.5.0",
+			providerVersion: "1.0.0",
+			appendEnv:       "custom-suffix",
+			expected:        "Terraform/1.5.0 (+https://www.terraform.io) terraform-provider-ory/1.0.0 custom-suffix",
+		},
+		{
+			name:            "dev provider version",
+			tfVersion:       "1.0.0",
+			providerVersion: "dev",
+			expected:        "Terraform/1.0.0 (+https://www.terraform.io) terraform-provider-ory/dev",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.appendEnv != "" {
+				_ = os.Setenv("TF_APPEND_USER_AGENT", tt.appendEnv)
+				defer func() { _ = os.Unsetenv("TF_APPEND_USER_AGENT") }()
+			}
+
+			result := buildUserAgent(tt.tfVersion, tt.providerVersion)
+			if result != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, result)
+			}
+		})
+	}
+}

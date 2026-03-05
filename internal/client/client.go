@@ -492,10 +492,15 @@ func (c *OryClient) ensureProjectClient() error {
 	if parsedURL.Scheme != schemeHTTPS && parsedURL.Scheme != schemeHTTP {
 		return fmt.Errorf("invalid project API URL %q: must use http or https scheme", formattedURL)
 	}
+	projectCfg.Host = parsedURL.Host
+	projectCfg.Scheme = parsedURL.Scheme
 	projectCfg.Servers = ory.ServerConfigurations{
 		{URL: formattedURL},
 	}
 	projectCfg.AddDefaultHeader("Authorization", "Bearer "+c.config.ProjectAPIKey)
+	if c.config.UserAgent != "" {
+		projectCfg.UserAgent = c.config.UserAgent
+	}
 	c.projectClient = ory.NewAPIClient(projectCfg)
 
 	return nil
