@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-ory/internal/client"
+	"github.com/ory/terraform-provider-ory/internal/helpers"
 )
 
 var (
@@ -75,7 +78,22 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 		return
 	}
 
-	schemas, err := d.client.ListIdentitySchemas(ctx)
+	var schemas []ory.IdentitySchemaContainer
+	var err error
+	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
+		schemas, err = d.client.ListIdentitySchemas(ctx)
+		if err == nil {
+			break
+		}
+		if attempt < helpers.ReadRetryMaxAttempts-1 {
+			select {
+			case <-ctx.Done():
+				resp.Diagnostics.AddError("Error Listing Identity Schemas", ctx.Err().Error())
+				return
+			case <-time.After(helpers.EventualConsistencyDelay):
+			}
+		}
+	}
 	if err != nil {
 		resp.Diagnostics.AddError("Error Listing Identity Schemas", err.Error())
 		return
