@@ -642,7 +642,7 @@ func TestProviderUserAgent(t *testing.T) {
 		defer mockServer.Close()
 
 		c, err := NewOryClient(OryClientConfig{
-			ConsoleAPIURL:   mockServer.URL + "/?%s",
+			ConsoleAPIURL:   mockServer.URL,
 			WorkspaceAPIKey: "dummy-workspace-api-key",
 			UserAgent:       expectedUserAgent,
 		})
@@ -673,7 +673,7 @@ func TestProviderUserAgent(t *testing.T) {
 		defer mockServer.Close()
 
 		parent, err := NewOryClient(OryClientConfig{
-			ConsoleAPIURL:   mockServer.URL + "/?%s",
+			ConsoleAPIURL:   mockServer.URL,
 			ProjectAPIURL:   mockServer.URL + "/?%s",
 			WorkspaceAPIKey: "dummy-workspace-api-key",
 			UserAgent:       expectedUserAgent,

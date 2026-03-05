@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"testing"
 
@@ -208,13 +207,9 @@ func TestBuildUserAgent(t *testing.T) {
 				t.Setenv("TF_APPEND_USER_AGENT", "")
 			}
 
-			userAgent := fmt.Sprintf("Terraform/%s (+https://www.terraform.io) terraform-provider-ory/%s", tt.tfVersion, tt.providerVersion)
-			if appendUserAgent := os.Getenv("TF_APPEND_USER_AGENT"); appendUserAgent != "" {
-				userAgent = fmt.Sprintf("%s %s", userAgent, appendUserAgent)
-			}
-
-			if userAgent != tt.expected {
-				t.Errorf("expected %q, got %q", tt.expected, userAgent)
+			got := buildUserAgent(tt.tfVersion, tt.providerVersion)
+			if got != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, got)
 			}
 		})
 	}
