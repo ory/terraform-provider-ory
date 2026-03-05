@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -314,8 +313,8 @@ func (p *OryProvider) DataSources(ctx context.Context) []func() datasource.DataS
 // buildUserAgent constructs the User-Agent string for API requests.
 func buildUserAgent(tfVersion, providerVersion string) string {
 	ua := "Terraform/" + tfVersion + " (+https://www.terraform.io) terraform-provider-ory/" + providerVersion
-	if append := os.Getenv("TF_APPEND_USER_AGENT"); append != "" {
-		ua += " " + append
+	if appendUA := os.Getenv("TF_APPEND_USER_AGENT"); appendUA != "" {
+		ua += " " + appendUA
 	}
 	return ua
 }
