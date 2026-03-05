@@ -232,7 +232,20 @@ func (r *IdentitySchemaResource) findExistingSchemaByContent(ctx context.Context
 		return "", fmt.Errorf("failed to normalize schema JSON for content-based lookup: %w", err)
 	}
 
-	schemas, err := r.client.ListIdentitySchemas(ctx)
+	var schemas []ory.IdentitySchemaContainer
+	for attempt := 0; attempt < 3; attempt++ {
+		schemas, err = r.client.ListIdentitySchemas(ctx)
+		if err == nil {
+			break
+		}
+		if attempt < 2 {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(time.Second):
+			}
+		}
+	}
 	if err != nil {
 		return "", fmt.Errorf("failed to list identity schemas for content-based lookup: %w", err)
 	}
