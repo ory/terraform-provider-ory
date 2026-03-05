@@ -299,6 +299,7 @@ type OryClientConfig struct {
 	WorkspaceID     string
 	ConsoleAPIURL   string
 	ProjectAPIURL   string // URL template with %s placeholder for slug (e.g., "https://%s.projects.oryapis.com")
+	UserAgent       string
 }
 
 // OryClient wraps the Ory SDK clients.
@@ -338,6 +339,9 @@ func NewOryClient(cfg OryClientConfig) (*OryClient, error) {
 		}
 
 		consoleCfg := ory.NewConfiguration()
+		consoleCfg.UserAgent = cfg.UserAgent
+		consoleCfg.Host = parsedURL.Host
+		consoleCfg.Scheme = parsedURL.Scheme
 		consoleCfg.Servers = ory.ServerConfigurations{
 			{URL: cfg.ConsoleAPIURL},
 		}
@@ -388,7 +392,6 @@ func NewOryClient(cfg OryClientConfig) (*OryClient, error) {
 
 	// Initialize project client if project API key and slug are provided
 	if cfg.ProjectAPIKey != "" && cfg.ProjectSlug != "" {
-		projectCfg := ory.NewConfiguration()
 		// Use configurable URL template, defaulting to production
 		projectAPIURL := cfg.ProjectAPIURL
 		if projectAPIURL == "" {
@@ -403,6 +406,11 @@ func NewOryClient(cfg OryClientConfig) (*OryClient, error) {
 		if parsedURL.Scheme != schemeHTTPS && parsedURL.Scheme != schemeHTTP {
 			return nil, fmt.Errorf("invalid project API URL %q: must use http or https scheme", formattedURL)
 		}
+
+		projectCfg := ory.NewConfiguration()
+		projectCfg.UserAgent = cfg.UserAgent
+		projectCfg.Host = parsedURL.Host
+		projectCfg.Scheme = parsedURL.Scheme
 		projectCfg.Servers = ory.ServerConfigurations{
 			{URL: formattedURL},
 		}
@@ -471,7 +479,6 @@ func (c *OryClient) ensureProjectClient() error {
 			"Set them on the provider or pass them as resource-level attributes (project_slug, project_api_key)")
 	}
 
-	projectCfg := ory.NewConfiguration()
 	projectAPIURL := c.config.ProjectAPIURL
 	if projectAPIURL == "" {
 		projectAPIURL = DefaultProjectAPIURL
@@ -484,6 +491,11 @@ func (c *OryClient) ensureProjectClient() error {
 	if parsedURL.Scheme != schemeHTTPS && parsedURL.Scheme != schemeHTTP {
 		return fmt.Errorf("invalid project API URL %q: must use http or https scheme", formattedURL)
 	}
+
+	projectCfg := ory.NewConfiguration()
+	projectCfg.UserAgent = c.config.UserAgent
+	projectCfg.Host = parsedURL.Host
+	projectCfg.Scheme = parsedURL.Scheme
 	projectCfg.Servers = ory.ServerConfigurations{
 		{URL: formattedURL},
 	}
