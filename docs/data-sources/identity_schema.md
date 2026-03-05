@@ -20,7 +20,7 @@ This data source retrieves a specific identity schema from the project, allowing
 ```terraform
 # Look up an identity schema by its API-assigned ID
 data "ory_identity_schema" "customer" {
-  schema_id = "abc123def456..."
+  id = "abc123def456..."
 }
 
 output "schema_content" {
@@ -56,7 +56,7 @@ resource "ory_identity_schema" "employee" {
 }
 
 data "ory_identity_schema" "employee" {
-  schema_id = ory_identity_schema.employee.id
+  id = ory_identity_schema.employee.id
 }
 ```
 
@@ -65,7 +65,7 @@ data "ory_identity_schema" "employee" {
 
 ### Required
 
-- `schema_id` (String) The schema ID to look up. This is the API-assigned ID (which may be a hash) or a preset ID like 'preset://username'.
+- `id` (String) The ID of the schema to look up. This is the API-assigned ID (which may be a hash) or a preset ID like 'preset://username'.
 
 ### Read-Only
 

@@ -31,9 +31,9 @@ func TestAccIdentitySchemaDataSource_basic(t *testing.T) {
 					"AppURL":   testutil.ExampleAppURL,
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					// The data source's schema_id matches the resource's API-assigned id (may be a hash)
+					// The data source's id matches the resource's API-assigned id (may be a hash)
 					resource.TestCheckResourceAttrPair(
-						"data.ory_identity_schema.test", "schema_id",
+						"data.ory_identity_schema.test", "id",
 						"ory_identity_schema.test", "id",
 					),
 					resource.TestCheckResourceAttrSet("data.ory_identity_schema.test", "schema"),

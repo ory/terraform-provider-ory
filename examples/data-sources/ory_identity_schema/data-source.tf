@@ -1,6 +1,6 @@
 # Look up an identity schema by its API-assigned ID
 data "ory_identity_schema" "customer" {
-  schema_id = "abc123def456..."
+  id = "abc123def456..."
 }
 
 output "schema_content" {
@@ -36,5 +36,5 @@ resource "ory_identity_schema" "employee" {
 }
 
 data "ory_identity_schema" "employee" {
-  schema_id = ory_identity_schema.employee.id
+  id = ory_identity_schema.employee.id
 }

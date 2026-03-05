@@ -240,7 +240,7 @@ func (r *IdentitySchemaResource) findExistingSchemaByContent(ctx context.Context
 	for _, s := range schemas {
 		storedNormalized, err := json.Marshal(s.GetSchema())
 		if err != nil {
-			continue
+			return "", fmt.Errorf("failed to normalize stored schema %s for content-based lookup: %w", s.GetId(), err)
 		}
 		if string(targetNormalized) == string(storedNormalized) {
 			return s.GetId(), nil
@@ -300,12 +300,12 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		if existingID != "" {
 			// Schema with identical content already exists — adopt it
 			if plan.SetDefault.ValueBool() {
-				patches := []ory.JsonPatch{{
+				defaultPatches := []ory.JsonPatch{{
 					Op:    "add",
 					Path:  "/services/identity/config/identity/default_schema_id",
 					Value: existingID,
 				}}
-				_, patchErr := r.client.PatchProject(ctx, projectID, patches)
+				_, patchErr := r.client.PatchProject(ctx, projectID, defaultPatches)
 				if patchErr != nil {
 					resp.Diagnostics.AddError("Error Setting Default Schema", patchErr.Error())
 					return

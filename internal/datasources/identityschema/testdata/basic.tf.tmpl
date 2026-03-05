@@ -29,5 +29,5 @@ resource "ory_identity_schema" "test" {
 }
 
 data "ory_identity_schema" "test" {
-  schema_id = ory_identity_schema.test.id
+  id = ory_identity_schema.test.id
 }

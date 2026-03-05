@@ -29,8 +29,8 @@ type IdentitySchemaDataSource struct {
 }
 
 type IdentitySchemaDataSourceModel struct {
-	SchemaID types.String `tfsdk:"schema_id"`
-	Schema   types.String `tfsdk:"schema"`
+	ID     types.String `tfsdk:"id"`
+	Schema types.String `tfsdk:"schema"`
 }
 
 const identitySchemaDataSourceMarkdownDescription = `
@@ -45,11 +45,11 @@ to discover available schema IDs, or use the ` + "`id`" + ` output from an ` + "
 
 ## Example Usage
 
-### Look up by schema ID
+### Look up by ID
 
 ` + "```hcl" + `
 data "ory_identity_schema" "customer" {
-  schema_id = "preset://username"
+  id = "preset://username"
 }
 
 output "schema_content" {
@@ -66,7 +66,7 @@ resource "ory_identity_schema" "customer" {
 }
 
 data "ory_identity_schema" "customer" {
-  schema_id = ory_identity_schema.customer.id
+  id = ory_identity_schema.customer.id
 }
 ` + "```" + `
 `
@@ -80,8 +80,8 @@ func (d *IdentitySchemaDataSource) Schema(ctx context.Context, req datasource.Sc
 		Description:         "Fetches a single identity schema by its ID.",
 		MarkdownDescription: identitySchemaDataSourceMarkdownDescription,
 		Attributes: map[string]schema.Attribute{
-			"schema_id": schema.StringAttribute{
-				Description: "The schema ID to look up. This is the API-assigned ID (which may be a hash) or a preset ID like 'preset://username'.",
+			"id": schema.StringAttribute{
+				Description: "The ID of the schema to look up. This is the API-assigned ID (which may be a hash) or a preset ID like 'preset://username'.",
 				Required:    true,
 			},
 			"schema": schema.StringAttribute{
@@ -113,7 +113,7 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 		return
 	}
 
-	targetID := data.SchemaID.ValueString()
+	targetID := data.ID.ValueString()
 
 	// Retry to handle eventual consistency — newly created schemas may not
 	// appear in ListIdentitySchemas immediately.
@@ -160,7 +160,7 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 	}
 	resp.Diagnostics.AddError(
 		"Identity Schema Not Found",
-		fmt.Sprintf("No identity schema found with schema_id=%q. Available schema IDs (sample): %v\n\n"+
+		fmt.Sprintf("No identity schema found with id=%q. Available schema IDs (sample): %v\n\n"+
 			"Use the ory_identity_schemas (plural) data source to discover all available schema IDs.",
 			targetID, sampleIDs),
 	)

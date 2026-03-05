@@ -25,8 +25,14 @@ func testCheckResourceAttrNotEqual(res1, attr1, res2, attr2 string) resource.Tes
 		if !ok {
 			return fmt.Errorf("resource %s not found", res2)
 		}
-		v1 := r1.Primary.Attributes[attr1]
-		v2 := r2.Primary.Attributes[attr2]
+		v1, ok1 := r1.Primary.Attributes[attr1]
+		if !ok1 {
+			return fmt.Errorf("attribute %s not found on resource %s", attr1, res1)
+		}
+		v2, ok2 := r2.Primary.Attributes[attr2]
+		if !ok2 {
+			return fmt.Errorf("attribute %s not found on resource %s", attr2, res2)
+		}
 		if v1 == v2 {
 			return fmt.Errorf("%s.%s (%q) should not equal %s.%s (%q)", res1, attr1, v1, res2, attr2, v2)
 		}
