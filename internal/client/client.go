@@ -479,7 +479,6 @@ func (c *OryClient) ensureProjectClient() error {
 			"Set them on the provider or pass them as resource-level attributes (project_slug, project_api_key)")
 	}
 
-	projectCfg := ory.NewConfiguration()
 	projectAPIURL := c.config.ProjectAPIURL
 	if projectAPIURL == "" {
 		projectAPIURL = DefaultProjectAPIURL
@@ -492,6 +491,11 @@ func (c *OryClient) ensureProjectClient() error {
 	if parsedURL.Scheme != schemeHTTPS && parsedURL.Scheme != schemeHTTP {
 		return fmt.Errorf("invalid project API URL %q: must use http or https scheme", formattedURL)
 	}
+
+	projectCfg := ory.NewConfiguration()
+	projectCfg.UserAgent = c.config.UserAgent
+	projectCfg.Host = parsedURL.Host
+	projectCfg.Scheme = parsedURL.Scheme
 	projectCfg.Servers = ory.ServerConfigurations{
 		{URL: formattedURL},
 	}
