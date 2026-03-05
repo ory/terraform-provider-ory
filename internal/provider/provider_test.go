@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
@@ -173,5 +174,48 @@ func TestProviderModelAttributes(t *testing.T) {
 	}
 	if model.ProjectAPIURL.ValueString() != testutil.ExampleProjectAPIURL {
 		t.Error("ProjectAPIURL not set correctly")
+	}
+}
+
+func TestBuildUserAgent(t *testing.T) {
+	tests := []struct {
+		name            string
+		tfVersion       string
+		providerVersion string
+		appendUA        string
+		expected        string
+	}{
+		{
+			name:            "basic user-agent",
+			tfVersion:       "1.5.0",
+			providerVersion: "0.2.0",
+			expected:        "Terraform/1.5.0 (+https://www.terraform.io) terraform-provider-ory/0.2.0",
+		},
+		{
+			name:            "with TF_APPEND_USER_AGENT",
+			tfVersion:       "1.5.0",
+			providerVersion: "0.2.0",
+			appendUA:        "my-company/1.0",
+			expected:        "Terraform/1.5.0 (+https://www.terraform.io) terraform-provider-ory/0.2.0 my-company/1.0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.appendUA != "" {
+				t.Setenv("TF_APPEND_USER_AGENT", tt.appendUA)
+			} else {
+				t.Setenv("TF_APPEND_USER_AGENT", "")
+			}
+
+			userAgent := fmt.Sprintf("Terraform/%s (+https://www.terraform.io) terraform-provider-ory/%s", tt.tfVersion, tt.providerVersion)
+			if appendUserAgent := os.Getenv("TF_APPEND_USER_AGENT"); appendUserAgent != "" {
+				userAgent = fmt.Sprintf("%s %s", userAgent, appendUserAgent)
+			}
+
+			if userAgent != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, userAgent)
+			}
+		})
 	}
 }
