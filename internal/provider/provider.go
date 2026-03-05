@@ -13,6 +13,7 @@ import (
 
 	"github.com/ory/terraform-provider-ory/internal/client"
 	identityds "github.com/ory/terraform-provider-ory/internal/datasources/identity"
+	identityschemads "github.com/ory/terraform-provider-ory/internal/datasources/identityschema"
 	identityschemasds "github.com/ory/terraform-provider-ory/internal/datasources/identityschemas"
 	oauth2clientds "github.com/ory/terraform-provider-ory/internal/datasources/oauth2client"
 	organizationds "github.com/ory/terraform-provider-ory/internal/datasources/organization"
@@ -301,6 +302,7 @@ func (p *OryProvider) DataSources(ctx context.Context) []func() datasource.DataS
 		identityds.NewDataSource,
 		oauth2clientds.NewDataSource,
 		organizationds.NewDataSource,
+		identityschemads.NewDataSource,
 		identityschemasds.NewDataSource,
 	}
 }

@@ -218,6 +218,37 @@ func (r *IdentitySchemaResource) findSchemaByURL(schemas []map[string]interface{
 	return -1
 }
 
+// findExistingSchemaByContent checks ListIdentitySchemas for a schema with
+// identical JSON content. Returns the schema's API-assigned ID if found, or "".
+// This is used to detect and reuse existing schemas, preventing duplicates
+// when re-applying after a destroy.
+func (r *IdentitySchemaResource) findExistingSchemaByContent(ctx context.Context, schemaJSON string) string {
+	var target interface{}
+	if err := json.Unmarshal([]byte(schemaJSON), &target); err != nil {
+		return ""
+	}
+	targetNormalized, err := json.Marshal(target)
+	if err != nil {
+		return ""
+	}
+
+	schemas, err := r.client.ListIdentitySchemas(ctx)
+	if err != nil {
+		return ""
+	}
+
+	for _, s := range schemas {
+		storedNormalized, err := json.Marshal(s.GetSchema())
+		if err != nil {
+			continue
+		}
+		if string(targetNormalized) == string(storedNormalized) {
+			return s.GetId()
+		}
+	}
+	return ""
+}
+
 func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan IdentitySchemaResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -243,6 +274,32 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 	existingSchemas, err := r.getSchemas(ctx, projectID)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Getting Schemas", err.Error())
+		return
+	}
+
+	// Check if a schema with identical content already exists in the project
+	// via the Identity API. This prevents creating duplicates when re-applying
+	// after a destroy, since Ory does not support deleting schemas.
+	// We use ListIdentitySchemas (not GetProject) because the project config
+	// stores schemas with GCS URLs that can't be content-matched.
+	if existingID := r.findExistingSchemaByContent(ctx, schemaJSON); existingID != "" {
+		// Schema with identical content already exists — adopt it
+		if plan.SetDefault.ValueBool() {
+			patches := []ory.JsonPatch{{
+				Op:    "add",
+				Path:  "/services/identity/config/identity/default_schema_id",
+				Value: existingID,
+			}}
+			_, patchErr := r.client.PatchProject(ctx, projectID, patches)
+			if patchErr != nil {
+				resp.Diagnostics.AddError("Error Setting Default Schema", patchErr.Error())
+				return
+			}
+		}
+
+		plan.ID = types.StringValue(existingID)
+		plan.ProjectID = types.StringValue(projectID)
+		resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 		return
 	}
 

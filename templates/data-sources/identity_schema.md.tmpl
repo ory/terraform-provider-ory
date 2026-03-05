@@ -1,0 +1,22 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  Fetches a single identity schema by its ID.
+---
+
+# {{.Name}} ({{.Type}})
+
+Fetches a single identity schema by its ID.
+
+This data source retrieves a specific identity schema from the project, allowing you to reference existing schemas without recreating them. This is particularly useful when schemas persist after a `terraform destroy` (since Ory does not support deleting schemas) and you want to reuse them on the next `terraform apply`.
+
+-> **Plan:** Available on all Ory Network plans.
+
+~> **Note:** Ory may assign hash-based IDs to schemas. Use the `ory_identity_schemas` (plural) data source to discover available schema IDs, or use the `id` output from an `ory_identity_schema` resource.
+
+## Example Usage
+
+{{ tffile "examples/data-sources/ory_identity_schema/data-source.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
