@@ -17,6 +17,9 @@ Identity schemas define the structure of user profiles (traits) using [JSON Sche
 
 - **Schemas are immutable**: Identity schemas cannot be modified after creation. Any changes to the schema content or `schema_id` will require Terraform to destroy and recreate the resource.
 - **Schemas cannot be deleted**: When this resource is destroyed, the schema remains in Ory but is no longer managed by Terraform. A warning is emitted.
+- **Automatic deduplication**: If a schema with identical content already exists in the project, the provider reuses it instead of creating a duplicate. This prevents schema accumulation when running `terraform destroy` followed by `terraform apply`. Deduplication is based on **schema content only**, not the `schema_id`:
+  - Two schemas with the **same content** but different `schema_id` values are treated as duplicates (the existing one is reused).
+  - Two schemas with **different content** but the same `schema_id` are not duplicates (a new schema is created, since schemas are immutable).
 - **Import is not supported**: Existing schemas created via the Ory Console or API cannot be imported into Terraform. To manage an existing schema, recreate it in your Terraform configuration using the same content.
 - **Eventual consistency**: After creation, there may be a brief delay before the schema is available for use. The provider handles this with automatic retries.
 
