@@ -38,3 +38,9 @@ resource "ory_identity_schema" "employee" {
 data "ory_identity_schema" "employee" {
   id = ory_identity_schema.employee.id
 }
+
+# Look up a schema during project bootstrap (no project_slug/project_api_key needed)
+data "ory_identity_schema" "bootstrap" {
+  id         = "preset://username"
+  project_id = "your-project-uuid"
+}

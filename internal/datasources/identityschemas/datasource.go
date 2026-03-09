@@ -30,7 +30,8 @@ type IdentitySchemasDataSource struct {
 }
 
 type IdentitySchemasDataSourceModel struct {
-	Schemas types.List `tfsdk:"schemas"`
+	ProjectID types.String `tfsdk:"project_id"`
+	Schemas   types.List   `tfsdk:"schemas"`
 }
 
 var schemaObjectAttrTypes = map[string]attr.Type{
@@ -46,6 +47,12 @@ func (d *IdentitySchemasDataSource) Schema(ctx context.Context, req datasource.S
 	resp.Schema = schema.Schema{
 		Description: "Fetches the list of identity schemas for the project.",
 		Attributes: map[string]schema.Attribute{
+			"project_id": schema.StringAttribute{
+				Description: "The ID of the project to list schemas from. If not set, uses the provider's project_id. " +
+					"When set, schemas are read from the project config via the console API (workspace key), " +
+					"which does not require project_slug or project_api_key.",
+				Optional: true,
+			},
 			"schemas": schema.ListAttribute{
 				Description: "List of identity schemas. Each schema has an `id` and a `schema` (JSON string of the schema content).",
 				Computed:    true,
@@ -78,10 +85,20 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 		return
 	}
 
+	projectID := data.ProjectID.ValueString()
+	if projectID == "" {
+		projectID = d.client.ProjectID()
+	}
+	useConsoleAPI := !data.ProjectID.IsNull() || !d.client.HasProjectClient()
+
 	var schemas []ory.IdentitySchemaContainer
 	var err error
 	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
-		schemas, err = d.client.ListIdentitySchemas(ctx)
+		if useConsoleAPI && projectID != "" {
+			schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
+		} else {
+			schemas, err = d.client.ListIdentitySchemas(ctx)
+		}
 		if err == nil {
 			break
 		}
@@ -123,6 +140,7 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 		return
 	}
 
+	data.ProjectID = types.StringValue(projectID)
 	data.Schemas = schemaList
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

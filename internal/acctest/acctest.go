@@ -103,6 +103,12 @@ func GetTestProject(t *testing.T) *TestProject {
 	return sharedTestProject
 }
 
+// GetTestProjectID returns the project ID of the shared test project.
+func GetTestProjectID(t *testing.T) string {
+	t.Helper()
+	return GetTestProject(t).ID
+}
+
 // initTestProject initializes the test project, either from env vars or by creating a new one.
 func initTestProject(t *testing.T) {
 	// If project credentials are provided, use the pre-created project

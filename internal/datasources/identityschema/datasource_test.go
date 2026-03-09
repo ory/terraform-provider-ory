@@ -42,3 +42,34 @@ func TestAccIdentitySchemaDataSource_basic(t *testing.T) {
 		},
 	})
 }
+
+func TestAccIdentitySchemaDataSource_viaProjectID(t *testing.T) {
+	suffix := time.Now().UnixNano()
+	schemaID := fmt.Sprintf("tf-test-ds-%d", suffix)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSchemaTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create a schema, then look it up via data source using project_id (console API path)
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_project_id.tf.tmpl", map[string]string{
+					"SchemaID":  schemaID,
+					"AppURL":    testutil.ExampleAppURL,
+					"ProjectID": acctest.GetTestProjectID(t),
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrPair(
+						"data.ory_identity_schema.test", "id",
+						"ory_identity_schema.test", "id",
+					),
+					resource.TestCheckResourceAttrSet("data.ory_identity_schema.test", "schema"),
+					resource.TestCheckResourceAttr("data.ory_identity_schema.test", "project_id", acctest.GetTestProjectID(t)),
+				),
+			},
+		},
+	})
+}
