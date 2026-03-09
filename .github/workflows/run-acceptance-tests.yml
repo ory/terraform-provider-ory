@@ -27,6 +27,31 @@ on:
       enable_custom_domain_tests:
         type: boolean
         default: false
+    secrets:
+      ORY_WORKSPACE_API_KEY:
+        required: true
+      ORY_WORKSPACE_ID:
+        required: true
+      ORY_CONSOLE_API_URL:
+        required: false
+      ORY_PROJECT_API_URL:
+        required: false
+      ORY_PROJECT_ID:
+        required: false
+      ORY_PROJECT_SLUG:
+        required: false
+      ORY_PROJECT_API_KEY:
+        required: false
+      ORY_PROJECT_ENVIRONMENT:
+        required: false
+      ORY_EVENT_STREAM_TOPIC_ARN:
+        required: false
+      ORY_EVENT_STREAM_ROLE_ARN:
+        required: false
+      ORY_CUSTOM_DOMAIN_HOSTNAME:
+        required: false
+      ORY_CUSTOM_DOMAIN_COOKIE_DOMAIN:
+        required: false
 
 jobs:
   acceptance-test:
