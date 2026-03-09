@@ -57,7 +57,7 @@ func TestExtractSchemasFromProjectConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("preset schema", func(t *testing.T) {
+	t.Run("preset schema returns empty object", func(t *testing.T) {
 		project := &ory.Project{
 			Services: ory.ProjectServices{
 				Identity: &ory.ProjectServiceIdentity{
@@ -83,6 +83,59 @@ func TestExtractSchemasFromProjectConfig(t *testing.T) {
 		}
 		if schemas[0].GetId() != "preset://username" {
 			t.Errorf("expected id 'preset://username', got %q", schemas[0].GetId())
+		}
+		if schemas[0].Schema == nil {
+			t.Fatal("expected schema to be empty object, got nil")
+		}
+		if len(schemas[0].Schema) != 0 {
+			t.Errorf("expected empty schema object, got %v", schemas[0].Schema)
+		}
+	})
+
+	t.Run("invalid base64 returns error", func(t *testing.T) {
+		project := &ory.Project{
+			Services: ory.ProjectServices{
+				Identity: &ory.ProjectServiceIdentity{
+					Config: map[string]interface{}{
+						"identity": map[string]interface{}{
+							"schemas": []interface{}{
+								map[string]interface{}{
+									"id":  "bad-b64",
+									"url": "base64://!!!not-valid-base64!!!",
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		_, err := extractSchemasFromProjectConfig(project)
+		if err == nil {
+			t.Fatal("expected error for invalid base64, got nil")
+		}
+	})
+
+	t.Run("invalid JSON in base64 returns error", func(t *testing.T) {
+		// "not json" in base64
+		project := &ory.Project{
+			Services: ory.ProjectServices{
+				Identity: &ory.ProjectServiceIdentity{
+					Config: map[string]interface{}{
+						"identity": map[string]interface{}{
+							"schemas": []interface{}{
+								map[string]interface{}{
+									"id":  "bad-json",
+									"url": "base64://bm90IGpzb24=",
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		_, err := extractSchemasFromProjectConfig(project)
+		if err == nil {
+			t.Fatal("expected error for invalid JSON, got nil")
 		}
 	})
 

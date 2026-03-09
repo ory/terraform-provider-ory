@@ -91,6 +91,7 @@ func (d *IdentitySchemaDataSource) Schema(ctx context.Context, req datasource.Sc
 					"When set, schemas are read from the project config via the console API (workspace key), " +
 					"which does not require project_slug or project_api_key.",
 				Optional: true,
+				Computed: true,
 			},
 			"schema": schema.StringAttribute{
 				Description: "The JSON Schema definition for the identity traits.",
@@ -126,6 +127,11 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 	// Determine how to list schemas: use the console API (GetProject) when
 	// project_id is explicitly set or when the project client is not
 	// configured. Fall back to the project API otherwise.
+	if data.ProjectID.IsUnknown() {
+		resp.Diagnostics.AddError("Missing Project ID",
+			"project_id is not yet known. Use depends_on to ensure the project is created first.")
+		return
+	}
 	projectID := data.ProjectID.ValueString()
 	if projectID == "" {
 		projectID = d.client.ProjectID()

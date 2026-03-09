@@ -1309,6 +1309,9 @@ func (c *OryClient) HasProjectClient() bool {
 // config using the console API (workspace key). This does not require project
 // API credentials and can be used during project bootstrap.
 func (c *OryClient) ListIdentitySchemasViaProject(ctx context.Context, projectID string) ([]ory.IdentitySchemaContainer, error) {
+	if c.consoleClient == nil {
+		return nil, fmt.Errorf("console API client not configured: set workspace_api_key to use project_id lookups")
+	}
 	project, err := c.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("getting project for schema lookup: %w", err)
@@ -1344,12 +1347,18 @@ func extractSchemasFromProjectConfig(project *ory.Project) ([]ory.IdentitySchema
 
 		if strings.HasPrefix(rawURL, "base64://") {
 			decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(rawURL, "base64://"))
-			if err == nil {
-				var schemaObj map[string]interface{}
-				if json.Unmarshal(decoded, &schemaObj) == nil {
-					container.Schema = schemaObj
-				}
+			if err != nil {
+				return nil, fmt.Errorf("decoding base64 schema %q: %w", id, err)
 			}
+			var schemaObj map[string]interface{}
+			if err := json.Unmarshal(decoded, &schemaObj); err != nil {
+				return nil, fmt.Errorf("parsing JSON for schema %q: %w", id, err)
+			}
+			container.Schema = schemaObj
+		} else {
+			// Preset or URL-based schemas: return an empty object so
+			// json.Marshal produces "{}" instead of "null".
+			container.Schema = map[string]interface{}{}
 		}
 
 		result = append(result, container)
