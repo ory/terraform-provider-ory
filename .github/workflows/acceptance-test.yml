@@ -57,7 +57,7 @@ permissions:
 jobs:
   detect-changes:
     name: Detect Changes
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     outputs:
       source-changed: ${{ steps.filter.outputs.source }}
     steps:
