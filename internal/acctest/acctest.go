@@ -18,9 +18,8 @@ import (
 	"github.com/ory/terraform-provider-ory/internal/provider"
 )
 
-// testProjectPrefix is used to name ephemeral test projects so that the cloud
-// automated cleanup job can automatically purge stale ones.
-// DO NOT CHANGE — must match the pattern in internal cleanup patterns.
+// testProjectPrefix is used to name ephemeral test projects so that stale
+// ones can be automatically purged. DO NOT CHANGE.
 const testProjectPrefix = "ory-cy-e2e-da2f162d-af61-42dd-90dc-e3fcfa7c84a0"
 
 // TestProject holds information about a test project created for acceptance tests.
@@ -137,8 +136,8 @@ func loadProjectFromEnv(t *testing.T) {
 
 // createSharedProject creates an ephemeral test project as a fallback when no
 // pre-created project is configured. The project uses the testProjectPrefix so
-// it can be automatically purged by the the automated cleanup job if not
-// deleted. Cleanup is best-effort via CleanupEphemeralProject().
+// stale projects can be automatically purged. Cleanup is best-effort via
+// CleanupEphemeralProject().
 func createSharedProject(t *testing.T) {
 	ctx := context.Background()
 	c, err := GetOryClient()
@@ -206,7 +205,7 @@ func createSharedProject(t *testing.T) {
 
 // CleanupEphemeralProject deletes the shared test project if it was created
 // ephemerally (not loaded from env vars). This is safe to call multiple times.
-// In practice, cleanup is handled by the the automated purge job, so failing
+// In practice, stale projects are automatically purged, so failing
 // to call this is not catastrophic.
 func CleanupEphemeralProject(t *testing.T) {
 	projectMutex.Lock()

@@ -1,10 +1,10 @@
 # Security Policy
 
-## Supported Versions
+## Reporting Vulnerabilities
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
+If you discover a security vulnerability, please report it responsibly by emailing [security@ory.sh](mailto:security@ory.sh). Do **not** open a public GitHub issue for security vulnerabilities.
+
+We will acknowledge receipt within 3 business days and work with you to understand and address the issue.
 
 ## Security Best Practices
 

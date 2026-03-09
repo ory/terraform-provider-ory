@@ -13,12 +13,14 @@ import (
 
 	"github.com/ory/terraform-provider-ory/internal/client"
 	identityds "github.com/ory/terraform-provider-ory/internal/datasources/identity"
+	identityschemads "github.com/ory/terraform-provider-ory/internal/datasources/identityschema"
 	identityschemasds "github.com/ory/terraform-provider-ory/internal/datasources/identityschemas"
 	oauth2clientds "github.com/ory/terraform-provider-ory/internal/datasources/oauth2client"
 	organizationds "github.com/ory/terraform-provider-ory/internal/datasources/organization"
 	projectds "github.com/ory/terraform-provider-ory/internal/datasources/project"
 	workspaceds "github.com/ory/terraform-provider-ory/internal/datasources/workspace"
 	"github.com/ory/terraform-provider-ory/internal/resources/action"
+	"github.com/ory/terraform-provider-ory/internal/resources/customdomain"
 	"github.com/ory/terraform-provider-ory/internal/resources/emailtemplate"
 	"github.com/ory/terraform-provider-ory/internal/resources/eventstream"
 	"github.com/ory/terraform-provider-ory/internal/resources/identity"
@@ -241,6 +243,8 @@ For more information: https://www.ory.sh/docs/guides/api-keys`,
 		return
 	}
 
+	userAgent := buildUserAgent(req.TerraformVersion, p.version)
+
 	// Reuse the existing client if the config hasn't changed.
 	// This preserves cached project state across Terraform operations
 	// (apply → plan/refresh) within the same provider server lifecycle.
@@ -252,6 +256,7 @@ For more information: https://www.ory.sh/docs/guides/api-keys`,
 		WorkspaceID:     workspaceID,
 		ConsoleAPIURL:   consoleAPIURL,
 		ProjectAPIURL:   projectAPIURL,
+		UserAgent:       userAgent,
 	}
 
 	if p.oryClient == nil || p.lastConfig != newConfig {
@@ -289,6 +294,7 @@ func (p *OryProvider) Resources(ctx context.Context) []func() resource.Resource 
 		eventstream.NewResource,
 		trustedjwtissuer.NewResource,
 		oidcdynamicclient.NewResource,
+		customdomain.NewResource,
 	}
 }
 
@@ -299,11 +305,21 @@ func (p *OryProvider) DataSources(ctx context.Context) []func() datasource.DataS
 		identityds.NewDataSource,
 		oauth2clientds.NewDataSource,
 		organizationds.NewDataSource,
+		identityschemads.NewDataSource,
 		identityschemasds.NewDataSource,
 	}
 }
 
 // Helper functions
+
+// buildUserAgent constructs the User-Agent string for API requests.
+func buildUserAgent(tfVersion, providerVersion string) string {
+	ua := "Terraform/" + tfVersion + " (+https://www.terraform.io) terraform-provider-ory/" + providerVersion
+	if appendUA := os.Getenv("TF_APPEND_USER_AGENT"); appendUA != "" {
+		ua += " " + appendUA
+	}
+	return ua
+}
 
 func resolveString(tfValue types.String, envVar string) string {
 	if !tfValue.IsNull() && !tfValue.IsUnknown() {

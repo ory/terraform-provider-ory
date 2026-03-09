@@ -1,12 +1,14 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +16,9 @@ import (
 	ory "github.com/ory/client-go"
 	"github.com/ory/x/urlx"
 )
+
+// ErrCustomDomainNotFound is returned when a custom domain ID is not found in the project's domain list.
+var ErrCustomDomainNotFound = errors.New("custom domain not found")
 
 const (
 	// maxRetries is the maximum number of retry attempts for rate-limited requests.
@@ -294,6 +299,7 @@ type OryClientConfig struct {
 	WorkspaceID     string
 	ConsoleAPIURL   string
 	ProjectAPIURL   string // URL template with %s placeholder for slug (e.g., "https://%s.projects.oryapis.com")
+	UserAgent       string
 }
 
 // OryClient wraps the Ory SDK clients.
@@ -333,6 +339,9 @@ func NewOryClient(cfg OryClientConfig) (*OryClient, error) {
 		}
 
 		consoleCfg := ory.NewConfiguration()
+		consoleCfg.UserAgent = cfg.UserAgent
+		consoleCfg.Host = parsedURL.Host
+		consoleCfg.Scheme = parsedURL.Scheme
 		consoleCfg.Servers = ory.ServerConfigurations{
 			{URL: cfg.ConsoleAPIURL},
 		}
@@ -383,7 +392,6 @@ func NewOryClient(cfg OryClientConfig) (*OryClient, error) {
 
 	// Initialize project client if project API key and slug are provided
 	if cfg.ProjectAPIKey != "" && cfg.ProjectSlug != "" {
-		projectCfg := ory.NewConfiguration()
 		// Use configurable URL template, defaulting to production
 		projectAPIURL := cfg.ProjectAPIURL
 		if projectAPIURL == "" {
@@ -398,6 +406,11 @@ func NewOryClient(cfg OryClientConfig) (*OryClient, error) {
 		if parsedURL.Scheme != schemeHTTPS && parsedURL.Scheme != schemeHTTP {
 			return nil, fmt.Errorf("invalid project API URL %q: must use http or https scheme", formattedURL)
 		}
+
+		projectCfg := ory.NewConfiguration()
+		projectCfg.UserAgent = cfg.UserAgent
+		projectCfg.Host = parsedURL.Host
+		projectCfg.Scheme = parsedURL.Scheme
 		projectCfg.Servers = ory.ServerConfigurations{
 			{URL: formattedURL},
 		}
@@ -466,7 +479,6 @@ func (c *OryClient) ensureProjectClient() error {
 			"Set them on the provider or pass them as resource-level attributes (project_slug, project_api_key)")
 	}
 
-	projectCfg := ory.NewConfiguration()
 	projectAPIURL := c.config.ProjectAPIURL
 	if projectAPIURL == "" {
 		projectAPIURL = DefaultProjectAPIURL
@@ -479,6 +491,11 @@ func (c *OryClient) ensureProjectClient() error {
 	if parsedURL.Scheme != schemeHTTPS && parsedURL.Scheme != schemeHTTP {
 		return fmt.Errorf("invalid project API URL %q: must use http or https scheme", formattedURL)
 	}
+
+	projectCfg := ory.NewConfiguration()
+	projectCfg.UserAgent = c.config.UserAgent
+	projectCfg.Host = parsedURL.Host
+	projectCfg.Scheme = parsedURL.Scheme
 	projectCfg.Servers = ory.ServerConfigurations{
 		{URL: formattedURL},
 	}
@@ -1280,6 +1297,148 @@ func (c *OryClient) ListIdentitySchemas(ctx context.Context) ([]ory.IdentitySche
 		return nil, wrapAPIError(err, "listing identity schemas")
 	}
 	return schemas, nil
+}
+
+// Custom Domain (CNAME) operations
+// The Ory SDK does not generate API methods for custom domains,
+// so we use raw HTTP calls against the console API.
+
+// consoleHTTPDo executes a raw HTTP request against the console API.
+func (c *OryClient) consoleHTTPDo(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
+	if c.config.WorkspaceAPIKey == "" || c.config.ConsoleAPIURL == "" {
+		return nil, fmt.Errorf("workspace_api_key and console_api_url must be configured for custom domain operations")
+	}
+	baseURL, err := url.Parse(c.config.ConsoleAPIURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid console_api_url %q: %w", c.config.ConsoleAPIURL, err)
+	}
+	requestURL := baseURL.JoinPath(path)
+	req, err := http.NewRequestWithContext(ctx, method, requestURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.config.WorkspaceAPIKey)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	httpClient := http.DefaultClient
+	if c.consoleClient != nil {
+		if cfg := c.consoleClient.GetConfig(); cfg.HTTPClient != nil {
+			httpClient = cfg.HTTPClient
+		}
+	}
+	return httpClient.Do(req) // #nosec G704 -- URL is constructed from trusted provider configuration
+}
+
+// ListCustomDomains lists all custom domains for a project.
+func (c *OryClient) ListCustomDomains(ctx context.Context, projectID string) ([]ory.CustomDomain, error) {
+	httpResp, err := c.consoleHTTPDo(ctx, http.MethodGet, "/projects/"+projectID+"/cname", nil)
+	if err != nil {
+		return nil, wrapAPIError(err, "listing custom domains")
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(httpResp.Body)
+		return nil, wrapAPIError(
+			fmt.Errorf("unexpected status %d: %s", httpResp.StatusCode, string(respBody)),
+			"listing custom domains",
+		)
+	}
+
+	var domains []ory.CustomDomain
+	if err := json.NewDecoder(httpResp.Body).Decode(&domains); err != nil {
+		return nil, fmt.Errorf("listing custom domains: decoding response: %w", err)
+	}
+	return domains, nil
+}
+
+// GetCustomDomain gets a custom domain by ID from the list.
+func (c *OryClient) GetCustomDomain(ctx context.Context, projectID, domainID string) (*ory.CustomDomain, error) {
+	domains, err := c.ListCustomDomains(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range domains {
+		if domains[i].GetId() == domainID {
+			return &domains[i], nil
+		}
+	}
+	return nil, fmt.Errorf("%w: %s in project %s", ErrCustomDomainNotFound, domainID, projectID)
+}
+
+// CreateCustomDomain creates a new custom domain for a project.
+func (c *OryClient) CreateCustomDomain(ctx context.Context, projectID string, body ory.CreateCustomDomainBody) (*ory.CustomDomain, error) {
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("creating custom domain: marshaling body: %w", err)
+	}
+
+	httpResp, err := c.consoleHTTPDo(ctx, http.MethodPost, "/projects/"+projectID+"/cname", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, wrapAPIError(err, "creating custom domain")
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(httpResp.Body)
+		return nil, wrapAPIError(
+			fmt.Errorf("unexpected status %d: %s", httpResp.StatusCode, string(respBody)),
+			"creating custom domain",
+		)
+	}
+
+	var domain ory.CustomDomain
+	if err := json.NewDecoder(httpResp.Body).Decode(&domain); err != nil {
+		return nil, fmt.Errorf("creating custom domain: decoding response: %w", err)
+	}
+	return &domain, nil
+}
+
+// UpdateCustomDomain updates an existing custom domain.
+func (c *OryClient) UpdateCustomDomain(ctx context.Context, projectID, domainID string, body ory.SetCustomDomainBody) (*ory.CustomDomain, error) {
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("updating custom domain: marshaling body: %w", err)
+	}
+
+	httpResp, err := c.consoleHTTPDo(ctx, http.MethodPut, "/projects/"+projectID+"/cname/"+domainID, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, wrapAPIError(err, "updating custom domain")
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(httpResp.Body)
+		return nil, wrapAPIError(
+			fmt.Errorf("unexpected status %d: %s", httpResp.StatusCode, string(respBody)),
+			"updating custom domain",
+		)
+	}
+
+	var domain ory.CustomDomain
+	if err := json.NewDecoder(httpResp.Body).Decode(&domain); err != nil {
+		return nil, fmt.Errorf("updating custom domain: decoding response: %w", err)
+	}
+	return &domain, nil
+}
+
+// DeleteCustomDomain deletes a custom domain.
+func (c *OryClient) DeleteCustomDomain(ctx context.Context, projectID, domainID string) error {
+	httpResp, err := c.consoleHTTPDo(ctx, http.MethodDelete, "/projects/"+projectID+"/cname/"+domainID, nil)
+	if err != nil {
+		return wrapAPIError(err, "deleting custom domain")
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != http.StatusNoContent {
+		respBody, _ := io.ReadAll(httpResp.Body)
+		return wrapAPIError(
+			fmt.Errorf("unexpected status %d: %s", httpResp.StatusCode, string(respBody)),
+			"deleting custom domain",
+		)
+	}
+	return nil
 }
 
 // ListWorkspaces lists all workspaces.

@@ -1,8 +1,13 @@
 package client
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/ory/terraform-provider-ory/internal/testutil"
 )
@@ -580,4 +585,120 @@ func TestIsRetryableError(t *testing.T) {
 			}
 		})
 	}
+}
+
+func receiveWithTimeout(t *testing.T, ch <-chan string) string {
+	t.Helper()
+	select {
+	case v := <-ch:
+		return v
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for User-Agent header")
+		return ""
+	}
+}
+
+func TestProviderUserAgent(t *testing.T) {
+	expectedUserAgent := "Terraform/1.5.0 (+https://www.terraform.io) terraform-provider-ory/1.0.0"
+
+	t.Run("ProjectAPI", func(t *testing.T) {
+		uaChan := make(chan string, 1)
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			uaChan <- r.Header.Get("User-Agent")
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer mockServer.Close()
+
+		c, err := NewOryClient(OryClientConfig{
+			ProjectAPIURL: mockServer.URL + "/?%s",
+			ProjectSlug:   "dummy-project-slug",
+			ProjectAPIKey: "dummy-project-api-key",
+			UserAgent:     expectedUserAgent,
+		})
+		if err != nil {
+			t.Fatalf("Could not set up client: %v", err)
+		}
+
+		_, resp, err := c.ProjectAPI().ProjectAPI.GetProject(context.Background(), "dummy-project-id").Execute()
+		if resp != nil && resp.Body != nil {
+			err = errors.Join(resp.Body.Close(), err)
+		}
+		if err != nil {
+			t.Logf("Expected error from mock response: %v", err)
+		}
+
+		got := receiveWithTimeout(t, uaChan)
+		if got != expectedUserAgent {
+			t.Errorf("Expected User-Agent %q, but got %q", expectedUserAgent, got)
+		}
+	})
+
+	t.Run("ConsoleAPI", func(t *testing.T) {
+		uaChan := make(chan string, 1)
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			uaChan <- r.Header.Get("User-Agent")
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer mockServer.Close()
+
+		c, err := NewOryClient(OryClientConfig{
+			ConsoleAPIURL:   mockServer.URL,
+			WorkspaceAPIKey: "dummy-workspace-api-key",
+			UserAgent:       expectedUserAgent,
+		})
+		if err != nil {
+			t.Fatalf("Could not set up client: %v", err)
+		}
+
+		_, resp, err := c.ConsoleAPI().ProjectAPI.GetProject(context.Background(), "dummy-project-id").Execute()
+		if resp != nil && resp.Body != nil {
+			err = errors.Join(resp.Body.Close(), err)
+		}
+		if err != nil {
+			t.Logf("Expected error from mock response: %v", err)
+		}
+
+		got := receiveWithTimeout(t, uaChan)
+		if got != expectedUserAgent {
+			t.Errorf("Expected User-Agent %q, but got %q", expectedUserAgent, got)
+		}
+	})
+
+	t.Run("WithProjectCredentials_LazyInit", func(t *testing.T) {
+		uaChan := make(chan string, 1)
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			uaChan <- r.Header.Get("User-Agent")
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer mockServer.Close()
+
+		parent, err := NewOryClient(OryClientConfig{
+			ConsoleAPIURL:   mockServer.URL,
+			ProjectAPIURL:   mockServer.URL + "/?%s",
+			WorkspaceAPIKey: "dummy-workspace-api-key",
+			UserAgent:       expectedUserAgent,
+		})
+		if err != nil {
+			t.Fatalf("Could not set up client: %v", err)
+		}
+
+		child := parent.WithProjectCredentials("child-slug", "child-api-key")
+
+		if err := child.ensureProjectClient(); err != nil {
+			t.Fatalf("ensureProjectClient failed: %v", err)
+		}
+
+		_, resp, err := child.ProjectAPI().ProjectAPI.GetProject(context.Background(), "dummy-project-id").Execute()
+		if resp != nil && resp.Body != nil {
+			err = errors.Join(resp.Body.Close(), err)
+		}
+		if err != nil {
+			t.Logf("Expected error from mock response: %v", err)
+		}
+
+		got := receiveWithTimeout(t, uaChan)
+		if got != expectedUserAgent {
+			t.Errorf("Expected User-Agent %q, but got %q", expectedUserAgent, got)
+		}
+	})
 }

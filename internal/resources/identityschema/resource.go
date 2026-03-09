@@ -218,6 +218,50 @@ func (r *IdentitySchemaResource) findSchemaByURL(schemas []map[string]interface{
 	return -1
 }
 
+// findExistingSchemaByContent checks ListIdentitySchemas for a schema with
+// identical JSON content. Returns the schema's API-assigned ID if found, or "".
+// This is used to detect and reuse existing schemas, preventing duplicates
+// when re-applying after a destroy.
+func (r *IdentitySchemaResource) findExistingSchemaByContent(ctx context.Context, schemaJSON string) (string, error) {
+	var target interface{}
+	if err := json.Unmarshal([]byte(schemaJSON), &target); err != nil {
+		return "", fmt.Errorf("failed to parse schema JSON for content-based lookup: %w", err)
+	}
+	targetNormalized, err := json.Marshal(target)
+	if err != nil {
+		return "", fmt.Errorf("failed to normalize schema JSON for content-based lookup: %w", err)
+	}
+
+	var schemas []ory.IdentitySchemaContainer
+	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
+		schemas, err = r.client.ListIdentitySchemas(ctx)
+		if err == nil {
+			break
+		}
+		if attempt < helpers.ReadRetryMaxAttempts-1 {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(helpers.EventualConsistencyDelay):
+			}
+		}
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to list identity schemas for content-based lookup: %w", err)
+	}
+
+	for _, s := range schemas {
+		storedNormalized, err := json.Marshal(s.GetSchema())
+		if err != nil {
+			return "", fmt.Errorf("failed to normalize stored schema %s for content-based lookup: %w", s.GetId(), err)
+		}
+		if string(targetNormalized) == string(storedNormalized) {
+			return s.GetId(), nil
+		}
+	}
+	return "", nil
+}
+
 func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan IdentitySchemaResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -256,6 +300,42 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 	var patches []ory.JsonPatch
 
 	existingIndex := r.findSchemaIndex(existingSchemas, schemaID)
+
+	// Only perform content-based deduplication when the schema ID does not
+	// already exist in the project configuration. This avoids an extra
+	// ListIdentitySchemas call when we're simply replacing an existing schema.
+	if existingIndex < 0 {
+		existingID, err := r.findExistingSchemaByContent(ctx, schemaJSON)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Checking for Duplicate Schemas", err.Error())
+			return
+		}
+		if existingID != "" {
+			// Schema with identical content already exists — adopt it.
+			// We intentionally do NOT add a new schema entry to the project
+			// config here because that would create a duplicate (same content,
+			// different schema_id). The existing schema is already registered
+			// in the project config under its original ID, and Read will find
+			// it by the hash-based ID stored in state.
+			if plan.SetDefault.ValueBool() {
+				defaultPatches := []ory.JsonPatch{{
+					Op:    "add",
+					Path:  "/services/identity/config/identity/default_schema_id",
+					Value: existingID,
+				}}
+				_, patchErr := r.client.PatchProject(ctx, projectID, defaultPatches)
+				if patchErr != nil {
+					resp.Diagnostics.AddError("Error Setting Default Schema", patchErr.Error())
+					return
+				}
+			}
+
+			plan.ID = types.StringValue(existingID)
+			plan.ProjectID = types.StringValue(projectID)
+			resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
+			return
+		}
+	}
 	if existingIndex >= 0 {
 		// Replace existing
 		patches = append(patches, ory.JsonPatch{

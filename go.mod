@@ -3,12 +3,12 @@ module github.com/ory/terraform-provider-ory
 go 1.25.7
 
 require (
-	github.com/hashicorp/terraform-plugin-framework v1.17.0
+	github.com/hashicorp/terraform-plugin-framework v1.18.0
 	github.com/hashicorp/terraform-plugin-framework-validators v0.19.0
 	github.com/hashicorp/terraform-plugin-go v0.30.0
 	github.com/hashicorp/terraform-plugin-log v0.10.0
 	github.com/hashicorp/terraform-plugin-testing v1.14.0
-	github.com/ory/client-go v1.22.25
+	github.com/ory/client-go v1.22.26
 	github.com/ory/x v0.0.729
 )
 
