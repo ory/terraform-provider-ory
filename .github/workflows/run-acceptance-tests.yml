@@ -1,0 +1,105 @@
+# Copyright Ory Corp
+# SPDX-License-Identifier: Apache-2.0
+
+name: Run Acceptance Tests
+
+on:
+  workflow_call:
+    inputs:
+      enable_keto_tests:
+        type: boolean
+        default: false
+      enable_b2b_tests:
+        type: boolean
+        default: false
+      enable_social_provider_tests:
+        type: boolean
+        default: false
+      enable_schema_tests:
+        type: boolean
+        default: false
+      enable_project_tests:
+        type: boolean
+        default: false
+      enable_event_stream_tests:
+        type: boolean
+        default: false
+      enable_custom_domain_tests:
+        type: boolean
+        default: false
+    secrets:
+      ORY_WORKSPACE_API_KEY:
+        required: true
+      ORY_WORKSPACE_ID:
+        required: true
+      ORY_CONSOLE_API_URL:
+        required: false
+      ORY_PROJECT_API_URL:
+        required: false
+      ORY_PROJECT_ID:
+        required: false
+      ORY_PROJECT_SLUG:
+        required: false
+      ORY_PROJECT_API_KEY:
+        required: false
+      ORY_PROJECT_ENVIRONMENT:
+        required: false
+      ORY_EVENT_STREAM_TOPIC_ARN:
+        required: false
+      ORY_EVENT_STREAM_ROLE_ARN:
+        required: false
+      ORY_CUSTOM_DOMAIN_HOSTNAME:
+        required: false
+      ORY_CUSTOM_DOMAIN_COOKIE_DOMAIN:
+        required: false
+
+jobs:
+  acceptance-test:
+    name: Acceptance Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    env:
+      ORY_WORKSPACE_API_KEY: ${{ secrets.ORY_WORKSPACE_API_KEY }}
+      ORY_WORKSPACE_ID: ${{ secrets.ORY_WORKSPACE_ID }}
+      ORY_CONSOLE_API_URL: ${{ secrets.ORY_CONSOLE_API_URL }}
+      ORY_PROJECT_API_URL: ${{ secrets.ORY_PROJECT_API_URL }}
+      ORY_PROJECT_ID: ${{ secrets.ORY_PROJECT_ID }}
+      ORY_PROJECT_SLUG: ${{ secrets.ORY_PROJECT_SLUG }}
+      ORY_PROJECT_API_KEY: ${{ secrets.ORY_PROJECT_API_KEY }}
+      ORY_PROJECT_ENVIRONMENT: ${{ secrets.ORY_PROJECT_ENVIRONMENT }}
+
+    steps:
+      - name: Validate custom domain secret
+        if: ${{ inputs.enable_custom_domain_tests }}
+        env:
+          ORY_CUSTOM_DOMAIN_HOSTNAME: ${{ secrets.ORY_CUSTOM_DOMAIN_HOSTNAME }}
+        run: |
+          if [ -z "$ORY_CUSTOM_DOMAIN_HOSTNAME" ]; then
+            echo "::error::enable_custom_domain_tests is true but ORY_CUSTOM_DOMAIN_HOSTNAME secret is not set"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run Acceptance Tests
+        env:
+          TF_ACC: "1"
+          ORY_KETO_TESTS_ENABLED: ${{ inputs.enable_keto_tests }}
+          ORY_B2B_ENABLED: ${{ inputs.enable_b2b_tests }}
+          ORY_SOCIAL_PROVIDER_TESTS_ENABLED: ${{ inputs.enable_social_provider_tests }}
+          ORY_SCHEMA_TESTS_ENABLED: ${{ inputs.enable_schema_tests }}
+          ORY_PROJECT_TESTS_ENABLED: ${{ inputs.enable_project_tests }}
+          ORY_EVENT_STREAM_TESTS_ENABLED: ${{ inputs.enable_event_stream_tests }}
+          ORY_EVENT_STREAM_TOPIC_ARN: ${{ secrets.ORY_EVENT_STREAM_TOPIC_ARN }}
+          ORY_EVENT_STREAM_ROLE_ARN: ${{ secrets.ORY_EVENT_STREAM_ROLE_ARN }}
+          ORY_CUSTOM_DOMAIN_HOSTNAME: ${{ inputs.enable_custom_domain_tests && secrets.ORY_CUSTOM_DOMAIN_HOSTNAME || '' }}
+          ORY_CUSTOM_DOMAIN_COOKIE_DOMAIN: ${{ secrets.ORY_CUSTOM_DOMAIN_COOKIE_DOMAIN }}
+        run: go test -tags acceptance -p 1 -v -timeout 1h ./...

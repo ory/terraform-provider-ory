@@ -15,7 +15,7 @@ jobs:
   # Static Application Security Testing (SAST) - gosec
   gosec:
     name: Go Security Check
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -32,7 +32,7 @@ jobs:
   # Software Composition Analysis (SCA) - Go vulnerability check
   govulncheck:
     name: Go Vulnerability Check
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -49,7 +49,7 @@ jobs:
   # Secret scanning - Gitleaks
   gitleaks:
     name: Secret Scanning
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -68,7 +68,7 @@ jobs:
   # Binary artifact scanning - Trivy on built binary
   trivy:
     name: Binary Vulnerability Scan
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -85,7 +85,7 @@ jobs:
   # Dependency license compliance
   licenses:
     name: License Check
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
