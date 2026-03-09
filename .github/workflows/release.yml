@@ -14,6 +14,8 @@ permissions:
 jobs:
   acceptance-tests:
     name: Pre-release Acceptance Tests
+    permissions:
+      contents: read
     uses: ./.github/workflows/run-acceptance-tests.yml
     with:
       enable_keto_tests: true

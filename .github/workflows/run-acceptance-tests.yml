@@ -45,6 +45,16 @@ jobs:
       ORY_PROJECT_ENVIRONMENT: ${{ secrets.ORY_PROJECT_ENVIRONMENT }}
 
     steps:
+      - name: Validate custom domain secret
+        if: ${{ inputs.enable_custom_domain_tests }}
+        env:
+          ORY_CUSTOM_DOMAIN_HOSTNAME: ${{ secrets.ORY_CUSTOM_DOMAIN_HOSTNAME }}
+        run: |
+          if [ -z "$ORY_CUSTOM_DOMAIN_HOSTNAME" ]; then
+            echo "::error::enable_custom_domain_tests is true but ORY_CUSTOM_DOMAIN_HOSTNAME secret is not set"
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
