@@ -86,21 +86,21 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 		return
 	}
 
-	if data.ProjectID.IsUnknown() {
+	// Resolve project_id: use config value if known, fall back to provider.
+	projectID := d.resolveProjectID(data.ProjectID)
+	useConsoleAPI := (!data.ProjectID.IsNull() && !data.ProjectID.IsUnknown()) || !d.client.HasProjectClient()
+
+	if useConsoleAPI && projectID == "" {
 		resp.Diagnostics.AddError("Missing Project ID",
-			"project_id is not yet known. Use depends_on to ensure the project is created first.")
+			"project_id is required when project_slug and project_api_key are not configured. "+
+				"Set project_id on the data source or configure the provider with project_slug and project_api_key.")
 		return
 	}
-	projectID := data.ProjectID.ValueString()
-	if projectID == "" {
-		projectID = d.client.ProjectID()
-	}
-	useConsoleAPI := !data.ProjectID.IsNull() || !d.client.HasProjectClient()
 
 	var schemas []ory.IdentitySchemaContainer
 	var err error
 	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
-		if useConsoleAPI && projectID != "" {
+		if useConsoleAPI {
 			schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
 		} else {
 			schemas, err = d.client.ListIdentitySchemas(ctx)
@@ -146,8 +146,17 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 		return
 	}
 
-	data.ProjectID = types.StringValue(projectID)
+	if projectID != "" {
+		data.ProjectID = types.StringValue(projectID)
+	}
 	data.Schemas = schemaList
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (d *IdentitySchemasDataSource) resolveProjectID(tfProjectID types.String) string {
+	if !tfProjectID.IsNull() && !tfProjectID.IsUnknown() {
+		return tfProjectID.ValueString()
+	}
+	return d.client.ProjectID()
 }

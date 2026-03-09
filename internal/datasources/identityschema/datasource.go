@@ -124,24 +124,21 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 
 	targetID := data.ID.ValueString()
 
-	// Determine how to list schemas: use the console API (GetProject) when
-	// project_id is explicitly set or when the project client is not
-	// configured. Fall back to the project API otherwise.
-	if data.ProjectID.IsUnknown() {
+	// Resolve project_id: use config value if known, fall back to provider.
+	projectID := d.resolveProjectID(data.ProjectID)
+	useConsoleAPI := (!data.ProjectID.IsNull() && !data.ProjectID.IsUnknown()) || !d.client.HasProjectClient()
+
+	if useConsoleAPI && projectID == "" {
 		resp.Diagnostics.AddError("Missing Project ID",
-			"project_id is not yet known. Use depends_on to ensure the project is created first.")
+			"project_id is required when project_slug and project_api_key are not configured. "+
+				"Set project_id on the data source or configure the provider with project_slug and project_api_key.")
 		return
 	}
-	projectID := data.ProjectID.ValueString()
-	if projectID == "" {
-		projectID = d.client.ProjectID()
-	}
-	useConsoleAPI := !data.ProjectID.IsNull() || !d.client.HasProjectClient()
 
 	var schemas []ory.IdentitySchemaContainer
 	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
 		var err error
-		if useConsoleAPI && projectID != "" {
+		if useConsoleAPI {
 			schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
 		} else {
 			schemas, err = d.client.ListIdentitySchemas(ctx)
@@ -160,7 +157,9 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 					return
 				}
 				data.Schema = types.StringValue(string(schemaJSON))
-				data.ProjectID = types.StringValue(projectID)
+				if projectID != "" {
+					data.ProjectID = types.StringValue(projectID)
+				}
 				resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 				return
 			}
@@ -189,4 +188,11 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 			"Use the ory_identity_schemas (plural) data source to discover all available schema IDs.",
 			targetID, sampleIDs),
 	)
+}
+
+func (d *IdentitySchemaDataSource) resolveProjectID(tfProjectID types.String) string {
+	if !tfProjectID.IsNull() && !tfProjectID.IsUnknown() {
+		return tfProjectID.ValueString()
+	}
+	return d.client.ProjectID()
 }
