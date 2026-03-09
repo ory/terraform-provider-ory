@@ -299,6 +299,36 @@ func TestAccProjectConfigResource_returnURLsWithServerDefaults(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_webhookHeaderAllowlist(t *testing.T) {
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/webhook_header_allowlist.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "webhook_header_allowlist.#", "2"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "webhook_header_allowlist.0", "X-Custom-Header"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "webhook_header_allowlist.1", "X-Request-Id"),
+				),
+			},
+			// ImportState
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"webhook_header_allowlist",
+					"smtp_connection_uri",
+					"cors_enabled",
+					"password_min_length",
+				},
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_courierHTTP(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },

@@ -172,3 +172,33 @@ func TestBuildPatches_NullOAuth2IssuerURL(t *testing.T) {
 		t.Error("expected no patch for null oauth2_issuer_url")
 	}
 }
+
+func TestBuildPatches_WebhookHeaderAllowlist(t *testing.T) {
+	r := &ProjectConfigResource{}
+	headerList, _ := types.ListValueFrom(context.Background(), types.StringType, []string{"Accept", "X-Custom-Header"})
+	plan := &ProjectConfigResourceModel{
+		WebhookHeaderAllowlist: headerList,
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/identity/config/clients/web_hook/header_allowlist")
+	if p == nil {
+		t.Fatal("expected a patch for webhook_header_allowlist, got none")
+	}
+	if p.Op != "replace" {
+		t.Errorf("expected op 'replace', got %q", p.Op)
+	}
+}
+
+func TestBuildPatches_NullWebhookHeaderAllowlist(t *testing.T) {
+	r := &ProjectConfigResource{}
+	plan := &ProjectConfigResourceModel{
+		WebhookHeaderAllowlist: types.ListNull(types.StringType),
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/identity/config/clients/web_hook/header_allowlist")
+	if p != nil {
+		t.Error("expected no patch for null webhook_header_allowlist")
+	}
+}

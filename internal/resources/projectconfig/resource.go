@@ -142,6 +142,9 @@ type ProjectConfigResourceModel struct {
 	CourierDeliveryStrategy  types.String `tfsdk:"courier_delivery_strategy"`
 	CourierHTTPRequestConfig types.Object `tfsdk:"courier_http_request_config"`
 	CourierChannels          types.List   `tfsdk:"courier_channels"`
+
+	// Webhook Configuration
+	WebhookHeaderAllowlist types.List `tfsdk:"webhook_header_allowlist"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---
@@ -681,6 +684,14 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 						),
 					},
 				},
+			},
+
+			// Webhook Configuration
+			"webhook_header_allowlist": schema.ListAttribute{
+				Description: "List of HTTP header names that are forwarded to webhooks. " +
+					"The Ory API always includes a set of default headers; any headers you specify here are added on top of those defaults.",
+				Optional:    true,
+				ElementType: types.StringType,
 			},
 		},
 	}
@@ -1257,6 +1268,17 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 		})
 	}
 
+	// Webhook Header Allowlist
+	if !plan.WebhookHeaderAllowlist.IsNull() && !plan.WebhookHeaderAllowlist.IsUnknown() {
+		var headers []string
+		plan.WebhookHeaderAllowlist.ElementsAs(ctx, &headers, false)
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/clients/web_hook/header_allowlist",
+			Value: headers,
+		})
+	}
+
 	return patches
 }
 
@@ -1767,6 +1789,38 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 					listVal, diags := types.ListValue(types.ObjectType{AttrTypes: courierChannelAttrTypes}, channelObjects)
 					if !diags.HasError() {
 						state.CourierChannels = listVal
+					}
+				}
+			}
+		}
+
+		// Webhook Header Allowlist
+		if !state.WebhookHeaderAllowlist.IsNull() {
+			if v := getNestedValue(identityConfig, "clients", "web_hook", "header_allowlist"); v != nil {
+				if apiHeaders, ok := v.([]interface{}); ok && len(apiHeaders) > 0 {
+					// Keep only the user-configured headers that still exist in the API response.
+					// The Ory API includes server-managed default headers which would cause
+					// a perpetual diff if included in state.
+					apiSet := make(map[string]struct{}, len(apiHeaders))
+					for _, h := range apiHeaders {
+						if s, ok := h.(string); ok {
+							apiSet[s] = struct{}{}
+						}
+					}
+
+					var stateHeaders []string
+					state.WebhookHeaderAllowlist.ElementsAs(ctx, &stateHeaders, false)
+
+					filtered := make([]string, 0, len(stateHeaders))
+					for _, h := range stateHeaders {
+						if _, exists := apiSet[h]; exists {
+							filtered = append(filtered, h)
+						}
+					}
+
+					headersList, diags := types.ListValueFrom(ctx, types.StringType, filtered)
+					if !diags.HasError() {
+						state.WebhookHeaderAllowlist = headersList
 					}
 				}
 			}

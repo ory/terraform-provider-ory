@@ -188,6 +188,14 @@ resource "ory_project_config" "with_courier_http" {
   ]
 }
 
+# Webhook header allowlist (forward custom headers to webhooks)
+resource "ory_project_config" "with_webhook_headers" {
+  webhook_header_allowlist = [
+    "X-Custom-Header",
+    "X-Request-Id",
+  ]
+}
+
 variable "mail_password" {
   type        = string
   sensitive   = true

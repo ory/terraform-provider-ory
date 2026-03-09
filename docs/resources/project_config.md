@@ -211,6 +211,14 @@ resource "ory_project_config" "with_courier_http" {
   ]
 }
 
+# Webhook header allowlist (forward custom headers to webhooks)
+resource "ory_project_config" "with_webhook_headers" {
+  webhook_header_allowlist = [
+    "X-Custom-Header",
+    "X-Request-Id",
+  ]
+}
+
 variable "mail_password" {
   type        = string
   sensitive   = true
@@ -309,6 +317,7 @@ This resource exposes **75+ attributes** across these configuration categories:
 | OAuth2/Hydra | token lifespans, access token strategy, PKCE, claims, scope strategy, consent/login URLs |
 | Recovery / Verification | enabled, methods, notify unknown recipients |
 | Account enumeration | mitigation enabled |
+| Webhooks | header allowlist |
 | Keto | namespace configuration |
 
 ### Not Yet Exposed
@@ -396,6 +405,7 @@ Some Ory project settings are not yet available through this resource. For setti
 - `webauthn_rp_display_name` (String) WebAuthn Relying Party display name.
 - `webauthn_rp_id` (String) WebAuthn Relying Party ID (typically your domain).
 - `webauthn_rp_origins` (List of String) Allowed WebAuthn origins.
+- `webhook_header_allowlist` (List of String) List of HTTP header names that are forwarded to webhooks. The Ory API always includes a set of default headers; any headers you specify here are added on top of those defaults.
 
 ### Read-Only
 
