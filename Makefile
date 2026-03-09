@@ -102,6 +102,10 @@ format: .bin/tfplugindocs .bin/golangci-lint ## Format all code (Go, Terraform, 
 lint: .bin/golangci-lint ## Run Go linter (without fixes)
 	.bin/golangci-lint run ./...
 
+.PHONY: lint-actions
+lint-actions: ## Lint GitHub Actions workflow files (requires actionlint: brew install actionlint)
+	actionlint
+
 .PHONY: licenses
 licenses: .bin/go-licenses ## Check dependency licenses
 	@# go-licenses has known issues with Go 1.25+ stdlib packages (github.com/google/go-licenses/issues/128)

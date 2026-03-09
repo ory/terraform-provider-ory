@@ -28,3 +28,11 @@ jobs:
 
       - name: Check for changes
         run: git diff HEAD --exit-code --color
+
+  actionlint:
+    name: Lint GitHub Actions
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: rhysd/actionlint@393031adb9afb225ee52ae2ccd7a5af5525e03e8 # v1.7.11
