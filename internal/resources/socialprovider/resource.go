@@ -175,12 +175,21 @@ func (r *SocialProviderResource) ValidateConfig(ctx context.Context, req resourc
 
 	providerType := config.ProviderType.ValueString()
 
-	// Treat attributes as "configured" only when they are both non-null and non-unknown.
-	// This ensures validation aligns with buildProviderConfig, which drops unknown values.
-	hasClientSecret := !config.ClientSecret.IsNull() && !config.ClientSecret.IsUnknown()
-	hasAppleTeamID := !config.AppleTeamID.IsNull() && !config.AppleTeamID.IsUnknown()
-	hasApplePrivateKeyID := !config.ApplePrivateKeyID.IsNull() && !config.ApplePrivateKeyID.IsUnknown()
-	hasApplePrivateKey := !config.ApplePrivateKey.IsNull() && !config.ApplePrivateKey.IsUnknown()
+	// When any attribute value is unknown (e.g. sourced from a data source like
+	// AWS Secrets Manager), we cannot validate cross-field requirements yet.
+	// Unknown values will become known at apply time, so we defer validation.
+	// See: https://developer.hashicorp.com/terraform/plugin/framework/validation
+	if config.ClientSecret.IsUnknown() ||
+		config.AppleTeamID.IsUnknown() ||
+		config.ApplePrivateKeyID.IsUnknown() ||
+		config.ApplePrivateKey.IsUnknown() {
+		return
+	}
+
+	hasClientSecret := !config.ClientSecret.IsNull()
+	hasAppleTeamID := !config.AppleTeamID.IsNull()
+	hasApplePrivateKeyID := !config.ApplePrivateKeyID.IsNull()
+	hasApplePrivateKey := !config.ApplePrivateKey.IsNull()
 	hasAnyAppleField := hasAppleTeamID || hasApplePrivateKeyID || hasApplePrivateKey
 	hasAllAppleFields := hasAppleTeamID && hasApplePrivateKeyID && hasApplePrivateKey
 
