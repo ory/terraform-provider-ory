@@ -310,13 +310,6 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	existingIDs := make(map[string]bool)
-	for _, s := range existingSchemas {
-		if id, ok := s["id"].(string); ok {
-			existingIDs[id] = true
-		}
-	}
-
 	var patches []ory.JsonPatch
 
 	existingIndex := r.findSchemaIndex(existingSchemas, schemaID)
@@ -394,44 +387,26 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	// Resolve the canonical (hash-based) schema ID using a fresh GetProject call.
-	// The Ory API initially stores the schema with the user-provided schema_id,
-	// then asynchronously transforms it to a hash-based ID. We poll until we see
-	// a non-user-provided ID to ensure we store the stable, canonical ID in state.
+	// Resolve the canonical (hash-based) schema ID by polling with content-based
+	// matching. The Ory API initially stores the schema with the user-provided
+	// schema_id, then asynchronously transforms it to a hash-based ID.
 	//
-	// We deliberately skip the "find by user-provided schema_id" path to avoid
-	// caching a pre-transformation ID that will soon change.
+	// Content-based matching (via ListIdentitySchemas / Kratos API) is used
+	// rather than a "first new ID" heuristic because the heuristic can pick the
+	// wrong schema when multiple ory_identity_schema resources are created
+	// concurrently in the same Terraform apply.
 	var actualID string
 	waitErr := helpers.WaitForCondition(ctx, func() (bool, error) {
-		freshSchemas, gsErr := r.getSchemas(ctx, projectID)
-		if gsErr != nil {
-			// Transient read error — keep retrying rather than aborting.
-			// If the project is genuinely unreachable we'll time out and fall
-			// back to the user-provided schemaID below (correctness is
-			// recovered on the next refresh / plan cycle).
+		foundID, findErr := r.findExistingSchemaByContent(ctx, projectID, schemaJSON)
+		if findErr != nil {
+			// Transient error — keep retrying rather than aborting.
 			return false, nil //nolint:nilerr
 		}
-
-		// Try by URL match, but only accept an ID that differs from the
-		// user-provided schemaID (to avoid storing a pre-transformation ID).
-		if idx := r.findSchemaByURL(freshSchemas, schemaURL); idx >= 0 {
-			if id, ok := freshSchemas[idx]["id"].(string); ok && id != schemaID {
-				actualID = id
-				return true, nil
-			}
+		// Only accept once the API has assigned a different (canonical hash) ID.
+		if foundID != "" && foundID != schemaID {
+			actualID = foundID
+			return true, nil
 		}
-
-		// Try to find a new ID not in the pre-creation set and not the
-		// user-provided schemaID. This catches the transformed hash-based ID.
-		for _, s := range freshSchemas {
-			if id, ok := s["id"].(string); ok {
-				if !existingIDs[id] && id != schemaID {
-					actualID = id
-					return true, nil
-				}
-			}
-		}
-
 		return false, nil
 	})
 	if errors.Is(waitErr, context.Canceled) || errors.Is(waitErr, context.DeadlineExceeded) {
@@ -441,7 +416,15 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 	}
 	if actualID == "" {
 		// Timed out without observing a hash transformation, or the API stores
-		// the schema under the user-provided ID permanently. Accept it as-is.
+		// the schema under the user-provided ID permanently. Fall back to the
+		// user-provided ID; state will be corrected on the next refresh/plan.
+		if waitErr != nil {
+			resp.Diagnostics.AddWarning("Schema ID Not Resolved",
+				fmt.Sprintf("Could not observe schema ID transformation after polling; "+
+					"using user-provided ID %q as fallback. "+
+					"The state will be corrected on the next plan/refresh. Reason: %v",
+					schemaID, waitErr))
+		}
 		actualID = schemaID
 	}
 
