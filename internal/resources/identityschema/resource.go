@@ -408,7 +408,7 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 			// If the project is genuinely unreachable we'll time out and fall
 			// back to the user-provided schemaID below (correctness is
 			// recovered on the next refresh / plan cycle).
-			return false, nil
+			return false, nil //nolint:nilerr
 		}
 
 		// Try by URL match, but only accept an ID that differs from the
