@@ -251,6 +251,8 @@ func (r *IdentitySchemaResource) findExistingSchemaByContent(ctx context.Context
 			schemas, err = r.client.ListIdentitySchemas(ctx)
 		} else if r.client.HasConsoleClient() {
 			schemas, err = r.client.ListIdentitySchemasViaProject(ctx, projectID)
+		} else {
+			return "", fmt.Errorf("no API client configured for listing identity schemas: set project_api_key or workspace_api_key")
 		}
 		if err == nil {
 			break
@@ -399,10 +401,14 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 	// We deliberately skip the "find by user-provided schema_id" path to avoid
 	// caching a pre-transformation ID that will soon change.
 	var actualID string
-	err = helpers.WaitForCondition(ctx, func() (bool, error) {
-		freshSchemas, err := r.getSchemas(ctx, projectID)
-		if err != nil {
-			return false, err
+	_ = helpers.WaitForCondition(ctx, func() (bool, error) {
+		freshSchemas, gsErr := r.getSchemas(ctx, projectID)
+		if gsErr != nil {
+			// Transient read error — keep retrying rather than aborting.
+			// If the project is genuinely unreachable we'll time out and fall
+			// back to the user-provided schemaID below (correctness is
+			// recovered on the next refresh / plan cycle).
+			return false, nil
 		}
 
 		// Try by URL match, but only accept an ID that differs from the
@@ -427,9 +433,9 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 
 		return false, nil
 	})
-	if err != nil || actualID == "" {
-		// Fallback: the API may store the schema with the user-provided ID
-		// permanently (no hash transformation). Accept it.
+	if actualID == "" {
+		// Timed out without observing a hash transformation, or the API stores
+		// the schema under the user-provided ID permanently. Accept it as-is.
 		actualID = schemaID
 	}
 

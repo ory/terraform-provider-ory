@@ -1309,11 +1309,17 @@ func (c *OryClient) ListIdentitySchemas(ctx context.Context) ([]ory.IdentitySche
 			return nil, wrapAPIError(err, "listing identity schemas")
 		}
 		all = append(all, page...)
-		if len(page) < int(pageSize) {
-			break
-		}
+		// Primary termination signal: absence of a "next" page_token in the
+		// Link header. This is authoritative regardless of page size, so we
+		// check it first. Using only len(page) < pageSize would stop early
+		// if the API returns a partial page while still providing a cursor.
 		next := parseLinkNextPageToken(httpResp)
 		if next == "" {
+			break
+		}
+		// Safety guard: if the server somehow returns an empty page with a
+		// next cursor, stop to avoid an infinite loop.
+		if len(page) == 0 {
 			break
 		}
 		pageToken = &next
