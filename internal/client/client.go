@@ -259,6 +259,13 @@ func isRetryableError(err error) bool {
 		strings.Contains(errStr, "Gateway Timeout")
 }
 
+// IsTransientError reports whether err is a transient API error (5xx or 429)
+// that is safe to retry, as opposed to a permanent error (4xx auth/permission)
+// that should fail fast.
+func IsTransientError(err error) bool {
+	return isRetryableError(err) || isRateLimitError(err)
+}
+
 // retryWithBackoff executes a function with exponential backoff on rate limit errors.
 func retryWithBackoff[T any](ctx context.Context, operation string, fn func() (T, error)) (T, error) {
 	var result T
@@ -1285,24 +1292,87 @@ func (c *OryClient) ListOrganizations(ctx context.Context, projectID string) ([]
 	return resp.Organizations, nil
 }
 
-// ListIdentitySchemas lists all identity schemas for a project.
+// ListIdentitySchemas lists all identity schemas for a project, paginating
+// through all pages using the Link header page_token cursor.
 func (c *OryClient) ListIdentitySchemas(ctx context.Context) ([]ory.IdentitySchemaContainer, error) {
 	if err := c.ensureProjectClient(); err != nil {
 		return nil, fmt.Errorf("listing identity schemas: %w", err)
 	}
-	schemas, httpResp, err := c.projectClient.IdentityAPI.ListIdentitySchemas(ctx).Execute()
-	if httpResp != nil {
-		_ = httpResp.Body.Close()
+
+	const pageSize = int64(250)
+	var all []ory.IdentitySchemaContainer
+	var pageToken *string
+
+	for {
+		req := c.projectClient.IdentityAPI.ListIdentitySchemas(ctx).PageSize(pageSize)
+		if pageToken != nil {
+			req = req.PageToken(*pageToken)
+		}
+		page, httpResp, err := req.Execute()
+		if httpResp != nil {
+			_ = httpResp.Body.Close()
+		}
+		if err != nil {
+			return nil, wrapAPIError(err, "listing identity schemas")
+		}
+		all = append(all, page...)
+		// Primary termination signal: absence of a "next" page_token in the
+		// Link header. This is authoritative regardless of page size, so we
+		// check it first. Using only len(page) < pageSize would stop early
+		// if the API returns a partial page while still providing a cursor.
+		next := parseLinkNextPageToken(httpResp)
+		if next == "" {
+			break
+		}
+		// Safety guard: if the server somehow returns an empty page with a
+		// next cursor, stop to avoid an infinite loop.
+		if len(page) == 0 {
+			break
+		}
+		pageToken = &next
 	}
-	if err != nil {
-		return nil, wrapAPIError(err, "listing identity schemas")
+	return all, nil
+}
+
+// parseLinkNextPageToken extracts the page_token query parameter from the
+// "next" relation in an HTTP Link header. Returns "" if not present.
+func parseLinkNextPageToken(resp *http.Response) string {
+	if resp == nil {
+		return ""
 	}
-	return schemas, nil
+	for _, link := range resp.Header.Values("Link") {
+		for _, part := range strings.Split(link, ",") {
+			part = strings.TrimSpace(part)
+			// Format: <URL>; rel="next"
+			semi := strings.Index(part, ";")
+			if semi < 0 {
+				continue
+			}
+			rawURL := strings.Trim(strings.TrimSpace(part[:semi]), "<>")
+			rel := strings.TrimSpace(part[semi+1:])
+			if !strings.Contains(rel, `"next"`) {
+				continue
+			}
+			u, err := url.Parse(rawURL)
+			if err != nil {
+				continue
+			}
+			if tok := u.Query().Get("page_token"); tok != "" {
+				return tok
+			}
+		}
+	}
+	return ""
 }
 
 // HasProjectClient reports whether the project API client is configured.
 func (c *OryClient) HasProjectClient() bool {
 	return c.config.ProjectSlug != "" && c.config.ProjectAPIKey != ""
+}
+
+// HasConsoleClient reports whether the console API client is configured.
+func (c *OryClient) HasConsoleClient() bool {
+	return c.consoleClient != nil
 }
 
 // ListIdentitySchemasViaProject extracts identity schemas from the project

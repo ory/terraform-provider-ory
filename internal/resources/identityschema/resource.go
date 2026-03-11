@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -218,11 +219,19 @@ func (r *IdentitySchemaResource) findSchemaByURL(schemas []map[string]interface{
 	return -1
 }
 
-// findExistingSchemaByContent checks ListIdentitySchemas for a schema with
-// identical JSON content. Returns the schema's API-assigned ID if found, or "".
-// This is used to detect and reuse existing schemas, preventing duplicates
-// when re-applying after a destroy.
-func (r *IdentitySchemaResource) findExistingSchemaByContent(ctx context.Context, schemaJSON string) (string, error) {
+// findExistingSchemaByContent checks all project schemas for one with
+// identical JSON content. Returns the schema's canonical (hash-based) ID if
+// found, or "". Used to detect and reuse existing schemas, preventing
+// duplicates when re-applying after a destroy.
+//
+// It uses ListIdentitySchemas (Kratos API) when a project client is available
+// because the Kratos API returns actual schema content with stable hash IDs.
+// The console API path (ListIdentitySchemasViaProject) reads the project config,
+// which may store non-base64 URLs after API transformation — making content
+// comparison impossible for those schemas.
+// Falls back to ListIdentitySchemasViaProject when only a console client is
+// available (workspace-only configuration).
+func (r *IdentitySchemaResource) findExistingSchemaByContent(ctx context.Context, projectID, schemaJSON string) (string, error) {
 	var target interface{}
 	if err := json.Unmarshal([]byte(schemaJSON), &target); err != nil {
 		return "", fmt.Errorf("failed to parse schema JSON for content-based lookup: %w", err)
@@ -234,7 +243,18 @@ func (r *IdentitySchemaResource) findExistingSchemaByContent(ctx context.Context
 
 	var schemas []ory.IdentitySchemaContainer
 	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
-		schemas, err = r.client.ListIdentitySchemas(ctx)
+		// Prefer the Kratos API (ListIdentitySchemas) because it returns actual
+		// schema content with canonical hash-based IDs. The console API path
+		// (ListIdentitySchemasViaProject) reads the project config, which may
+		// store non-base64 URLs after the API transforms them — making content
+		// comparison impossible.
+		if r.client.HasProjectClient() {
+			schemas, err = r.client.ListIdentitySchemas(ctx)
+		} else if r.client.HasConsoleClient() {
+			schemas, err = r.client.ListIdentitySchemasViaProject(ctx, projectID)
+		} else {
+			return "", fmt.Errorf("no API client configured for listing identity schemas: set project_api_key or workspace_api_key")
+		}
 		if err == nil {
 			break
 		}
@@ -290,7 +310,8 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	existingIDs := make(map[string]bool)
+	// Record pre-patch IDs for the console-only fallback in WaitForCondition.
+	existingIDs := make(map[string]bool, len(existingSchemas))
 	for _, s := range existingSchemas {
 		if id, ok := s["id"].(string); ok {
 			existingIDs[id] = true
@@ -305,7 +326,7 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 	// already exist in the project configuration. This avoids an extra
 	// ListIdentitySchemas call when we're simply replacing an existing schema.
 	if existingIndex < 0 {
-		existingID, err := r.findExistingSchemaByContent(ctx, schemaJSON)
+		existingID, err := r.findExistingSchemaByContent(ctx, projectID, schemaJSON)
 		if err != nil {
 			resp.Diagnostics.AddError("Error Checking for Duplicate Schemas", err.Error())
 			return
@@ -374,47 +395,71 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	// Resolve the canonical schema ID using a fresh GetProject call.
-	// PatchProject's response may preserve our input name, but the API may
-	// internally assign a different ID (e.g., hash-based). A fresh GetProject
-	// returns the canonical IDs.
+	// Resolve the canonical (hash-based) schema ID by polling after the patch.
+	// The Ory API initially stores the schema with the user-provided schema_id,
+	// then asynchronously transforms it to a hash-based ID.
+	//
+	// Two strategies are used depending on the configured client:
+	//
+	//  1. Project client available: content-based matching via ListIdentitySchemas
+	//     (Kratos API). Deterministic and safe for concurrent Terraform applies.
+	//     Non-retryable errors (e.g., auth failures) abort immediately.
+	//
+	//  2. Console client only: the project config stores HTTPS URLs after
+	//     transformation, making schema body decoding impossible. Fall back to
+	//     ID-diff matching (any new schema ID not seen before the patch).
 	var actualID string
-	err = helpers.WaitForCondition(ctx, func() (bool, error) {
-		freshSchemas, err := r.getSchemas(ctx, projectID)
-		if err != nil {
-			return false, err
-		}
-
-		// Try by user-provided schema_id
-		if idx := r.findSchemaIndex(freshSchemas, schemaID); idx >= 0 {
-			if id, ok := freshSchemas[idx]["id"].(string); ok {
-				actualID = id
-				return true, nil
-			}
-		}
-
-		// Try by URL match
-		if idx := r.findSchemaByURL(freshSchemas, schemaURL); idx >= 0 {
-			if id, ok := freshSchemas[idx]["id"].(string); ok {
-				actualID = id
-				return true, nil
-			}
-		}
-
-		// Try to find a new ID not in the pre-creation set
-		for _, s := range freshSchemas {
-			if id, ok := s["id"].(string); ok {
-				if !existingIDs[id] {
-					actualID = id
-					return true, nil
+	waitErr := helpers.WaitForCondition(ctx, func() (bool, error) {
+		if r.client.HasProjectClient() {
+			foundID, findErr := r.findExistingSchemaByContent(ctx, projectID, schemaJSON)
+			if findErr != nil {
+				if client.IsTransientError(findErr) {
+					return false, nil // transient (5xx/429) — keep retrying
 				}
+				return false, findErr // non-retryable (auth/permission) — fail fast
 			}
+			// Only accept once the API has assigned a different (canonical hash) ID.
+			if foundID != "" && foundID != schemaID {
+				actualID = foundID
+				return true, nil
+			}
+			return false, nil
 		}
 
+		// Console-only fallback: content matching is unreliable because the project
+		// config stores HTTPS URLs after transformation. Use ID-diff detection instead:
+		// any schema ID that wasn't present before the patch is the hash-based ID.
+		freshSchemas, gsErr := r.getSchemas(ctx, projectID)
+		if gsErr != nil {
+			return false, nil //nolint:nilerr
+		}
+		for _, s := range freshSchemas {
+			if id, ok := s["id"].(string); ok && !existingIDs[id] && id != schemaID {
+				actualID = id
+				return true, nil
+			}
+		}
 		return false, nil
 	})
-	if err != nil || actualID == "" {
-		// Fallback to user-provided schemaID if we can't resolve
+	if errors.Is(waitErr, context.Canceled) || errors.Is(waitErr, context.DeadlineExceeded) {
+		resp.Diagnostics.AddError("Error Creating Identity Schema",
+			fmt.Sprintf("context canceled while waiting for schema ID transformation: %v", waitErr))
+		return
+	}
+	if waitErr != nil {
+		// Non-retryable API error (e.g., auth/permission failure). The schema was
+		// already created by PatchProject; surface the error so the operator can
+		// investigate. Fall back to the user-provided ID so Terraform can write
+		// state — the canonical ID will be corrected on the next refresh/plan.
+		resp.Diagnostics.AddWarning("Schema ID Not Resolved",
+			fmt.Sprintf("Could not resolve canonical schema ID due to a non-retryable error; "+
+				"using user-provided ID %q as fallback. "+
+				"The state will be corrected on the next plan/refresh. Reason: %v",
+				schemaID, waitErr))
+	}
+	if actualID == "" {
+		// Polling timed out without observing a hash transformation. The API may
+		// store the schema under the user-provided ID permanently. Accept it as-is.
 		actualID = schemaID
 	}
 
@@ -453,20 +498,15 @@ func (r *IdentitySchemaResource) Read(ctx context.Context, req resource.ReadRequ
 	var schemas []map[string]interface{}
 	var index = -1
 
-	if cached := r.client.GetCachedProject(projectID); cached != nil {
-		schemas = extractSchemasFromProject(cached)
-		if storedID != "" {
-			index = r.findSchemaIndex(schemas, storedID)
-		}
-		if index < 0 {
-			index = r.findSchemaIndex(schemas, schemaID)
-		}
-		if index < 0 && schemaURL != "" {
-			index = r.findSchemaByURL(schemas, schemaURL)
-		}
-	}
-
-	if index < 0 {
+	// Note: We intentionally do NOT use the PatchProject cache here.
+	// The cache holds the PatchProject response, which may contain the
+	// user-provided schema_id before the API transforms it to a hash-based ID.
+	// Using stale cache data causes Read to store the wrong (user-provided) ID,
+	// which then fails to match on subsequent refresh cycles once the API has
+	// applied its hash transformation.
+	//
+	// Always call GetProject fresh to get the canonical (post-transformation) IDs.
+	{
 		var err error
 		for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
 			schemas, err = r.getSchemas(ctx, projectID)
