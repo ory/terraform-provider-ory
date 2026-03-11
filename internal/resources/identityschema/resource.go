@@ -436,7 +436,7 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 	})
 	if errors.Is(waitErr, context.Canceled) || errors.Is(waitErr, context.DeadlineExceeded) {
 		resp.Diagnostics.AddError("Error Creating Identity Schema",
-			fmt.Sprintf("context cancelled while waiting for schema ID transformation: %v", waitErr))
+			fmt.Sprintf("context canceled while waiting for schema ID transformation: %v", waitErr))
 		return
 	}
 	if actualID == "" {
