@@ -259,6 +259,13 @@ func isRetryableError(err error) bool {
 		strings.Contains(errStr, "Gateway Timeout")
 }
 
+// IsTransientError reports whether err is a transient API error (5xx or 429)
+// that is safe to retry, as opposed to a permanent error (4xx auth/permission)
+// that should fail fast.
+func IsTransientError(err error) bool {
+	return isRetryableError(err) || isRateLimitError(err)
+}
+
 // retryWithBackoff executes a function with exponential backoff on rate limit errors.
 func retryWithBackoff[T any](ctx context.Context, operation string, fn func() (T, error)) (T, error) {
 	var result T

@@ -310,6 +310,14 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
+	// Record pre-patch IDs for the console-only fallback in WaitForCondition.
+	existingIDs := make(map[string]bool, len(existingSchemas))
+	for _, s := range existingSchemas {
+		if id, ok := s["id"].(string); ok {
+			existingIDs[id] = true
+		}
+	}
+
 	var patches []ory.JsonPatch
 
 	existingIndex := r.findSchemaIndex(existingSchemas, schemaID)
@@ -387,25 +395,49 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	// Resolve the canonical (hash-based) schema ID by polling with content-based
-	// matching. The Ory API initially stores the schema with the user-provided
-	// schema_id, then asynchronously transforms it to a hash-based ID.
+	// Resolve the canonical (hash-based) schema ID by polling after the patch.
+	// The Ory API initially stores the schema with the user-provided schema_id,
+	// then asynchronously transforms it to a hash-based ID.
 	//
-	// Content-based matching (via ListIdentitySchemas / Kratos API) is used
-	// rather than a "first new ID" heuristic because the heuristic can pick the
-	// wrong schema when multiple ory_identity_schema resources are created
-	// concurrently in the same Terraform apply.
+	// Two strategies are used depending on the configured client:
+	//
+	//  1. Project client available: content-based matching via ListIdentitySchemas
+	//     (Kratos API). Deterministic and safe for concurrent Terraform applies.
+	//     Non-retryable errors (e.g., auth failures) abort immediately.
+	//
+	//  2. Console client only: the project config stores HTTPS URLs after
+	//     transformation, making schema body decoding impossible. Fall back to
+	//     ID-diff matching (any new schema ID not seen before the patch).
 	var actualID string
 	waitErr := helpers.WaitForCondition(ctx, func() (bool, error) {
-		foundID, findErr := r.findExistingSchemaByContent(ctx, projectID, schemaJSON)
-		if findErr != nil {
-			// Transient error — keep retrying rather than aborting.
+		if r.client.HasProjectClient() {
+			foundID, findErr := r.findExistingSchemaByContent(ctx, projectID, schemaJSON)
+			if findErr != nil {
+				if client.IsTransientError(findErr) {
+					return false, nil // transient (5xx/429) — keep retrying
+				}
+				return false, findErr // non-retryable (auth/permission) — fail fast
+			}
+			// Only accept once the API has assigned a different (canonical hash) ID.
+			if foundID != "" && foundID != schemaID {
+				actualID = foundID
+				return true, nil
+			}
+			return false, nil
+		}
+
+		// Console-only fallback: content matching is unreliable because the project
+		// config stores HTTPS URLs after transformation. Use ID-diff detection instead:
+		// any schema ID that wasn't present before the patch is the hash-based ID.
+		freshSchemas, gsErr := r.getSchemas(ctx, projectID)
+		if gsErr != nil {
 			return false, nil //nolint:nilerr
 		}
-		// Only accept once the API has assigned a different (canonical hash) ID.
-		if foundID != "" && foundID != schemaID {
-			actualID = foundID
-			return true, nil
+		for _, s := range freshSchemas {
+			if id, ok := s["id"].(string); ok && !existingIDs[id] && id != schemaID {
+				actualID = id
+				return true, nil
+			}
 		}
 		return false, nil
 	})
@@ -414,17 +446,20 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 			fmt.Sprintf("context canceled while waiting for schema ID transformation: %v", waitErr))
 		return
 	}
+	if waitErr != nil {
+		// Non-retryable API error (e.g., auth/permission failure). The schema was
+		// already created by PatchProject; surface the error so the operator can
+		// investigate. Fall back to the user-provided ID so Terraform can write
+		// state — the canonical ID will be corrected on the next refresh/plan.
+		resp.Diagnostics.AddWarning("Schema ID Not Resolved",
+			fmt.Sprintf("Could not resolve canonical schema ID due to a non-retryable error; "+
+				"using user-provided ID %q as fallback. "+
+				"The state will be corrected on the next plan/refresh. Reason: %v",
+				schemaID, waitErr))
+	}
 	if actualID == "" {
-		// Timed out without observing a hash transformation, or the API stores
-		// the schema under the user-provided ID permanently. Fall back to the
-		// user-provided ID; state will be corrected on the next refresh/plan.
-		if waitErr != nil {
-			resp.Diagnostics.AddWarning("Schema ID Not Resolved",
-				fmt.Sprintf("Could not observe schema ID transformation after polling; "+
-					"using user-provided ID %q as fallback. "+
-					"The state will be corrected on the next plan/refresh. Reason: %v",
-					schemaID, waitErr))
-		}
+		// Polling timed out without observing a hash transformation. The API may
+		// store the schema under the user-provided ID permanently. Accept it as-is.
 		actualID = schemaID
 	}
 
