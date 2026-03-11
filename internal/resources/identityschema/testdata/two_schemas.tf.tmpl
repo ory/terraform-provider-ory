@@ -1,9 +1,9 @@
 resource "ory_identity_schema" "first" {
   schema_id = "[[ .SchemaID1 ]]"
   schema    = jsonencode({
-    "$id": "[[ .AppURL ]]/[[ .SchemaID1 ]].json",
+    "$id": "[[ .AppURL ]]/test-first-schema.json",
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "First Schema [[ .SchemaID1 ]]",
+    "title": "Test First Schema",
     "type": "object",
     "properties": {
       "traits": {
@@ -31,9 +31,9 @@ resource "ory_identity_schema" "first" {
 resource "ory_identity_schema" "second" {
   schema_id = "[[ .SchemaID2 ]]"
   schema    = jsonencode({
-    "$id": "[[ .AppURL ]]/[[ .SchemaID2 ]].json",
+    "$id": "[[ .AppURL ]]/test-second-schema.json",
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "Second Schema [[ .SchemaID2 ]]",
+    "title": "Test Second Schema",
     "type": "object",
     "properties": {
       "traits": {

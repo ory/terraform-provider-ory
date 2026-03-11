@@ -1,9 +1,9 @@
 resource "ory_identity_schema" "test" {
   schema_id = "[[ .SchemaID ]]"
   schema    = jsonencode({
-    "$id": "[[ .AppURL ]]/[[ .SchemaID ]].json",
+    "$id": "[[ .AppURL ]]/test-schema-email.json",
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "Test Schema [[ .SchemaID ]]",
+    "title": "Test Email Schema",
     "type": "object",
     "properties": {
       "traits": {
