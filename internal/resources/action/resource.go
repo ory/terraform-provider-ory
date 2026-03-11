@@ -369,29 +369,22 @@ func (r *ActionResource) ValidateConfig(ctx context.Context, req resource.Valida
 		return
 	}
 
-	// When any webhook auth attribute value is unknown (e.g. sourced from a data source like
-	// AWS Secrets Manager), we cannot validate cross-field requirements yet.
-	// Unknown values will become known at apply time, so we defer validation.
-	// See: https://developer.hashicorp.com/terraform/plugin/framework/validation
-	if config.WebhookAuthBasicAuthUser.IsUnknown() ||
-		config.WebhookAuthBasicAuthPassword.IsUnknown() ||
-		config.WebhookAuthAPIKeyName.IsUnknown() ||
-		config.WebhookAuthAPIKeyValue.IsUnknown() ||
-		config.WebhookAuthAPIKeyIn.IsUnknown() {
-		return
-	}
-
+	// Per-field unknown checks: when a value is sourced from a data source (e.g. AWS Secrets
+	// Manager), it is unknown at plan time and will become known at apply time. We skip the
+	// required-field check only for the specific field that is unknown, allowing validation of
+	// other fields that are already known. See:
+	// https://developer.hashicorp.com/terraform/plugin/framework/validation
 	authType := config.WebhookAuthType.ValueString()
 	switch authType {
 	case webhookAuthBasicAuth:
-		if config.WebhookAuthBasicAuthUser.IsNull() {
+		if !config.WebhookAuthBasicAuthUser.IsUnknown() && config.WebhookAuthBasicAuthUser.IsNull() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("webhook_auth_basic_auth_user"),
 				"Missing Required Attribute",
 				"webhook_auth_basic_auth_user is required when webhook_auth_type is \"basic_auth\".",
 			)
 		}
-		if config.WebhookAuthBasicAuthPassword.IsNull() {
+		if !config.WebhookAuthBasicAuthPassword.IsUnknown() && config.WebhookAuthBasicAuthPassword.IsNull() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("webhook_auth_basic_auth_password"),
 				"Missing Required Attribute",
@@ -399,21 +392,21 @@ func (r *ActionResource) ValidateConfig(ctx context.Context, req resource.Valida
 			)
 		}
 	case webhookAuthAPIKey:
-		if config.WebhookAuthAPIKeyName.IsNull() {
+		if !config.WebhookAuthAPIKeyName.IsUnknown() && config.WebhookAuthAPIKeyName.IsNull() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("webhook_auth_api_key_name"),
 				"Missing Required Attribute",
 				"webhook_auth_api_key_name is required when webhook_auth_type is \"api_key\".",
 			)
 		}
-		if config.WebhookAuthAPIKeyValue.IsNull() {
+		if !config.WebhookAuthAPIKeyValue.IsUnknown() && config.WebhookAuthAPIKeyValue.IsNull() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("webhook_auth_api_key_value"),
 				"Missing Required Attribute",
 				"webhook_auth_api_key_value is required when webhook_auth_type is \"api_key\".",
 			)
 		}
-		if config.WebhookAuthAPIKeyIn.IsNull() {
+		if !config.WebhookAuthAPIKeyIn.IsUnknown() && config.WebhookAuthAPIKeyIn.IsNull() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("webhook_auth_api_key_in"),
 				"Missing Required Attribute",

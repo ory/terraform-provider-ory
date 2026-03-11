@@ -299,3 +299,50 @@ func TestValidateConfig_BasicAuth_UnknownUser_SkipsValidation(t *testing.T) {
 		t.Errorf("expected no errors for unknown webhook_auth_basic_auth_user, got: %s", resp.Diagnostics.Errors()[0].Detail())
 	}
 }
+
+// TestValidateConfig_APIKey_UnknownValue_NullName_StillFails verifies that when
+// webhook_auth_api_key_value is unknown but webhook_auth_api_key_name is null, the null
+// name is still flagged. Per-field unknown checks allow validation of known fields.
+func TestValidateConfig_APIKey_UnknownValue_NullName_StillFails(t *testing.T) {
+	r := &ActionResource{}
+	ctx := context.Background()
+
+	req := buildActionTestConfig(t, ActionResourceModel{
+		Flow:            types.StringValue("login"),
+		Timing:          types.StringValue("after"),
+		URL:             types.StringValue("https://example.com/webhook"),
+		WebhookAuthType: types.StringValue("api_key"),
+		// WebhookAuthAPIKeyName is null — should still fail even though value is unknown
+		WebhookAuthAPIKeyValue: types.StringUnknown(), // sourced from data source
+		WebhookAuthAPIKeyIn:    types.StringValue("header"),
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Error("expected error for null webhook_auth_api_key_name even when value is unknown, got none")
+	}
+}
+
+// TestValidateConfig_BasicAuth_UnknownPassword_NullUser_StillFails verifies that when
+// webhook_auth_basic_auth_password is unknown but webhook_auth_basic_auth_user is null,
+// the null user is still flagged.
+func TestValidateConfig_BasicAuth_UnknownPassword_NullUser_StillFails(t *testing.T) {
+	r := &ActionResource{}
+	ctx := context.Background()
+
+	req := buildActionTestConfig(t, ActionResourceModel{
+		Flow:            types.StringValue("registration"),
+		Timing:          types.StringValue("after"),
+		URL:             types.StringValue("https://example.com/webhook"),
+		WebhookAuthType: types.StringValue("basic_auth"),
+		// WebhookAuthBasicAuthUser is null — should still fail even though password is unknown
+		WebhookAuthBasicAuthPassword: types.StringUnknown(), // sourced from data source
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Error("expected error for null webhook_auth_basic_auth_user even when password is unknown, got none")
+	}
+}
