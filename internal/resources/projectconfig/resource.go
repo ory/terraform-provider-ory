@@ -108,9 +108,10 @@ type ProjectConfigResourceModel struct {
 	PasswordIdentifierSimilarity types.Bool  `tfsdk:"password_identifier_similarity"`
 
 	// Flow settings
-	EnableRecovery     types.Bool `tfsdk:"enable_recovery"`
-	EnableVerification types.Bool `tfsdk:"enable_verification"`
-	EnableRegistration types.Bool `tfsdk:"enable_registration"`
+	EnableRecovery     types.Bool   `tfsdk:"enable_recovery"`
+	EnableVerification types.Bool   `tfsdk:"enable_verification"`
+	EnableRegistration types.Bool   `tfsdk:"enable_registration"`
+	LoginStyle         types.String `tfsdk:"login_style"`
 
 	// SMTP Configuration
 	SMTPConnectionURI types.String `tfsdk:"smtp_connection_uri"`
@@ -527,6 +528,12 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 			"enable_registration": schema.BoolAttribute{
 				Description: "Enable user registration.",
 				Optional:    true,
+			},
+			"login_style": schema.StringAttribute{
+				Description: "Login flow style: 'unified' (default) shows all auth methods on one screen, " +
+					"'identifier_first' collects the identifier before showing auth methods.",
+				Optional:   true,
+				Validators: []validator.String{stringvalidator.OneOf("unified", "identifier_first")},
 			},
 
 			// SMTP Configuration
@@ -1050,6 +1057,15 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 				Value: field.ValueBool(),
 			})
 		}
+	}
+
+	// Login style
+	if !plan.LoginStyle.IsNull() && !plan.LoginStyle.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/selfservice/flows/login/style",
+			Value: plan.LoginStyle.ValueString(),
+		})
 	}
 
 	// SMTP Configuration
@@ -1607,6 +1623,13 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 				if v, ok := getNestedBool(identityConfig, keys...); ok {
 					*field = types.BoolValue(v)
 				}
+			}
+		}
+
+		// Login style
+		if !state.LoginStyle.IsNull() {
+			if v, ok := getNestedString(identityConfig, "selfservice", "flows", "login", "style"); ok {
+				state.LoginStyle = types.StringValue(v)
 			}
 		}
 

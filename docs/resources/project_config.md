@@ -117,6 +117,15 @@ resource "ory_project_config" "secure" {
   keto_namespaces = ["documents", "folders", "groups"]
 }
 
+# Login style controls how authentication methods are presented.
+# Default is "unified" (all methods on one screen).
+# Use "identifier_first" to collect the identifier before showing auth methods.
+resource "ory_project_config" "identifier_first" {
+  login_style     = "identifier_first"
+  enable_password = true
+  enable_code     = true
+}
+
 # Self-hosted UI configuration (custom login/registration pages)
 resource "ory_project_config" "self_hosted_ui" {
   login_ui_url        = "https://auth.example.com/login"
@@ -305,6 +314,7 @@ This resource exposes **75+ attributes** across these configuration categories:
 | Password settings | min length, identifier similarity, max breaches, haveibeenpwned |
 | Session settings | cookie same site, lifespan, whoami-required AAL |
 | CORS | public and admin origins, enabled/disabled |
+| Login flow | login style (unified, identifier_first) |
 | Authentication | passwordless, code, OIDC (social sign-in), TOTP, passkey, WebAuthn, lookup secrets |
 | OAuth2/Hydra | token lifespans, access token strategy, PKCE, claims, scope strategy, consent/login URLs |
 | Recovery / Verification | enabled, methods, notify unknown recipients |
@@ -350,6 +360,7 @@ Some Ory project settings are not yet available through this resource. For setti
 - `enable_webauthn` (Boolean) Enable WebAuthn (hardware keys).
 - `error_ui_url` (String) URL for the error UI.
 - `keto_namespaces` (List of String) List of Keto namespace names to configure for Ory Permissions. Namespaces define the types of resources in your permission model (e.g., 'documents', 'folders'). Each namespace name must be unique.
+- `login_style` (String) Login flow style: 'unified' (default) shows all auth methods on one screen, 'identifier_first' collects the identifier before showing auth methods.
 - `login_ui_url` (String) URL for the login UI.
 - `mfa_enforcement` (String) MFA enforcement level: 'none', 'optional', or 'required'.
 - `oauth2_access_token_lifespan` (String) OAuth2 access token lifespan (e.g., '1h', '30m'). Requires Hydra service.
