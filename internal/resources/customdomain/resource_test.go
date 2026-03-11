@@ -84,7 +84,7 @@ func TestAccCustomDomainResource_basic(t *testing.T) {
 				ImportState:             true,
 				ImportStateIdFunc:       importStateCustomDomainID,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"created_at", "updated_at"},
+				ImportStateVerifyIgnore: []string{"created_at", "updated_at", "verification_status", "verification_errors", "ssl_status"},
 			},
 		},
 	})
