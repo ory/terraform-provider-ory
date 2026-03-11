@@ -530,7 +530,7 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 				Optional:    true,
 			},
 			"login_style": schema.StringAttribute{
-				Description: "Login flow style: 'unified' shows all auth methods on one screen, " +
+				Description: "Login flow style: 'unified' (default) shows all auth methods on one screen, " +
 					"'identifier_first' collects the identifier before showing auth methods.",
 				Optional:   true,
 				Validators: []validator.String{stringvalidator.OneOf("unified", "identifier_first")},

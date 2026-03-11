@@ -94,7 +94,9 @@ resource "ory_project_config" "secure" {
   keto_namespaces = ["documents", "folders", "groups"]
 }
 
-# Identifier-first login style (collects email/username before showing auth methods)
+# Login style controls how authentication methods are presented.
+# Default is "unified" (all methods on one screen).
+# Use "identifier_first" to collect the identifier before showing auth methods.
 resource "ory_project_config" "identifier_first" {
   login_style     = "identifier_first"
   enable_password = true
