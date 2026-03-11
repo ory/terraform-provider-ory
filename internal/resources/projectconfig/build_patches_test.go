@@ -172,3 +172,51 @@ func TestBuildPatches_NullOAuth2IssuerURL(t *testing.T) {
 		t.Error("expected no patch for null oauth2_issuer_url")
 	}
 }
+
+func TestBuildPatches_LoginStyle(t *testing.T) {
+	r := &ProjectConfigResource{}
+	plan := &ProjectConfigResourceModel{
+		LoginStyle: types.StringValue("identifier_first"),
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/identity/config/selfservice/flows/login/style")
+	if p == nil {
+		t.Fatal("expected a patch for login_style, got none")
+	}
+	if p.Op != "replace" {
+		t.Errorf("expected op 'replace', got %q", p.Op)
+	}
+	if p.Value != "identifier_first" {
+		t.Errorf("expected value 'identifier_first', got %v", p.Value)
+	}
+}
+
+func TestBuildPatches_LoginStyleUnified(t *testing.T) {
+	r := &ProjectConfigResource{}
+	plan := &ProjectConfigResourceModel{
+		LoginStyle: types.StringValue("unified"),
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/identity/config/selfservice/flows/login/style")
+	if p == nil {
+		t.Fatal("expected a patch for login_style, got none")
+	}
+	if p.Value != "unified" {
+		t.Errorf("expected value 'unified', got %v", p.Value)
+	}
+}
+
+func TestBuildPatches_NullLoginStyle(t *testing.T) {
+	r := &ProjectConfigResource{}
+	plan := &ProjectConfigResourceModel{
+		LoginStyle: types.StringNull(),
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/identity/config/selfservice/flows/login/style")
+	if p != nil {
+		t.Error("expected no patch for null login_style")
+	}
+}

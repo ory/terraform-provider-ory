@@ -94,6 +94,15 @@ resource "ory_project_config" "secure" {
   keto_namespaces = ["documents", "folders", "groups"]
 }
 
+# Login style controls how authentication methods are presented.
+# Default is "unified" (all methods on one screen).
+# Use "identifier_first" to collect the identifier before showing auth methods.
+resource "ory_project_config" "identifier_first" {
+  login_style     = "identifier_first"
+  enable_password = true
+  enable_code     = true
+}
+
 # Self-hosted UI configuration (custom login/registration pages)
 resource "ory_project_config" "self_hosted_ui" {
   login_ui_url        = "https://auth.example.com/login"
