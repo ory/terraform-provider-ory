@@ -29,8 +29,9 @@ type IdentitySchemaDataSource struct {
 }
 
 type IdentitySchemaDataSourceModel struct {
-	ID     types.String `tfsdk:"id"`
-	Schema types.String `tfsdk:"schema"`
+	ID        types.String `tfsdk:"id"`
+	ProjectID types.String `tfsdk:"project_id"`
+	Schema    types.String `tfsdk:"schema"`
 }
 
 const identitySchemaDataSourceMarkdownDescription = `
@@ -49,7 +50,8 @@ to discover available schema IDs, or use the ` + "`id`" + ` output from an ` + "
 
 ` + "```hcl" + `
 data "ory_identity_schema" "customer" {
-  id = "preset://username"
+  id         = "preset://username"
+  project_id = "your-project-uuid"
 }
 
 output "schema_content" {
@@ -84,6 +86,13 @@ func (d *IdentitySchemaDataSource) Schema(ctx context.Context, req datasource.Sc
 				Description: "The ID of the schema to look up. This is the API-assigned ID (which may be a hash) or a preset ID like 'preset://username'.",
 				Required:    true,
 			},
+			"project_id": schema.StringAttribute{
+				Description: "The ID of the project to look up schemas from. If not set, uses the provider's project_id. " +
+					"When set, schemas are read from the project config via the console API (workspace key), " +
+					"which does not require project_slug or project_api_key.",
+				Optional: true,
+				Computed: true,
+			},
 			"schema": schema.StringAttribute{
 				Description: "The JSON Schema definition for the identity traits.",
 				Computed:    true,
@@ -115,12 +124,25 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 
 	targetID := data.ID.ValueString()
 
-	// Retry to handle eventual consistency — newly created schemas may not
-	// appear in ListIdentitySchemas immediately.
+	// Resolve project_id: use config value if known, fall back to provider.
+	projectID := d.resolveProjectID(data.ProjectID)
+	useConsoleAPI := (!data.ProjectID.IsNull() && !data.ProjectID.IsUnknown()) || !d.client.HasProjectClient()
+
+	if useConsoleAPI && projectID == "" {
+		resp.Diagnostics.AddError("Missing Project ID",
+			"project_id is required when project_slug and project_api_key are not configured. "+
+				"Set project_id on the data source or configure the provider with project_slug and project_api_key.")
+		return
+	}
+
 	var schemas []ory.IdentitySchemaContainer
 	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
 		var err error
-		schemas, err = d.client.ListIdentitySchemas(ctx)
+		if useConsoleAPI {
+			schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
+		} else {
+			schemas, err = d.client.ListIdentitySchemas(ctx)
+		}
 		if err != nil {
 			resp.Diagnostics.AddError("Error Listing Identity Schemas", err.Error())
 			return
@@ -135,6 +157,9 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 					return
 				}
 				data.Schema = types.StringValue(string(schemaJSON))
+				if projectID != "" {
+					data.ProjectID = types.StringValue(projectID)
+				}
 				resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 				return
 			}
@@ -149,7 +174,6 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 		}
 	}
 
-	// Schema not found after retries — list a sample of available IDs for debugging
 	var sampleIDs []string
 	for i, s := range schemas {
 		if i >= 5 {
@@ -164,4 +188,11 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 			"Use the ory_identity_schemas (plural) data source to discover all available schema IDs.",
 			targetID, sampleIDs),
 	)
+}
+
+func (d *IdentitySchemaDataSource) resolveProjectID(tfProjectID types.String) string {
+	if !tfProjectID.IsNull() && !tfProjectID.IsUnknown() {
+		return tfProjectID.ValueString()
+	}
+	return d.client.ProjectID()
 }

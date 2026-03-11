@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1297,6 +1298,72 @@ func (c *OryClient) ListIdentitySchemas(ctx context.Context) ([]ory.IdentitySche
 		return nil, wrapAPIError(err, "listing identity schemas")
 	}
 	return schemas, nil
+}
+
+// HasProjectClient reports whether the project API client is configured.
+func (c *OryClient) HasProjectClient() bool {
+	return c.config.ProjectSlug != "" && c.config.ProjectAPIKey != ""
+}
+
+// ListIdentitySchemasViaProject extracts identity schemas from the project
+// config using the console API (workspace key). This does not require project
+// API credentials and can be used during project bootstrap.
+func (c *OryClient) ListIdentitySchemasViaProject(ctx context.Context, projectID string) ([]ory.IdentitySchemaContainer, error) {
+	if c.consoleClient == nil {
+		return nil, fmt.Errorf("console API client not configured: set workspace_api_key to use project_id lookups")
+	}
+	project, err := c.GetProject(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("getting project for schema lookup: %w", err)
+	}
+	return extractSchemasFromProjectConfig(project)
+}
+
+// extractSchemasFromProjectConfig reads the identity schemas array from the
+// project's kratos config and converts each entry into an
+// IdentitySchemaContainer. For base64-encoded schemas the content is decoded
+// inline; preset schemas are returned with an empty schema body.
+func extractSchemasFromProjectConfig(project *ory.Project) ([]ory.IdentitySchemaContainer, error) {
+	if project.Services.Identity == nil {
+		return nil, nil
+	}
+	configMap := project.Services.Identity.Config
+	if configMap == nil {
+		return nil, nil
+	}
+	identity, _ := configMap["identity"].(map[string]interface{})
+	rawSchemas, _ := identity["schemas"].([]interface{})
+
+	var result []ory.IdentitySchemaContainer
+	for _, raw := range rawSchemas {
+		s, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		id, _ := s["id"].(string)
+		rawURL, _ := s["url"].(string)
+
+		container := ory.IdentitySchemaContainer{Id: id}
+
+		if strings.HasPrefix(rawURL, "base64://") {
+			decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(rawURL, "base64://"))
+			if err != nil {
+				return nil, fmt.Errorf("decoding base64 schema %q: %w", id, err)
+			}
+			var schemaObj map[string]interface{}
+			if err := json.Unmarshal(decoded, &schemaObj); err != nil {
+				return nil, fmt.Errorf("parsing JSON for schema %q: %w", id, err)
+			}
+			container.Schema = schemaObj
+		} else {
+			// Preset or URL-based schemas: return an empty object so
+			// json.Marshal produces "{}" instead of "null".
+			container.Schema = map[string]interface{}{}
+		}
+
+		result = append(result, container)
+	}
+	return result, nil
 }
 
 // Custom Domain (CNAME) operations
