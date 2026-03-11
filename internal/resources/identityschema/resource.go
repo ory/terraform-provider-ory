@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -401,7 +402,7 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 	// We deliberately skip the "find by user-provided schema_id" path to avoid
 	// caching a pre-transformation ID that will soon change.
 	var actualID string
-	_ = helpers.WaitForCondition(ctx, func() (bool, error) {
+	waitErr := helpers.WaitForCondition(ctx, func() (bool, error) {
 		freshSchemas, gsErr := r.getSchemas(ctx, projectID)
 		if gsErr != nil {
 			// Transient read error — keep retrying rather than aborting.
@@ -433,6 +434,11 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 
 		return false, nil
 	})
+	if errors.Is(waitErr, context.Canceled) || errors.Is(waitErr, context.DeadlineExceeded) {
+		resp.Diagnostics.AddError("Error Creating Identity Schema",
+			fmt.Sprintf("context cancelled while waiting for schema ID transformation: %v", waitErr))
+		return
+	}
 	if actualID == "" {
 		// Timed out without observing a hash transformation, or the API stores
 		// the schema under the user-provided ID permanently. Accept it as-is.
