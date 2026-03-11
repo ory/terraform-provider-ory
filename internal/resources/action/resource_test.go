@@ -147,8 +147,12 @@ func actionImportStateIDFunc(s *terraform.State) (string, error) {
 }
 
 func TestAccActionResource_withBasicAuth(t *testing.T) {
+	hookPath := "/services/identity/config/selfservice/flows/registration/after/password/hooks"
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			cleanupDanglingWebhook(t, hookPath, testutil.ExampleWebhookURL+"/basic-auth-webhook")
+		},
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			// Create with basic auth
@@ -188,8 +192,12 @@ func TestAccActionResource_withBasicAuth(t *testing.T) {
 }
 
 func TestAccActionResource_withAPIKeyAuth(t *testing.T) {
+	hookPath := "/services/identity/config/selfservice/flows/registration/after/password/hooks"
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			cleanupDanglingWebhook(t, hookPath, testutil.ExampleWebhookURL+"/api-key-webhook")
+		},
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			// Create with API key auth
