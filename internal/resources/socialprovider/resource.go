@@ -211,6 +211,9 @@ func (r *SocialProviderResource) ValidateConfig(ctx context.Context, req resourc
 	if hasApplePrivateKey && config.ApplePrivateKey.ValueString() == "" {
 		resp.Diagnostics.AddAttributeError(path.Root("apple_private_key"), "Invalid Attribute Value", "apple_private_key must not be an empty string.")
 	}
+	if !config.BaseRedirectURI.IsNull() && !config.BaseRedirectURI.IsUnknown() && config.BaseRedirectURI.ValueString() == "" {
+		resp.Diagnostics.AddAttributeError(path.Root("base_redirect_uri"), "Invalid Attribute Value", "base_redirect_uri must not be an empty string.")
+	}
 
 	if providerType == "apple" {
 		// Apple: needs either client_secret OR all three Apple-specific fields
@@ -395,6 +398,13 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 			Path:  fmt.Sprintf("/services/identity/config/selfservice/methods/oidc/config/providers/%d", existingIndex),
 			Value: providerConfig,
 		})
+		if !plan.BaseRedirectURI.IsNull() && !plan.BaseRedirectURI.IsUnknown() && plan.BaseRedirectURI.ValueString() != "" {
+			patches = append(patches, ory.JsonPatch{
+				Op:    "add",
+				Path:  "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
+				Value: plan.BaseRedirectURI.ValueString(),
+			})
+		}
 	} else {
 		// When adding the first provider, we need to initialize the entire OIDC config structure
 		if len(providers) == 0 {
@@ -582,9 +592,22 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 	// Don't read back apple_private_key for security - it's sensitive
 
 	// Read base_redirect_uri — a global OIDC config field, not per-provider.
-	// Use the cached project (populated by getProviders above) to avoid an extra API call.
-	if cached := r.client.GetCachedProject(projectID); cached != nil {
-		if oidcConfig := extractOIDCConfigFromProject(cached); oidcConfig != nil {
+	// Only track it when the user has configured it in state, to avoid cross-resource
+	// conflicts from this global setting being managed by multiple providers.
+	if !state.BaseRedirectURI.IsNull() && !state.BaseRedirectURI.IsUnknown() {
+		project := r.client.GetCachedProject(projectID)
+		if project == nil {
+			var projectErr error
+			project, projectErr = r.client.GetProject(ctx, projectID)
+			if projectErr != nil {
+				resp.Diagnostics.AddError(
+					"Error Reading Project for base_redirect_uri",
+					fmt.Sprintf("Unable to read project %q to refresh base_redirect_uri: %s", projectID, projectErr),
+				)
+				return
+			}
+		}
+		if oidcConfig := extractOIDCConfigFromProject(project); oidcConfig != nil {
 			if uri, ok := oidcConfig["base_redirect_uri"].(string); ok && uri != "" {
 				state.BaseRedirectURI = types.StringValue(uri)
 			} else {
@@ -636,21 +659,30 @@ func (r *SocialProviderResource) Update(ctx context.Context, req resource.Update
 	}}
 
 	// Handle base_redirect_uri changes.
-	planURI := plan.BaseRedirectURI.ValueString()
-	stateURI := state.BaseRedirectURI.ValueString()
-	if !plan.BaseRedirectURI.IsNull() && planURI != "" {
-		// Add or update the global base_redirect_uri.
-		patches = append(patches, ory.JsonPatch{
-			Op:    "add",
-			Path:  "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
-			Value: planURI,
-		})
-	} else if !state.BaseRedirectURI.IsNull() && stateURI != "" {
-		// User removed base_redirect_uri from config — remove it from the API too.
-		patches = append(patches, ory.JsonPatch{
-			Op:   "remove",
-			Path: "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
-		})
+	// Skip patching when the planned value is unknown — Terraform hasn't resolved it yet
+	// and acting on it could send a spurious remove op.
+	if !plan.BaseRedirectURI.IsUnknown() {
+		planURI := plan.BaseRedirectURI.ValueString()
+		stateURI := ""
+		if !state.BaseRedirectURI.IsUnknown() && !state.BaseRedirectURI.IsNull() {
+			stateURI = state.BaseRedirectURI.ValueString()
+		}
+		if !plan.BaseRedirectURI.IsNull() && planURI != "" {
+			// Only patch when value actually changed to avoid unnecessary global config churn.
+			if planURI != stateURI {
+				patches = append(patches, ory.JsonPatch{
+					Op:    "add",
+					Path:  "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
+					Value: planURI,
+				})
+			}
+		} else if !state.BaseRedirectURI.IsNull() && stateURI != "" {
+			// User removed base_redirect_uri from config — remove it from the API too.
+			patches = append(patches, ory.JsonPatch{
+				Op:   "remove",
+				Path: "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
+			})
+		}
 	}
 
 	_, err = r.client.PatchProject(ctx, projectID, patches)

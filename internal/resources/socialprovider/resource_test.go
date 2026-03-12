@@ -88,6 +88,13 @@ func TestAccSocialProviderResource_baseRedirectURI(t *testing.T) {
 					resource.TestCheckResourceAttr("ory_social_provider.test", "base_redirect_uri", "https://auth.example.com"),
 				),
 			},
+			// Remove base_redirect_uri (unset in config)
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_base_redirect_uri_removed.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "base_redirect_uri"),
+				),
+			},
 			// ImportState
 			{
 				ResourceName:            "ory_social_provider.test",

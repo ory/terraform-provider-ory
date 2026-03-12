@@ -59,7 +59,7 @@ resource "ory_social_provider" "google" {
 
 # Generic OIDC with a custom base redirect URI (e.g., when using a custom domain)
 resource "ory_social_provider" "corporate_sso_custom_domain" {
-  provider_id       = "corporate-sso"
+  provider_id       = "corporate-sso-custom-domain"
   provider_type     = "generic"
   client_id         = var.sso_client_id
   client_secret     = var.sso_client_secret
