@@ -492,21 +492,24 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 
 	var providers []map[string]interface{}
 	var index = -1
+	var lastProject *ory.Project // retained so base_redirect_uri can reuse it
 
 	if cached := r.client.GetCachedProject(projectID); cached != nil {
+		lastProject = cached
 		providers = extractProvidersFromProject(cached)
 		index = r.findProviderIndex(providers, providerID)
 	}
 
 	if index < 0 {
 		for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
-			var err error
-			providers, err = r.getProviders(ctx, projectID)
+			project, err := r.client.GetProject(ctx, projectID)
 			if err != nil {
 				resp.Diagnostics.AddError("Error Reading Social Provider",
 					fmt.Sprintf("Failed to get providers for project %s: %v", projectID, err))
 				return
 			}
+			lastProject = project
+			providers = extractProvidersFromProject(project)
 
 			index = r.findProviderIndex(providers, providerID)
 			if index >= 0 {
@@ -594,20 +597,9 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 	// Read base_redirect_uri — a global OIDC config field, not per-provider.
 	// Only track it when the user has configured it in state, to avoid cross-resource
 	// conflicts from this global setting being managed by multiple providers.
+	// Reuse lastProject (already fetched above) to avoid an extra API call.
 	if !state.BaseRedirectURI.IsNull() && !state.BaseRedirectURI.IsUnknown() {
-		project := r.client.GetCachedProject(projectID)
-		if project == nil {
-			var projectErr error
-			project, projectErr = r.client.GetProject(ctx, projectID)
-			if projectErr != nil {
-				resp.Diagnostics.AddError(
-					"Error Reading Project for base_redirect_uri",
-					fmt.Sprintf("Unable to read project %q to refresh base_redirect_uri: %s", projectID, projectErr),
-				)
-				return
-			}
-		}
-		if oidcConfig := extractOIDCConfigFromProject(project); oidcConfig != nil {
+		if oidcConfig := extractOIDCConfigFromProject(lastProject); oidcConfig != nil {
 			if uri, ok := oidcConfig["base_redirect_uri"].(string); ok && uri != "" {
 				state.BaseRedirectURI = types.StringValue(uri)
 			} else {
