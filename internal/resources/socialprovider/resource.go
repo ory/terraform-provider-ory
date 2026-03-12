@@ -48,6 +48,7 @@ type SocialProviderResourceModel struct {
 	AppleTeamID       types.String `tfsdk:"apple_team_id"`
 	ApplePrivateKeyID types.String `tfsdk:"apple_private_key_id"`
 	ApplePrivateKey   types.String `tfsdk:"apple_private_key"`
+	BaseRedirectURI   types.String `tfsdk:"base_redirect_uri"`
 }
 
 func (r *SocialProviderResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -134,6 +135,10 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				Description: "Apple private key in PEM format (contents of the .p8 file). Required when provider_type is \"apple\" and client_secret is not set. Ory uses this to generate the JWT client secret automatically.",
 				Optional:    true,
 				Sensitive:   true,
+			},
+			"base_redirect_uri": schema.StringAttribute{
+				Description: "Override the base redirect URI for OIDC callbacks (e.g., \"https://iam.example.com\"). When set, Ory constructs callback URLs using this base instead of the default project domain. This is a global OIDC config setting — if multiple social providers set different values, the last applied value wins.",
+				Optional:    true,
 			},
 		},
 	}
@@ -296,41 +301,43 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 	return config
 }
 
-func extractProvidersFromProject(project *ory.Project) []map[string]interface{} {
+// extractOIDCConfigFromProject navigates to the OIDC method config map.
+func extractOIDCConfigFromProject(project *ory.Project) map[string]interface{} {
 	if project.Services.Identity == nil {
-		return []map[string]interface{}{}
+		return nil
 	}
-
 	configMap := project.Services.Identity.Config
 	if configMap == nil {
-		return []map[string]interface{}{}
+		return nil
 	}
-
 	selfservice, ok := configMap["selfservice"].(map[string]interface{})
 	if !ok {
-		return []map[string]interface{}{}
+		return nil
 	}
-
 	methods, ok := selfservice["methods"].(map[string]interface{})
 	if !ok {
-		return []map[string]interface{}{}
+		return nil
 	}
-
 	oidc, ok := methods["oidc"].(map[string]interface{})
 	if !ok {
-		return []map[string]interface{}{}
+		return nil
 	}
-
 	oidcConfig, ok := oidc["config"].(map[string]interface{})
 	if !ok {
+		return nil
+	}
+	return oidcConfig
+}
+
+func extractProvidersFromProject(project *ory.Project) []map[string]interface{} {
+	oidcConfig := extractOIDCConfigFromProject(project)
+	if oidcConfig == nil {
 		return []map[string]interface{}{}
 	}
-
 	providers, ok := oidcConfig["providers"].([]interface{})
 	if !ok {
 		return []map[string]interface{}{}
 	}
-
 	result := make([]map[string]interface{}, 0, len(providers))
 	for _, p := range providers {
 		if pm, ok := p.(map[string]interface{}); ok {
@@ -391,15 +398,18 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 	} else {
 		// When adding the first provider, we need to initialize the entire OIDC config structure
 		if len(providers) == 0 {
-			// Initialize OIDC config with the provider in one operation
+			oidcConfig := map[string]interface{}{
+				"providers": []interface{}{providerConfig},
+			}
+			if !plan.BaseRedirectURI.IsNull() && !plan.BaseRedirectURI.IsUnknown() && plan.BaseRedirectURI.ValueString() != "" {
+				oidcConfig["base_redirect_uri"] = plan.BaseRedirectURI.ValueString()
+			}
 			patches = append(patches, ory.JsonPatch{
 				Op:   "add",
 				Path: "/services/identity/config/selfservice/methods/oidc",
 				Value: map[string]interface{}{
 					"enabled": true,
-					"config": map[string]interface{}{
-						"providers": []interface{}{providerConfig},
-					},
+					"config":  oidcConfig,
 				},
 			})
 		} else {
@@ -409,6 +419,14 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 				Path:  "/services/identity/config/selfservice/methods/oidc/config/providers/-",
 				Value: providerConfig,
 			})
+			// Set base_redirect_uri as a separate patch when OIDC config already exists
+			if !plan.BaseRedirectURI.IsNull() && !plan.BaseRedirectURI.IsUnknown() && plan.BaseRedirectURI.ValueString() != "" {
+				patches = append(patches, ory.JsonPatch{
+					Op:    "add",
+					Path:  "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
+					Value: plan.BaseRedirectURI.ValueString(),
+				})
+			}
 		}
 	}
 
@@ -563,6 +581,20 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 	}
 	// Don't read back apple_private_key for security - it's sensitive
 
+	// Read base_redirect_uri — a global OIDC config field, not per-provider.
+	// Use the cached project (populated by getProviders above) to avoid an extra API call.
+	if cached := r.client.GetCachedProject(projectID); cached != nil {
+		if oidcConfig := extractOIDCConfigFromProject(cached); oidcConfig != nil {
+			if uri, ok := oidcConfig["base_redirect_uri"].(string); ok && uri != "" {
+				state.BaseRedirectURI = types.StringValue(uri)
+			} else {
+				state.BaseRedirectURI = types.StringNull()
+			}
+		} else {
+			state.BaseRedirectURI = types.StringNull()
+		}
+	}
+
 	// Always ensure ID and ProjectID are set in state
 	state.ID = types.StringValue(providerID)
 	state.ProjectID = types.StringValue(projectID)
@@ -571,8 +603,9 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 }
 
 func (r *SocialProviderResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan SocialProviderResourceModel
+	var plan, state SocialProviderResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -601,6 +634,24 @@ func (r *SocialProviderResource) Update(ctx context.Context, req resource.Update
 		Path:  fmt.Sprintf("/services/identity/config/selfservice/methods/oidc/config/providers/%d", index),
 		Value: providerConfig,
 	}}
+
+	// Handle base_redirect_uri changes.
+	planURI := plan.BaseRedirectURI.ValueString()
+	stateURI := state.BaseRedirectURI.ValueString()
+	if !plan.BaseRedirectURI.IsNull() && planURI != "" {
+		// Add or update the global base_redirect_uri.
+		patches = append(patches, ory.JsonPatch{
+			Op:    "add",
+			Path:  "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
+			Value: planURI,
+		})
+	} else if !state.BaseRedirectURI.IsNull() && stateURI != "" {
+		// User removed base_redirect_uri from config — remove it from the API too.
+		patches = append(patches, ory.JsonPatch{
+			Op:   "remove",
+			Path: "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
+		})
+	}
 
 	_, err = r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
