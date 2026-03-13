@@ -45,7 +45,7 @@ data "ory_identity_schema" "bootstrap" {
   project_id = "your-project-uuid"
 }
 
-# Create a new project and set an existing workspace schema as default
+# Create a new project and reuse an existing workspace schema as default
 resource "ory_project" "new" {
   name = "my-new-project"
 }
@@ -56,7 +56,7 @@ data "ory_identity_schema" "existing" {
 }
 
 resource "ory_identity_schema" "default" {
-  schema_id   = data.ory_identity_schema.existing.id
+  schema_id   = "customer"
   project_id  = ory_project.new.id
   schema      = data.ory_identity_schema.existing.schema
   set_default = true

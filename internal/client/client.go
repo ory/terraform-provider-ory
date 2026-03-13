@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"sync"
@@ -1452,8 +1454,8 @@ func extractSchemasFromProjectConfig(ctx context.Context, project *ory.Project) 
 }
 
 // schemaFetchClient is a dedicated HTTP client for fetching schema content from
-// trusted URLs returned by the Ory API. It has a short timeout and no redirects
-// to minimize SSRF risk.
+// trusted URLs returned by the Ory API. It has a short timeout and allows at
+// most one HTTPS redirect to minimize SSRF risk.
 var schemaFetchClient = &http.Client{
 	Timeout: 10 * time.Second,
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -1467,6 +1469,10 @@ var schemaFetchClient = &http.Client{
 	},
 }
 
+// hostChecker is the function used to check whether a host is private.
+// It is a variable so tests can override it.
+var hostChecker = isPrivateHost
+
 // fetchSchemaFromURL retrieves a JSON schema from an HTTPS URL. The URL must
 // use the https scheme (enforced by the caller's switch statement) and must not
 // resolve to a private/loopback address.
@@ -1479,7 +1485,7 @@ func fetchSchemaFromURL(ctx context.Context, schemaURL string) (map[string]inter
 		return nil, fmt.Errorf("refusing non-HTTPS schema URL %q", schemaURL)
 	}
 	host := parsed.Hostname()
-	if isPrivateHost(host) {
+	if hostChecker(host) {
 		return nil, fmt.Errorf("refusing schema URL with private/loopback host %q", host)
 	}
 
@@ -1510,27 +1516,39 @@ func fetchSchemaFromURL(ctx context.Context, schemaURL string) (map[string]inter
 	return schemaObj, nil
 }
 
-// isPrivateHost returns true if the host is a loopback or private address.
+// isPrivateHost returns true if the host is a loopback, private, or link-local
+// address. For DNS names it resolves the host and checks all resulting IPs to
+// prevent DNS rebinding attacks.
 func isPrivateHost(host string) bool {
-	switch {
-	case host == "localhost",
-		host == "127.0.0.1",
-		host == "::1",
-		host == "0.0.0.0",
-		strings.HasPrefix(host, "10."),
-		strings.HasPrefix(host, "192.168."),
-		strings.HasPrefix(host, "172.16."),
-		strings.HasPrefix(host, "172.17."),
-		strings.HasPrefix(host, "172.18."),
-		strings.HasPrefix(host, "172.19."),
-		strings.HasPrefix(host, "172.2"),
-		strings.HasPrefix(host, "172.30."),
-		strings.HasPrefix(host, "172.31."),
-		strings.HasPrefix(host, "169.254."),
-		host == "[::1]":
+	if host == "localhost" {
 		return true
 	}
+
+	// Try parsing as an IP literal first.
+	if addr, err := netip.ParseAddr(host); err == nil {
+		return isPrivateAddr(addr)
+	}
+
+	// It's a DNS name — resolve and check all A/AAAA records.
+	resolver := &net.Resolver{}
+	addrs, err := resolver.LookupHost(context.Background(), host)
+	if err != nil {
+		// DNS resolution failed — block to be safe.
+		return true
+	}
+	for _, a := range addrs {
+		if addr, err := netip.ParseAddr(a); err == nil && isPrivateAddr(addr) {
+			return true
+		}
+	}
 	return false
+}
+
+// isPrivateAddr checks whether an IP address is loopback, private, link-local,
+// or unspecified using proper CIDR range checks.
+func isPrivateAddr(addr netip.Addr) bool {
+	return addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() ||
+		addr.IsLinkLocalMulticast() || addr.IsUnspecified()
 }
 
 // Custom Domain (CNAME) operations

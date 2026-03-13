@@ -213,7 +213,12 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 		// (the API transforms base64:// URLs to https:// URLs, making the content
 		// undecodable from the project config alone). Try the Kratos API to resolve
 		// the full content when possible.
-		schemaJSON, _ := json.Marshal(found.GetSchema())
+		schemaJSON, err := json.Marshal(found.GetSchema())
+		if err != nil {
+			resp.Diagnostics.AddError("Error Marshaling Schema",
+				fmt.Sprintf("Could not marshal schema %s: %s", found.GetId(), err.Error()))
+			return
+		}
 		if isEmptySchemaBody(schemaJSON) && canUseKratosAPI {
 			kratosSchemas, err := d.client.ListIdentitySchemas(ctx)
 			if err == nil {
@@ -226,7 +231,7 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 			}
 		}
 
-		schemaJSON, err := json.Marshal(found.GetSchema())
+		schemaJSON, err = json.Marshal(found.GetSchema())
 		if err != nil {
 			resp.Diagnostics.AddError("Error Marshaling Schema",
 				fmt.Sprintf("Could not marshal schema %s: %s", found.GetId(), err.Error()))
@@ -252,12 +257,16 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 	if projectID != "" {
 		scopeMsg = fmt.Sprintf(" in project %q", projectID)
 	}
+	verifyHint := "Verify that the schema exists in the workspace."
+	if projectID != "" {
+		verifyHint = "Verify that the schema exists in the correct project."
+	}
 	resp.Diagnostics.AddError(
 		"Identity Schema Not Found",
 		fmt.Sprintf("No identity schema found with id=%q%s. Available schema IDs (sample): %v\n\n"+
 			"Use the ory_identity_schemas (plural) data source to discover all available schema IDs.\n"+
-			"Verify that the schema exists in the correct project.",
-			targetID, scopeMsg, sampleIDs),
+			"%s",
+			targetID, scopeMsg, sampleIDs, verifyHint),
 	)
 }
 
