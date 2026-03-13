@@ -88,9 +88,14 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 
 	// Resolve project_id: use config value if known, fall back to provider.
 	projectID := d.resolveProjectID(data.ProjectID)
-	useConsoleAPI := (!data.ProjectID.IsNull() && !data.ProjectID.IsUnknown()) || !d.client.HasProjectClient()
 
-	if useConsoleAPI && projectID == "" {
+	// Determine which APIs are available for this lookup.
+	// Identity schemas are workspace-scoped — see identityschema (singular)
+	// data source for detailed rationale on API selection.
+	canUseKratosAPI := d.client.HasProjectClient()
+	canUseConsoleAPI := d.client.HasConsoleClient() && projectID != ""
+
+	if !canUseKratosAPI && !canUseConsoleAPI {
 		resp.Diagnostics.AddError("Missing Project ID",
 			"project_id is required when project_slug and project_api_key are not configured. "+
 				"Set project_id on the data source or configure the provider with project_slug and project_api_key.")
@@ -100,10 +105,11 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 	var schemas []ory.IdentitySchemaContainer
 	var err error
 	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
-		if useConsoleAPI {
-			schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
-		} else {
+		// Prefer Kratos API (canonical IDs + full content) when the project matches.
+		if canUseKratosAPI {
 			schemas, err = d.client.ListIdentitySchemas(ctx)
+		} else {
+			schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
 		}
 		if err == nil {
 			break

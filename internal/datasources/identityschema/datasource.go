@@ -126,43 +126,76 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 
 	// Resolve project_id: use config value if known, fall back to provider.
 	projectID := d.resolveProjectID(data.ProjectID)
-	useConsoleAPI := (!data.ProjectID.IsNull() && !data.ProjectID.IsUnknown()) || !d.client.HasProjectClient()
 
-	if useConsoleAPI && projectID == "" {
+	// Determine which APIs are available for this lookup.
+	//
+	// Identity schemas are workspace-scoped: any project in the workspace can
+	// access all schemas. The Kratos API (ListIdentitySchemas) returns canonical
+	// hash-based IDs with full schema content and works regardless of which
+	// project_id is specified, so we always prefer it when available.
+	//
+	// The console API (ListIdentitySchemasViaProject) reads from the project
+	// config, which only contains schemas explicitly added to that project and
+	// may return empty schema bodies when the API has transformed schema URLs
+	// from base64:// to https://.
+	canUseKratosAPI := d.client.HasProjectClient()
+	canUseConsoleAPI := d.client.HasConsoleClient() && projectID != ""
+
+	if !canUseKratosAPI && !canUseConsoleAPI {
 		resp.Diagnostics.AddError("Missing Project ID",
 			"project_id is required when project_slug and project_api_key are not configured. "+
 				"Set project_id on the data source or configure the provider with project_slug and project_api_key.")
 		return
 	}
 
-	var schemas []ory.IdentitySchemaContainer
-	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
-		var err error
-		if useConsoleAPI {
-			schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
-		} else {
-			schemas, err = d.client.ListIdentitySchemas(ctx)
-		}
-		if err != nil {
-			resp.Diagnostics.AddError("Error Listing Identity Schemas", err.Error())
-			return
-		}
+	var allSchemas []ory.IdentitySchemaContainer
+	var found *ory.IdentitySchemaContainer
 
-		for _, s := range schemas {
-			if s.GetId() == targetID {
-				schemaJSON, err := json.Marshal(s.GetSchema())
-				if err != nil {
-					resp.Diagnostics.AddError("Error Marshaling Schema",
-						fmt.Sprintf("Could not marshal schema %s: %s", s.GetId(), err.Error()))
+	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
+		// Strategy 1: Try Kratos API (preferred — canonical hash IDs + full content).
+		if canUseKratosAPI && found == nil {
+			schemas, err := d.client.ListIdentitySchemas(ctx)
+			if err != nil {
+				if !canUseConsoleAPI {
+					resp.Diagnostics.AddError("Error Listing Identity Schemas", err.Error())
 					return
 				}
-				data.Schema = types.StringValue(string(schemaJSON))
-				if projectID != "" {
-					data.ProjectID = types.StringValue(projectID)
+				// Kratos API failed but console API is available — continue to fallback.
+			} else {
+				allSchemas = schemas
+				for i := range schemas {
+					if schemas[i].GetId() == targetID {
+						found = &schemas[i]
+						break
+					}
 				}
-				resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-				return
 			}
+		}
+
+		// Strategy 2: Try console API (works for any project, fallback for Kratos failures).
+		if canUseConsoleAPI && found == nil {
+			schemas, err := d.client.ListIdentitySchemasViaProject(ctx, projectID)
+			if err != nil {
+				if len(allSchemas) == 0 {
+					resp.Diagnostics.AddError("Error Listing Identity Schemas", err.Error())
+					return
+				}
+				// Console API failed but we already have Kratos results — schema just isn't there.
+			} else {
+				if len(allSchemas) == 0 {
+					allSchemas = schemas
+				}
+				for i := range schemas {
+					if schemas[i].GetId() == targetID {
+						found = &schemas[i]
+						break
+					}
+				}
+			}
+		}
+
+		if found != nil {
+			break
 		}
 
 		if attempt < helpers.ReadRetryMaxAttempts-1 {
@@ -174,20 +207,59 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 		}
 	}
 
+	if found != nil {
+		// If the schema was found via the console API, the content may be empty
+		// (the API transforms base64:// URLs to https:// URLs, making the content
+		// undecodable from the project config alone). Try the Kratos API to resolve
+		// the full content when possible.
+		schemaJSON, _ := json.Marshal(found.GetSchema())
+		if isEmptySchemaBody(schemaJSON) && canUseKratosAPI {
+			kratosSchemas, err := d.client.ListIdentitySchemas(ctx)
+			if err == nil {
+				for i := range kratosSchemas {
+					if kratosSchemas[i].GetId() == targetID {
+						found = &kratosSchemas[i]
+						break
+					}
+				}
+			}
+		}
+
+		schemaJSON, err := json.Marshal(found.GetSchema())
+		if err != nil {
+			resp.Diagnostics.AddError("Error Marshaling Schema",
+				fmt.Sprintf("Could not marshal schema %s: %s", found.GetId(), err.Error()))
+			return
+		}
+		data.Schema = types.StringValue(string(schemaJSON))
+		if projectID != "" {
+			data.ProjectID = types.StringValue(projectID)
+		}
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+		return
+	}
+
 	var sampleIDs []string
-	for i, s := range schemas {
+	for i, s := range allSchemas {
 		if i >= 5 {
-			sampleIDs = append(sampleIDs, fmt.Sprintf("... and %d more", len(schemas)-5))
+			sampleIDs = append(sampleIDs, fmt.Sprintf("... and %d more", len(allSchemas)-5))
 			break
 		}
 		sampleIDs = append(sampleIDs, s.GetId())
 	}
 	resp.Diagnostics.AddError(
 		"Identity Schema Not Found",
-		fmt.Sprintf("No identity schema found with id=%q. Available schema IDs (sample): %v\n\n"+
-			"Use the ory_identity_schemas (plural) data source to discover all available schema IDs.",
-			targetID, sampleIDs),
+		fmt.Sprintf("No identity schema found with id=%q in project %q. Available schema IDs (sample): %v\n\n"+
+			"Use the ory_identity_schemas (plural) data source to discover all available schema IDs.\n"+
+			"Verify that the schema exists in the correct project.",
+			targetID, projectID, sampleIDs),
 	)
+}
+
+// isEmptySchemaBody returns true if the JSON represents an empty or null schema body.
+func isEmptySchemaBody(jsonBytes []byte) bool {
+	s := string(jsonBytes)
+	return s == "{}" || s == "null" || s == ""
 }
 
 func (d *IdentitySchemaDataSource) resolveProjectID(tfProjectID types.String) string {

@@ -73,3 +73,44 @@ func TestAccIdentitySchemaDataSource_viaProjectID(t *testing.T) {
 		},
 	})
 }
+
+func TestAccIdentitySchemaDataSource_viaProjectIDContentMatch(t *testing.T) {
+	suffix := time.Now().UnixNano()
+	schemaID := fmt.Sprintf("tf-test-ds-content-%d", suffix)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSchemaTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create a schema, then look it up via both API paths and verify
+			// the schema content matches (not empty "{}").
+			// This catches the bug where the console API returns empty schema
+			// bodies for schemas whose URLs have been transformed to HTTPS.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_project_id_content_check.tf.tmpl", map[string]string{
+					"SchemaID":  schemaID,
+					"AppURL":    testutil.ExampleAppURL,
+					"ProjectID": acctest.GetTestProjectID(t),
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					// Both data sources find the same schema
+					resource.TestCheckResourceAttrPair(
+						"data.ory_identity_schema.via_project_id", "id",
+						"data.ory_identity_schema.via_kratos_api", "id",
+					),
+					// Both return the same schema content
+					resource.TestCheckResourceAttrPair(
+						"data.ory_identity_schema.via_project_id", "schema",
+						"data.ory_identity_schema.via_kratos_api", "schema",
+					),
+					// Schema content is not empty
+					resource.TestCheckResourceAttrSet("data.ory_identity_schema.via_project_id", "schema"),
+					resource.TestCheckResourceAttrSet("data.ory_identity_schema.via_kratos_api", "schema"),
+				),
+			},
+		},
+	})
+}

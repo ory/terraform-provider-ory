@@ -1392,7 +1392,8 @@ func (c *OryClient) ListIdentitySchemasViaProject(ctx context.Context, projectID
 // extractSchemasFromProjectConfig reads the identity schemas array from the
 // project's kratos config and converts each entry into an
 // IdentitySchemaContainer. For base64-encoded schemas the content is decoded
-// inline; preset schemas are returned with an empty schema body.
+// inline; for HTTPS URLs the content is fetched over HTTP; preset schemas
+// are returned with an empty schema body.
 func extractSchemasFromProjectConfig(project *ory.Project) ([]ory.IdentitySchemaContainer, error) {
 	if project.Services.Identity == nil {
 		return nil, nil
@@ -1415,7 +1416,8 @@ func extractSchemasFromProjectConfig(project *ory.Project) ([]ory.IdentitySchema
 
 		container := ory.IdentitySchemaContainer{Id: id}
 
-		if strings.HasPrefix(rawURL, "base64://") {
+		switch {
+		case strings.HasPrefix(rawURL, "base64://"):
 			decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(rawURL, "base64://"))
 			if err != nil {
 				return nil, fmt.Errorf("decoding base64 schema %q: %w", id, err)
@@ -1425,8 +1427,21 @@ func extractSchemasFromProjectConfig(project *ory.Project) ([]ory.IdentitySchema
 				return nil, fmt.Errorf("parsing JSON for schema %q: %w", id, err)
 			}
 			container.Schema = schemaObj
-		} else {
-			// Preset or URL-based schemas: return an empty object so
+
+		case strings.HasPrefix(rawURL, schemeHTTPS+"://") || strings.HasPrefix(rawURL, schemeHTTP+"://"):
+			// The Ory API transforms base64 schema URLs to HTTPS URLs after
+			// processing. Fetch the actual schema content from the URL.
+			schemaObj, err := fetchSchemaFromURL(rawURL)
+			if err != nil {
+				// Non-fatal: return empty body rather than failing the entire list.
+				// The data source can detect empty bodies and attempt fallback.
+				container.Schema = map[string]interface{}{}
+			} else {
+				container.Schema = schemaObj
+			}
+
+		default:
+			// Preset or unrecognized URL schemes: return an empty object so
 			// json.Marshal produces "{}" instead of "null".
 			container.Schema = map[string]interface{}{}
 		}
@@ -1434,6 +1449,38 @@ func extractSchemasFromProjectConfig(project *ory.Project) ([]ory.IdentitySchema
 		result = append(result, container)
 	}
 	return result, nil
+}
+
+// fetchSchemaFromURL retrieves a JSON schema from an HTTP(S) URL.
+func fetchSchemaFromURL(schemaURL string) (map[string]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, schemaURL, nil) // #nosec G107 -- URL comes from Ory API project config
+	if err != nil {
+		return nil, fmt.Errorf("creating request for schema %q: %w", schemaURL, err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetching schema from %q: %w", schemaURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetching schema from %q: HTTP %d", schemaURL, resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MB limit
+	if err != nil {
+		return nil, fmt.Errorf("reading schema from %q: %w", schemaURL, err)
+	}
+
+	var schemaObj map[string]interface{}
+	if err := json.Unmarshal(body, &schemaObj); err != nil {
+		return nil, fmt.Errorf("parsing schema JSON from %q: %w", schemaURL, err)
+	}
+	return schemaObj, nil
 }
 
 // Custom Domain (CNAME) operations
