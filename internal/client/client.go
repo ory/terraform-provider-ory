@@ -1386,7 +1386,7 @@ func (c *OryClient) ListIdentitySchemasViaProject(ctx context.Context, projectID
 	if err != nil {
 		return nil, fmt.Errorf("getting project for schema lookup: %w", err)
 	}
-	return extractSchemasFromProjectConfig(project)
+	return extractSchemasFromProjectConfig(ctx, project)
 }
 
 // extractSchemasFromProjectConfig reads the identity schemas array from the
@@ -1394,7 +1394,7 @@ func (c *OryClient) ListIdentitySchemasViaProject(ctx context.Context, projectID
 // IdentitySchemaContainer. For base64-encoded schemas the content is decoded
 // inline; for HTTPS URLs the content is fetched over HTTP; preset schemas
 // are returned with an empty schema body.
-func extractSchemasFromProjectConfig(project *ory.Project) ([]ory.IdentitySchemaContainer, error) {
+func extractSchemasFromProjectConfig(ctx context.Context, project *ory.Project) ([]ory.IdentitySchemaContainer, error) {
 	if project.Services.Identity == nil {
 		return nil, nil
 	}
@@ -1428,10 +1428,10 @@ func extractSchemasFromProjectConfig(project *ory.Project) ([]ory.IdentitySchema
 			}
 			container.Schema = schemaObj
 
-		case strings.HasPrefix(rawURL, schemeHTTPS+"://") || strings.HasPrefix(rawURL, schemeHTTP+"://"):
+		case strings.HasPrefix(rawURL, schemeHTTPS+"://"):
 			// The Ory API transforms base64 schema URLs to HTTPS URLs after
 			// processing. Fetch the actual schema content from the URL.
-			schemaObj, err := fetchSchemaFromURL(rawURL)
+			schemaObj, err := fetchSchemaFromURL(ctx, rawURL)
 			if err != nil {
 				// Non-fatal: return empty body rather than failing the entire list.
 				// The data source can detect empty bodies and attempt fallback.
@@ -1451,17 +1451,44 @@ func extractSchemasFromProjectConfig(project *ory.Project) ([]ory.IdentitySchema
 	return result, nil
 }
 
-// fetchSchemaFromURL retrieves a JSON schema from an HTTP(S) URL.
-func fetchSchemaFromURL(schemaURL string) (map[string]interface{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+// schemaFetchClient is a dedicated HTTP client for fetching schema content from
+// trusted URLs returned by the Ory API. It has a short timeout and no redirects
+// to minimize SSRF risk.
+var schemaFetchClient = &http.Client{
+	Timeout: 10 * time.Second,
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 2 {
+			return fmt.Errorf("too many redirects fetching schema")
+		}
+		if req.URL.Scheme != "https" {
+			return fmt.Errorf("refusing non-HTTPS redirect for schema URL")
+		}
+		return nil
+	},
+}
+
+// fetchSchemaFromURL retrieves a JSON schema from an HTTPS URL. The URL must
+// use the https scheme (enforced by the caller's switch statement) and must not
+// resolve to a private/loopback address.
+func fetchSchemaFromURL(ctx context.Context, schemaURL string) (map[string]interface{}, error) {
+	parsed, err := url.Parse(schemaURL)
+	if err != nil {
+		return nil, fmt.Errorf("parsing schema URL %q: %w", schemaURL, err)
+	}
+	if parsed.Scheme != "https" {
+		return nil, fmt.Errorf("refusing non-HTTPS schema URL %q", schemaURL)
+	}
+	host := parsed.Hostname()
+	if isPrivateHost(host) {
+		return nil, fmt.Errorf("refusing schema URL with private/loopback host %q", host)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, schemaURL, nil) // #nosec G107 -- URL comes from Ory API project config
 	if err != nil {
 		return nil, fmt.Errorf("creating request for schema %q: %w", schemaURL, err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := schemaFetchClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetching schema from %q: %w", schemaURL, err)
 	}
@@ -1481,6 +1508,29 @@ func fetchSchemaFromURL(schemaURL string) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("parsing schema JSON from %q: %w", schemaURL, err)
 	}
 	return schemaObj, nil
+}
+
+// isPrivateHost returns true if the host is a loopback or private address.
+func isPrivateHost(host string) bool {
+	switch {
+	case host == "localhost",
+		host == "127.0.0.1",
+		host == "::1",
+		host == "0.0.0.0",
+		strings.HasPrefix(host, "10."),
+		strings.HasPrefix(host, "192.168."),
+		strings.HasPrefix(host, "172.16."),
+		strings.HasPrefix(host, "172.17."),
+		strings.HasPrefix(host, "172.18."),
+		strings.HasPrefix(host, "172.19."),
+		strings.HasPrefix(host, "172.2"),
+		strings.HasPrefix(host, "172.30."),
+		strings.HasPrefix(host, "172.31."),
+		strings.HasPrefix(host, "169.254."),
+		host == "[::1]":
+		return true
+	}
+	return false
 }
 
 // Custom Domain (CNAME) operations

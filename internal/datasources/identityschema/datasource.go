@@ -87,9 +87,10 @@ func (d *IdentitySchemaDataSource) Schema(ctx context.Context, req datasource.Sc
 				Required:    true,
 			},
 			"project_id": schema.StringAttribute{
-				Description: "The ID of the project to look up schemas from. If not set, uses the provider's project_id. " +
-					"When set, schemas are read from the project config via the console API (workspace key), " +
-					"which does not require project_slug or project_api_key.",
+				Description: "The ID of the project. If not set, uses the provider's project_id. " +
+					"The Kratos API is preferred when project_slug and project_api_key are configured " +
+					"(returns canonical hash IDs with full schema content). When only a workspace key is " +
+					"available, schemas are read from the project config via the console API.",
 				Optional: true,
 				Computed: true,
 			},
@@ -247,12 +248,16 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 		}
 		sampleIDs = append(sampleIDs, s.GetId())
 	}
+	var scopeMsg string
+	if projectID != "" {
+		scopeMsg = fmt.Sprintf(" in project %q", projectID)
+	}
 	resp.Diagnostics.AddError(
 		"Identity Schema Not Found",
-		fmt.Sprintf("No identity schema found with id=%q in project %q. Available schema IDs (sample): %v\n\n"+
+		fmt.Sprintf("No identity schema found with id=%q%s. Available schema IDs (sample): %v\n\n"+
 			"Use the ory_identity_schemas (plural) data source to discover all available schema IDs.\n"+
 			"Verify that the schema exists in the correct project.",
-			targetID, projectID, sampleIDs),
+			targetID, scopeMsg, sampleIDs),
 	)
 }
 

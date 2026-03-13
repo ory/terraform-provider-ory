@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"testing"
 
 	ory "github.com/ory/client-go"
@@ -11,7 +12,7 @@ func TestExtractSchemasFromProjectConfig(t *testing.T) {
 		project := &ory.Project{
 			Services: ory.ProjectServices{},
 		}
-		schemas, err := extractSchemasFromProjectConfig(project)
+		schemas, err := extractSchemasFromProjectConfig(context.Background(), project)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -39,7 +40,7 @@ func TestExtractSchemasFromProjectConfig(t *testing.T) {
 				},
 			},
 		}
-		schemas, err := extractSchemasFromProjectConfig(project)
+		schemas, err := extractSchemasFromProjectConfig(context.Background(), project)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -74,7 +75,7 @@ func TestExtractSchemasFromProjectConfig(t *testing.T) {
 				},
 			},
 		}
-		schemas, err := extractSchemasFromProjectConfig(project)
+		schemas, err := extractSchemasFromProjectConfig(context.Background(), project)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -109,7 +110,7 @@ func TestExtractSchemasFromProjectConfig(t *testing.T) {
 				},
 			},
 		}
-		_, err := extractSchemasFromProjectConfig(project)
+		_, err := extractSchemasFromProjectConfig(context.Background(), project)
 		if err == nil {
 			t.Fatal("expected error for invalid base64, got nil")
 		}
@@ -133,7 +134,7 @@ func TestExtractSchemasFromProjectConfig(t *testing.T) {
 				},
 			},
 		}
-		_, err := extractSchemasFromProjectConfig(project)
+		_, err := extractSchemasFromProjectConfig(context.Background(), project)
 		if err == nil {
 			t.Fatal("expected error for invalid JSON, got nil")
 		}
@@ -161,7 +162,7 @@ func TestExtractSchemasFromProjectConfig(t *testing.T) {
 				},
 			},
 		}
-		schemas, err := extractSchemasFromProjectConfig(project)
+		schemas, err := extractSchemasFromProjectConfig(context.Background(), project)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
