@@ -106,7 +106,7 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 	var schemas []ory.IdentitySchemaContainer
 	var err error
 	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
-		// Prefer Kratos API (canonical IDs + full content) when the project matches.
+		// Prefer Kratos API (canonical IDs + full content) when available.
 		if canUseKratosAPI {
 			schemas, err = d.client.ListIdentitySchemas(ctx)
 		} else {

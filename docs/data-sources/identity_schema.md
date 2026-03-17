@@ -67,7 +67,9 @@ data "ory_identity_schema" "bootstrap" {
   project_id = "your-project-uuid"
 }
 
-# Create a new project and reuse an existing workspace schema as default
+# Create a new project and reuse an existing workspace schema as default.
+# Use a human-chosen schema_id (not the hash-based ID from the data source)
+# and copy the schema content from the existing schema.
 resource "ory_project" "new" {
   name = "my-new-project"
 }

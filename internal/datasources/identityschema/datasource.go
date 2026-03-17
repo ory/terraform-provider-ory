@@ -259,7 +259,8 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 	}
 	verifyHint := "Verify that the schema exists in the workspace."
 	if projectID != "" {
-		verifyHint = "Verify that the schema exists in the correct project."
+		verifyHint = fmt.Sprintf("Schemas are workspace-scoped. Verify that the schema exists in the workspace "+
+			"associated with project %q, or check the project_id value.", projectID)
 	}
 	resp.Diagnostics.AddError(
 		"Identity Schema Not Found",

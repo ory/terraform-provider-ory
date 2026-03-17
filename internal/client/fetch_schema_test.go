@@ -10,19 +10,19 @@ import (
 
 func TestFetchSchemaFromURL(t *testing.T) {
 	// fetchSchemaFromURL calls isPrivateHost, which blocks 127.0.0.1 (used
-	// by httptest). To test the HTTP plumbing we temporarily disable the
-	// host check by swapping the checker function.
+	// by httptest). To test the HTTP plumbing we temporarily swap the checker
+	// and override newSchemaFetchClient to use the test server's TLS client.
 	withTestServer := func(t *testing.T, handler http.HandlerFunc, fn func(t *testing.T, url string)) {
 		t.Helper()
 		srv := httptest.NewTLSServer(handler)
 		defer srv.Close()
 
-		origClient := schemaFetchClient
+		origNew := newSchemaFetchClient
 		origChecker := hostChecker
-		schemaFetchClient = srv.Client()
-		hostChecker = func(string) bool { return false } // allow all hosts
+		newSchemaFetchClient = func(_ context.Context) *http.Client { return srv.Client() }
+		hostChecker = func(context.Context, string) bool { return false } // allow all hosts
 		defer func() {
-			schemaFetchClient = origClient
+			newSchemaFetchClient = origNew
 			hostChecker = origChecker
 		}()
 		fn(t, srv.URL)
@@ -87,6 +87,88 @@ func TestFetchSchemaFromURL(t *testing.T) {
 	})
 }
 
+func TestFetchSchemaFromURL_RedirectToPrivateHost(t *testing.T) {
+	// Test that redirects to private/loopback hosts are blocked (SSRF bypass prevention).
+	// Both httptest servers bind to 127.0.0.1, so we distinguish them by port:
+	// the hostChecker treats the redirect-target port as "private".
+
+	privateSrv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"secret":"data"}`))
+	}))
+	defer privateSrv.Close()
+
+	publicSrv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, privateSrv.URL+"/schema.json", http.StatusFound)
+	}))
+	defer publicSrv.Close()
+
+	origChecker := hostChecker
+	origNew := newSchemaFetchClient
+	defer func() {
+		hostChecker = origChecker
+		newSchemaFetchClient = origNew
+	}()
+
+	// The initial request's hostChecker call sees the public server's host
+	// and allows it. The redirect's hostChecker call sees the same IP
+	// (127.0.0.1) but we treat all 127.0.0.1 calls during redirect as
+	// private by tracking whether it's the first call.
+	callCount := 0
+	hostChecker = func(_ context.Context, host string) bool {
+		callCount++
+		// First call is the initial URL check in fetchSchemaFromURL — allow it.
+		// Second call is the redirect target check in CheckRedirect — block it.
+		return callCount > 1
+	}
+
+	newSchemaFetchClient = func(ctx context.Context) *http.Client {
+		c := publicSrv.Client()
+		real := newDefaultSchemaFetchClient(ctx)
+		c.CheckRedirect = real.CheckRedirect
+		return c
+	}
+
+	_, err := fetchSchemaFromURL(context.Background(), publicSrv.URL+"/schema.json")
+	if err == nil {
+		t.Fatal("expected error when redirect target is a private host")
+	}
+}
+
+func TestFetchSchemaFromURL_RedirectToHTTP(t *testing.T) {
+	// Test that redirects from HTTPS to HTTP are blocked.
+	httpSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"type":"object"}`))
+	}))
+	defer httpSrv.Close()
+
+	publicSrv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, httpSrv.URL+"/schema.json", http.StatusFound)
+	}))
+	defer publicSrv.Close()
+
+	origChecker := hostChecker
+	origNew := newSchemaFetchClient
+	defer func() {
+		hostChecker = origChecker
+		newSchemaFetchClient = origNew
+	}()
+
+	hostChecker = func(context.Context, string) bool { return false }
+	newSchemaFetchClient = func(ctx context.Context) *http.Client {
+		c := publicSrv.Client()
+		real := newDefaultSchemaFetchClient(ctx)
+		c.CheckRedirect = real.CheckRedirect
+		return c
+	}
+
+	_, err := fetchSchemaFromURL(context.Background(), publicSrv.URL+"/schema.json")
+	if err == nil {
+		t.Fatal("expected error when redirect goes to HTTP")
+	}
+}
+
 func TestIsPrivateHost(t *testing.T) {
 	tests := []struct {
 		host string
@@ -123,7 +205,7 @@ func TestIsPrivateHost(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.host, func(t *testing.T) {
-			got := isPrivateHost(tt.host)
+			got := isPrivateHost(context.Background(), tt.host)
 			if got != tt.want {
 				t.Errorf("isPrivateHost(%q) = %v, want %v", tt.host, got, tt.want)
 			}

@@ -1435,12 +1435,9 @@ func extractSchemasFromProjectConfig(ctx context.Context, project *ory.Project) 
 			// processing. Fetch the actual schema content from the URL.
 			schemaObj, err := fetchSchemaFromURL(ctx, rawURL)
 			if err != nil {
-				// Non-fatal: return empty body rather than failing the entire list.
-				// The data source can detect empty bodies and attempt fallback.
-				container.Schema = map[string]interface{}{}
-			} else {
-				container.Schema = schemaObj
+				return nil, fmt.Errorf("fetching schema %q from URL: %w", id, err)
 			}
+			container.Schema = schemaObj
 
 		default:
 			// Preset or unrecognized URL schemes: return an empty object so
@@ -1453,25 +1450,38 @@ func extractSchemasFromProjectConfig(ctx context.Context, project *ory.Project) 
 	return result, nil
 }
 
-// schemaFetchClient is a dedicated HTTP client for fetching schema content from
-// trusted URLs returned by the Ory API. It has a short timeout and allows at
-// most one HTTPS redirect to minimize SSRF risk.
-var schemaFetchClient = &http.Client{
-	Timeout: 10 * time.Second,
-	CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		if len(via) >= 2 {
-			return fmt.Errorf("too many redirects fetching schema")
-		}
-		if req.URL.Scheme != "https" {
-			return fmt.Errorf("refusing non-HTTPS redirect for schema URL")
-		}
-		return nil
-	},
-}
-
 // hostChecker is the function used to check whether a host is private.
-// It is a variable so tests can override it.
+// It accepts a context for DNS resolution and is a variable so tests can
+// override it.
 var hostChecker = isPrivateHost
+
+// newSchemaFetchClient is a function variable that creates an HTTP client for
+// fetching schema content. It is a variable so tests can override it.
+var newSchemaFetchClient = newDefaultSchemaFetchClient
+
+// newDefaultSchemaFetchClient creates an HTTP client for fetching schema content
+// from trusted URLs returned by the Ory API. It has a short timeout, allows at
+// most one HTTPS redirect, and validates redirect targets against
+// private/loopback hosts to prevent SSRF bypass via redirects.
+func newDefaultSchemaFetchClient(ctx context.Context) *http.Client {
+	return &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 2 {
+				return fmt.Errorf("too many redirects fetching schema")
+			}
+			if req.URL.Scheme != "https" {
+				return fmt.Errorf("refusing non-HTTPS redirect for schema URL")
+			}
+			// Validate the redirect target to prevent SSRF bypass via a
+			// public HTTPS URL that redirects to a private/loopback host.
+			if hostChecker(ctx, req.URL.Hostname()) {
+				return fmt.Errorf("refusing redirect to private/loopback host %q", req.URL.Hostname())
+			}
+			return nil
+		},
+	}
+}
 
 // fetchSchemaFromURL retrieves a JSON schema from an HTTPS URL. The URL must
 // use the https scheme (enforced by the caller's switch statement) and must not
@@ -1485,7 +1495,7 @@ func fetchSchemaFromURL(ctx context.Context, schemaURL string) (map[string]inter
 		return nil, fmt.Errorf("refusing non-HTTPS schema URL %q", schemaURL)
 	}
 	host := parsed.Hostname()
-	if hostChecker(host) {
+	if hostChecker(ctx, host) {
 		return nil, fmt.Errorf("refusing schema URL with private/loopback host %q", host)
 	}
 
@@ -1494,7 +1504,8 @@ func fetchSchemaFromURL(ctx context.Context, schemaURL string) (map[string]inter
 		return nil, fmt.Errorf("creating request for schema %q: %w", schemaURL, err)
 	}
 
-	resp, err := schemaFetchClient.Do(req)
+	client := newSchemaFetchClient(ctx)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetching schema from %q: %w", schemaURL, err)
 	}
@@ -1518,8 +1529,9 @@ func fetchSchemaFromURL(ctx context.Context, schemaURL string) (map[string]inter
 
 // isPrivateHost returns true if the host is a loopback, private, or link-local
 // address. For DNS names it resolves the host and checks all resulting IPs to
-// prevent DNS rebinding attacks.
-func isPrivateHost(host string) bool {
+// prevent DNS rebinding attacks. The context is used for DNS resolution so that
+// lookups respect the caller's cancellation/timeout.
+func isPrivateHost(ctx context.Context, host string) bool {
 	if host == "localhost" {
 		return true
 	}
@@ -1531,7 +1543,7 @@ func isPrivateHost(host string) bool {
 
 	// It's a DNS name — resolve and check all A/AAAA records.
 	resolver := &net.Resolver{}
-	addrs, err := resolver.LookupHost(context.Background(), host)
+	addrs, err := resolver.LookupHost(ctx, host)
 	if err != nil {
 		// DNS resolution failed — block to be safe.
 		return true
