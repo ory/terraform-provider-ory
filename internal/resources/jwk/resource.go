@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -38,6 +39,7 @@ type JWKResource struct {
 // JWKResourceModel describes the resource data model.
 type JWKResourceModel struct {
 	ID        types.String `tfsdk:"id"`
+	ProjectID types.String `tfsdk:"project_id"`
 	SetID     types.String `tfsdk:"set_id"`
 	KeyID     types.String `tfsdk:"key_id"`
 	Algorithm types.String `tfsdk:"algorithm"`
@@ -61,10 +63,11 @@ generate and manage custom key sets for your Ory project.
 
 ` + "```hcl" + `
 resource "ory_json_web_key_set" "signing" {
-  set_id    = "my-signing-keys"
-  key_id    = "sig-key-1"
-  algorithm = "RS256"
-  use       = "sig"
+  project_id = var.ory_project_id
+  set_id     = "my-signing-keys"
+  key_id     = "sig-key-1"
+  algorithm  = "RS256"
+  use        = "sig"
 }
 ` + "```" + `
 
@@ -81,9 +84,10 @@ resource "ory_json_web_key_set" "encryption" {
 
 ## Import
 
-JWK sets can be imported using their set ID:
+JWK sets can be imported using the format ` + "`project_id/set_id`" + ` or just ` + "`set_id`" + `:
 
 ` + "```shell" + `
+terraform import ory_json_web_key_set.signing <project-id>/my-signing-keys
 terraform import ory_json_web_key_set.signing my-signing-keys
 ` + "```" + `
 `
@@ -98,6 +102,15 @@ func (r *JWKResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				Computed:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"project_id": schema.StringAttribute{
+				Description: "The project ID. If not set, uses the provider's project_id.",
+				Optional:    true,
+				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"set_id": schema.StringAttribute{
@@ -168,13 +181,23 @@ func (r *JWKResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
+	projectID := r.resolveProjectID(plan.ProjectID)
+	projectClient, err := r.resolveProjectClient(ctx, projectID)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error Resolving Project",
+			err.Error(),
+		)
+		return
+	}
+
 	body := ory.CreateJsonWebKeySet{
 		Alg: plan.Algorithm.ValueString(),
 		Kid: plan.KeyID.ValueString(),
 		Use: plan.Use.ValueString(),
 	}
 
-	jwks, err := r.client.CreateJsonWebKeySet(ctx, plan.SetID.ValueString(), body)
+	jwks, err := projectClient.CreateJsonWebKeySet(ctx, plan.SetID.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating JSON Web Key Set",
@@ -184,6 +207,7 @@ func (r *JWKResource) Create(ctx context.Context, req resource.CreateRequest, re
 	}
 
 	plan.ID = types.StringValue(plan.SetID.ValueString())
+	plan.ProjectID = types.StringValue(projectID)
 
 	// Serialize the keys to JSON
 	if len(jwks.Keys) > 0 {
@@ -204,9 +228,18 @@ func (r *JWKResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	jwks, err := r.client.GetJsonWebKeySet(ctx, state.SetID.ValueString())
+	projectID := r.resolveProjectID(state.ProjectID)
+	projectClient, err := r.resolveProjectClient(ctx, projectID)
 	if err != nil {
-		// Check if it's a 404
+		resp.Diagnostics.AddError(
+			"Error Resolving Project",
+			err.Error(),
+		)
+		return
+	}
+
+	jwks, err := projectClient.GetJsonWebKeySet(ctx, state.SetID.ValueString())
+	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading JSON Web Key Set",
 			"Could not read JWK set "+state.SetID.ValueString()+": "+err.Error(),
@@ -218,6 +251,8 @@ func (r *JWKResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
+	state.ProjectID = types.StringValue(projectID)
 
 	// Serialize the keys to JSON
 	keysJSON, err := json.Marshal(jwks)
@@ -253,7 +288,17 @@ func (r *JWKResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 		return
 	}
 
-	err := r.client.DeleteJsonWebKeySet(ctx, state.SetID.ValueString())
+	projectID := r.resolveProjectID(state.ProjectID)
+	projectClient, err := r.resolveProjectClient(ctx, projectID)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error Resolving Project",
+			err.Error(),
+		)
+		return
+	}
+
+	err = projectClient.DeleteJsonWebKeySet(ctx, state.SetID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting JSON Web Key Set",
@@ -264,6 +309,39 @@ func (r *JWKResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 }
 
 func (r *JWKResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("set_id"), req.ID)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
+	// Import ID format: project_id/set_id or just set_id (uses provider's project_id)
+	id := req.ID
+	var projectID, setID string
+
+	if strings.Contains(id, "/") {
+		parts := strings.SplitN(id, "/", 2)
+		projectID = parts[0]
+		setID = parts[1]
+	} else {
+		setID = id
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("set_id"), setID)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), setID)...)
+	if projectID != "" {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), projectID)...)
+	}
+}
+
+// resolveProjectID returns the project ID from the resource attribute or falls back to the provider's project_id.
+func (r *JWKResource) resolveProjectID(tfProjectID types.String) string {
+	if !tfProjectID.IsNull() && !tfProjectID.IsUnknown() {
+		return tfProjectID.ValueString()
+	}
+	return r.client.ProjectID()
+}
+
+// resolveProjectClient returns a client configured for the given project.
+// If project_id is provided, it resolves the slug via the console API.
+// Otherwise, it falls back to the provider's project credentials.
+func (r *JWKResource) resolveProjectClient(ctx context.Context, projectID string) (*client.OryClient, error) {
+	if projectID != "" {
+		return r.client.ProjectClientForProject(ctx, projectID)
+	}
+	return r.client, nil
 }

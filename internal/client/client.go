@@ -454,6 +454,35 @@ func (c *OryClient) WorkspaceID() string {
 	return c.config.WorkspaceID
 }
 
+// ResolveProjectSlug resolves a project ID to its slug via the console API.
+// This allows resources to accept project_id and auto-resolve the slug needed
+// for project API operations (e.g., JWK, OAuth2).
+func (c *OryClient) ResolveProjectSlug(ctx context.Context, projectID string) (string, error) {
+	if c.consoleClient == nil {
+		return "", fmt.Errorf("console API client not configured: workspace_api_key is required to resolve project_id to slug")
+	}
+	project, err := c.GetProject(ctx, projectID)
+	if err != nil {
+		return "", fmt.Errorf("resolving project slug for project %s: %w", projectID, err)
+	}
+	return project.GetSlug(), nil
+}
+
+// ProjectClientForProject returns a project-scoped client for the given project ID.
+// It resolves the project slug via the console API and uses the provider's project API key.
+func (c *OryClient) ProjectClientForProject(ctx context.Context, projectID string) (*OryClient, error) {
+	slug, err := c.ResolveProjectSlug(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	apiKey := c.config.ProjectAPIKey
+	if apiKey == "" {
+		return nil, fmt.Errorf("project_api_key is required for project API operations (JWK, OAuth2, etc.): " +
+			"set it on the provider or via ORY_PROJECT_API_KEY environment variable")
+	}
+	return c.WithProjectCredentials(slug, apiKey), nil
+}
+
 // WithProjectCredentials returns a new OryClient that uses the given project
 // credentials. The returned client shares the console client with the parent
 // but has its own isolated project client (lazily initialized).

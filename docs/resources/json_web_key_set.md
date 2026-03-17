@@ -13,7 +13,7 @@ JSON Web Keys are used for signing and encrypting tokens. This resource generate
 
 -> **Plan:** Available on all Ory Network plans.
 
-~> **Note:** This resource is **immutable**. Any change to `set_id`, `key_id`, `algorithm`, or `use` will destroy the existing key set and create a new one. Private keys in the old set will be permanently lost.
+~> **Note:** This resource is **immutable**. Any change to `project_id`, `set_id`, `key_id`, `algorithm`, or `use` will destroy the existing key set and create a new one. Private keys in the old set will be permanently lost.
 
 ## Algorithms
 
@@ -46,7 +46,7 @@ Most configurations only need `use = "sig"`.
 ## Example Usage
 
 ```terraform
-# RSA signing key set
+# RSA signing key set (project_id from provider config)
 resource "ory_json_web_key_set" "signing" {
   set_id    = "token-signing-keys"
   key_id    = "rsa-sig-1"
@@ -54,12 +54,13 @@ resource "ory_json_web_key_set" "signing" {
   use       = "sig"
 }
 
-# ECDSA signing key set (smaller, faster)
+# ECDSA signing key set with explicit project_id
 resource "ory_json_web_key_set" "ecdsa_signing" {
-  set_id    = "ecdsa-signing-keys"
-  key_id    = "ec-sig-1"
-  algorithm = "ES256"
-  use       = "sig"
+  project_id = var.ory_project_id
+  set_id     = "ecdsa-signing-keys"
+  key_id     = "ec-sig-1"
+  algorithm  = "ES256"
+  use        = "sig"
 }
 
 # Encryption key set
@@ -98,9 +99,10 @@ On read, the provider extracts `algorithm`, `use`, and `key_id` from the **first
 
 ## Import
 
-Import using the set ID:
+Import using the format `project_id/set_id` or just `set_id` (uses provider's project_id):
 
 ```shell
+terraform import ory_json_web_key_set.signing <project-id>/token-signing-keys
 terraform import ory_json_web_key_set.signing token-signing-keys
 ```
 
@@ -115,6 +117,10 @@ After import, `key_id` is populated from the first key in the set. If the set co
 - `key_id` (String) The Key ID (kid) for the generated key.
 - `set_id` (String) The ID of the JSON Web Key Set.
 - `use` (String) The intended use: sig (signature) or enc (encryption).
+
+### Optional
+
+- `project_id` (String) The project ID. If not set, uses the provider's project_id.
 
 ### Read-Only
 
