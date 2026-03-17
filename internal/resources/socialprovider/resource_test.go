@@ -60,6 +60,53 @@ func generateTestPrivateKey(t *testing.T) string {
 	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
 }
 
+func TestAccSocialProviderResource_baseRedirectURI(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with base_redirect_uri
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_base_redirect_uri.tf.tmpl", map[string]string{
+					"BaseRedirectURI": "https://iam.example.com",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-google-redir"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "base_redirect_uri", "https://iam.example.com"),
+				),
+			},
+			// Update base_redirect_uri
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_base_redirect_uri_updated.tf.tmpl", map[string]string{
+					"UpdatedBaseRedirectURI": "https://auth.example.com",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "base_redirect_uri", "https://auth.example.com"),
+				),
+			},
+			// Remove base_redirect_uri (unset in config)
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_base_redirect_uri_removed.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "base_redirect_uri"),
+				),
+			},
+			// ImportState
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           "test-google-redir",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+		},
+	})
+}
+
 func TestAccSocialProviderResource_apple(t *testing.T) {
 	tmplData := struct{ PrivateKey string }{PrivateKey: generateTestPrivateKey(t)}
 

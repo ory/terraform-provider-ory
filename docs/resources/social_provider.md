@@ -57,6 +57,17 @@ resource "ory_social_provider" "google" {
   scope         = ["email", "profile"]
 }
 
+# Generic OIDC with a custom base redirect URI (e.g., when using a custom domain)
+resource "ory_social_provider" "corporate_sso_custom_domain" {
+  provider_id       = "corporate-sso-custom-domain"
+  provider_type     = "generic"
+  client_id         = var.sso_client_id
+  client_secret     = var.sso_client_secret
+  issuer_url        = "https://sso.example.com"
+  scope             = ["openid", "profile", "email"]
+  base_redirect_uri = "https://iam.example.com"
+}
+
 # GitHub
 resource "ory_social_provider" "github" {
   provider_id   = "github"
@@ -194,6 +205,22 @@ If not set, the provider uses a default mapper that extracts the email claim.
 
 ~> **Note:** The `mapper_url` value may be transformed by the API (e.g., stored as a GCS URL). The provider only tracks this field if you explicitly set it in your configuration to avoid false drift detection.
 
+## Base Redirect URI
+
+The `base_redirect_uri` attribute overrides the base URL Ory uses when constructing OIDC callback URLs. Use this when your project is accessible under a custom domain and you want callbacks to go to that domain rather than the default Ory project URL.
+
+```hcl
+resource "ory_social_provider" "google" {
+  provider_id      = "google"
+  provider_type    = "google"
+  client_id        = var.google_client_id
+  client_secret    = var.google_client_secret
+  base_redirect_uri = "https://iam.example.com"
+}
+```
+
+~> **Note:** `base_redirect_uri` is a **global** OIDC configuration setting, not per-provider. If you have multiple `ory_social_provider` resources and set `base_redirect_uri` in more than one, the last applied value will take effect for all providers.
+
 ## Important Behaviors
 
 - **`provider_id` and `provider_type` cannot be changed** after creation. Changing either forces a new resource.
@@ -230,6 +257,7 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 - `apple_private_key_id` (String) Apple private key ID from the Apple Developer portal (e.g., "UX56C66723"). Required when provider_type is "apple" and client_secret is not set.
 - `apple_team_id` (String) Apple Developer Team ID (e.g., "KP76DQS54M"). Required when provider_type is "apple" and client_secret is not set.
 - `auth_url` (String) Custom authorization URL (for non-standard providers).
+- `base_redirect_uri` (String) Override the base redirect URI for OIDC callbacks (e.g., "https://iam.example.com"). When set, Ory constructs callback URLs using this base instead of the default project domain. This is a global OIDC config setting — if multiple social providers set different values, the last applied value wins.
 - `client_secret` (String, Sensitive) OAuth2 client secret from the provider. Required for all providers except Apple (where Ory generates the secret from apple_team_id, apple_private_key_id, and apple_private_key).
 - `issuer_url` (String) OIDC issuer URL (required for generic providers).
 - `mapper_url` (String) Jsonnet mapper URL for claims mapping. Can be a URL or base64-encoded Jsonnet (base64://...). If not set, a default mapper that extracts email from claims will be used.

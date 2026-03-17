@@ -60,6 +60,22 @@ If not set, the provider uses a default mapper that extracts the email claim.
 
 ~> **Note:** The `mapper_url` value may be transformed by the API (e.g., stored as a GCS URL). The provider only tracks this field if you explicitly set it in your configuration to avoid false drift detection.
 
+## Base Redirect URI
+
+The `base_redirect_uri` attribute overrides the base URL Ory uses when constructing OIDC callback URLs. Use this when your project is accessible under a custom domain and you want callbacks to go to that domain rather than the default Ory project URL.
+
+```hcl
+resource "ory_social_provider" "google" {
+  provider_id      = "google"
+  provider_type    = "google"
+  client_id        = var.google_client_id
+  client_secret    = var.google_client_secret
+  base_redirect_uri = "https://iam.example.com"
+}
+```
+
+~> **Note:** `base_redirect_uri` is a **global** OIDC configuration setting, not per-provider. If you have multiple `ory_social_provider` resources and set `base_redirect_uri` in more than one, the last applied value will take effect for all providers.
+
 ## Important Behaviors
 
 - **`provider_id` and `provider_type` cannot be changed** after creation. Changing either forces a new resource.
