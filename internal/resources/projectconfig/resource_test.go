@@ -177,7 +177,6 @@ func TestAccProjectConfigResource_oidc(t *testing.T) {
 }
 
 func TestAccProjectConfigResource_oidcAutoLinkPolicy(t *testing.T) {
-	acctest.RequireSocialProviderTests(t)
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),

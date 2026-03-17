@@ -138,7 +138,7 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				Sensitive:   true,
 			},
 			"auto_link": schema.BoolAttribute{
-				Description: "Enable automatic account linking for this provider. When true, if an identity with the same identifier (e.g., email) already exists, the social sign-in will automatically link to that identity instead of failing. Requires enable_oidc_auto_link_policy to be true in the project config (ory_project_config).",
+				Description: "Enable automatic account linking for this provider. When true, if an identity with the same identifier (e.g., email) already exists, the social sign-in will automatically link to that identity instead of failing. Requires enable_oidc_auto_link_policy to be true in the project config (ory_project_config). This attribute is write-only — the API accepts it on create/update but does not return it on read, so Terraform preserves the value from state. On import, the value will not be populated. To disable auto-linking, explicitly set auto_link = false rather than removing the attribute.",
 				Optional:    true,
 			},
 			"base_redirect_uri": schema.StringAttribute{
