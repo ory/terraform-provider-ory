@@ -1452,7 +1452,7 @@ func extractSchemasFromProjectConfig(ctx context.Context, project *ory.Project) 
 
 // hostChecker is the function used to check whether a host is private.
 // It accepts a context for DNS resolution and is a variable so tests can
-// override it.
+// override it. Returns (isPrivate, error) — error indicates DNS failure.
 var hostChecker = isPrivateHost
 
 // newSchemaFetchClient is a function variable that creates an HTTP client for
@@ -1482,7 +1482,11 @@ func newDefaultSchemaFetchClient(ctx context.Context) *http.Client {
 			}
 			// Validate the redirect target to prevent SSRF bypass via a
 			// public HTTPS URL that redirects to a private/loopback host.
-			if hostChecker(ctx, req.URL.Hostname()) {
+			redirectIsPrivate, checkErr := hostChecker(ctx, req.URL.Hostname())
+			if checkErr != nil {
+				return checkErr
+			}
+			if redirectIsPrivate {
 				return fmt.Errorf("refusing redirect to private/loopback host %q", req.URL.Hostname())
 			}
 			return nil
@@ -1538,7 +1542,11 @@ func fetchSchemaFromURL(ctx context.Context, schemaURL string) (map[string]inter
 		return nil, fmt.Errorf("refusing non-HTTPS schema URL %q", schemaURL)
 	}
 	host := parsed.Hostname()
-	if hostChecker(ctx, host) {
+	isPrivate, err := hostChecker(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	if isPrivate {
 		return nil, fmt.Errorf("refusing schema URL with private/loopback host %q", host)
 	}
 
@@ -1570,35 +1578,35 @@ func fetchSchemaFromURL(ctx context.Context, schemaURL string) (map[string]inter
 	return schemaObj, nil
 }
 
-// isPrivateHost returns true if the host is a loopback, private, or link-local
+// isPrivateHost checks whether a host is a loopback, private, or link-local
 // address. For DNS names it resolves the host and checks all resulting IPs.
-// This is used as a pre-flight check; the actual DNS rebinding protection is
-// enforced by safeDialContext which validates the resolved IP at connection
-// time. The context is used for DNS resolution so that lookups respect the
-// caller's cancellation/timeout.
-func isPrivateHost(ctx context.Context, host string) bool {
+// Returns (true, nil) for private hosts, (false, nil) for public hosts, and
+// (false, error) when DNS resolution fails — callers can then surface an
+// actionable "DNS resolution failed" error instead of a misleading
+// "private/loopback host" message. The actual DNS rebinding protection is
+// enforced by safeDialContext which validates the resolved IP at connection time.
+func isPrivateHost(ctx context.Context, host string) (bool, error) {
 	if host == "localhost" {
-		return true
+		return true, nil
 	}
 
 	// Try parsing as an IP literal first.
 	if addr, err := netip.ParseAddr(host); err == nil {
-		return isPrivateAddr(addr)
+		return isPrivateAddr(addr), nil
 	}
 
 	// It's a DNS name — resolve and check all A/AAAA records.
 	resolver := &net.Resolver{}
 	addrs, err := resolver.LookupHost(ctx, host)
 	if err != nil {
-		// DNS resolution failed — block to be safe.
-		return true
+		return false, fmt.Errorf("resolving host %q: %w", host, err)
 	}
 	for _, a := range addrs {
 		if addr, err := netip.ParseAddr(a); err == nil && isPrivateAddr(addr) {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 // isPrivateAddr checks whether an IP address is loopback, private, link-local,

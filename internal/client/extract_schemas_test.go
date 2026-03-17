@@ -2,6 +2,8 @@ package client
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	ory "github.com/ory/client-go"
@@ -170,6 +172,66 @@ func TestExtractSchemasFromProjectConfig(t *testing.T) {
 			t.Fatalf("expected 2 schemas, got %d", len(schemas))
 		}
 	})
+}
+
+func TestExtractSchemasFromProjectConfig_HTTPS(t *testing.T) {
+	// Test that an HTTPS schema URL in project config results in the fetched
+	// JSON being populated in the schema container.
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"type":"object","properties":{"email":{"type":"string"}}}`))
+	}))
+	defer srv.Close()
+
+	origNew := newSchemaFetchClient
+	origChecker := hostChecker
+	newSchemaFetchClient = func(_ context.Context) *http.Client { return srv.Client() }
+	hostChecker = func(context.Context, string) (bool, error) { return false, nil }
+	defer func() {
+		newSchemaFetchClient = origNew
+		hostChecker = origChecker
+	}()
+
+	project := &ory.Project{
+		Services: ory.ProjectServices{
+			Identity: &ory.ProjectServiceIdentity{
+				Config: map[string]interface{}{
+					"identity": map[string]interface{}{
+						"schemas": []interface{}{
+							map[string]interface{}{
+								"id":  "https-schema-id",
+								"url": srv.URL + "/schema.json",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	schemas, err := extractSchemasFromProjectConfig(context.Background(), project)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(schemas) != 1 {
+		t.Fatalf("expected 1 schema, got %d", len(schemas))
+	}
+	if schemas[0].GetId() != "https-schema-id" {
+		t.Errorf("expected id 'https-schema-id', got %q", schemas[0].GetId())
+	}
+	if schemas[0].Schema == nil {
+		t.Fatal("expected schema content from HTTPS fetch, got nil")
+	}
+	if schemas[0].Schema["type"] != "object" {
+		t.Errorf("expected schema type 'object', got %v", schemas[0].Schema["type"])
+	}
+	props, ok := schemas[0].Schema["properties"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected properties map in schema")
+	}
+	if _, hasEmail := props["email"]; !hasEmail {
+		t.Error("expected 'email' property in fetched schema")
+	}
 }
 
 func TestHasProjectClient(t *testing.T) {

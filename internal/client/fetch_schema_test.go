@@ -20,7 +20,7 @@ func TestFetchSchemaFromURL(t *testing.T) {
 		origNew := newSchemaFetchClient
 		origChecker := hostChecker
 		newSchemaFetchClient = func(_ context.Context) *http.Client { return srv.Client() }
-		hostChecker = func(context.Context, string) bool { return false } // allow all hosts
+		hostChecker = func(context.Context, string) (bool, error) { return false, nil } // allow all hosts
 		defer func() {
 			newSchemaFetchClient = origNew
 			hostChecker = origChecker
@@ -115,11 +115,11 @@ func TestFetchSchemaFromURL_RedirectToPrivateHost(t *testing.T) {
 	// (127.0.0.1) but we treat all 127.0.0.1 calls during redirect as
 	// private by tracking whether it's the first call.
 	callCount := 0
-	hostChecker = func(_ context.Context, host string) bool {
+	hostChecker = func(_ context.Context, host string) (bool, error) {
 		callCount++
 		// First call is the initial URL check in fetchSchemaFromURL — allow it.
 		// Second call is the redirect target check in CheckRedirect — block it.
-		return callCount > 1
+		return callCount > 1, nil
 	}
 
 	newSchemaFetchClient = func(ctx context.Context) *http.Client {
@@ -155,7 +155,7 @@ func TestFetchSchemaFromURL_RedirectToHTTP(t *testing.T) {
 		newSchemaFetchClient = origNew
 	}()
 
-	hostChecker = func(context.Context, string) bool { return false }
+	hostChecker = func(context.Context, string) (bool, error) { return false, nil }
 	newSchemaFetchClient = func(ctx context.Context) *http.Client {
 		c := publicSrv.Client()
 		real := newDefaultSchemaFetchClient(ctx)
@@ -171,38 +171,52 @@ func TestFetchSchemaFromURL_RedirectToHTTP(t *testing.T) {
 
 func TestIsPrivateHost(t *testing.T) {
 	tests := []struct {
-		host string
-		want bool
+		host    string
+		want    bool
+		wantErr bool
 	}{
 		// Loopback
-		{"127.0.0.1", true},
-		{"::1", true},
-		{"localhost", true},
+		{"127.0.0.1", true, false},
+		{"::1", true, false},
+		{"localhost", true, false},
 
 		// Unspecified
-		{"0.0.0.0", true},
+		{"0.0.0.0", true, false},
 
 		// Private RFC 1918
-		{"10.0.0.1", true},
-		{"10.255.255.255", true},
-		{"172.16.0.1", true},
-		{"172.31.255.255", true},
-		{"192.168.0.1", true},
-		{"192.168.255.255", true},
+		{"10.0.0.1", true, false},
+		{"10.255.255.255", true, false},
+		{"172.16.0.1", true, false},
+		{"172.31.255.255", true, false},
+		{"192.168.0.1", true, false},
+		{"192.168.255.255", true, false},
 
 		// Link-local
-		{"169.254.1.1", true},
+		{"169.254.1.1", true, false},
 
 		// Public IPs — must NOT be blocked
-		{"172.2.0.1", false},  // 172.2.x is public, not in 172.16/12
-		{"172.15.0.1", false}, // below 172.16/12
-		{"172.32.0.1", false}, // above 172.16/12
-		{"8.8.8.8", false},
-		{"1.1.1.1", false},
+		{"172.2.0.1", false, false},  // 172.2.x is public, not in 172.16/12
+		{"172.15.0.1", false, false}, // below 172.16/12
+		{"172.32.0.1", false, false}, // above 172.16/12
+		{"8.8.8.8", false, false},
+		{"1.1.1.1", false, false},
+
+		// Unresolvable DNS name — should return error, not "private"
+		{"this-host-does-not-exist.invalid", false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.host, func(t *testing.T) {
-			got := isPrivateHost(context.Background(), tt.host)
+			got, err := isPrivateHost(context.Background(), tt.host)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("isPrivateHost(%q) expected error, got nil", tt.host)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("isPrivateHost(%q) unexpected error: %v", tt.host, err)
+				return
+			}
 			if got != tt.want {
 				t.Errorf("isPrivateHost(%q) = %v, want %v", tt.host, got, tt.want)
 			}
