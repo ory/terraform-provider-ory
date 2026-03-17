@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -273,7 +274,7 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 
 // isEmptySchemaBody returns true if the JSON represents an empty or null schema body.
 func isEmptySchemaBody(jsonBytes []byte) bool {
-	s := string(jsonBytes)
+	s := strings.TrimSpace(string(jsonBytes))
 	return s == "{}" || s == "null" || s == ""
 }
 

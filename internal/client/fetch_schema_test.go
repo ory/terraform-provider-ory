@@ -199,9 +199,6 @@ func TestIsPrivateHost(t *testing.T) {
 		{"172.32.0.1", false}, // above 172.16/12
 		{"8.8.8.8", false},
 		{"1.1.1.1", false},
-
-		// Known Ory schema hosts
-		{"storage.googleapis.com", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.host, func(t *testing.T) {

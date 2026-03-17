@@ -1461,11 +1461,18 @@ var newSchemaFetchClient = newDefaultSchemaFetchClient
 
 // newDefaultSchemaFetchClient creates an HTTP client for fetching schema content
 // from trusted URLs returned by the Ory API. It has a short timeout, allows at
-// most one HTTPS redirect, and validates redirect targets against
-// private/loopback hosts to prevent SSRF bypass via redirects.
+// most one HTTPS redirect, validates redirect targets against private/loopback
+// hosts, and uses a custom DialContext that validates the resolved IP address
+// to prevent DNS rebinding (TOCTOU) attacks.
 func newDefaultSchemaFetchClient(ctx context.Context) *http.Client {
 	return &http.Client{
 		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			// Validate the actual resolved IP at connection time to prevent
+			// DNS rebinding: a hostname may resolve to a public IP during the
+			// pre-flight check but to a private IP when the connection is made.
+			DialContext: safeDialContext,
+		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 2 {
 				return fmt.Errorf("too many redirects fetching schema")
@@ -1481,6 +1488,42 @@ func newDefaultSchemaFetchClient(ctx context.Context) *http.Client {
 			return nil
 		},
 	}
+}
+
+// safeDialContext wraps the default dialer and validates that the resolved IP
+// address is not private/loopback/link-local before establishing the connection.
+// This prevents DNS rebinding attacks where a hostname resolves to a public IP
+// during pre-flight checks but to a private IP at connection time.
+func safeDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid address %q: %w", addr, err)
+	}
+
+	// Resolve the hostname to IP addresses.
+	resolver := &net.Resolver{}
+	ips, err := resolver.LookupHost(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("resolving host %q: %w", host, err)
+	}
+
+	// Filter out private/loopback IPs — only connect to public addresses.
+	var dialer net.Dialer
+	for _, ip := range ips {
+		parsed, parseErr := netip.ParseAddr(ip)
+		if parseErr != nil {
+			continue
+		}
+		if isPrivateAddr(parsed) {
+			continue
+		}
+		// Try connecting to this public IP.
+		conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip, port))
+		if dialErr == nil {
+			return conn, nil
+		}
+	}
+	return nil, fmt.Errorf("all resolved addresses for %q are private or unreachable", host)
 }
 
 // fetchSchemaFromURL retrieves a JSON schema from an HTTPS URL. The URL must
@@ -1528,9 +1571,11 @@ func fetchSchemaFromURL(ctx context.Context, schemaURL string) (map[string]inter
 }
 
 // isPrivateHost returns true if the host is a loopback, private, or link-local
-// address. For DNS names it resolves the host and checks all resulting IPs to
-// prevent DNS rebinding attacks. The context is used for DNS resolution so that
-// lookups respect the caller's cancellation/timeout.
+// address. For DNS names it resolves the host and checks all resulting IPs.
+// This is used as a pre-flight check; the actual DNS rebinding protection is
+// enforced by safeDialContext which validates the resolved IP at connection
+// time. The context is used for DNS resolution so that lookups respect the
+// caller's cancellation/timeout.
 func isPrivateHost(ctx context.Context, host string) bool {
 	if host == "localhost" {
 		return true

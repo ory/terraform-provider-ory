@@ -345,14 +345,25 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 				// setting it as default. For a new project, workspace-level
 				// schemas exist but aren't in the project config yet.
 				if r.findSchemaIndex(existingSchemas, existingID) < 0 {
-					defaultPatches = append(defaultPatches, ory.JsonPatch{
-						Op:   "add",
-						Path: "/services/identity/config/identity/schemas/-",
-						Value: map[string]string{
-							"id":  existingID,
-							"url": schemaURL,
-						},
-					})
+					if len(existingSchemas) == 0 {
+						defaultPatches = append(defaultPatches, ory.JsonPatch{
+							Op:   "add",
+							Path: "/services/identity/config/identity/schemas",
+							Value: []map[string]string{{
+								"id":  existingID,
+								"url": schemaURL,
+							}},
+						})
+					} else {
+						defaultPatches = append(defaultPatches, ory.JsonPatch{
+							Op:   "add",
+							Path: "/services/identity/config/identity/schemas/-",
+							Value: map[string]string{
+								"id":  existingID,
+								"url": schemaURL,
+							},
+						})
+					}
 				}
 
 				defaultPatches = append(defaultPatches, ory.JsonPatch{
@@ -384,15 +395,29 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 			},
 		})
 	} else {
-		// Add new schema
-		patches = append(patches, ory.JsonPatch{
-			Op:   "add",
-			Path: "/services/identity/config/identity/schemas/-",
-			Value: map[string]string{
-				"id":  schemaID,
-				"url": schemaURL,
-			},
-		})
+		// Add new schema. When the schemas array doesn't exist yet (e.g., a
+		// brand-new project), JSON Patch "add" to "schemas/-" would fail because
+		// the parent array is missing. In that case, create the array with the
+		// new entry instead of appending.
+		if len(existingSchemas) == 0 {
+			patches = append(patches, ory.JsonPatch{
+				Op:   "add",
+				Path: "/services/identity/config/identity/schemas",
+				Value: []map[string]string{{
+					"id":  schemaID,
+					"url": schemaURL,
+				}},
+			})
+		} else {
+			patches = append(patches, ory.JsonPatch{
+				Op:   "add",
+				Path: "/services/identity/config/identity/schemas/-",
+				Value: map[string]string{
+					"id":  schemaID,
+					"url": schemaURL,
+				},
+			})
+		}
 	}
 
 	// If set_default is true, include the default_schema_id patch in the same

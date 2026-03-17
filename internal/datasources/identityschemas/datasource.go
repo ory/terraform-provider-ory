@@ -107,8 +107,13 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 	var err error
 	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
 		// Prefer Kratos API (canonical IDs + full content) when available.
+		// Fall back to console API if Kratos fails and console is available.
 		if canUseKratosAPI {
 			schemas, err = d.client.ListIdentitySchemas(ctx)
+			if err != nil && canUseConsoleAPI {
+				// Kratos API failed — try console API as fallback.
+				schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
+			}
 		} else {
 			schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
 		}
