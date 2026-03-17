@@ -1489,7 +1489,7 @@ func fetchSchemaFromURL(ctx context.Context, schemaURL string) (map[string]inter
 		return nil, fmt.Errorf("refusing schema URL with private/loopback host %q", host)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, schemaURL, nil) // #nosec G107 -- URL comes from Ory API project config
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, schemaURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request for schema %q: %w", schemaURL, err)
 	}
