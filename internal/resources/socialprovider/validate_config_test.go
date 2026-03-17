@@ -36,6 +36,7 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 		"apple_team_id":        tfStringValue(model.AppleTeamID),
 		"apple_private_key_id": tfStringValue(model.ApplePrivateKeyID),
 		"apple_private_key":    tfStringValue(model.ApplePrivateKey),
+		"auto_link":            tfBoolValue(model.AutoLink),
 		"base_redirect_uri":    tfStringValue(model.BaseRedirectURI),
 	}
 
@@ -56,6 +57,7 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 			"apple_team_id":        tftypes.String,
 			"apple_private_key_id": tftypes.String,
 			"apple_private_key":    tftypes.String,
+			"auto_link":            tftypes.Bool,
 			"base_redirect_uri":    tftypes.String,
 		},
 	}
@@ -67,6 +69,17 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 	}
 
 	return resource.ValidateConfigRequest{Config: config}
+}
+
+// tfBoolValue converts a types.Bool to a tftypes.Value, preserving null/unknown state.
+func tfBoolValue(v types.Bool) tftypes.Value {
+	if v.IsNull() {
+		return tftypes.NewValue(tftypes.Bool, nil)
+	}
+	if v.IsUnknown() {
+		return tftypes.NewValue(tftypes.Bool, tftypes.UnknownValue)
+	}
+	return tftypes.NewValue(tftypes.Bool, v.ValueBool())
 }
 
 // tfStringValue converts a types.String to a tftypes.Value, preserving null/unknown state.

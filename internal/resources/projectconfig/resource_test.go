@@ -221,6 +221,23 @@ func TestAccProjectConfigResource_oidc(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_oidcAutoLinkPolicy(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oidc_auto_link_policy.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "enable_oidc", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "enable_oidc_auto_link_policy", "true"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_accountExperience(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },

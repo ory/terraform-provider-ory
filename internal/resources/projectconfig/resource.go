@@ -93,14 +93,15 @@ type ProjectConfigResourceModel struct {
 	ErrorUIURL        types.String `tfsdk:"error_ui_url"`
 
 	// Auth methods
-	EnablePassword     types.Bool `tfsdk:"enable_password"`
-	EnableCode         types.Bool `tfsdk:"enable_code"`
-	CodeMFAEnabled     types.Bool `tfsdk:"code_mfa_enabled"`
-	EnableOIDC         types.Bool `tfsdk:"enable_oidc"`
-	EnableTOTP         types.Bool `tfsdk:"enable_totp"`
-	EnableWebAuthn     types.Bool `tfsdk:"enable_webauthn"`
-	EnablePasskey      types.Bool `tfsdk:"enable_passkey"`
-	EnableLookupSecret types.Bool `tfsdk:"enable_lookup_secret"`
+	EnablePassword           types.Bool `tfsdk:"enable_password"`
+	EnableCode               types.Bool `tfsdk:"enable_code"`
+	CodeMFAEnabled           types.Bool `tfsdk:"code_mfa_enabled"`
+	EnableOIDC               types.Bool `tfsdk:"enable_oidc"`
+	EnableOIDCAutoLinkPolicy types.Bool `tfsdk:"enable_oidc_auto_link_policy"`
+	EnableTOTP               types.Bool `tfsdk:"enable_totp"`
+	EnableWebAuthn           types.Bool `tfsdk:"enable_webauthn"`
+	EnablePasskey            types.Bool `tfsdk:"enable_passkey"`
+	EnableLookupSecret       types.Bool `tfsdk:"enable_lookup_secret"`
 
 	// Password policy
 	PasswordMinLength            types.Int64 `tfsdk:"password_min_length"`
@@ -483,6 +484,10 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 			},
 			"enable_oidc": schema.BoolAttribute{
 				Description: "Enable OIDC (OpenID Connect) social sign-in. Must be enabled for social providers (e.g. Google, GitHub) to work.",
+				Optional:    true,
+			},
+			"enable_oidc_auto_link_policy": schema.BoolAttribute{
+				Description: "Enable the OIDC auto-link policy. When true, social sign-in providers with auto_link enabled (on ory_social_provider) can automatically link to existing identities that share the same identifier (e.g., email).",
 				Optional:    true,
 			},
 			"enable_totp": schema.BoolAttribute{
@@ -999,23 +1004,29 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 		}
 	}
 
-	// Auth methods
-	methodMappings := map[*types.Bool]string{
-		&plan.EnablePassword:     "/services/identity/config/selfservice/methods/password/enabled",
-		&plan.EnableCode:         "/services/identity/config/selfservice/methods/code/enabled",
-		&plan.CodeMFAEnabled:     "/services/identity/config/selfservice/methods/code/mfa_enabled",
-		&plan.EnableOIDC:         "/services/identity/config/selfservice/methods/oidc/enabled",
-		&plan.EnableTOTP:         "/services/identity/config/selfservice/methods/totp/enabled",
-		&plan.EnableWebAuthn:     "/services/identity/config/selfservice/methods/webauthn/enabled",
-		&plan.EnablePasskey:      "/services/identity/config/selfservice/methods/passkey/enabled",
-		&plan.EnableLookupSecret: "/services/identity/config/selfservice/methods/lookup_secret/enabled",
+	// Auth methods — ordered slice to guarantee deterministic patch ordering
+	// (e.g. enable_oidc is patched before enable_oidc_auto_link_policy).
+	type boolPatchMapping struct {
+		field *types.Bool
+		path  string
 	}
-	for field, path := range methodMappings {
-		if !field.IsNull() && !field.IsUnknown() {
+	methodMappings := []boolPatchMapping{
+		{&plan.EnablePassword, "/services/identity/config/selfservice/methods/password/enabled"},
+		{&plan.EnableCode, "/services/identity/config/selfservice/methods/code/enabled"},
+		{&plan.CodeMFAEnabled, "/services/identity/config/selfservice/methods/code/mfa_enabled"},
+		{&plan.EnableOIDC, "/services/identity/config/selfservice/methods/oidc/enabled"},
+		{&plan.EnableOIDCAutoLinkPolicy, "/services/identity/config/selfservice/methods/oidc/enable_auto_link_policy"},
+		{&plan.EnableTOTP, "/services/identity/config/selfservice/methods/totp/enabled"},
+		{&plan.EnableWebAuthn, "/services/identity/config/selfservice/methods/webauthn/enabled"},
+		{&plan.EnablePasskey, "/services/identity/config/selfservice/methods/passkey/enabled"},
+		{&plan.EnableLookupSecret, "/services/identity/config/selfservice/methods/lookup_secret/enabled"},
+	}
+	for _, m := range methodMappings {
+		if !m.field.IsNull() && !m.field.IsUnknown() {
 			patches = append(patches, ory.JsonPatch{
 				Op:    "replace",
-				Path:  path,
-				Value: field.ValueBool(),
+				Path:  m.path,
+				Value: m.field.ValueBool(),
 			})
 		}
 	}
@@ -1581,14 +1592,15 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 
 		// Auth methods
 		methodReadMappings := map[*types.Bool][]string{
-			&state.EnablePassword:     {"selfservice", "methods", "password", "enabled"},
-			&state.EnableCode:         {"selfservice", "methods", "code", "enabled"},
-			&state.CodeMFAEnabled:     {"selfservice", "methods", "code", "mfa_enabled"},
-			&state.EnableOIDC:         {"selfservice", "methods", "oidc", "enabled"},
-			&state.EnableTOTP:         {"selfservice", "methods", "totp", "enabled"},
-			&state.EnableWebAuthn:     {"selfservice", "methods", "webauthn", "enabled"},
-			&state.EnablePasskey:      {"selfservice", "methods", "passkey", "enabled"},
-			&state.EnableLookupSecret: {"selfservice", "methods", "lookup_secret", "enabled"},
+			&state.EnablePassword:           {"selfservice", "methods", "password", "enabled"},
+			&state.EnableCode:               {"selfservice", "methods", "code", "enabled"},
+			&state.CodeMFAEnabled:           {"selfservice", "methods", "code", "mfa_enabled"},
+			&state.EnableOIDC:               {"selfservice", "methods", "oidc", "enabled"},
+			&state.EnableOIDCAutoLinkPolicy: {"selfservice", "methods", "oidc", "enable_auto_link_policy"},
+			&state.EnableTOTP:               {"selfservice", "methods", "totp", "enabled"},
+			&state.EnableWebAuthn:           {"selfservice", "methods", "webauthn", "enabled"},
+			&state.EnablePasskey:            {"selfservice", "methods", "passkey", "enabled"},
+			&state.EnableLookupSecret:       {"selfservice", "methods", "lookup_secret", "enabled"},
 		}
 		for field, keys := range methodReadMappings {
 			if !field.IsNull() {

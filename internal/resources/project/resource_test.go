@@ -122,9 +122,5 @@ func TestAccProjectResource_regions(t *testing.T) {
 
 // testProjectName generates a project name with the e2e prefix for hard deletion support.
 func testProjectName(suffix string) string {
-	prefix := os.Getenv("ORY_TEST_PROJECT_PREFIX")
-	if prefix != "" {
-		return fmt.Sprintf("%s-tf-%s-%d", prefix, suffix, time.Now().UnixNano())
-	}
-	return fmt.Sprintf("tf-acc-test-%s-%d", suffix, time.Now().UnixNano())
+	return fmt.Sprintf("%s-tf-%s-%d", acctest.TestProjectPrefix, suffix, time.Now().UnixNano())
 }
