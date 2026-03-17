@@ -998,23 +998,28 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 		}
 	}
 
-	// Auth methods
-	methodMappings := map[*types.Bool]string{
-		&plan.EnablePassword:           "/services/identity/config/selfservice/methods/password/enabled",
-		&plan.EnableCode:               "/services/identity/config/selfservice/methods/code/enabled",
-		&plan.EnableOIDC:               "/services/identity/config/selfservice/methods/oidc/enabled",
-		&plan.EnableOIDCAutoLinkPolicy: "/services/identity/config/selfservice/methods/oidc/enable_auto_link_policy",
-		&plan.EnableTOTP:               "/services/identity/config/selfservice/methods/totp/enabled",
-		&plan.EnableWebAuthn:           "/services/identity/config/selfservice/methods/webauthn/enabled",
-		&plan.EnablePasskey:            "/services/identity/config/selfservice/methods/passkey/enabled",
-		&plan.EnableLookupSecret:       "/services/identity/config/selfservice/methods/lookup_secret/enabled",
+	// Auth methods — ordered slice to guarantee deterministic patch ordering
+	// (e.g. enable_oidc is patched before enable_oidc_auto_link_policy).
+	type boolPatchMapping struct {
+		field *types.Bool
+		path  string
 	}
-	for field, path := range methodMappings {
-		if !field.IsNull() && !field.IsUnknown() {
+	methodMappings := []boolPatchMapping{
+		{&plan.EnablePassword, "/services/identity/config/selfservice/methods/password/enabled"},
+		{&plan.EnableCode, "/services/identity/config/selfservice/methods/code/enabled"},
+		{&plan.EnableOIDC, "/services/identity/config/selfservice/methods/oidc/enabled"},
+		{&plan.EnableOIDCAutoLinkPolicy, "/services/identity/config/selfservice/methods/oidc/enable_auto_link_policy"},
+		{&plan.EnableTOTP, "/services/identity/config/selfservice/methods/totp/enabled"},
+		{&plan.EnableWebAuthn, "/services/identity/config/selfservice/methods/webauthn/enabled"},
+		{&plan.EnablePasskey, "/services/identity/config/selfservice/methods/passkey/enabled"},
+		{&plan.EnableLookupSecret, "/services/identity/config/selfservice/methods/lookup_secret/enabled"},
+	}
+	for _, m := range methodMappings {
+		if !m.field.IsNull() && !m.field.IsUnknown() {
 			patches = append(patches, ory.JsonPatch{
 				Op:    "replace",
-				Path:  path,
-				Value: field.ValueBool(),
+				Path:  m.path,
+				Value: m.field.ValueBool(),
 			})
 		}
 	}

@@ -657,6 +657,14 @@ func (r *SocialProviderResource) Update(ctx context.Context, req resource.Update
 	}
 
 	providerConfig := r.buildProviderConfig(ctx, &plan)
+
+	// If auto_link was previously set but is now removed from config,
+	// explicitly send false to disable it server-side (auto_link is write-only
+	// and has security implications, so removal should reliably disable it).
+	if plan.AutoLink.IsNull() && !state.AutoLink.IsNull() {
+		providerConfig["auto_link"] = false
+	}
+
 	patches := []ory.JsonPatch{{
 		Op:    "replace",
 		Path:  fmt.Sprintf("/services/identity/config/selfservice/methods/oidc/config/providers/%d", index),

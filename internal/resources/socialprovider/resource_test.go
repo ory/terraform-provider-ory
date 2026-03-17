@@ -136,6 +136,13 @@ func TestAccSocialProviderResource_autoLink(t *testing.T) {
 					resource.TestCheckResourceAttr("ory_social_provider.test", "auto_link", "false"),
 				),
 			},
+			// Remove auto_link from config — should send false to API and clear state
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_auto_link_removed.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "auto_link"),
+				),
+			},
 			// ImportState — auto_link is write-only (not returned by API)
 			{
 				ResourceName:            "ory_social_provider.test",
