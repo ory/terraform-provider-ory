@@ -36,6 +36,7 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 		"apple_team_id":        tfStringValue(model.AppleTeamID),
 		"apple_private_key_id": tfStringValue(model.ApplePrivateKeyID),
 		"apple_private_key":    tfStringValue(model.ApplePrivateKey),
+		"auto_link":            tftypes.NewValue(tftypes.Bool, nil),
 		"base_redirect_uri":    tfStringValue(model.BaseRedirectURI),
 	}
 
@@ -56,6 +57,7 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 			"apple_team_id":        tftypes.String,
 			"apple_private_key_id": tftypes.String,
 			"apple_private_key":    tftypes.String,
+			"auto_link":            tftypes.Bool,
 			"base_redirect_uri":    tftypes.String,
 		},
 	}

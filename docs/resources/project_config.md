@@ -51,10 +51,11 @@ resource "ory_project_config" "secure" {
   password_max_breaches          = 0
 
   # Authentication Methods
-  enable_password = true
-  enable_code     = true
-  enable_oidc     = true # Required for social providers (Google, GitHub, etc.)
-  enable_passkey  = true
+  enable_password              = true
+  enable_code                  = true
+  enable_oidc                  = true # Required for social providers (Google, GitHub, etc.)
+  enable_oidc_auto_link_policy = true # Allow social providers with auto_link = true to link to existing identities
+  enable_passkey               = true
 
   # Flow Controls
   enable_registration = true
@@ -315,7 +316,7 @@ This resource exposes **75+ attributes** across these configuration categories:
 | Session settings | cookie same site, lifespan, whoami-required AAL |
 | CORS | public and admin origins, enabled/disabled |
 | Login flow | login style (unified, identifier_first) |
-| Authentication | passwordless, code, OIDC (social sign-in), TOTP, passkey, WebAuthn, lookup secrets |
+| Authentication | passwordless, code, OIDC (social sign-in), OIDC auto-link policy, TOTP, passkey, WebAuthn, lookup secrets |
 | OAuth2/Hydra | token lifespans, access token strategy, PKCE, claims, scope strategy, consent/login URLs |
 | Recovery / Verification | enabled, methods, notify unknown recipients |
 | Account enumeration | mitigation enabled |
@@ -351,6 +352,7 @@ Some Ory project settings are not yet available through this resource. For setti
 - `enable_code` (Boolean) Enable code-based authentication.
 - `enable_lookup_secret` (Boolean) Enable backup/recovery codes.
 - `enable_oidc` (Boolean) Enable OIDC (OpenID Connect) social sign-in. Must be enabled for social providers (e.g. Google, GitHub) to work.
+- `enable_oidc_auto_link_policy` (Boolean) Enable the OIDC auto-link policy. When true, social sign-in providers with auto_link enabled (on ory_social_provider) can automatically link to existing identities that share the same identifier (e.g., email).
 - `enable_passkey` (Boolean) Enable Passkey authentication.
 - `enable_password` (Boolean) Enable password authentication.
 - `enable_recovery` (Boolean) Enable password recovery flow.

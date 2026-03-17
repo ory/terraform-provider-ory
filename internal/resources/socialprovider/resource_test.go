@@ -107,6 +107,47 @@ func TestAccSocialProviderResource_baseRedirectURI(t *testing.T) {
 	})
 }
 
+func TestAccSocialProviderResource_autoLink(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with auto_link enabled
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_auto_link.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-google-autolink"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "auto_link", "true"),
+				),
+			},
+			// Verify no perpetual diff (auto_link is write-only, state must be preserved)
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_auto_link.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Update auto_link to false
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_auto_link_disabled.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "auto_link", "false"),
+				),
+			},
+			// ImportState — auto_link is write-only (not returned by API)
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           "test-google-autolink",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret", "auto_link"},
+			},
+		},
+	})
+}
+
 func TestAccSocialProviderResource_apple(t *testing.T) {
 	tmplData := struct{ PrivateKey string }{PrivateKey: generateTestPrivateKey(t)}
 

@@ -48,6 +48,7 @@ type SocialProviderResourceModel struct {
 	AppleTeamID       types.String `tfsdk:"apple_team_id"`
 	ApplePrivateKeyID types.String `tfsdk:"apple_private_key_id"`
 	ApplePrivateKey   types.String `tfsdk:"apple_private_key"`
+	AutoLink          types.Bool   `tfsdk:"auto_link"`
 	BaseRedirectURI   types.String `tfsdk:"base_redirect_uri"`
 }
 
@@ -135,6 +136,10 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				Description: "Apple private key in PEM format (contents of the .p8 file). Required when provider_type is \"apple\" and client_secret is not set. Ory uses this to generate the JWT client secret automatically.",
 				Optional:    true,
 				Sensitive:   true,
+			},
+			"auto_link": schema.BoolAttribute{
+				Description: "Enable automatic account linking for this provider. When true, if an identity with the same identifier (e.g., email) already exists, the social sign-in will automatically link to that identity instead of failing. Requires enable_oidc_auto_link_policy to be true in the project config (ory_project_config).",
+				Optional:    true,
 			},
 			"base_redirect_uri": schema.StringAttribute{
 				Description: "Override the base redirect URI for OIDC callbacks (e.g., \"https://iam.example.com\"). When set, Ory constructs callback URLs using this base instead of the default project domain. This is a global OIDC config setting — if multiple social providers set different values, the last applied value wins.",
@@ -288,6 +293,11 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 	}
 	if !plan.Tenant.IsNull() && !plan.Tenant.IsUnknown() {
 		config["microsoft_tenant"] = plan.Tenant.ValueString()
+	}
+
+	// Auto-link — only send when explicitly set
+	if !plan.AutoLink.IsNull() && !plan.AutoLink.IsUnknown() {
+		config["auto_link"] = plan.AutoLink.ValueBool()
 	}
 
 	// Apple-specific fields — skip empty strings to avoid sending blank credentials
@@ -580,6 +590,9 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 	if tenant, ok := provider["microsoft_tenant"].(string); ok && tenant != "" {
 		state.Tenant = types.StringValue(tenant)
 	}
+
+	// auto_link is write-only — the API does not return it in responses.
+	// Preserve the existing state value (same approach as client_secret).
 
 	// Read Apple-specific fields, clearing stale state when not returned by the API
 	if teamID, ok := provider["apple_team_id"].(string); ok && teamID != "" {

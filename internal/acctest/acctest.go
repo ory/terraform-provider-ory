@@ -18,9 +18,9 @@ import (
 	"github.com/ory/terraform-provider-ory/internal/provider"
 )
 
-// testProjectPrefix is used to name ephemeral test projects so that stale
+// TestProjectPrefix is used to name ephemeral test projects so that stale
 // ones can be automatically purged. DO NOT CHANGE.
-const testProjectPrefix = "ory-cy-e2e-da2f162d-af61-42dd-90dc-e3fcfa7c84a0"
+const TestProjectPrefix = "ory-cy-e2e-da2f162d-af61-42dd-90dc-e3fcfa7c84a0"
 
 // TestProject holds information about a test project created for acceptance tests.
 type TestProject struct {
@@ -141,7 +141,7 @@ func loadProjectFromEnv(t *testing.T) {
 }
 
 // createSharedProject creates an ephemeral test project as a fallback when no
-// pre-created project is configured. The project uses the testProjectPrefix so
+// pre-created project is configured. The project uses the TestProjectPrefix so
 // stale projects can be automatically purged. Cleanup is best-effort via
 // CleanupEphemeralProject().
 func createSharedProject(t *testing.T) {
@@ -152,7 +152,7 @@ func createSharedProject(t *testing.T) {
 		return
 	}
 
-	projectName := fmt.Sprintf("%s-tf-%d", testProjectPrefix, time.Now().UnixNano())
+	projectName := fmt.Sprintf("%s-tf-%d", TestProjectPrefix, time.Now().UnixNano())
 	t.Logf("Creating test project: %s (environment: prod)", projectName)
 
 	// Create as "prod" environment to support all features including organizations

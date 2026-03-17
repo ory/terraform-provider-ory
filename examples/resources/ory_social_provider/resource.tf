@@ -7,6 +7,16 @@ resource "ory_social_provider" "google" {
   scope         = ["email", "profile"]
 }
 
+# Google Sign-In with automatic account linking
+resource "ory_social_provider" "google_auto_link" {
+  provider_id   = "google-auto-link"
+  provider_type = "google"
+  client_id     = var.google_client_id
+  client_secret = var.google_client_secret
+  scope         = ["email", "profile"]
+  auto_link     = true # Requires enable_oidc_auto_link_policy = true in ory_project_config
+}
+
 # Generic OIDC with a custom base redirect URI (e.g., when using a custom domain)
 resource "ory_social_provider" "corporate_sso_custom_domain" {
   provider_id       = "corporate-sso-custom-domain"
