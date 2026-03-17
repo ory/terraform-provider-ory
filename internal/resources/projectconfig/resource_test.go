@@ -173,7 +173,9 @@ func TestAccProjectConfigResource_codeMFA(t *testing.T) {
 					resource.TestCheckResourceAttr("ory_project_config.test", "code_mfa_enabled", "true"),
 				),
 			},
-			// ImportState
+			// ImportState — config fields are ignored because import only sets
+			// id/project_id; Read only refreshes fields that are non-null in
+			// state, so config attributes won't be populated until apply.
 			{
 				ResourceName:      "ory_project_config.test",
 				ImportState:       true,
@@ -194,8 +196,9 @@ func TestAccProjectConfigResource_codeMFA(t *testing.T) {
 			},
 			// Verify no perpetual diff
 			{
-				Config:   acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", map[string]string{"CodeMFAEnabled": "false"}),
-				PlanOnly: true,
+				Config:             acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", map[string]string{"CodeMFAEnabled": "false"}),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})
