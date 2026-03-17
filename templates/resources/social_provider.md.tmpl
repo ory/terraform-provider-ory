@@ -64,7 +64,7 @@ If not set, the provider uses a default mapper that extracts the email claim.
 
 The `auto_link` attribute enables automatic account linking for a specific social provider. When set to `true`, if an identity with the same identifier (e.g., email) already exists, the social sign-in will automatically link to that existing identity instead of failing with a duplicate error.
 
-~> **Write-only attribute:** `auto_link` is accepted by the API on create/update but is **not returned** on read. Terraform preserves the value from state. This means drift cannot be detected from the API, and `terraform import` will not populate this field. To disable auto-linking after it has been enabled, explicitly set `auto_link = false` — simply removing the attribute from your configuration will leave auto-linking enabled server-side.
+~> **Write-only attribute:** `auto_link` is accepted by the API on create/update but is **not returned** on read. Terraform preserves the value from state. This means drift cannot be detected from the API, and `terraform import` will not populate this field. Removing `auto_link` from your configuration will automatically disable auto-linking server-side.
 
 To use auto-linking, you must also enable the auto-link policy at the project level using `enable_oidc_auto_link_policy = true` in the `ory_project_config` resource:
 

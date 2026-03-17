@@ -129,18 +129,30 @@ func TestAccSocialProviderResource_autoLink(t *testing.T) {
 				Config:   acctest.LoadTestConfig(t, "testdata/with_auto_link.tf.tmpl", nil),
 				PlanOnly: true,
 			},
-			// Update auto_link to false
-			{
-				Config: acctest.LoadTestConfig(t, "testdata/with_auto_link_disabled.tf.tmpl", nil),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("ory_social_provider.test", "auto_link", "false"),
-				),
-			},
-			// Remove auto_link from config — should send false to API and clear state
+			// Remove auto_link from config while it is true — should send false to
+			// API and clear state (validates "removal disables" behavior)
 			{
 				Config: acctest.LoadTestConfig(t, "testdata/with_auto_link_removed.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckNoResourceAttr("ory_social_provider.test", "auto_link"),
+				),
+			},
+			// Verify no diff after removal
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_auto_link_removed.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Re-enable then explicitly set to false
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_auto_link.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "auto_link", "true"),
+				),
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_auto_link_disabled.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "auto_link", "false"),
 				),
 			},
 			// ImportState — auto_link is write-only (not returned by API)
