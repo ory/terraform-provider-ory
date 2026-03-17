@@ -17,12 +17,12 @@ func TestFetchSchemaFromURL(t *testing.T) {
 		srv := httptest.NewTLSServer(handler)
 		defer srv.Close()
 
-		origNew := newSchemaFetchClient
+		origClient := schemaFetchClient
 		origChecker := hostChecker
-		newSchemaFetchClient = func(_ context.Context) *http.Client { return srv.Client() }
+		schemaFetchClient = srv.Client()
 		hostChecker = func(context.Context, string) (bool, error) { return false, nil } // allow all hosts
 		defer func() {
-			newSchemaFetchClient = origNew
+			schemaFetchClient = origClient
 			hostChecker = origChecker
 		}()
 		fn(t, srv.URL)
@@ -104,10 +104,10 @@ func TestFetchSchemaFromURL_RedirectToPrivateHost(t *testing.T) {
 	defer publicSrv.Close()
 
 	origChecker := hostChecker
-	origNew := newSchemaFetchClient
+	origClient := schemaFetchClient
 	defer func() {
 		hostChecker = origChecker
-		newSchemaFetchClient = origNew
+		schemaFetchClient = origClient
 	}()
 
 	// The initial request's hostChecker call sees the public server's host
@@ -122,12 +122,10 @@ func TestFetchSchemaFromURL_RedirectToPrivateHost(t *testing.T) {
 		return callCount > 1, nil
 	}
 
-	newSchemaFetchClient = func(ctx context.Context) *http.Client {
-		c := publicSrv.Client()
-		real := newDefaultSchemaFetchClient(ctx)
-		c.CheckRedirect = real.CheckRedirect
-		return c
-	}
+	// Use the public server's TLS client but with the real CheckRedirect.
+	c := publicSrv.Client()
+	c.CheckRedirect = schemaFetchClient.CheckRedirect
+	schemaFetchClient = c
 
 	_, err := fetchSchemaFromURL(context.Background(), publicSrv.URL+"/schema.json")
 	if err == nil {
@@ -149,19 +147,17 @@ func TestFetchSchemaFromURL_RedirectToHTTP(t *testing.T) {
 	defer publicSrv.Close()
 
 	origChecker := hostChecker
-	origNew := newSchemaFetchClient
+	origClient := schemaFetchClient
 	defer func() {
 		hostChecker = origChecker
-		newSchemaFetchClient = origNew
+		schemaFetchClient = origClient
 	}()
 
 	hostChecker = func(context.Context, string) (bool, error) { return false, nil }
-	newSchemaFetchClient = func(ctx context.Context) *http.Client {
-		c := publicSrv.Client()
-		real := newDefaultSchemaFetchClient(ctx)
-		c.CheckRedirect = real.CheckRedirect
-		return c
-	}
+
+	c := publicSrv.Client()
+	c.CheckRedirect = schemaFetchClient.CheckRedirect
+	schemaFetchClient = c
 
 	_, err := fetchSchemaFromURL(context.Background(), publicSrv.URL+"/schema.json")
 	if err == nil {

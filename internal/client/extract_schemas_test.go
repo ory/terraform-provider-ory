@@ -183,12 +183,12 @@ func TestExtractSchemasFromProjectConfig_HTTPS(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	origNew := newSchemaFetchClient
+	origClient := schemaFetchClient
 	origChecker := hostChecker
-	newSchemaFetchClient = func(_ context.Context) *http.Client { return srv.Client() }
+	schemaFetchClient = srv.Client()
 	hostChecker = func(context.Context, string) (bool, error) { return false, nil }
 	defer func() {
-		newSchemaFetchClient = origNew
+		schemaFetchClient = origClient
 		hostChecker = origChecker
 	}()
 

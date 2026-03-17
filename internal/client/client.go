@@ -1407,7 +1407,16 @@ func extractSchemasFromProjectConfig(ctx context.Context, project *ory.Project) 
 	identity, _ := configMap["identity"].(map[string]interface{})
 	rawSchemas, _ := identity["schemas"].([]interface{})
 
-	var result []ory.IdentitySchemaContainer
+	// First pass: decode base64/preset schemas synchronously and collect
+	// HTTPS schemas that need network fetching.
+	type httpsEntry struct {
+		index int
+		id    string
+		url   string
+	}
+	result := make([]ory.IdentitySchemaContainer, 0, len(rawSchemas))
+	var httpsFetches []httpsEntry
+
 	for _, raw := range rawSchemas {
 		s, ok := raw.(map[string]interface{})
 		if !ok {
@@ -1431,13 +1440,8 @@ func extractSchemasFromProjectConfig(ctx context.Context, project *ory.Project) 
 			container.Schema = schemaObj
 
 		case strings.HasPrefix(rawURL, schemeHTTPS+"://"):
-			// The Ory API transforms base64 schema URLs to HTTPS URLs after
-			// processing. Fetch the actual schema content from the URL.
-			schemaObj, err := fetchSchemaFromURL(ctx, rawURL)
-			if err != nil {
-				return nil, fmt.Errorf("fetching schema %q from URL: %w", id, err)
-			}
-			container.Schema = schemaObj
+			// Mark for parallel fetching below.
+			httpsFetches = append(httpsFetches, httpsEntry{index: len(result), id: id, url: rawURL})
 
 		default:
 			// Preset or unrecognized URL schemes: return an empty object so
@@ -1447,6 +1451,39 @@ func extractSchemasFromProjectConfig(ctx context.Context, project *ory.Project) 
 
 		result = append(result, container)
 	}
+
+	// Second pass: fetch HTTPS schemas in parallel (bounded to avoid
+	// excessive concurrency). Projects typically have 1-3 schemas.
+	if len(httpsFetches) > 0 {
+		type fetchResult struct {
+			schema map[string]interface{}
+			err    error
+		}
+		results := make([]fetchResult, len(httpsFetches))
+		var wg sync.WaitGroup
+		// Limit concurrency to 5 to avoid excessive socket usage.
+		sem := make(chan struct{}, 5)
+
+		for i, entry := range httpsFetches {
+			wg.Add(1)
+			go func(i int, entry httpsEntry) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				schemaObj, err := fetchSchemaFromURL(ctx, entry.url)
+				results[i] = fetchResult{schema: schemaObj, err: err}
+			}(i, entry)
+		}
+		wg.Wait()
+
+		for i, entry := range httpsFetches {
+			if results[i].err != nil {
+				return nil, fmt.Errorf("fetching schema %q from URL: %w", entry.id, results[i].err)
+			}
+			result[entry.index].Schema = results[i].schema
+		}
+	}
+
 	return result, nil
 }
 
@@ -1455,43 +1492,38 @@ func extractSchemasFromProjectConfig(ctx context.Context, project *ory.Project) 
 // override it. Returns (isPrivate, error) — error indicates DNS failure.
 var hostChecker = isPrivateHost
 
-// newSchemaFetchClient is a function variable that creates an HTTP client for
-// fetching schema content. It is a variable so tests can override it.
-var newSchemaFetchClient = newDefaultSchemaFetchClient
-
-// newDefaultSchemaFetchClient creates an HTTP client for fetching schema content
-// from trusted URLs returned by the Ory API. It has a short timeout, allows at
-// most one HTTPS redirect, validates redirect targets against private/loopback
-// hosts, and uses a custom DialContext that validates the resolved IP address
-// to prevent DNS rebinding (TOCTOU) attacks.
-func newDefaultSchemaFetchClient(ctx context.Context) *http.Client {
-	return &http.Client{
-		Timeout: 10 * time.Second,
-		Transport: &http.Transport{
-			// Validate the actual resolved IP at connection time to prevent
-			// DNS rebinding: a hostname may resolve to a public IP during the
-			// pre-flight check but to a private IP when the connection is made.
-			DialContext: safeDialContext,
-		},
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 2 {
-				return fmt.Errorf("too many redirects fetching schema")
-			}
-			if req.URL.Scheme != "https" {
-				return fmt.Errorf("refusing non-HTTPS redirect for schema URL")
-			}
-			// Validate the redirect target to prevent SSRF bypass via a
-			// public HTTPS URL that redirects to a private/loopback host.
-			redirectIsPrivate, checkErr := hostChecker(ctx, req.URL.Hostname())
-			if checkErr != nil {
-				return checkErr
-			}
-			if redirectIsPrivate {
-				return fmt.Errorf("refusing redirect to private/loopback host %q", req.URL.Hostname())
-			}
-			return nil
-		},
-	}
+// schemaFetchClient is a shared HTTP client for fetching schema content from
+// trusted URLs returned by the Ory API. It is thread-safe and reuses
+// connections. It uses req.Context() in CheckRedirect so per-request
+// cancellation is respected without creating a new client per call.
+// It is a variable so tests can override it.
+var schemaFetchClient = &http.Client{
+	Timeout: 10 * time.Second,
+	Transport: &http.Transport{
+		// Validate the actual resolved IP at connection time to prevent
+		// DNS rebinding: a hostname may resolve to a public IP during the
+		// pre-flight check but to a private IP when the connection is made.
+		DialContext: safeDialContext,
+	},
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 2 {
+			return fmt.Errorf("too many redirects fetching schema")
+		}
+		if req.URL.Scheme != "https" {
+			return fmt.Errorf("refusing non-HTTPS redirect for schema URL")
+		}
+		// Validate the redirect target to prevent SSRF bypass via a
+		// public HTTPS URL that redirects to a private/loopback host.
+		// Use req.Context() so the check respects per-request cancellation.
+		redirectIsPrivate, checkErr := hostChecker(req.Context(), req.URL.Hostname())
+		if checkErr != nil {
+			return checkErr
+		}
+		if redirectIsPrivate {
+			return fmt.Errorf("refusing redirect to private/loopback host %q", req.URL.Hostname())
+		}
+		return nil
+	},
 }
 
 // safeDialContext wraps the default dialer and validates that the resolved IP
@@ -1555,8 +1587,7 @@ func fetchSchemaFromURL(ctx context.Context, schemaURL string) (map[string]inter
 		return nil, fmt.Errorf("creating request for schema %q: %w", schemaURL, err)
 	}
 
-	client := newSchemaFetchClient(ctx)
-	resp, err := client.Do(req)
+	resp, err := schemaFetchClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetching schema from %q: %w", schemaURL, err)
 	}
