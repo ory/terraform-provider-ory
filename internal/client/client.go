@@ -329,6 +329,11 @@ type OryClient struct {
 	// immediately after PatchProject. This cache ensures Read operations
 	// see the latest state after Create/Update.
 	cachedProjects sync.Map
+
+	// cachedSlugs caches project ID -> slug mappings resolved via the console API.
+	// This avoids redundant API calls when multiple CRUD operations resolve the
+	// same project_id within a single Terraform run.
+	cachedSlugs sync.Map
 }
 
 // NewOryClient creates a new Ory API client.
@@ -452,6 +457,42 @@ func (c *OryClient) ProjectID() string {
 // WorkspaceID returns the configured workspace ID.
 func (c *OryClient) WorkspaceID() string {
 	return c.config.WorkspaceID
+}
+
+// ResolveProjectSlug resolves a project ID to its slug via the console API.
+// Results are cached to avoid redundant API calls within a single Terraform run.
+func (c *OryClient) ResolveProjectSlug(ctx context.Context, projectID string) (string, error) {
+	if projectID == "" {
+		return "", fmt.Errorf("project_id must not be empty")
+	}
+	if slug, ok := c.cachedSlugs.Load(projectID); ok {
+		return slug.(string), nil
+	}
+	if c.consoleClient == nil {
+		return "", fmt.Errorf("console API client not configured: workspace_api_key is required to resolve project_id to slug")
+	}
+	project, err := c.GetProject(ctx, projectID)
+	if err != nil {
+		return "", fmt.Errorf("resolving project slug for project %s: %w", projectID, err)
+	}
+	slug := project.GetSlug()
+	c.cachedSlugs.Store(projectID, slug)
+	return slug, nil
+}
+
+// ProjectClientForProject returns a project-scoped client for the given project ID.
+// It resolves the project slug via the console API and uses the provider's project API key.
+func (c *OryClient) ProjectClientForProject(ctx context.Context, projectID string) (*OryClient, error) {
+	slug, err := c.ResolveProjectSlug(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	apiKey := c.config.ProjectAPIKey
+	if apiKey == "" {
+		return nil, fmt.Errorf("project_api_key is required for project API operations (JWK, OAuth2, etc.): " +
+			"set it on the provider or via ORY_PROJECT_API_KEY environment variable")
+	}
+	return c.WithProjectCredentials(slug, apiKey), nil
 }
 
 // WithProjectCredentials returns a new OryClient that uses the given project
