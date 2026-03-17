@@ -95,6 +95,7 @@ type ProjectConfigResourceModel struct {
 	// Auth methods
 	EnablePassword     types.Bool `tfsdk:"enable_password"`
 	EnableCode         types.Bool `tfsdk:"enable_code"`
+	CodeMFAEnabled     types.Bool `tfsdk:"code_mfa_enabled"`
 	EnableOIDC         types.Bool `tfsdk:"enable_oidc"`
 	EnableTOTP         types.Bool `tfsdk:"enable_totp"`
 	EnableWebAuthn     types.Bool `tfsdk:"enable_webauthn"`
@@ -474,6 +475,11 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 			"enable_code": schema.BoolAttribute{
 				Description: "Enable code-based authentication.",
 				Optional:    true,
+			},
+			"code_mfa_enabled": schema.BoolAttribute{
+				Description: "Enable the code method as a second factor for MFA. " +
+					"When enabled, users can use one-time codes as a second authentication factor.",
+				Optional: true,
 			},
 			"enable_oidc": schema.BoolAttribute{
 				Description: "Enable OIDC (OpenID Connect) social sign-in. Must be enabled for social providers (e.g. Google, GitHub) to work.",
@@ -997,6 +1003,7 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 	methodMappings := map[*types.Bool]string{
 		&plan.EnablePassword:     "/services/identity/config/selfservice/methods/password/enabled",
 		&plan.EnableCode:         "/services/identity/config/selfservice/methods/code/enabled",
+		&plan.CodeMFAEnabled:     "/services/identity/config/selfservice/methods/code/mfa_enabled",
 		&plan.EnableOIDC:         "/services/identity/config/selfservice/methods/oidc/enabled",
 		&plan.EnableTOTP:         "/services/identity/config/selfservice/methods/totp/enabled",
 		&plan.EnableWebAuthn:     "/services/identity/config/selfservice/methods/webauthn/enabled",
@@ -1576,6 +1583,7 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 		methodReadMappings := map[*types.Bool][]string{
 			&state.EnablePassword:     {"selfservice", "methods", "password", "enabled"},
 			&state.EnableCode:         {"selfservice", "methods", "code", "enabled"},
+			&state.CodeMFAEnabled:     {"selfservice", "methods", "code", "mfa_enabled"},
 			&state.EnableOIDC:         {"selfservice", "methods", "oidc", "enabled"},
 			&state.EnableTOTP:         {"selfservice", "methods", "totp", "enabled"},
 			&state.EnableWebAuthn:     {"selfservice", "methods", "webauthn", "enabled"},

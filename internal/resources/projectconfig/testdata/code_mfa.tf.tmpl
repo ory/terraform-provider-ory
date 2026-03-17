@@ -1,0 +1,4 @@
+resource "ory_project_config" "test" {
+  enable_code      = true
+  code_mfa_enabled = [[ .CodeMFAEnabled ]]
+}
