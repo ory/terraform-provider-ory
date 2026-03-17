@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"sync"
@@ -1427,14 +1429,15 @@ func (c *OryClient) ListIdentitySchemasViaProject(ctx context.Context, projectID
 	if err != nil {
 		return nil, fmt.Errorf("getting project for schema lookup: %w", err)
 	}
-	return extractSchemasFromProjectConfig(project)
+	return extractSchemasFromProjectConfig(ctx, project)
 }
 
 // extractSchemasFromProjectConfig reads the identity schemas array from the
 // project's kratos config and converts each entry into an
 // IdentitySchemaContainer. For base64-encoded schemas the content is decoded
-// inline; preset schemas are returned with an empty schema body.
-func extractSchemasFromProjectConfig(project *ory.Project) ([]ory.IdentitySchemaContainer, error) {
+// inline; for HTTPS URLs the content is fetched over HTTPS; preset schemas
+// are returned with an empty schema body.
+func extractSchemasFromProjectConfig(ctx context.Context, project *ory.Project) ([]ory.IdentitySchemaContainer, error) {
 	if project.Services.Identity == nil {
 		return nil, nil
 	}
@@ -1445,7 +1448,16 @@ func extractSchemasFromProjectConfig(project *ory.Project) ([]ory.IdentitySchema
 	identity, _ := configMap["identity"].(map[string]interface{})
 	rawSchemas, _ := identity["schemas"].([]interface{})
 
-	var result []ory.IdentitySchemaContainer
+	// First pass: decode base64/preset schemas synchronously and collect
+	// HTTPS schemas that need network fetching.
+	type httpsEntry struct {
+		index int
+		id    string
+		url   string
+	}
+	result := make([]ory.IdentitySchemaContainer, 0, len(rawSchemas))
+	var httpsFetches []httpsEntry
+
 	for _, raw := range rawSchemas {
 		s, ok := raw.(map[string]interface{})
 		if !ok {
@@ -1456,7 +1468,8 @@ func extractSchemasFromProjectConfig(project *ory.Project) ([]ory.IdentitySchema
 
 		container := ory.IdentitySchemaContainer{Id: id}
 
-		if strings.HasPrefix(rawURL, "base64://") {
+		switch {
+		case strings.HasPrefix(rawURL, "base64://"):
 			decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(rawURL, "base64://"))
 			if err != nil {
 				return nil, fmt.Errorf("decoding base64 schema %q: %w", id, err)
@@ -1466,15 +1479,213 @@ func extractSchemasFromProjectConfig(project *ory.Project) ([]ory.IdentitySchema
 				return nil, fmt.Errorf("parsing JSON for schema %q: %w", id, err)
 			}
 			container.Schema = schemaObj
-		} else {
-			// Preset or URL-based schemas: return an empty object so
+
+		case strings.HasPrefix(rawURL, schemeHTTPS+"://"):
+			// Mark for parallel fetching below.
+			httpsFetches = append(httpsFetches, httpsEntry{index: len(result), id: id, url: rawURL})
+
+		default:
+			// Preset or unrecognized URL schemes: return an empty object so
 			// json.Marshal produces "{}" instead of "null".
 			container.Schema = map[string]interface{}{}
 		}
 
 		result = append(result, container)
 	}
+
+	// Second pass: fetch HTTPS schemas in parallel (bounded to avoid
+	// excessive concurrency). Projects typically have 1-3 schemas.
+	if len(httpsFetches) > 0 {
+		type fetchResult struct {
+			schema map[string]interface{}
+			err    error
+		}
+		results := make([]fetchResult, len(httpsFetches))
+		var wg sync.WaitGroup
+		// Limit concurrency to 5 to avoid excessive socket usage.
+		sem := make(chan struct{}, 5)
+
+		for i, entry := range httpsFetches {
+			wg.Add(1)
+			go func(i int, entry httpsEntry) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				schemaObj, err := fetchSchemaFromURL(ctx, entry.url)
+				results[i] = fetchResult{schema: schemaObj, err: err}
+			}(i, entry)
+		}
+		wg.Wait()
+
+		for i, entry := range httpsFetches {
+			if results[i].err != nil {
+				return nil, fmt.Errorf("fetching schema %q from URL: %w", entry.id, results[i].err)
+			}
+			result[entry.index].Schema = results[i].schema
+		}
+	}
+
 	return result, nil
+}
+
+// hostChecker is the function used to check whether a host is private.
+// It accepts a context for DNS resolution and is a variable so tests can
+// override it. Returns (isPrivate, error) — error indicates DNS failure.
+var hostChecker = isPrivateHost
+
+// schemaFetchClient is a shared HTTP client for fetching schema content from
+// trusted URLs returned by the Ory API. It is thread-safe and reuses
+// connections. It uses req.Context() in CheckRedirect so per-request
+// cancellation is respected without creating a new client per call.
+// It is a variable so tests can override it.
+var schemaFetchClient = &http.Client{
+	Timeout: 10 * time.Second,
+	Transport: &http.Transport{
+		// Validate the actual resolved IP at connection time to prevent
+		// DNS rebinding: a hostname may resolve to a public IP during the
+		// pre-flight check but to a private IP when the connection is made.
+		DialContext: safeDialContext,
+	},
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 2 {
+			return fmt.Errorf("too many redirects fetching schema")
+		}
+		if req.URL.Scheme != "https" {
+			return fmt.Errorf("refusing non-HTTPS redirect for schema URL")
+		}
+		// Validate the redirect target to prevent SSRF bypass via a
+		// public HTTPS URL that redirects to a private/loopback host.
+		// Use req.Context() so the check respects per-request cancellation.
+		redirectIsPrivate, checkErr := hostChecker(req.Context(), req.URL.Hostname())
+		if checkErr != nil {
+			return checkErr
+		}
+		if redirectIsPrivate {
+			return fmt.Errorf("refusing redirect to private/loopback host %q", req.URL.Hostname())
+		}
+		return nil
+	},
+}
+
+// safeDialContext wraps the default dialer and validates that the resolved IP
+// address is not private/loopback/link-local before establishing the connection.
+// This prevents DNS rebinding attacks where a hostname resolves to a public IP
+// during pre-flight checks but to a private IP at connection time.
+func safeDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid address %q: %w", addr, err)
+	}
+
+	// Resolve the hostname to IP addresses.
+	resolver := &net.Resolver{}
+	ips, err := resolver.LookupHost(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("resolving host %q: %w", host, err)
+	}
+
+	// Filter out private/loopback IPs — only connect to public addresses.
+	var dialer net.Dialer
+	for _, ip := range ips {
+		parsed, parseErr := netip.ParseAddr(ip)
+		if parseErr != nil {
+			continue
+		}
+		if isPrivateAddr(parsed) {
+			continue
+		}
+		// Try connecting to this public IP.
+		conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip, port))
+		if dialErr == nil {
+			return conn, nil
+		}
+	}
+	return nil, fmt.Errorf("all resolved addresses for %q are private or unreachable", host)
+}
+
+// fetchSchemaFromURL retrieves a JSON schema from an HTTPS URL. The URL must
+// use the https scheme (enforced by the caller's switch statement) and must not
+// resolve to a private/loopback address.
+func fetchSchemaFromURL(ctx context.Context, schemaURL string) (map[string]interface{}, error) {
+	parsed, err := url.Parse(schemaURL)
+	if err != nil {
+		return nil, fmt.Errorf("parsing schema URL %q: %w", schemaURL, err)
+	}
+	if parsed.Scheme != "https" {
+		return nil, fmt.Errorf("refusing non-HTTPS schema URL %q", schemaURL)
+	}
+	host := parsed.Hostname()
+	isPrivate, err := hostChecker(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	if isPrivate {
+		return nil, fmt.Errorf("refusing schema URL with private/loopback host %q", host)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, schemaURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request for schema %q: %w", schemaURL, err)
+	}
+
+	resp, err := schemaFetchClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetching schema from %q: %w", schemaURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetching schema from %q: HTTP %d", schemaURL, resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MB limit
+	if err != nil {
+		return nil, fmt.Errorf("reading schema from %q: %w", schemaURL, err)
+	}
+
+	var schemaObj map[string]interface{}
+	if err := json.Unmarshal(body, &schemaObj); err != nil {
+		return nil, fmt.Errorf("parsing schema JSON from %q: %w", schemaURL, err)
+	}
+	return schemaObj, nil
+}
+
+// isPrivateHost checks whether a host is a loopback, private, or link-local
+// address. For DNS names it resolves the host and checks all resulting IPs.
+// Returns (true, nil) for private hosts, (false, nil) for public hosts, and
+// (false, error) when DNS resolution fails — callers can then surface an
+// actionable "DNS resolution failed" error instead of a misleading
+// "private/loopback host" message. The actual DNS rebinding protection is
+// enforced by safeDialContext which validates the resolved IP at connection time.
+func isPrivateHost(ctx context.Context, host string) (bool, error) {
+	if host == "localhost" {
+		return true, nil
+	}
+
+	// Try parsing as an IP literal first.
+	if addr, err := netip.ParseAddr(host); err == nil {
+		return isPrivateAddr(addr), nil
+	}
+
+	// It's a DNS name — resolve and check all A/AAAA records.
+	resolver := &net.Resolver{}
+	addrs, err := resolver.LookupHost(ctx, host)
+	if err != nil {
+		return false, fmt.Errorf("resolving host %q: %w", host, err)
+	}
+	for _, a := range addrs {
+		if addr, err := netip.ParseAddr(a); err == nil && isPrivateAddr(addr) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// isPrivateAddr checks whether an IP address is loopback, private, link-local,
+// or unspecified using proper CIDR range checks.
+func isPrivateAddr(addr netip.Addr) bool {
+	return addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() ||
+		addr.IsLinkLocalMulticast() || addr.IsUnspecified()
 }
 
 // Custom Domain (CNAME) operations
