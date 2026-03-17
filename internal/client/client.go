@@ -1394,7 +1394,7 @@ func (c *OryClient) ListIdentitySchemasViaProject(ctx context.Context, projectID
 // extractSchemasFromProjectConfig reads the identity schemas array from the
 // project's kratos config and converts each entry into an
 // IdentitySchemaContainer. For base64-encoded schemas the content is decoded
-// inline; for HTTPS URLs the content is fetched over HTTP; preset schemas
+// inline; for HTTPS URLs the content is fetched over HTTPS; preset schemas
 // are returned with an empty schema body.
 func extractSchemasFromProjectConfig(ctx context.Context, project *ory.Project) ([]ory.IdentitySchemaContainer, error) {
 	if project.Services.Identity == nil {
