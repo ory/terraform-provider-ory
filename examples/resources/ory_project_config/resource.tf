@@ -28,10 +28,12 @@ resource "ory_project_config" "secure" {
   password_max_breaches          = 0
 
   # Authentication Methods
-  enable_password = true
-  enable_code     = true
-  enable_oidc     = true # Required for social providers (Google, GitHub, etc.)
-  enable_passkey  = true
+  enable_password              = true
+  enable_code                  = true
+  code_mfa_enabled             = true # Enable code as a second factor for MFA
+  enable_oidc                  = true # Required for social providers (Google, GitHub, etc.)
+  enable_oidc_auto_link_policy = true # Allow social providers with auto_link = true to link to existing identities
+  enable_passkey               = true
 
   # Flow Controls
   enable_registration = true

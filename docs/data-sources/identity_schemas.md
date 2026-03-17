@@ -31,7 +31,7 @@ output "schemas" {
 
 ### Optional
 
-- `project_id` (String) The ID of the project to list schemas from. If not set, uses the provider's project_id. When set, schemas are read from the project config via the console API (workspace key), which does not require project_slug or project_api_key.
+- `project_id` (String) The ID of the project to list schemas from. If not set, uses the provider's project_id. The Kratos API is preferred when project_slug and project_api_key are configured (returns canonical hash IDs with full schema content). When only a workspace key is available, schemas are read from the project config via the console API.
 
 ### Read-Only
 

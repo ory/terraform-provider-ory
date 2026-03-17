@@ -115,6 +115,14 @@ resource "ory_oauth2_client" "api" {
   token_endpoint_auth_method  = "client_secret_post"
 }
 
+# With a custom client_id
+resource "ory_oauth2_client" "custom" {
+  client_id                   = "my-api-client"
+  client_name                 = "API Client with Custom ID"
+  grant_types                 = ["client_credentials"]
+  scope                       = "read write"
+}
+
 output "client_id" {
   value = ory_oauth2_client.api.client_id
 }
@@ -149,10 +157,12 @@ func (r *OAuth2ClientResource) Schema(ctx context.Context, req resource.SchemaRe
 				},
 			},
 			"client_id": schema.StringAttribute{
-				Description: "The OAuth2 client ID.",
+				Description: "The OAuth2 client ID. If not specified, a random ID will be generated. Once set, changing this value forces recreation of the resource.",
+				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
+					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"client_secret": schema.StringAttribute{
@@ -405,6 +415,10 @@ func (r *OAuth2ClientResource) Create(ctx context.Context, req resource.CreateRe
 	oauthClient := ory.OAuth2Client{
 		ClientName: ory.PtrString(plan.ClientName.ValueString()),
 		Scope:      ory.PtrString(plan.Scope.ValueString()),
+	}
+
+	if !plan.ClientID.IsNull() && !plan.ClientID.IsUnknown() {
+		oauthClient.ClientId = ory.PtrString(plan.ClientID.ValueString())
 	}
 
 	if !plan.GrantTypes.IsNull() && !plan.GrantTypes.IsUnknown() {

@@ -57,6 +57,27 @@ resource "ory_social_provider" "google" {
   scope         = ["email", "profile"]
 }
 
+# Google Sign-In with automatic account linking
+resource "ory_social_provider" "google_auto_link" {
+  provider_id   = "google-auto-link"
+  provider_type = "google"
+  client_id     = var.google_client_id
+  client_secret = var.google_client_secret
+  scope         = ["email", "profile"]
+  auto_link     = true # Requires enable_oidc_auto_link_policy = true in ory_project_config
+}
+
+# Generic OIDC with a custom base redirect URI (e.g., when using a custom domain)
+resource "ory_social_provider" "corporate_sso_custom_domain" {
+  provider_id       = "corporate-sso-custom-domain"
+  provider_type     = "generic"
+  client_id         = var.sso_client_id
+  client_secret     = var.sso_client_secret
+  issuer_url        = "https://sso.example.com"
+  scope             = ["openid", "profile", "email"]
+  base_redirect_uri = "https://iam.example.com"
+}
+
 # GitHub
 resource "ory_social_provider" "github" {
   provider_id   = "github"
@@ -194,6 +215,48 @@ If not set, the provider uses a default mapper that extracts the email claim.
 
 ~> **Note:** The `mapper_url` value may be transformed by the API (e.g., stored as a GCS URL). The provider only tracks this field if you explicitly set it in your configuration to avoid false drift detection.
 
+## Auto-Link
+
+The `auto_link` attribute enables automatic account linking for a specific social provider. When set to `true`, if an identity with the same identifier (e.g., email) already exists, the social sign-in will automatically link to that existing identity instead of failing with a duplicate error.
+
+~> **Write-only attribute:** `auto_link` is accepted by the API on create/update but is **not returned** on read. Terraform preserves the value from state. This means drift cannot be detected from the API, and `terraform import` will not populate this field. Removing `auto_link` from your configuration will automatically disable auto-linking server-side.
+
+To use auto-linking, you must also enable the auto-link policy at the project level using `enable_oidc_auto_link_policy = true` in the `ory_project_config` resource:
+
+```hcl
+resource "ory_project_config" "main" {
+  enable_oidc                  = true
+  enable_oidc_auto_link_policy = true
+}
+
+resource "ory_social_provider" "google" {
+  provider_id   = "google"
+  provider_type = "google"
+  client_id     = var.google_client_id
+  client_secret = var.google_client_secret
+  scope         = ["email", "profile"]
+  auto_link     = true
+}
+```
+
+~> **Security:** Auto-linking trusts that the social provider has verified the user's email. Only enable this for providers you trust to verify email addresses.
+
+## Base Redirect URI
+
+The `base_redirect_uri` attribute overrides the base URL Ory uses when constructing OIDC callback URLs. Use this when your project is accessible under a custom domain and you want callbacks to go to that domain rather than the default Ory project URL.
+
+```hcl
+resource "ory_social_provider" "google" {
+  provider_id      = "google"
+  provider_type    = "google"
+  client_id        = var.google_client_id
+  client_secret    = var.google_client_secret
+  base_redirect_uri = "https://iam.example.com"
+}
+```
+
+~> **Note:** `base_redirect_uri` is a **global** OIDC configuration setting, not per-provider. If you have multiple `ory_social_provider` resources and set `base_redirect_uri` in more than one, the last applied value will take effect for all providers.
+
 ## Important Behaviors
 
 - **`provider_id` and `provider_type` cannot be changed** after creation. Changing either forces a new resource.
@@ -230,6 +293,8 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 - `apple_private_key_id` (String) Apple private key ID from the Apple Developer portal (e.g., "UX56C66723"). Required when provider_type is "apple" and client_secret is not set.
 - `apple_team_id` (String) Apple Developer Team ID (e.g., "KP76DQS54M"). Required when provider_type is "apple" and client_secret is not set.
 - `auth_url` (String) Custom authorization URL (for non-standard providers).
+- `auto_link` (Boolean) Enable automatic account linking for this provider. When true, if an identity with the same identifier (e.g., email) already exists, the social sign-in will automatically link to that identity instead of failing. Requires enable_oidc_auto_link_policy to be true in the project config (ory_project_config). This attribute is write-only — the API accepts it on create/update but does not return it on read, so Terraform preserves the value from state. On import, the value will not be populated. Removing this attribute from your configuration will automatically disable auto-linking server-side.
+- `base_redirect_uri` (String) Override the base redirect URI for OIDC callbacks (e.g., "https://iam.example.com"). When set, Ory constructs callback URLs using this base instead of the default project domain. This is a global OIDC config setting — if multiple social providers set different values, the last applied value wins.
 - `client_secret` (String, Sensitive) OAuth2 client secret from the provider. Required for all providers except Apple (where Ory generates the secret from apple_team_id, apple_private_key_id, and apple_private_key).
 - `issuer_url` (String) OIDC issuer URL (required for generic providers).
 - `mapper_url` (String) Jsonnet mapper URL for claims mapping. Can be a URL or base64-encoded Jsonnet (base64://...). If not set, a default mapper that extracts email from claims will be used.

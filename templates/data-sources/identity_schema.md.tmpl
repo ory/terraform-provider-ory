@@ -15,7 +15,7 @@ This data source retrieves a specific identity schema from the project, allowing
 
 ~> **Note:** Ory may assign hash-based IDs to schemas. Use the `ory_identity_schemas` (plural) data source to discover available schema IDs, or use the `id` output from an `ory_identity_schema` resource.
 
-~> **Tip:** Set `project_id` to look up schemas via the console API (workspace key only). This is useful during project bootstrap when `project_slug` and `project_api_key` are not yet available.
+~> **Tip:** Set `project_id` when only a workspace API key is available (e.g., during project bootstrap before `project_slug` and `project_api_key` exist). When project credentials are configured, the Kratos API is preferred automatically as it returns canonical hash-based IDs with full schema content.
 
 ## Example Usage
 

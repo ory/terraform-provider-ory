@@ -159,6 +159,51 @@ func TestAccProjectConfigResource_mfaPolicy(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_codeMFA(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with code MFA enabled
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", map[string]string{"CodeMFAEnabled": "true"}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "enable_code", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "code_mfa_enabled", "true"),
+				),
+			},
+			// ImportState — config fields are ignored because import only sets
+			// id/project_id; Read only refreshes fields that are non-null in
+			// state, so config attributes won't be populated until apply.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"enable_code", "code_mfa_enabled",
+					"cors_enabled", "password_min_length",
+					"smtp_connection_uri",
+				},
+			},
+			// Update to disabled
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", map[string]string{"CodeMFAEnabled": "false"}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "enable_code", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "code_mfa_enabled", "false"),
+				),
+			},
+			// Verify no perpetual diff
+			{
+				Config:             acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", map[string]string{"CodeMFAEnabled": "false"}),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_oidc(t *testing.T) {
 	acctest.RequireSocialProviderTests(t)
 	resource.Test(t, resource.TestCase{
@@ -170,6 +215,23 @@ func TestAccProjectConfigResource_oidc(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "enable_oidc", "true"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccProjectConfigResource_oidcAutoLinkPolicy(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oidc_auto_link_policy.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "enable_oidc", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "enable_oidc_auto_link_policy", "true"),
 				),
 			},
 		},

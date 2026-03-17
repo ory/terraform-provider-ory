@@ -121,6 +121,14 @@ resource "ory_oauth2_client" "cli_tool" {
   scope                      = "openid offline_access"
 }
 
+# Client with a custom client_id (useful for consistency across environments)
+resource "ory_oauth2_client" "custom_id" {
+  client_id   = "my-api-client"
+  client_name = "API Client with Custom ID"
+  grant_types = ["client_credentials"]
+  scope       = "api:read api:write"
+}
+
 # Same-apply: Create project and OAuth2 client together
 # Use resource-level credentials when the project doesn't exist yet
 resource "ory_oauth2_client" "same_apply" {
