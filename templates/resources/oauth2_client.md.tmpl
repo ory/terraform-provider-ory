@@ -15,6 +15,21 @@ OAuth2 clients are used for machine-to-machine authentication or user-facing OAu
 
 ~> **Important:** The `client_secret` is only returned when the client is first created. Store it securely immediately after creation. It cannot be retrieved later, including after `terraform import`.
 
+## Custom Client ID
+
+By default, a random `client_id` is generated when the client is created. You can specify a custom `client_id` for consistency across environments:
+
+```hcl
+resource "ory_oauth2_client" "api" {
+  client_id   = "my-api-client"
+  client_name = "API Client"
+  grant_types = ["client_credentials"]
+  scope       = "read write"
+}
+```
+
+~> **Note:** Changing the `client_id` after creation forces the resource to be destroyed and recreated. The `client_id` must be unique within the project.
+
 ## Example Usage
 
 {{ tffile "examples/resources/ory_oauth2_client/resource.tf" }}

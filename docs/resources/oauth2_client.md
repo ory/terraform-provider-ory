@@ -15,6 +15,21 @@ OAuth2 clients are used for machine-to-machine authentication or user-facing OAu
 
 ~> **Important:** The `client_secret` is only returned when the client is first created. Store it securely immediately after creation. It cannot be retrieved later, including after `terraform import`.
 
+## Custom Client ID
+
+By default, a random `client_id` is generated when the client is created. You can specify a custom `client_id` for consistency across environments:
+
+```hcl
+resource "ory_oauth2_client" "api" {
+  client_id   = "my-api-client"
+  client_name = "API Client"
+  grant_types = ["client_credentials"]
+  scope       = "read write"
+}
+```
+
+~> **Note:** Changing the `client_id` after creation forces the resource to be destroyed and recreated. The `client_id` must be unique within the project.
+
 ## Example Usage
 
 ```terraform
@@ -139,6 +154,14 @@ resource "ory_oauth2_client" "cli_tool" {
   response_types             = ["code"]
   token_endpoint_auth_method = "none"
   scope                      = "openid offline_access"
+}
+
+# Client with a custom client_id (useful for consistency across environments)
+resource "ory_oauth2_client" "custom_id" {
+  client_id   = "my-api-client"
+  client_name = "API Client with Custom ID"
+  grant_types = ["client_credentials"]
+  scope       = "api:read api:write"
 }
 
 # Same-apply: Create project and OAuth2 client together
@@ -329,6 +352,7 @@ terraform import ory_oauth2_client.api <client-id>
 - `backchannel_logout_session_required` (Boolean) Whether the client requires a session identifier in back-channel logout notifications.
 - `backchannel_logout_uri` (String) OpenID Connect back-channel logout URI.
 - `client_credentials_grant_access_token_lifespan` (String) Access token lifespan for client credentials grant (e.g., '1h', '30m').
+- `client_id` (String) The OAuth2 client ID. If not specified, a random ID will be generated. Once set, changing this value forces recreation of the resource.
 - `client_uri` (String) URL of the client's homepage.
 - `contacts` (List of String) List of contact email addresses for the client maintainers.
 - `device_authorization_grant_access_token_lifespan` (String) Access token lifespan for device authorization grant (e.g., '1h').
@@ -364,6 +388,5 @@ terraform import ory_oauth2_client.api <client-id>
 
 ### Read-Only
 
-- `client_id` (String) The OAuth2 client ID.
 - `client_secret` (String, Sensitive) The OAuth2 client secret. Only returned on creation.
 - `id` (String) Internal Terraform ID (same as client_id).
