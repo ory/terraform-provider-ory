@@ -53,6 +53,7 @@ resource "ory_project_config" "secure" {
   # Authentication Methods
   enable_password              = true
   enable_code                  = true
+  code_mfa_enabled             = true # Enable code as a second factor for MFA
   enable_oidc                  = true # Required for social providers (Google, GitHub, etc.)
   enable_oidc_auto_link_policy = true # Allow social providers with auto_link = true to link to existing identities
   enable_passkey               = true
@@ -341,6 +342,7 @@ Some Ory project settings are not yet available through this resource. For setti
 - `account_experience_name` (String) Application name shown in the hosted login UI.
 - `account_experience_stylesheet` (String) Custom CSS stylesheet for the hosted login UI.
 - `allowed_return_urls` (List of String) List of allowed return URLs.
+- `code_mfa_enabled` (Boolean) Enable the code method as a second factor for MFA. When enabled, users can use one-time codes as a second authentication factor.
 - `cors_admin_enabled` (Boolean) Enable CORS for the admin API.
 - `cors_admin_origins` (List of String) Allowed CORS origins for the admin API.
 - `cors_enabled` (Boolean) Enable CORS for the public API.

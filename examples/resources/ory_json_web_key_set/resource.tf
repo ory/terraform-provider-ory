@@ -1,4 +1,4 @@
-# RSA signing key set
+# RSA signing key set (project_id from provider config)
 resource "ory_json_web_key_set" "signing" {
   set_id    = "token-signing-keys"
   key_id    = "rsa-sig-1"
@@ -6,12 +6,13 @@ resource "ory_json_web_key_set" "signing" {
   use       = "sig"
 }
 
-# ECDSA signing key set (smaller, faster)
+# ECDSA signing key set with explicit project_id
 resource "ory_json_web_key_set" "ecdsa_signing" {
-  set_id    = "ecdsa-signing-keys"
-  key_id    = "ec-sig-1"
-  algorithm = "ES256"
-  use       = "sig"
+  project_id = var.ory_project_id
+  set_id     = "ecdsa-signing-keys"
+  key_id     = "ec-sig-1"
+  algorithm  = "ES256"
+  use        = "sig"
 }
 
 # Encryption key set

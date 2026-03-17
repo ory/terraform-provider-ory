@@ -3,7 +3,9 @@
 package oauth2client_test
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 
@@ -222,6 +224,51 @@ func TestAccOAuth2ClientResource_withResourceCredentials(t *testing.T) {
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"client_secret", "project_slug", "project_api_key"},
+			},
+		},
+	})
+}
+
+func TestAccOAuth2ClientResource_withCustomClientID(t *testing.T) {
+	clientID := fmt.Sprintf("tf-acc-test-%d", time.Now().UnixNano())
+
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with custom client_id
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_custom_client_id.tf.tmpl", map[string]string{
+					"Name":     "Test Client Custom ID",
+					"ClientID": clientID,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "client_id", clientID),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "id", clientID),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "client_name", "Test Client Custom ID"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "scope", "api:read"),
+					resource.TestCheckResourceAttrSet("ory_oauth2_client.test", "client_secret"),
+				),
+			},
+			// ImportState
+			{
+				ResourceName:            "ory_oauth2_client.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+			// Update (change name/scope, client_id stays the same)
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_custom_client_id_updated.tf.tmpl", map[string]string{
+					"Name":     "Test Client Custom ID Updated",
+					"ClientID": clientID,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "client_id", clientID),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "id", clientID),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "client_name", "Test Client Custom ID Updated"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.test", "scope", "api:read api:write"),
+				),
 			},
 		},
 	})
