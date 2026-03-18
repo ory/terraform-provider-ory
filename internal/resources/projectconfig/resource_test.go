@@ -3,9 +3,11 @@
 package projectconfig_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 	"github.com/ory/terraform-provider-ory/internal/testutil"
@@ -273,12 +275,15 @@ func TestAccProjectConfigResource_adminCORS(t *testing.T) {
 }
 
 func TestAccProjectConfigResource_tokenizerTemplates(t *testing.T) {
+	templateData := map[string]string{"TTL": "1h"}
+
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
+			// Step 1: Create templates
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/tokenizer_templates.tf.tmpl", nil),
+				Config: acctest.LoadTestConfig(t, "testdata/tokenizer_templates.tf.tmpl", templateData),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "session_tokenizer_templates.my_jwt.ttl", "1h"),
@@ -286,6 +291,36 @@ func TestAccProjectConfigResource_tokenizerTemplates(t *testing.T) {
 					resource.TestCheckResourceAttr("ory_project_config.test", "session_tokenizer_templates.short_token.subject_source", "external_id"),
 				),
 			},
+			// Step 2: Verify no perpetual diff after create
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/tokenizer_templates.tf.tmpl", templateData),
+				PlanOnly: true,
+			},
+			// Step 3: Update TTL
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/tokenizer_templates.tf.tmpl", map[string]string{"TTL": "2h"}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_tokenizer_templates.my_jwt.ttl", "2h"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_tokenizer_templates.short_token.ttl", "5m"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_tokenizer_templates.short_token.subject_source", "external_id"),
+				),
+			},
+			// Step 4: Verify no perpetual diff after update
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/tokenizer_templates.tf.tmpl", map[string]string{"TTL": "2h"}),
+				PlanOnly: true,
+			},
+			// Step 5: Remove templates out-of-band via API, then re-apply
+			// to verify drift detection correctly triggers re-creation.
+			{
+				PreConfig: clearTokenizerTemplatesOutOfBand(t),
+				Config:    acctest.LoadTestConfig(t, "testdata/tokenizer_templates.tf.tmpl", map[string]string{"TTL": "2h"}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_tokenizer_templates.my_jwt.ttl", "2h"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_tokenizer_templates.short_token.ttl", "5m"),
+				),
+			},
+			// Step 6: ImportState
 			{
 				ResourceName:      "ory_project_config.test",
 				ImportState:       true,
@@ -299,6 +334,30 @@ func TestAccProjectConfigResource_tokenizerTemplates(t *testing.T) {
 			},
 		},
 	})
+}
+
+// clearTokenizerTemplatesOutOfBand returns a PreConfig function that removes
+// tokenizer templates directly via the API to simulate external drift.
+func clearTokenizerTemplatesOutOfBand(t *testing.T) func() {
+	t.Helper()
+	return func() {
+		c, err := acctest.GetOryClient()
+		if err != nil {
+			t.Fatalf("Failed to create Ory client: %v", err)
+		}
+		projectID := acctest.GetTestProjectID(t)
+		patches := []ory.JsonPatch{
+			{
+				Op:    "replace",
+				Path:  "/services/identity/config/session/whoami/tokenizer/templates",
+				Value: map[string]interface{}{},
+			},
+		}
+		if _, err := c.PatchProject(context.Background(), projectID, patches); err != nil {
+			t.Fatalf("Failed to clear tokenizer templates out-of-band: %v", err)
+		}
+		t.Log("Cleared tokenizer templates out-of-band to simulate drift")
+	}
 }
 
 func TestAccProjectConfigResource_emptyReturnURLs(t *testing.T) {
