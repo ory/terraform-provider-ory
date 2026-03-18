@@ -64,6 +64,8 @@ func testCheckKeysContainPrivateMaterial(resourceName, algorithm string) resourc
 			requiredFields = []string{"d"}
 		case "HS256", "HS512":
 			requiredFields = []string{"k"}
+		default:
+			return fmt.Errorf("unsupported algorithm %q for private key material check", algorithm)
 		}
 
 		for _, field := range requiredFields {

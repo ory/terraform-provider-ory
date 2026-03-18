@@ -84,7 +84,7 @@ output "signing_jwks" {
 
 ## Keys Output
 
-The `keys` attribute contains the full JSON Web Key Set as a JSON string, **including private key material**. This attribute is marked as sensitive in Terraform state. The output follows the standard JWKS format:
+The `keys` attribute contains the full JSON Web Key Set as a JSON string, **including private key material**. This attribute is marked as sensitive, so Terraform redacts it from plan and apply output. However, it is still persisted in state and can be retrieved via `terraform output` or remote state access. The output follows the standard JWKS format:
 
 ### RSA key (`RS256`)
 
