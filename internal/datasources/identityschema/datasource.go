@@ -140,8 +140,13 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 	// config, which only contains schemas explicitly added to that project and
 	// may return empty schema bodies when the API has transformed schema URLs
 	// from base64:// to https://.
+	//
+	// During project bootstrap (workspace key only, no project_slug/project_api_key),
+	// we can still reach the Kratos API by resolving the project slug from the
+	// project_id and using the workspace API key as the bearer token.
 	canUseKratosAPI := d.client.HasProjectClient()
 	canUseConsoleAPI := d.client.HasConsoleClient() && projectID != ""
+	canBootstrapKratosAPI := !canUseKratosAPI && canUseConsoleAPI
 
 	if !canUseKratosAPI && !canUseConsoleAPI {
 		resp.Diagnostics.AddError("Missing Project ID",
@@ -174,7 +179,25 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 			}
 		}
 
-		// Strategy 2: Try console API (works for any project, fallback for Kratos failures).
+		// Strategy 2: Bootstrap Kratos API via project_id (workspace key only).
+		// Resolves the project slug from project_id and uses the workspace API key
+		// to call the Kratos API, which returns all workspace-scoped schemas.
+		if canBootstrapKratosAPI && found == nil {
+			schemas, err := d.client.ListIdentitySchemasForProject(ctx, projectID)
+			if err == nil {
+				allSchemas = schemas
+				for i := range schemas {
+					if schemas[i].GetId() == targetID {
+						found = &schemas[i]
+						break
+					}
+				}
+			}
+			// If bootstrap Kratos failed, fall through to console API below.
+		}
+
+		// Strategy 3: Try console API (reads from project config — limited to schemas
+		// already added to this project).
 		if canUseConsoleAPI && found == nil {
 			schemas, err := d.client.ListIdentitySchemasViaProject(ctx, projectID)
 			if err != nil {

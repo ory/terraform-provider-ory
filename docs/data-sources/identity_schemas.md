@@ -13,7 +13,7 @@ This data source retrieves all identity schemas configured for the current proje
 
 -> **Plan:** Available on all Ory Network plans.
 
-~> **Tip:** Set `project_id` to list schemas via the console API (workspace key only). This is useful during project bootstrap when `project_slug` and `project_api_key` are not yet available.
+~> **Tip:** Set `project_id` to list schemas during project bootstrap when `project_slug` and `project_api_key` are not yet available. The provider will automatically create a temporary API key to reach the Kratos API, which returns all workspace-scoped schemas including those not yet added to the new project.
 
 ## Example Usage
 
@@ -23,6 +23,18 @@ data "ory_identity_schemas" "all" {}
 
 output "schemas" {
   value = data.ory_identity_schemas.all.schemas
+}
+
+# List all workspace schemas during project bootstrap.
+# When only a workspace API key is configured (no project_slug/project_api_key),
+# set project_id to discover all workspace-scoped schemas for a new project.
+resource "ory_project" "new" {
+  name        = "my-new-project"
+  environment = "dev"
+}
+
+data "ory_identity_schemas" "for_new_project" {
+  project_id = ory_project.new.id
 }
 ```
 

@@ -497,6 +497,50 @@ func (c *OryClient) ProjectClientForProject(ctx context.Context, projectID strin
 	return c.WithProjectCredentials(slug, apiKey), nil
 }
 
+// ListIdentitySchemasForProject lists identity schemas using the Kratos API
+// for a specific project ID. This is used during project bootstrap when only
+// a workspace API key is available (no project_slug/project_api_key at the
+// provider level).
+//
+// When a project API key is already configured, it is used directly.
+// Otherwise, a temporary project API key is created via the console API,
+// used for the Kratos call, and then deleted. This allows the data source
+// to return all workspace-scoped schemas even for brand-new projects.
+func (c *OryClient) ListIdentitySchemasForProject(ctx context.Context, projectID string) ([]ory.IdentitySchemaContainer, error) {
+	slug, err := c.ResolveProjectSlug(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("resolving project for schema listing: %w", err)
+	}
+
+	// If a project API key is already configured, use it directly.
+	if c.config.ProjectAPIKey != "" {
+		tempClient := c.WithProjectCredentials(slug, c.config.ProjectAPIKey)
+		return tempClient.ListIdentitySchemas(ctx)
+	}
+
+	// Bootstrap path: create a temporary project API key via the console API
+	// (which accepts workspace keys), use it to call the Kratos API, then
+	// clean it up.
+	if c.consoleClient == nil {
+		return nil, fmt.Errorf("workspace_api_key is required to list workspace schemas during project bootstrap")
+	}
+
+	tempKey, err := c.CreateProjectAPIKey(ctx, projectID, ory.CreateProjectApiKeyRequest{
+		Name: "terraform-provider-ory-temp-schema-lookup",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating temporary API key for schema listing: %w", err)
+	}
+
+	// Always clean up the temporary key, even if the schema listing fails.
+	defer func() {
+		_ = c.DeleteProjectAPIKey(ctx, projectID, tempKey.GetId())
+	}()
+
+	tempClient := c.WithProjectCredentials(slug, tempKey.GetValue())
+	return tempClient.ListIdentitySchemas(ctx)
+}
+
 // WithProjectCredentials returns a new OryClient that uses the given project
 // credentials. The returned client shares the console client with the parent
 // but has its own isolated project client (lazily initialized).

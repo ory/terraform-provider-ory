@@ -28,6 +28,40 @@ func TestAccIdentitySchemasDataSource_basic(t *testing.T) {
 	})
 }
 
+// TestAccIdentitySchemasDataSource_bootstrapProject tests the bootstrap scenario
+// where a brand-new project is created and workspace-level schemas are listed
+// via project_id. This exercises the code path that creates a temporary API key
+// to call the Kratos API when no project credentials are configured.
+func TestAccIdentitySchemasDataSource_bootstrapProject(t *testing.T) {
+	suffix := time.Now().UnixNano()
+	schemaID := fmt.Sprintf("tf-test-ds-list-bootstrap-%d", suffix)
+	projectName := fmt.Sprintf("%s-bootstrap-list-%d", acctest.TestProjectPrefix, suffix)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSchemaTests(t)
+			acctest.RequireProjectTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/bootstrap_project.tf.tmpl", map[string]string{
+					"SchemaID":    schemaID,
+					"AppURL":      testutil.ExampleAppURL,
+					"ProjectName": projectName,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					// The data source returns schemas (should include workspace-scoped ones)
+					resource.TestCheckResourceAttrSet("data.ory_identity_schemas.via_bootstrap", "schemas.#"),
+					// project_id is set
+					resource.TestCheckResourceAttrSet("data.ory_identity_schemas.via_bootstrap", "project_id"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccIdentitySchemasDataSource_viaProjectID(t *testing.T) {
 	suffix := time.Now().UnixNano()
 	schemaID := fmt.Sprintf("tf-test-ds-list-%d", suffix)

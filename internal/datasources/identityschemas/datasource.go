@@ -95,6 +95,7 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 	// data source for detailed rationale on API selection.
 	canUseKratosAPI := d.client.HasProjectClient()
 	canUseConsoleAPI := d.client.HasConsoleClient() && projectID != ""
+	canBootstrapKratosAPI := !canUseKratosAPI && canUseConsoleAPI
 
 	if !canUseKratosAPI && !canUseConsoleAPI {
 		resp.Diagnostics.AddError("Missing Project ID",
@@ -107,11 +108,18 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 	var err error
 	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
 		// Prefer Kratos API (canonical IDs + full content) when available.
-		// Fall back to console API if Kratos fails and console is available.
 		if canUseKratosAPI {
 			schemas, err = d.client.ListIdentitySchemas(ctx)
 			if err != nil && canUseConsoleAPI {
 				// Kratos API failed — try console API as fallback.
+				schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
+			}
+		} else if canBootstrapKratosAPI {
+			// Bootstrap path: resolve slug from project_id, create a temp API key,
+			// and call the Kratos API to get all workspace-scoped schemas.
+			schemas, err = d.client.ListIdentitySchemasForProject(ctx, projectID)
+			if err != nil {
+				// If bootstrap Kratos failed, fall back to console API (project config only).
 				schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
 			}
 		} else {

@@ -1,0 +1,45 @@
+# Create a schema in the shared test project so the workspace has custom schemas.
+resource "ory_identity_schema" "seed" {
+  schema_id = "[[ .SchemaID ]]"
+  schema    = jsonencode({
+    "$id": "[[ .AppURL ]]/test-bootstrap-list-schema.json",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Bootstrap List Test Schema",
+    "type": "object",
+    "properties": {
+      "traits": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email",
+            "ory.sh/kratos": {
+              "credentials": {
+                "password": {"identifier": true}
+              },
+              "verification": {"via": "email"},
+              "recovery": {"via": "email"}
+            }
+          }
+        },
+        "required": ["email"]
+      }
+    }
+  })
+}
+
+# Create a brand-new project (simulates bootstrap scenario).
+resource "ory_project" "bootstrap" {
+  name        = "[[ .ProjectName ]]"
+  environment = "dev"
+}
+
+# List all schemas via the new project's project_id.
+# This exercises the bootstrap path where the provider uses a temporary API key
+# to reach the Kratos API and return all workspace-scoped schemas.
+data "ory_identity_schemas" "via_bootstrap" {
+  project_id = ory_project.bootstrap.id
+
+  depends_on = [ory_identity_schema.seed]
+}
