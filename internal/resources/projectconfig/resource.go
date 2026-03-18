@@ -1717,10 +1717,17 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 		if !state.SessionTokenizerTemplates.IsNull() {
 			v := getNestedValue(identityConfig, "session", "whoami", "tokenizer", "templates")
 			templatesRaw, rawOK := v.(map[string]interface{})
-			if v == nil || !rawOK || len(templatesRaw) == 0 {
-				// Templates absent or empty remotely — clear state so Terraform
+			if v == nil || !rawOK {
+				// Templates path absent remotely — clear state so Terraform
 				// reports drift as "add" rather than "change".
 				state.SessionTokenizerTemplates = types.MapNull(types.ObjectType{AttrTypes: tokenizerTemplateAttrTypes})
+			} else if len(templatesRaw) == 0 {
+				// Templates path exists but is empty — set empty map (not null)
+				// to avoid a perpetual diff when the user configures `= {}`.
+				emptyMap, diags := types.MapValue(types.ObjectType{AttrTypes: tokenizerTemplateAttrTypes}, map[string]attr.Value{})
+				if !diags.HasError() {
+					state.SessionTokenizerTemplates = emptyMap
+				}
 			} else {
 				templateObjects := make(map[string]attr.Value, len(templatesRaw))
 				for name, tmplRaw := range templatesRaw {
