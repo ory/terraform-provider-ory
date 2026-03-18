@@ -1,0 +1,7 @@
+resource "ory_json_web_key_set" "test" {
+  project_id = "[[ .ProjectID ]]"
+  set_id     = "tf-test-jwks-ec"
+  key_id     = "tf-test-ec-key"
+  algorithm  = "ES256"
+  use        = "sig"
+}

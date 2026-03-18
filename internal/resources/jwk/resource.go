@@ -152,7 +152,7 @@ func (r *JWKResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				},
 			},
 			"keys": schema.StringAttribute{
-				Description: "The JSON Web Key Set as a JSON string (public parts only).",
+				Description: "The JSON Web Key Set as a JSON string, including private key material. This is a sensitive value.",
 				Computed:    true,
 				Sensitive:   true,
 			},

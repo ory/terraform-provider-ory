@@ -26,3 +26,9 @@ resource "ory_json_web_key_set" "encryption" {
 output "signing_key_set_id" {
   value = ory_json_web_key_set.signing.id
 }
+
+# Access the full JWKS (includes private key material)
+output "signing_jwks" {
+  value     = ory_json_web_key_set.signing.keys
+  sensitive = true
+}

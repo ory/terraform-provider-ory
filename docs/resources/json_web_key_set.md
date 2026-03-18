@@ -74,11 +74,19 @@ resource "ory_json_web_key_set" "encryption" {
 output "signing_key_set_id" {
   value = ory_json_web_key_set.signing.id
 }
+
+# Access the full JWKS (includes private key material)
+output "signing_jwks" {
+  value     = ory_json_web_key_set.signing.keys
+  sensitive = true
+}
 ```
 
 ## Keys Output
 
-The `keys` attribute contains the JSON Web Key Set as a JSON string with **public parts only**. Private keys are never exposed in Terraform state. The output follows the standard JWKS format:
+The `keys` attribute contains the full JSON Web Key Set as a JSON string, **including private key material**. This attribute is marked as sensitive in Terraform state. The output follows the standard JWKS format:
+
+### RSA key (`RS256`)
 
 ```json
 {
@@ -89,11 +97,54 @@ The `keys` attribute contains the JSON Web Key Set as a JSON string with **publi
       "use": "sig",
       "alg": "RS256",
       "n": "...",
-      "e": "..."
+      "e": "...",
+      "d": "...",
+      "p": "...",
+      "q": "...",
+      "dp": "...",
+      "dq": "...",
+      "qi": "..."
     }
   ]
 }
 ```
+
+### EC key (`ES256` / `ES512`)
+
+```json
+{
+  "keys": [
+    {
+      "kty": "EC",
+      "kid": "sig-key-1",
+      "use": "sig",
+      "alg": "ES256",
+      "crv": "P-256",
+      "x": "...",
+      "y": "...",
+      "d": "..."
+    }
+  ]
+}
+```
+
+### HMAC key (`HS256` / `HS512`)
+
+```json
+{
+  "keys": [
+    {
+      "kty": "oct",
+      "kid": "sig-key-1",
+      "use": "sig",
+      "alg": "HS256",
+      "k": "..."
+    }
+  ]
+}
+```
+
+~> **Security:** The `keys` attribute contains private key material and is marked as sensitive. Terraform will not display it in plan output, but it is stored in state. Use [remote state encryption](https://developer.hashicorp.com/terraform/language/state/sensitive-data) in production.
 
 On read, the provider extracts `algorithm`, `use`, and `key_id` from the **first key** in the set.
 
@@ -125,4 +176,4 @@ After import, `key_id` is populated from the first key in the set. If the set co
 ### Read-Only
 
 - `id` (String) Internal Terraform ID (same as set_id).
-- `keys` (String, Sensitive) The JSON Web Key Set as a JSON string (public parts only).
+- `keys` (String, Sensitive) The JSON Web Key Set as a JSON string, including private key material. This is a sensitive value.
