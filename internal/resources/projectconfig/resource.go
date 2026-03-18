@@ -1242,7 +1242,7 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 			templatesMap[name] = entry
 		}
 		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
+			Op:    "add",
 			Path:  "/services/identity/config/session/whoami/tokenizer/templates",
 			Value: templatesMap,
 		})
@@ -1715,48 +1715,52 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 
 		// Session Tokenizer Templates
 		if !state.SessionTokenizerTemplates.IsNull() {
-			if v := getNestedValue(identityConfig, "session", "whoami", "tokenizer", "templates"); v != nil {
-				if templatesRaw, ok := v.(map[string]interface{}); ok && len(templatesRaw) > 0 {
-					templateObjects := make(map[string]attr.Value, len(templatesRaw))
-					for name, tmplRaw := range templatesRaw {
-						tmplMap, ok := tmplRaw.(map[string]interface{})
-						if !ok {
-							continue
-						}
-						attrs := map[string]attr.Value{
-							"ttl":               types.StringNull(),
-							"jwks_url":          types.StringNull(),
-							"claims_mapper_url": types.StringNull(),
-							"subject_source":    types.StringNull(),
-						}
-						if s, ok := tmplMap["ttl"].(string); ok && s != "" {
-							// API normalizes durations (e.g. "1h" → "1h0m0s"), preserve state value
-							attrs["ttl"] = preserveTokenizerField(state, name, "ttl", s)
-						}
-						if _, ok := tmplMap["jwks_url"].(string); ok {
-							// jwks_url is sensitive — preserve state value to avoid diff
-							attrs["jwks_url"] = preserveTokenizerField(state, name, "jwks_url", "")
-						}
-						if s, ok := tmplMap["claims_mapper_url"].(string); ok && s != "" {
-							if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") {
-								// API may return GCS URL instead of base64 — preserve state value
-								attrs["claims_mapper_url"] = preserveTokenizerField(state, name, "claims_mapper_url", s)
-							} else {
-								attrs["claims_mapper_url"] = types.StringValue(s)
-							}
-						}
-						if s, ok := tmplMap["subject_source"].(string); ok && s != "" {
-							attrs["subject_source"] = types.StringValue(s)
-						}
-						objVal, diags := types.ObjectValue(tokenizerTemplateAttrTypes, attrs)
-						if !diags.HasError() {
-							templateObjects[name] = objVal
+			v := getNestedValue(identityConfig, "session", "whoami", "tokenizer", "templates")
+			templatesRaw, rawOK := v.(map[string]interface{})
+			if v == nil || !rawOK || len(templatesRaw) == 0 {
+				// Templates absent or empty remotely — clear state so Terraform
+				// reports drift as "add" rather than "change".
+				state.SessionTokenizerTemplates = types.MapNull(types.ObjectType{AttrTypes: tokenizerTemplateAttrTypes})
+			} else {
+				templateObjects := make(map[string]attr.Value, len(templatesRaw))
+				for name, tmplRaw := range templatesRaw {
+					tmplMap, ok := tmplRaw.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					attrs := map[string]attr.Value{
+						"ttl":               types.StringNull(),
+						"jwks_url":          types.StringNull(),
+						"claims_mapper_url": types.StringNull(),
+						"subject_source":    types.StringNull(),
+					}
+					if s, ok := tmplMap["ttl"].(string); ok && s != "" {
+						// API normalizes durations (e.g. "1h" → "1h0m0s"), preserve state value
+						attrs["ttl"] = preserveTokenizerField(state, name, "ttl", s)
+					}
+					if _, ok := tmplMap["jwks_url"].(string); ok {
+						// jwks_url is sensitive — preserve state value to avoid diff
+						attrs["jwks_url"] = preserveTokenizerField(state, name, "jwks_url", "")
+					}
+					if s, ok := tmplMap["claims_mapper_url"].(string); ok && s != "" {
+						if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") {
+							// API may return GCS URL instead of base64 — preserve state value
+							attrs["claims_mapper_url"] = preserveTokenizerField(state, name, "claims_mapper_url", s)
+						} else {
+							attrs["claims_mapper_url"] = types.StringValue(s)
 						}
 					}
-					mapVal, diags := types.MapValue(types.ObjectType{AttrTypes: tokenizerTemplateAttrTypes}, templateObjects)
+					if s, ok := tmplMap["subject_source"].(string); ok && s != "" {
+						attrs["subject_source"] = types.StringValue(s)
+					}
+					objVal, diags := types.ObjectValue(tokenizerTemplateAttrTypes, attrs)
 					if !diags.HasError() {
-						state.SessionTokenizerTemplates = mapVal
+						templateObjects[name] = objVal
 					}
+				}
+				mapVal, diags := types.MapValue(types.ObjectType{AttrTypes: tokenizerTemplateAttrTypes}, templateObjects)
+				if !diags.HasError() {
+					state.SessionTokenizerTemplates = mapVal
 				}
 			}
 		}

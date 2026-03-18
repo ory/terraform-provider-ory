@@ -277,6 +277,7 @@ func TestAccProjectConfigResource_tokenizerTemplates(t *testing.T) {
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
+			// Step 1: Create templates
 			{
 				Config: acctest.LoadTestConfig(t, "testdata/tokenizer_templates.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -286,6 +287,26 @@ func TestAccProjectConfigResource_tokenizerTemplates(t *testing.T) {
 					resource.TestCheckResourceAttr("ory_project_config.test", "session_tokenizer_templates.short_token.subject_source", "external_id"),
 				),
 			},
+			// Step 2: Verify no perpetual diff after create
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/tokenizer_templates.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Step 3: Update TTL
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/tokenizer_templates_update.tf.tmpl", map[string]string{"TTL": "2h"}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_tokenizer_templates.my_jwt.ttl", "2h"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_tokenizer_templates.short_token.ttl", "5m"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_tokenizer_templates.short_token.subject_source", "external_id"),
+				),
+			},
+			// Step 4: Verify no perpetual diff after update
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/tokenizer_templates_update.tf.tmpl", map[string]string{"TTL": "2h"}),
+				PlanOnly: true,
+			},
+			// Step 5: ImportState
 			{
 				ResourceName:      "ory_project_config.test",
 				ImportState:       true,
