@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	ory "github.com/ory/client-go"
+
 	"github.com/ory/terraform-provider-ory/internal/testutil"
 )
 
@@ -504,7 +506,7 @@ func TestOryClient_EnsureProjectClient_MissingKeyOnly(t *testing.T) {
 	}
 }
 
-func TestOryClient_RequireConsoleClient_NilPanics(t *testing.T) {
+func TestOryClient_RequireConsoleClient_NilReturnsError(t *testing.T) {
 	// This test verifies the fix for https://github.com/ory/terraform-provider-ory/issues/137
 	// where calling GetProject (and other console API methods) without a workspace
 	// API key caused a nil pointer dereference panic instead of a helpful error.
@@ -525,87 +527,93 @@ func TestOryClient_RequireConsoleClient_NilPanics(t *testing.T) {
 
 	ctx := context.Background()
 
+	// requireSentinel asserts the error wraps ErrConsoleClientNotConfigured.
+	requireSentinel := func(t *testing.T, err error) {
+		t.Helper()
+		if err == nil {
+			t.Fatal("expected error when consoleClient is nil")
+		}
+		if !errors.Is(err, ErrConsoleClientNotConfigured) {
+			t.Errorf("expected ErrConsoleClientNotConfigured, got: %v", err)
+		}
+	}
+
+	// Project operations
 	t.Run("GetProject", func(t *testing.T) {
 		_, err := client.GetProject(ctx, "any-project-id")
-		if err == nil {
-			t.Fatal("expected error when consoleClient is nil")
-		}
-		if !contains(err.Error(), "console API client not configured") {
-			t.Errorf("unexpected error: %s", err.Error())
-		}
+		requireSentinel(t, err)
 	})
-
 	t.Run("PatchProject", func(t *testing.T) {
 		_, err := client.PatchProject(ctx, "any-project-id", nil)
-		if err == nil {
-			t.Fatal("expected error when consoleClient is nil")
-		}
-		if !contains(err.Error(), "console API client not configured") {
-			t.Errorf("unexpected error: %s", err.Error())
-		}
+		requireSentinel(t, err)
 	})
-
 	t.Run("CreateProject", func(t *testing.T) {
 		_, resp, err := client.CreateProject(ctx, "name", "prod", "")
 		if resp != nil && resp.Body != nil {
 			_ = resp.Body.Close()
 		}
-		if err == nil {
-			t.Fatal("expected error when consoleClient is nil")
-		}
-		if !contains(err.Error(), "console API client not configured") {
-			t.Errorf("unexpected error: %s", err.Error())
-		}
+		requireSentinel(t, err)
 	})
-
 	t.Run("DeleteProject", func(t *testing.T) {
-		err := client.DeleteProject(ctx, "any-project-id")
-		if err == nil {
-			t.Fatal("expected error when consoleClient is nil")
-		}
-		if !contains(err.Error(), "console API client not configured") {
-			t.Errorf("unexpected error: %s", err.Error())
-		}
+		requireSentinel(t, client.DeleteProject(ctx, "any-project-id"))
 	})
 
+	// Workspace operations
 	t.Run("CreateWorkspace", func(t *testing.T) {
 		_, err := client.CreateWorkspace(ctx, "name")
-		if err == nil {
-			t.Fatal("expected error when consoleClient is nil")
-		}
-		if !contains(err.Error(), "console API client not configured") {
-			t.Errorf("unexpected error: %s", err.Error())
-		}
+		requireSentinel(t, err)
 	})
-
 	t.Run("GetWorkspace", func(t *testing.T) {
 		_, err := client.GetWorkspace(ctx, "any-workspace-id")
-		if err == nil {
-			t.Fatal("expected error when consoleClient is nil")
-		}
-		if !contains(err.Error(), "console API client not configured") {
-			t.Errorf("unexpected error: %s", err.Error())
-		}
+		requireSentinel(t, err)
 	})
-
+	t.Run("UpdateWorkspace", func(t *testing.T) {
+		_, err := client.UpdateWorkspace(ctx, "any-workspace-id", "name")
+		requireSentinel(t, err)
+	})
 	t.Run("ListWorkspaces", func(t *testing.T) {
 		_, err := client.ListWorkspaces(ctx)
-		if err == nil {
-			t.Fatal("expected error when consoleClient is nil")
-		}
-		if !contains(err.Error(), "console API client not configured") {
-			t.Errorf("unexpected error: %s", err.Error())
-		}
+		requireSentinel(t, err)
 	})
 
+	// Project API key operations
+	t.Run("CreateProjectAPIKey", func(t *testing.T) {
+		_, err := client.CreateProjectAPIKey(ctx, "any-project-id", ory.CreateProjectApiKeyRequest{Name: "test"})
+		requireSentinel(t, err)
+	})
+	t.Run("ListProjectAPIKeys", func(t *testing.T) {
+		_, err := client.ListProjectAPIKeys(ctx, "any-project-id")
+		requireSentinel(t, err)
+	})
+	t.Run("DeleteProjectAPIKey", func(t *testing.T) {
+		requireSentinel(t, client.DeleteProjectAPIKey(ctx, "any-project-id", "any-key-id"))
+	})
+
+	// Event stream operations
+	t.Run("CreateEventStream", func(t *testing.T) {
+		_, err := client.CreateEventStream(ctx, "any-project-id", ory.CreateEventStreamBody{})
+		requireSentinel(t, err)
+	})
+	t.Run("GetEventStream", func(t *testing.T) {
+		_, err := client.GetEventStream(ctx, "any-project-id", "any-stream-id")
+		requireSentinel(t, err)
+	})
+	t.Run("SetEventStream", func(t *testing.T) {
+		_, err := client.SetEventStream(ctx, "any-project-id", "any-stream-id", ory.SetEventStreamBody{})
+		requireSentinel(t, err)
+	})
+	t.Run("DeleteEventStream", func(t *testing.T) {
+		requireSentinel(t, client.DeleteEventStream(ctx, "any-project-id", "any-stream-id"))
+	})
+	t.Run("ListEventStreams", func(t *testing.T) {
+		_, err := client.ListEventStreams(ctx, "any-project-id")
+		requireSentinel(t, err)
+	})
+
+	// Organization operations
 	t.Run("ListOrganizations", func(t *testing.T) {
 		_, err := client.ListOrganizations(ctx, "any-project-id")
-		if err == nil {
-			t.Fatal("expected error when consoleClient is nil")
-		}
-		if !contains(err.Error(), "console API client not configured") {
-			t.Errorf("unexpected error: %s", err.Error())
-		}
+		requireSentinel(t, err)
 	})
 }
 

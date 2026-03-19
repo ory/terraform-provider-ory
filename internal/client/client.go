@@ -23,6 +23,10 @@ import (
 // ErrCustomDomainNotFound is returned when a custom domain ID is not found in the project's domain list.
 var ErrCustomDomainNotFound = errors.New("custom domain not found")
 
+// ErrConsoleClientNotConfigured is returned when a console API method is called
+// without a workspace API key configured. Callers can check with errors.Is.
+var ErrConsoleClientNotConfigured = errors.New("console API client not configured")
+
 const (
 	// maxRetries is the maximum number of retry attempts for rate-limited requests.
 	maxRetries = 3
@@ -556,12 +560,14 @@ func (c *OryClient) ensureProjectClient() error {
 	return nil
 }
 
-// requireConsoleClient returns an error if the console API client is not configured.
-// This prevents nil pointer panics when methods are called without a workspace API key.
+// requireConsoleClient returns an error wrapping ErrConsoleClientNotConfigured
+// if the console API client is not initialized (no workspace API key).
+// This prevents nil pointer panics when methods are called without credentials.
 func (c *OryClient) requireConsoleClient(operation string) error {
 	if c.consoleClient == nil {
-		return fmt.Errorf("%s: console API client not configured. "+
-			"Set workspace_api_key (ORY_WORKSPACE_API_KEY) in the provider configuration", operation)
+		return fmt.Errorf("%s: %w. "+
+			"Set workspace_api_key (ORY_WORKSPACE_API_KEY) in the provider configuration",
+			operation, ErrConsoleClientNotConfigured)
 	}
 	return nil
 }
