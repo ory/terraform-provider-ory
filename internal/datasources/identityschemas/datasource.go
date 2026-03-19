@@ -90,9 +90,7 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 	// Resolve project_id: use config value if known, fall back to provider.
 	projectID := d.resolveProjectID(data.ProjectID)
 
-	// Determine which APIs are available for this lookup.
-	// Identity schemas are workspace-scoped — see identityschema (singular)
-	// data source for detailed rationale on API selection.
+	// Prefer Kratos API (canonical IDs, full content); fall back to console API.
 	canUseKratosAPI := d.client.HasProjectClient()
 	canUseConsoleAPI := d.client.HasConsoleClient() && projectID != ""
 	canBootstrapKratosAPI := !canUseKratosAPI && canUseConsoleAPI
@@ -107,19 +105,14 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 	var schemas []ory.IdentitySchemaContainer
 	var err error
 	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
-		// Prefer Kratos API (canonical IDs + full content) when available.
 		if canUseKratosAPI {
 			schemas, err = d.client.ListIdentitySchemas(ctx)
 			if err != nil && canUseConsoleAPI {
-				// Kratos API failed — try console API as fallback.
 				schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
 			}
 		} else if canBootstrapKratosAPI {
-			// Bootstrap path: resolve slug from project_id, create a temp API key,
-			// and call the Kratos API to get all workspace-scoped schemas.
 			schemas, err = d.client.ListIdentitySchemasForProject(ctx, projectID)
 			if err != nil {
-				// If bootstrap Kratos failed, fall back to console API (project config only).
 				schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
 			}
 		} else {

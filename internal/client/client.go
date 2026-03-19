@@ -497,30 +497,21 @@ func (c *OryClient) ProjectClientForProject(ctx context.Context, projectID strin
 	return c.WithProjectCredentials(slug, apiKey), nil
 }
 
-// ListIdentitySchemasForProject lists identity schemas using the Kratos API
-// for a specific project ID. This is used during project bootstrap when only
-// a workspace API key is available (no project_slug/project_api_key at the
-// provider level).
-//
-// When a project API key is already configured, it is used directly.
-// Otherwise, a temporary project API key is created via the console API,
-// used for the Kratos call, and then deleted. This allows the data source
-// to return all workspace-scoped schemas even for brand-new projects.
+// ListIdentitySchemasForProject lists schemas via the Kratos API for a given project.
+// During bootstrap (no project credentials), a temporary API key is created via the
+// console API, used for the Kratos call, and then deleted.
 func (c *OryClient) ListIdentitySchemasForProject(ctx context.Context, projectID string) ([]ory.IdentitySchemaContainer, error) {
 	slug, err := c.ResolveProjectSlug(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("resolving project for schema listing: %w", err)
 	}
 
-	// If a project API key is already configured, use it directly.
-	if c.config.ProjectAPIKey != "" {
+	// Project API keys are project-scoped — only reuse if slug matches.
+	if c.config.ProjectAPIKey != "" && c.config.ProjectSlug == slug {
 		tempClient := c.WithProjectCredentials(slug, c.config.ProjectAPIKey)
 		return tempClient.ListIdentitySchemas(ctx)
 	}
 
-	// Bootstrap path: create a temporary project API key via the console API
-	// (which accepts workspace keys), use it to call the Kratos API, then
-	// clean it up.
 	if c.consoleClient == nil {
 		return nil, fmt.Errorf("workspace_api_key is required to list workspace schemas during project bootstrap")
 	}
@@ -532,9 +523,11 @@ func (c *OryClient) ListIdentitySchemasForProject(ctx context.Context, projectID
 		return nil, fmt.Errorf("creating temporary API key for schema listing: %w", err)
 	}
 
-	// Always clean up the temporary key, even if the schema listing fails.
+	// Use a detached context for cleanup so caller cancellation doesn't skip it.
 	defer func() {
-		_ = c.DeleteProjectAPIKey(ctx, projectID, tempKey.GetId())
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_ = c.DeleteProjectAPIKey(cleanupCtx, projectID, tempKey.GetId())
 	}()
 
 	tempClient := c.WithProjectCredentials(slug, tempKey.GetValue())

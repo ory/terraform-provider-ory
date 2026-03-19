@@ -13,6 +13,14 @@ import (
 	"github.com/ory/terraform-provider-ory/internal/testutil"
 )
 
+// checkSchemasNonEmpty returns an error if the schemas list is empty.
+func checkSchemasNonEmpty(value string) error {
+	if value == "0" {
+		return fmt.Errorf("expected at least one schema to be returned, got 0")
+	}
+	return nil
+}
+
 func TestAccIdentitySchemasDataSource_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
@@ -52,8 +60,12 @@ func TestAccIdentitySchemasDataSource_bootstrapProject(t *testing.T) {
 					"ProjectName": projectName,
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					// The data source returns schemas (should include workspace-scoped ones)
-					resource.TestCheckResourceAttrSet("data.ory_identity_schemas.via_bootstrap", "schemas.#"),
+					// The bootstrap path must return at least one schema — new projects
+					// would have none if the temp-key Kratos path is broken.
+					resource.TestCheckResourceAttrWith(
+						"data.ory_identity_schemas.via_bootstrap", "schemas.#",
+						checkSchemasNonEmpty,
+					),
 					// project_id is set
 					resource.TestCheckResourceAttrSet("data.ory_identity_schemas.via_bootstrap", "project_id"),
 				),
