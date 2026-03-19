@@ -504,6 +504,111 @@ func TestOryClient_EnsureProjectClient_MissingKeyOnly(t *testing.T) {
 	}
 }
 
+func TestOryClient_RequireConsoleClient_NilPanics(t *testing.T) {
+	// This test verifies the fix for https://github.com/ory/terraform-provider-ory/issues/137
+	// where calling GetProject (and other console API methods) without a workspace
+	// API key caused a nil pointer dereference panic instead of a helpful error.
+	cfg := OryClientConfig{
+		ProjectAPIKey: testutil.TestProjectAPIKey,
+		ProjectSlug:   testutil.TestProjectSlug,
+		// No WorkspaceAPIKey — consoleClient will be nil
+	}
+
+	client, err := NewOryClient(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if client.consoleClient != nil {
+		t.Fatal("consoleClient should be nil for this test")
+	}
+
+	ctx := context.Background()
+
+	t.Run("GetProject", func(t *testing.T) {
+		_, err := client.GetProject(ctx, "any-project-id")
+		if err == nil {
+			t.Fatal("expected error when consoleClient is nil")
+		}
+		if !contains(err.Error(), "console API client not configured") {
+			t.Errorf("unexpected error: %s", err.Error())
+		}
+	})
+
+	t.Run("PatchProject", func(t *testing.T) {
+		_, err := client.PatchProject(ctx, "any-project-id", nil)
+		if err == nil {
+			t.Fatal("expected error when consoleClient is nil")
+		}
+		if !contains(err.Error(), "console API client not configured") {
+			t.Errorf("unexpected error: %s", err.Error())
+		}
+	})
+
+	t.Run("CreateProject", func(t *testing.T) {
+		_, resp, err := client.CreateProject(ctx, "name", "prod", "")
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		if err == nil {
+			t.Fatal("expected error when consoleClient is nil")
+		}
+		if !contains(err.Error(), "console API client not configured") {
+			t.Errorf("unexpected error: %s", err.Error())
+		}
+	})
+
+	t.Run("DeleteProject", func(t *testing.T) {
+		err := client.DeleteProject(ctx, "any-project-id")
+		if err == nil {
+			t.Fatal("expected error when consoleClient is nil")
+		}
+		if !contains(err.Error(), "console API client not configured") {
+			t.Errorf("unexpected error: %s", err.Error())
+		}
+	})
+
+	t.Run("CreateWorkspace", func(t *testing.T) {
+		_, err := client.CreateWorkspace(ctx, "name")
+		if err == nil {
+			t.Fatal("expected error when consoleClient is nil")
+		}
+		if !contains(err.Error(), "console API client not configured") {
+			t.Errorf("unexpected error: %s", err.Error())
+		}
+	})
+
+	t.Run("GetWorkspace", func(t *testing.T) {
+		_, err := client.GetWorkspace(ctx, "any-workspace-id")
+		if err == nil {
+			t.Fatal("expected error when consoleClient is nil")
+		}
+		if !contains(err.Error(), "console API client not configured") {
+			t.Errorf("unexpected error: %s", err.Error())
+		}
+	})
+
+	t.Run("ListWorkspaces", func(t *testing.T) {
+		_, err := client.ListWorkspaces(ctx)
+		if err == nil {
+			t.Fatal("expected error when consoleClient is nil")
+		}
+		if !contains(err.Error(), "console API client not configured") {
+			t.Errorf("unexpected error: %s", err.Error())
+		}
+	})
+
+	t.Run("ListOrganizations", func(t *testing.T) {
+		_, err := client.ListOrganizations(ctx, "any-project-id")
+		if err == nil {
+			t.Fatal("expected error when consoleClient is nil")
+		}
+		if !contains(err.Error(), "console API client not configured") {
+			t.Errorf("unexpected error: %s", err.Error())
+		}
+	})
+}
+
 func TestIsRetryableError(t *testing.T) {
 	tests := []struct {
 		name     string
