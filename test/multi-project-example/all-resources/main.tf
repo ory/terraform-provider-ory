@@ -1,9 +1,12 @@
 # =============================================================================
-# Multi-Project for_each — All Project API resources with resource-level creds
+# Multi-Project for_each — Project API resources with resource-level creds
 # =============================================================================
-# Demonstrates that ALL Project API resources (JWK, identity, OIDC dynamic
-# client) can use for_each across multiple projects in a single apply,
-# thanks to resource-level project_slug + project_api_key attributes.
+# Demonstrates that Project API resources (JWK, identity, OIDC dynamic client)
+# can use for_each across multiple projects in a single apply, thanks to
+# resource-level project_slug + project_api_key attributes.
+#
+# Note: ory_relationship is also supported but omitted here because it requires
+# Ory Keto namespaces to be configured on the project first.
 # =============================================================================
 
 terraform {
@@ -59,6 +62,19 @@ resource "ory_identity" "admin" {
   })
 }
 
+# OIDC Dynamic Client — for_each with resource-level credentials
+resource "ory_oidc_dynamic_client" "app" {
+  for_each        = ory_project.this
+  project_slug    = each.value.slug
+  project_api_key = ory_project_api_key.this[each.key].value
+
+  client_name    = "tf-test-${each.key}"
+  grant_types    = ["authorization_code", "refresh_token"]
+  response_types = ["code"]
+  scope          = "openid offline_access"
+  redirect_uris  = ["https://${each.key}.example.com/callback"]
+}
+
 output "projects" {
   value = { for k, v in ory_project.this : k => { id = v.id, slug = v.slug } }
 }
@@ -69,4 +85,8 @@ output "jwk_set_ids" {
 
 output "identity_ids" {
   value = { for k, v in ory_identity.admin : k => v.id }
+}
+
+output "oidc_client_ids" {
+  value = { for k, v in ory_oidc_dynamic_client.app : k => v.client_id }
 }

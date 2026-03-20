@@ -18,9 +18,10 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &RelationshipResource{}
-	_ resource.ResourceWithConfigure   = &RelationshipResource{}
-	_ resource.ResourceWithImportState = &RelationshipResource{}
+	_ resource.Resource                   = &RelationshipResource{}
+	_ resource.ResourceWithConfigure      = &RelationshipResource{}
+	_ resource.ResourceWithImportState    = &RelationshipResource{}
+	_ resource.ResourceWithValidateConfig = &RelationshipResource{}
 )
 
 // NewResource returns a new Relationship resource.
@@ -194,12 +195,47 @@ func (r *RelationshipResource) Configure(ctx context.Context, req resource.Confi
 	r.client = oryClient
 }
 
-// setResourceCredentials creates an isolated client with resource-level project credentials.
-// This enables creating relationships in the same apply as the project they belong to,
-// and allows for_each across multiple projects without provider aliases.
-func (r *RelationshipResource) setResourceCredentials(slug, apiKey types.String) {
+// resolveClient returns a request-scoped client, optionally using resource-level
+// project credentials. The provider-configured client on the struct is never
+// mutated, which avoids data races when Terraform runs multiple instances of the
+// same resource type concurrently (e.g., for_each across projects).
+func (r *RelationshipResource) resolveClient(slug, apiKey types.String) *client.OryClient {
 	if !slug.IsNull() && !slug.IsUnknown() && !apiKey.IsNull() && !apiKey.IsUnknown() {
-		r.client = r.client.WithProjectCredentials(slug.ValueString(), apiKey.ValueString())
+		return r.client.WithProjectCredentials(slug.ValueString(), apiKey.ValueString())
+	}
+	return r.client
+}
+
+func (r *RelationshipResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var config RelationshipResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Skip validation if either value is unknown (will be resolved at apply time)
+	if config.ProjectSlug.IsUnknown() || config.ProjectAPIKey.IsUnknown() {
+		return
+	}
+
+	slugSet := !config.ProjectSlug.IsNull()
+	keySet := !config.ProjectAPIKey.IsNull()
+
+	if slugSet != keySet {
+		if !slugSet {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("project_slug"),
+				"Missing Required Attribute",
+				"project_slug is required when project_api_key is set. Both must be specified together.",
+			)
+		}
+		if !keySet {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("project_api_key"),
+				"Missing Required Attribute",
+				"project_api_key is required when project_slug is set. Both must be specified together.",
+			)
+		}
 	}
 }
 
@@ -211,8 +247,8 @@ func (r *RelationshipResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	// Set resource-level credentials if provided (enables same-apply with project creation)
-	r.setResourceCredentials(plan.ProjectSlug, plan.ProjectAPIKey)
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := r.resolveClient(plan.ProjectSlug, plan.ProjectAPIKey)
 
 	// Validate that either subject_id or subject_set is provided, not both
 	hasSubjectID := !plan.SubjectID.IsNull() && !plan.SubjectID.IsUnknown()
@@ -263,7 +299,7 @@ func (r *RelationshipResource) Create(ctx context.Context, req resource.CreateRe
 		}
 	}
 
-	rel, err := r.client.CreateRelationship(ctx, body)
+	rel, err := client.CreateRelationship(ctx, body)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Relationship",
@@ -286,8 +322,8 @@ func (r *RelationshipResource) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 
-	// Set resource-level credentials if provided
-	r.setResourceCredentials(state.ProjectSlug, state.ProjectAPIKey)
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := r.resolveClient(state.ProjectSlug, state.ProjectAPIKey)
 
 	// Query for the specific relationship
 	var subjectID *string
@@ -299,7 +335,7 @@ func (r *RelationshipResource) Read(ctx context.Context, req resource.ReadReques
 	object := state.Object.ValueString()
 	relation := state.Relation.ValueString()
 
-	rels, err := r.client.GetRelationships(ctx, state.Namespace.ValueString(), &object, &relation, subjectID)
+	rels, err := client.GetRelationships(ctx, state.Namespace.ValueString(), &object, &relation, subjectID)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading Relationship",
@@ -343,8 +379,8 @@ func (r *RelationshipResource) Delete(ctx context.Context, req resource.DeleteRe
 		return
 	}
 
-	// Set resource-level credentials if provided
-	r.setResourceCredentials(state.ProjectSlug, state.ProjectAPIKey)
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := r.resolveClient(state.ProjectSlug, state.ProjectAPIKey)
 
 	var subjectID *string
 	if !state.SubjectID.IsNull() && !state.SubjectID.IsUnknown() {
@@ -355,7 +391,7 @@ func (r *RelationshipResource) Delete(ctx context.Context, req resource.DeleteRe
 	object := state.Object.ValueString()
 	relation := state.Relation.ValueString()
 
-	err := r.client.DeleteRelationships(ctx, state.Namespace.ValueString(), &object, &relation, subjectID)
+	err := client.DeleteRelationships(ctx, state.Namespace.ValueString(), &object, &relation, subjectID)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting Relationship",

@@ -22,9 +22,10 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &JWKResource{}
-	_ resource.ResourceWithConfigure   = &JWKResource{}
-	_ resource.ResourceWithImportState = &JWKResource{}
+	_ resource.Resource                   = &JWKResource{}
+	_ resource.ResourceWithConfigure      = &JWKResource{}
+	_ resource.ResourceWithImportState    = &JWKResource{}
+	_ resource.ResourceWithValidateConfig = &JWKResource{}
 )
 
 // NewResource returns a new JWK resource.
@@ -204,14 +205,47 @@ func (r *JWKResource) Configure(ctx context.Context, req resource.ConfigureReque
 	r.client = oryClient
 }
 
-// setResourceCredentials creates an isolated client with resource-level project credentials.
-// This enables creating JWK sets in the same apply as the project they belong to,
-// and allows for_each across multiple projects without provider aliases.
-// The new client shares the console API client but has its own project API client,
-// avoiding race conditions when multiple resources use different credentials.
-func (r *JWKResource) setResourceCredentials(slug, apiKey types.String) {
+// resolveClient returns a request-scoped client, optionally using resource-level
+// project credentials. The provider-configured client on the struct is never
+// mutated, which avoids data races when Terraform runs multiple instances of the
+// same resource type concurrently (e.g., for_each across projects).
+func (r *JWKResource) resolveClient(slug, apiKey types.String) *client.OryClient {
 	if !slug.IsNull() && !slug.IsUnknown() && !apiKey.IsNull() && !apiKey.IsUnknown() {
-		r.client = r.client.WithProjectCredentials(slug.ValueString(), apiKey.ValueString())
+		return r.client.WithProjectCredentials(slug.ValueString(), apiKey.ValueString())
+	}
+	return r.client
+}
+
+func (r *JWKResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var config JWKResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Skip validation if either value is unknown (will be resolved at apply time)
+	if config.ProjectSlug.IsUnknown() || config.ProjectAPIKey.IsUnknown() {
+		return
+	}
+
+	slugSet := !config.ProjectSlug.IsNull()
+	keySet := !config.ProjectAPIKey.IsNull()
+
+	if slugSet != keySet {
+		if !slugSet {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("project_slug"),
+				"Missing Required Attribute",
+				"project_slug is required when project_api_key is set. Both must be specified together.",
+			)
+		}
+		if !keySet {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("project_api_key"),
+				"Missing Required Attribute",
+				"project_api_key is required when project_slug is set. Both must be specified together.",
+			)
+		}
 	}
 }
 
@@ -223,10 +257,18 @@ func (r *JWKResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
-	// Set resource-level credentials if provided (enables same-apply with project creation)
-	r.setResourceCredentials(plan.ProjectSlug, plan.ProjectAPIKey)
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := r.resolveClient(plan.ProjectSlug, plan.ProjectAPIKey)
 
-	projectClient, projectID, diags := r.projectClient(ctx, plan.ProjectID)
+	// When resource-level credentials are provided, normalize unknown project_id
+	// to null. This prevents failures when project_id references a resource being
+	// created in the same apply (e.g., project_id = ory_project.main.id).
+	projectID_attr := plan.ProjectID
+	if client != r.client && projectID_attr.IsUnknown() {
+		projectID_attr = types.StringNull()
+	}
+
+	projectClient, projectID, diags := r.projectClient(ctx, client, projectID_attr)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -275,10 +317,10 @@ func (r *JWKResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	// Set resource-level credentials if provided
-	r.setResourceCredentials(state.ProjectSlug, state.ProjectAPIKey)
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := r.resolveClient(state.ProjectSlug, state.ProjectAPIKey)
 
-	projectClient, projectID, diags := r.projectClient(ctx, state.ProjectID)
+	projectClient, projectID, diags := r.projectClient(ctx, client, state.ProjectID)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -336,10 +378,10 @@ func (r *JWKResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 		return
 	}
 
-	// Set resource-level credentials if provided
-	r.setResourceCredentials(state.ProjectSlug, state.ProjectAPIKey)
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := r.resolveClient(state.ProjectSlug, state.ProjectAPIKey)
 
-	projectClient, _, diags := r.projectClient(ctx, state.ProjectID)
+	projectClient, _, diags := r.projectClient(ctx, client, state.ProjectID)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -388,13 +430,13 @@ func (r *JWKResource) ImportState(ctx context.Context, req resource.ImportStateR
 // only the provider's project_slug+project_api_key are configured (no
 // project_id anywhere), the provider's default client is returned as-is so
 // existing configurations are not broken.
-func (r *JWKResource) projectClient(ctx context.Context, tfProjectID types.String) (*client.OryClient, string, diag.Diagnostics) {
+func (r *JWKResource) projectClient(ctx context.Context, c *client.OryClient, tfProjectID types.String) (*client.OryClient, string, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	// Use explicit resource-level project_id first.
 	if !tfProjectID.IsNull() && !tfProjectID.IsUnknown() && tfProjectID.ValueString() != "" {
 		pid := tfProjectID.ValueString()
-		c, err := r.client.ProjectClientForProject(ctx, pid)
+		pc, err := c.ProjectClientForProject(ctx, pid)
 		if err != nil {
 			diags.AddError(
 				fmt.Sprintf("Error Resolving Project %q", pid),
@@ -403,12 +445,12 @@ func (r *JWKResource) projectClient(ctx context.Context, tfProjectID types.Strin
 			)
 			return nil, "", diags
 		}
-		return c, pid, diags
+		return pc, pid, diags
 	}
 
 	// Fall back to provider-level project_id.
-	if pid := r.client.ProjectID(); pid != "" {
-		c, err := r.client.ProjectClientForProject(ctx, pid)
+	if pid := c.ProjectID(); pid != "" {
+		pc, err := c.ProjectClientForProject(ctx, pid)
 		if err != nil {
 			diags.AddError(
 				fmt.Sprintf("Error Resolving Provider Project %q", pid),
@@ -417,10 +459,10 @@ func (r *JWKResource) projectClient(ctx context.Context, tfProjectID types.Strin
 			)
 			return nil, "", diags
 		}
-		return c, pid, diags
+		return pc, pid, diags
 	}
 
 	// No project_id at all -- the provider may still have project_slug +
-	// project_api_key configured directly, so fall back to the default client.
-	return r.client, "", diags
+	// project_api_key configured directly, so fall back to the passed client.
+	return c, "", diags
 }

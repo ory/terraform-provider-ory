@@ -17,9 +17,10 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &OIDCDynamicClientResource{}
-	_ resource.ResourceWithConfigure   = &OIDCDynamicClientResource{}
-	_ resource.ResourceWithImportState = &OIDCDynamicClientResource{}
+	_ resource.Resource                   = &OIDCDynamicClientResource{}
+	_ resource.ResourceWithConfigure      = &OIDCDynamicClientResource{}
+	_ resource.ResourceWithImportState    = &OIDCDynamicClientResource{}
+	_ resource.ResourceWithValidateConfig = &OIDCDynamicClientResource{}
 )
 
 // NewResource returns a new OIDC Dynamic Client resource.
@@ -207,12 +208,47 @@ func (r *OIDCDynamicClientResource) Configure(ctx context.Context, req resource.
 	r.client = oryClient
 }
 
-// setResourceCredentials creates an isolated client with resource-level project credentials.
-// This enables creating OIDC dynamic clients in the same apply as the project they belong to,
-// and allows for_each across multiple projects without provider aliases.
-func (r *OIDCDynamicClientResource) setResourceCredentials(slug, apiKey types.String) {
+// resolveClient returns a request-scoped client, optionally using resource-level
+// project credentials. The provider-configured client on the struct is never
+// mutated, which avoids data races when Terraform runs multiple instances of the
+// same resource type concurrently (e.g., for_each across projects).
+func (r *OIDCDynamicClientResource) resolveClient(slug, apiKey types.String) *client.OryClient {
 	if !slug.IsNull() && !slug.IsUnknown() && !apiKey.IsNull() && !apiKey.IsUnknown() {
-		r.client = r.client.WithProjectCredentials(slug.ValueString(), apiKey.ValueString())
+		return r.client.WithProjectCredentials(slug.ValueString(), apiKey.ValueString())
+	}
+	return r.client
+}
+
+func (r *OIDCDynamicClientResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var config OIDCDynamicClientResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Skip validation if either value is unknown (will be resolved at apply time)
+	if config.ProjectSlug.IsUnknown() || config.ProjectAPIKey.IsUnknown() {
+		return
+	}
+
+	slugSet := !config.ProjectSlug.IsNull()
+	keySet := !config.ProjectAPIKey.IsNull()
+
+	if slugSet != keySet {
+		if !slugSet {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("project_slug"),
+				"Missing Required Attribute",
+				"project_slug is required when project_api_key is set. Both must be specified together.",
+			)
+		}
+		if !keySet {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("project_api_key"),
+				"Missing Required Attribute",
+				"project_api_key is required when project_slug is set. Both must be specified together.",
+			)
+		}
 	}
 }
 
@@ -224,8 +260,8 @@ func (r *OIDCDynamicClientResource) Create(ctx context.Context, req resource.Cre
 		return
 	}
 
-	// Set resource-level credentials if provided (enables same-apply with project creation)
-	r.setResourceCredentials(plan.ProjectSlug, plan.ProjectAPIKey)
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := r.resolveClient(plan.ProjectSlug, plan.ProjectAPIKey)
 
 	oauthClient := ory.OAuth2Client{
 		ClientName: ory.PtrString(plan.ClientName.ValueString()),
@@ -266,7 +302,7 @@ func (r *OIDCDynamicClientResource) Create(ctx context.Context, req resource.Cre
 		oauthClient.TokenEndpointAuthMethod = ory.PtrString(plan.TokenEndpointAuthMethod.ValueString())
 	}
 
-	created, err := r.client.CreateOIDCDynamicClient(ctx, oauthClient)
+	created, err := client.CreateOIDCDynamicClient(ctx, oauthClient)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating OIDC Dynamic Client",
@@ -331,10 +367,10 @@ func (r *OIDCDynamicClientResource) Read(ctx context.Context, req resource.ReadR
 		return
 	}
 
-	// Set resource-level credentials if provided
-	r.setResourceCredentials(state.ProjectSlug, state.ProjectAPIKey)
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := r.resolveClient(state.ProjectSlug, state.ProjectAPIKey)
 
-	oauthClient, err := r.client.GetOIDCDynamicClient(ctx, state.ClientID.ValueString())
+	oauthClient, err := client.GetOIDCDynamicClient(ctx, state.ClientID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading OIDC Dynamic Client",
@@ -385,8 +421,8 @@ func (r *OIDCDynamicClientResource) Update(ctx context.Context, req resource.Upd
 		return
 	}
 
-	// Set resource-level credentials if provided
-	r.setResourceCredentials(plan.ProjectSlug, plan.ProjectAPIKey)
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := r.resolveClient(plan.ProjectSlug, plan.ProjectAPIKey)
 
 	oauthClient := ory.OAuth2Client{
 		ClientId:   ory.PtrString(state.ClientID.ValueString()),
@@ -428,7 +464,7 @@ func (r *OIDCDynamicClientResource) Update(ctx context.Context, req resource.Upd
 		oauthClient.TokenEndpointAuthMethod = ory.PtrString(plan.TokenEndpointAuthMethod.ValueString())
 	}
 
-	updated, err := r.client.UpdateOIDCDynamicClient(ctx, state.ClientID.ValueString(), oauthClient)
+	updated, err := client.UpdateOIDCDynamicClient(ctx, state.ClientID.ValueString(), oauthClient)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating OIDC Dynamic Client",
@@ -483,10 +519,10 @@ func (r *OIDCDynamicClientResource) Delete(ctx context.Context, req resource.Del
 		return
 	}
 
-	// Set resource-level credentials if provided
-	r.setResourceCredentials(state.ProjectSlug, state.ProjectAPIKey)
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := r.resolveClient(state.ProjectSlug, state.ProjectAPIKey)
 
-	err := r.client.DeleteOIDCDynamicClient(ctx, state.ClientID.ValueString())
+	err := client.DeleteOIDCDynamicClient(ctx, state.ClientID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting OIDC Dynamic Client",

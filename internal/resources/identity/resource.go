@@ -21,9 +21,10 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &IdentityResource{}
-	_ resource.ResourceWithConfigure   = &IdentityResource{}
-	_ resource.ResourceWithImportState = &IdentityResource{}
+	_ resource.Resource                   = &IdentityResource{}
+	_ resource.ResourceWithConfigure      = &IdentityResource{}
+	_ resource.ResourceWithImportState    = &IdentityResource{}
+	_ resource.ResourceWithValidateConfig = &IdentityResource{}
 )
 
 // NewResource returns a new Identity resource.
@@ -211,12 +212,47 @@ func (r *IdentityResource) Configure(ctx context.Context, req resource.Configure
 	r.client = oryClient
 }
 
-// setResourceCredentials creates an isolated client with resource-level project credentials.
-// This enables creating identities in the same apply as the project they belong to,
-// and allows for_each across multiple projects without provider aliases.
-func (r *IdentityResource) setResourceCredentials(slug, apiKey types.String) {
+// resolveClient returns a request-scoped client, optionally using resource-level
+// project credentials. The provider-configured client on the struct is never
+// mutated, which avoids data races when Terraform runs multiple instances of the
+// same resource type concurrently (e.g., for_each across projects).
+func (r *IdentityResource) resolveClient(slug, apiKey types.String) *client.OryClient {
 	if !slug.IsNull() && !slug.IsUnknown() && !apiKey.IsNull() && !apiKey.IsUnknown() {
-		r.client = r.client.WithProjectCredentials(slug.ValueString(), apiKey.ValueString())
+		return r.client.WithProjectCredentials(slug.ValueString(), apiKey.ValueString())
+	}
+	return r.client
+}
+
+func (r *IdentityResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var config IdentityResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Skip validation if either value is unknown (will be resolved at apply time)
+	if config.ProjectSlug.IsUnknown() || config.ProjectAPIKey.IsUnknown() {
+		return
+	}
+
+	slugSet := !config.ProjectSlug.IsNull()
+	keySet := !config.ProjectAPIKey.IsNull()
+
+	if slugSet != keySet {
+		if !slugSet {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("project_slug"),
+				"Missing Required Attribute",
+				"project_slug is required when project_api_key is set. Both must be specified together.",
+			)
+		}
+		if !keySet {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("project_api_key"),
+				"Missing Required Attribute",
+				"project_api_key is required when project_slug is set. Both must be specified together.",
+			)
+		}
 	}
 }
 
@@ -228,10 +264,10 @@ func (r *IdentityResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	// Set resource-level credentials if provided (enables same-apply with project creation)
-	r.setResourceCredentials(plan.ProjectSlug, plan.ProjectAPIKey)
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := r.resolveClient(plan.ProjectSlug, plan.ProjectAPIKey)
 
-	cfg := r.client.Config()
+	cfg := client.Config()
 	if !helpers.ResolveProjectCreds(cfg.ProjectSlug, cfg.ProjectAPIKey, &resp.Diagnostics) {
 		return
 	}
@@ -285,7 +321,7 @@ func (r *IdentityResource) Create(ctx context.Context, req resource.CreateReques
 		body.MetadataAdmin = metadataAdmin
 	}
 
-	identity, err := r.client.CreateIdentity(ctx, body)
+	identity, err := client.CreateIdentity(ctx, body)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Identity",
@@ -316,10 +352,10 @@ func (r *IdentityResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
-	// Set resource-level credentials if provided
-	r.setResourceCredentials(state.ProjectSlug, state.ProjectAPIKey)
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := r.resolveClient(state.ProjectSlug, state.ProjectAPIKey)
 
-	identity, err := r.client.GetIdentity(ctx, state.ID.ValueString())
+	identity, err := client.GetIdentity(ctx, state.ID.ValueString())
 	if err != nil {
 		// Check if it's a 404 (identity deleted outside Terraform)
 		errStr := err.Error()
@@ -376,8 +412,8 @@ func (r *IdentityResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
-	// Set resource-level credentials if provided
-	r.setResourceCredentials(plan.ProjectSlug, plan.ProjectAPIKey)
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := r.resolveClient(plan.ProjectSlug, plan.ProjectAPIKey)
 
 	var traits map[string]interface{}
 	if err := json.Unmarshal([]byte(plan.Traits.ValueString()), &traits); err != nil {
@@ -418,7 +454,7 @@ func (r *IdentityResource) Update(ctx context.Context, req resource.UpdateReques
 		body.MetadataAdmin = metadataAdmin
 	}
 
-	identity, err := r.client.UpdateIdentity(ctx, state.ID.ValueString(), body)
+	identity, err := client.UpdateIdentity(ctx, state.ID.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Identity",
@@ -449,10 +485,10 @@ func (r *IdentityResource) Delete(ctx context.Context, req resource.DeleteReques
 		return
 	}
 
-	// Set resource-level credentials if provided
-	r.setResourceCredentials(state.ProjectSlug, state.ProjectAPIKey)
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := r.resolveClient(state.ProjectSlug, state.ProjectAPIKey)
 
-	err := r.client.DeleteIdentity(ctx, state.ID.ValueString())
+	err := client.DeleteIdentity(ctx, state.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting Identity",
