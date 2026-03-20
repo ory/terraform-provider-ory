@@ -5,15 +5,18 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-ory/internal/client"
+	"github.com/ory/terraform-provider-ory/internal/helpers"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -119,11 +122,17 @@ func (r *RelationshipResource) Schema(ctx context.Context, req resource.SchemaRe
 			"project_slug": schema.StringAttribute{
 				Description: "Project slug for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and relationship in the same apply). Overrides the provider-level project_slug.",
 				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"project_api_key": schema.StringAttribute{
 				Description: "Project API key for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and relationship in the same apply). Overrides the provider-level project_api_key.",
 				Optional:    true,
 				Sensitive:   true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"namespace": schema.StringAttribute{
 				Description: "The namespace of the relationship (e.g., 'documents', 'folders').",
@@ -195,48 +204,13 @@ func (r *RelationshipResource) Configure(ctx context.Context, req resource.Confi
 	r.client = oryClient
 }
 
-// resolveClient returns a request-scoped client, optionally using resource-level
-// project credentials. The provider-configured client on the struct is never
-// mutated, which avoids data races when Terraform runs multiple instances of the
-// same resource type concurrently (e.g., for_each across projects).
-func (r *RelationshipResource) resolveClient(slug, apiKey types.String) *client.OryClient {
-	if !slug.IsNull() && !slug.IsUnknown() && !apiKey.IsNull() && !apiKey.IsUnknown() {
-		return r.client.WithProjectCredentials(slug.ValueString(), apiKey.ValueString())
-	}
-	return r.client
-}
-
 func (r *RelationshipResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var config RelationshipResourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	// Skip validation if either value is unknown (will be resolved at apply time)
-	if config.ProjectSlug.IsUnknown() || config.ProjectAPIKey.IsUnknown() {
-		return
-	}
-
-	slugSet := !config.ProjectSlug.IsNull()
-	keySet := !config.ProjectAPIKey.IsNull()
-
-	if slugSet != keySet {
-		if !slugSet {
-			resp.Diagnostics.AddAttributeError(
-				path.Root("project_slug"),
-				"Missing Required Attribute",
-				"project_slug is required when project_api_key is set. Both must be specified together.",
-			)
-		}
-		if !keySet {
-			resp.Diagnostics.AddAttributeError(
-				path.Root("project_api_key"),
-				"Missing Required Attribute",
-				"project_api_key is required when project_slug is set. Both must be specified together.",
-			)
-		}
-	}
+	resp.Diagnostics.Append(helpers.ValidateProjectCredentialPair(config.ProjectSlug, config.ProjectAPIKey)...)
 }
 
 func (r *RelationshipResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -248,7 +222,7 @@ func (r *RelationshipResource) Create(ctx context.Context, req resource.CreateRe
 	}
 
 	// Derive a request-scoped client, using resource-level credentials if provided
-	client := r.resolveClient(plan.ProjectSlug, plan.ProjectAPIKey)
+	client := helpers.ResolveProjectClient(r.client, plan.ProjectSlug, plan.ProjectAPIKey)
 
 	// Validate that either subject_id or subject_set is provided, not both
 	hasSubjectID := !plan.SubjectID.IsNull() && !plan.SubjectID.IsUnknown()
@@ -323,7 +297,7 @@ func (r *RelationshipResource) Read(ctx context.Context, req resource.ReadReques
 	}
 
 	// Derive a request-scoped client, using resource-level credentials if provided
-	client := r.resolveClient(state.ProjectSlug, state.ProjectAPIKey)
+	client := helpers.ResolveProjectClient(r.client, state.ProjectSlug, state.ProjectAPIKey)
 
 	// Query for the specific relationship
 	var subjectID *string
@@ -380,7 +354,7 @@ func (r *RelationshipResource) Delete(ctx context.Context, req resource.DeleteRe
 	}
 
 	// Derive a request-scoped client, using resource-level credentials if provided
-	client := r.resolveClient(state.ProjectSlug, state.ProjectAPIKey)
+	client := helpers.ResolveProjectClient(r.client, state.ProjectSlug, state.ProjectAPIKey)
 
 	var subjectID *string
 	if !state.SubjectID.IsNull() && !state.SubjectID.IsUnknown() {

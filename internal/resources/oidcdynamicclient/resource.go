@@ -4,15 +4,18 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-ory/internal/client"
+	"github.com/ory/terraform-provider-ory/internal/helpers"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -116,11 +119,17 @@ func (r *OIDCDynamicClientResource) Schema(ctx context.Context, req resource.Sch
 			"project_slug": schema.StringAttribute{
 				Description: "Project slug for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and OIDC dynamic client in the same apply). Overrides the provider-level project_slug.",
 				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"project_api_key": schema.StringAttribute{
 				Description: "Project API key for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and OIDC dynamic client in the same apply). Overrides the provider-level project_api_key.",
 				Optional:    true,
 				Sensitive:   true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"client_id": schema.StringAttribute{
 				Description: "The OAuth2 client ID.",
@@ -208,48 +217,13 @@ func (r *OIDCDynamicClientResource) Configure(ctx context.Context, req resource.
 	r.client = oryClient
 }
 
-// resolveClient returns a request-scoped client, optionally using resource-level
-// project credentials. The provider-configured client on the struct is never
-// mutated, which avoids data races when Terraform runs multiple instances of the
-// same resource type concurrently (e.g., for_each across projects).
-func (r *OIDCDynamicClientResource) resolveClient(slug, apiKey types.String) *client.OryClient {
-	if !slug.IsNull() && !slug.IsUnknown() && !apiKey.IsNull() && !apiKey.IsUnknown() {
-		return r.client.WithProjectCredentials(slug.ValueString(), apiKey.ValueString())
-	}
-	return r.client
-}
-
 func (r *OIDCDynamicClientResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var config OIDCDynamicClientResourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	// Skip validation if either value is unknown (will be resolved at apply time)
-	if config.ProjectSlug.IsUnknown() || config.ProjectAPIKey.IsUnknown() {
-		return
-	}
-
-	slugSet := !config.ProjectSlug.IsNull()
-	keySet := !config.ProjectAPIKey.IsNull()
-
-	if slugSet != keySet {
-		if !slugSet {
-			resp.Diagnostics.AddAttributeError(
-				path.Root("project_slug"),
-				"Missing Required Attribute",
-				"project_slug is required when project_api_key is set. Both must be specified together.",
-			)
-		}
-		if !keySet {
-			resp.Diagnostics.AddAttributeError(
-				path.Root("project_api_key"),
-				"Missing Required Attribute",
-				"project_api_key is required when project_slug is set. Both must be specified together.",
-			)
-		}
-	}
+	resp.Diagnostics.Append(helpers.ValidateProjectCredentialPair(config.ProjectSlug, config.ProjectAPIKey)...)
 }
 
 func (r *OIDCDynamicClientResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -261,7 +235,7 @@ func (r *OIDCDynamicClientResource) Create(ctx context.Context, req resource.Cre
 	}
 
 	// Derive a request-scoped client, using resource-level credentials if provided
-	client := r.resolveClient(plan.ProjectSlug, plan.ProjectAPIKey)
+	client := helpers.ResolveProjectClient(r.client, plan.ProjectSlug, plan.ProjectAPIKey)
 
 	oauthClient := ory.OAuth2Client{
 		ClientName: ory.PtrString(plan.ClientName.ValueString()),
@@ -368,7 +342,7 @@ func (r *OIDCDynamicClientResource) Read(ctx context.Context, req resource.ReadR
 	}
 
 	// Derive a request-scoped client, using resource-level credentials if provided
-	client := r.resolveClient(state.ProjectSlug, state.ProjectAPIKey)
+	client := helpers.ResolveProjectClient(r.client, state.ProjectSlug, state.ProjectAPIKey)
 
 	oauthClient, err := client.GetOIDCDynamicClient(ctx, state.ClientID.ValueString())
 	if err != nil {
@@ -422,7 +396,7 @@ func (r *OIDCDynamicClientResource) Update(ctx context.Context, req resource.Upd
 	}
 
 	// Derive a request-scoped client, using resource-level credentials if provided
-	client := r.resolveClient(plan.ProjectSlug, plan.ProjectAPIKey)
+	client := helpers.ResolveProjectClient(r.client, plan.ProjectSlug, plan.ProjectAPIKey)
 
 	oauthClient := ory.OAuth2Client{
 		ClientId:   ory.PtrString(state.ClientID.ValueString()),
@@ -520,7 +494,7 @@ func (r *OIDCDynamicClientResource) Delete(ctx context.Context, req resource.Del
 	}
 
 	// Derive a request-scoped client, using resource-level credentials if provided
-	client := r.resolveClient(state.ProjectSlug, state.ProjectAPIKey)
+	client := helpers.ResolveProjectClient(r.client, state.ProjectSlug, state.ProjectAPIKey)
 
 	err := client.DeleteOIDCDynamicClient(ctx, state.ClientID.ValueString())
 	if err != nil {
