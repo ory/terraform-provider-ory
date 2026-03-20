@@ -39,13 +39,15 @@ type JWKResource struct {
 
 // JWKResourceModel describes the resource data model.
 type JWKResourceModel struct {
-	ID        types.String `tfsdk:"id"`
-	ProjectID types.String `tfsdk:"project_id"`
-	SetID     types.String `tfsdk:"set_id"`
-	KeyID     types.String `tfsdk:"key_id"`
-	Algorithm types.String `tfsdk:"algorithm"`
-	Use       types.String `tfsdk:"use"`
-	Keys      types.String `tfsdk:"keys"`
+	ID            types.String `tfsdk:"id"`
+	ProjectID     types.String `tfsdk:"project_id"`
+	ProjectSlug   types.String `tfsdk:"project_slug"`
+	ProjectAPIKey types.String `tfsdk:"project_api_key"`
+	SetID         types.String `tfsdk:"set_id"`
+	KeyID         types.String `tfsdk:"key_id"`
+	Algorithm     types.String `tfsdk:"algorithm"`
+	Use           types.String `tfsdk:"use"`
+	Keys          types.String `tfsdk:"keys"`
 }
 
 func (r *JWKResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -83,6 +85,22 @@ resource "ory_json_web_key_set" "encryption" {
 }
 ` + "```" + `
 
+### Same-Apply with Project Creation
+
+Use resource-level credentials when creating a JWK set in the same apply as the project:
+
+` + "```hcl" + `
+resource "ory_json_web_key_set" "signing" {
+  project_slug    = ory_project.main.slug
+  project_api_key = ory_project_api_key.main.value
+
+  set_id    = "token-signing-keys"
+  key_id    = "rsa-sig-1"
+  algorithm = "RS256"
+  use       = "sig"
+}
+` + "```" + `
+
 ## Import
 
 JWK sets can be imported using the format ` + "`project_id/set_id`" + ` or just ` + "`set_id`" + `:
@@ -116,6 +134,15 @@ func (r *JWKResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
+			},
+			"project_slug": schema.StringAttribute{
+				Description: "Project slug for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and JWK set in the same apply). Overrides the provider-level project_slug.",
+				Optional:    true,
+			},
+			"project_api_key": schema.StringAttribute{
+				Description: "Project API key for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and JWK set in the same apply). Overrides the provider-level project_api_key.",
+				Optional:    true,
+				Sensitive:   true,
 			},
 			"set_id": schema.StringAttribute{
 				Description: "The ID of the JSON Web Key Set.",
@@ -177,6 +204,17 @@ func (r *JWKResource) Configure(ctx context.Context, req resource.ConfigureReque
 	r.client = oryClient
 }
 
+// setResourceCredentials creates an isolated client with resource-level project credentials.
+// This enables creating JWK sets in the same apply as the project they belong to,
+// and allows for_each across multiple projects without provider aliases.
+// The new client shares the console API client but has its own project API client,
+// avoiding race conditions when multiple resources use different credentials.
+func (r *JWKResource) setResourceCredentials(slug, apiKey types.String) {
+	if !slug.IsNull() && !slug.IsUnknown() && !apiKey.IsNull() && !apiKey.IsUnknown() {
+		r.client = r.client.WithProjectCredentials(slug.ValueString(), apiKey.ValueString())
+	}
+}
+
 func (r *JWKResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan JWKResourceModel
 
@@ -184,6 +222,9 @@ func (r *JWKResource) Create(ctx context.Context, req resource.CreateRequest, re
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Set resource-level credentials if provided (enables same-apply with project creation)
+	r.setResourceCredentials(plan.ProjectSlug, plan.ProjectAPIKey)
 
 	projectClient, projectID, diags := r.projectClient(ctx, plan.ProjectID)
 	resp.Diagnostics.Append(diags...)
@@ -209,6 +250,10 @@ func (r *JWKResource) Create(ctx context.Context, req resource.CreateRequest, re
 	plan.ID = types.StringValue(plan.SetID.ValueString())
 	if projectID != "" {
 		plan.ProjectID = types.StringValue(projectID)
+	} else if plan.ProjectID.IsUnknown() {
+		// When using resource-level credentials without project_id,
+		// explicitly set to null so Terraform doesn't complain about unknown values after apply.
+		plan.ProjectID = types.StringNull()
 	}
 
 	// Serialize the keys to JSON
@@ -229,6 +274,9 @@ func (r *JWKResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Set resource-level credentials if provided
+	r.setResourceCredentials(state.ProjectSlug, state.ProjectAPIKey)
 
 	projectClient, projectID, diags := r.projectClient(ctx, state.ProjectID)
 	resp.Diagnostics.Append(diags...)
@@ -287,6 +335,9 @@ func (r *JWKResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Set resource-level credentials if provided
+	r.setResourceCredentials(state.ProjectSlug, state.ProjectAPIKey)
 
 	projectClient, _, diags := r.projectClient(ctx, state.ProjectID)
 	resp.Diagnostics.Append(diags...)

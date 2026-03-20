@@ -114,6 +114,41 @@ func TestAccJWKResource_basic(t *testing.T) {
 	})
 }
 
+func TestAccJWKResource_withResourceCredentials(t *testing.T) {
+	project := acctest.GetTestProject(t)
+
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with resource-level project credentials
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_resource_credentials.tf.tmpl", map[string]string{
+					"ProjectSlug":   project.Slug,
+					"ProjectAPIKey": project.APIKey,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_json_web_key_set.test", "id"),
+					resource.TestCheckResourceAttr("ory_json_web_key_set.test", "set_id", "tf-test-jwks-creds"),
+					resource.TestCheckResourceAttr("ory_json_web_key_set.test", "key_id", "tf-test-key-creds"),
+					resource.TestCheckResourceAttr("ory_json_web_key_set.test", "algorithm", "RS256"),
+					resource.TestCheckResourceAttr("ory_json_web_key_set.test", "use", "sig"),
+					resource.TestCheckResourceAttr("ory_json_web_key_set.test", "project_slug", project.Slug),
+					resource.TestCheckResourceAttrSet("ory_json_web_key_set.test", "keys"),
+					testCheckKeysContainPrivateMaterial("ory_json_web_key_set.test", "RS256"),
+				),
+			},
+			// ImportState — ignore resource-level credentials (not in API response)
+			{
+				ResourceName:            "ory_json_web_key_set.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"project_slug", "project_api_key"},
+			},
+		},
+	})
+}
+
 func TestAccJWKResource_ec_key(t *testing.T) {
 	projectID := os.Getenv("ORY_PROJECT_ID")
 	if projectID == "" {

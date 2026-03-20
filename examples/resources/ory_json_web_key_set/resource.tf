@@ -32,3 +32,15 @@ output "signing_jwks" {
   value     = ory_json_web_key_set.signing.keys
   sensitive = true
 }
+
+# Same-apply: Create project and JWK set together
+# Use resource-level credentials when the project doesn't exist yet
+resource "ory_json_web_key_set" "same_apply" {
+  project_slug    = ory_project.main.slug
+  project_api_key = ory_project_api_key.main.value
+
+  set_id    = "token-signing-keys"
+  key_id    = "rsa-sig-1"
+  algorithm = "RS256"
+  use       = "sig"
+}
