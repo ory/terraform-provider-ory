@@ -82,6 +82,8 @@ and ` + "`registration_client_uri`" + ` will not be available.
 // OIDCDynamicClientResourceModel describes the resource data model.
 type OIDCDynamicClientResourceModel struct {
 	ID                      types.String `tfsdk:"id"`
+	ProjectSlug             types.String `tfsdk:"project_slug"`
+	ProjectAPIKey           types.String `tfsdk:"project_api_key"`
 	ClientID                types.String `tfsdk:"client_id"`
 	ClientSecret            types.String `tfsdk:"client_secret"`
 	RegistrationAccessToken types.String `tfsdk:"registration_access_token"`
@@ -109,6 +111,15 @@ func (r *OIDCDynamicClientResource) Schema(ctx context.Context, req resource.Sch
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
+			},
+			"project_slug": schema.StringAttribute{
+				Description: "Project slug for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and OIDC dynamic client in the same apply). Overrides the provider-level project_slug.",
+				Optional:    true,
+			},
+			"project_api_key": schema.StringAttribute{
+				Description: "Project API key for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and OIDC dynamic client in the same apply). Overrides the provider-level project_api_key.",
+				Optional:    true,
+				Sensitive:   true,
 			},
 			"client_id": schema.StringAttribute{
 				Description: "The OAuth2 client ID.",
@@ -196,6 +207,15 @@ func (r *OIDCDynamicClientResource) Configure(ctx context.Context, req resource.
 	r.client = oryClient
 }
 
+// setResourceCredentials creates an isolated client with resource-level project credentials.
+// This enables creating OIDC dynamic clients in the same apply as the project they belong to,
+// and allows for_each across multiple projects without provider aliases.
+func (r *OIDCDynamicClientResource) setResourceCredentials(slug, apiKey types.String) {
+	if !slug.IsNull() && !slug.IsUnknown() && !apiKey.IsNull() && !apiKey.IsUnknown() {
+		r.client = r.client.WithProjectCredentials(slug.ValueString(), apiKey.ValueString())
+	}
+}
+
 func (r *OIDCDynamicClientResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan OIDCDynamicClientResourceModel
 
@@ -203,6 +223,9 @@ func (r *OIDCDynamicClientResource) Create(ctx context.Context, req resource.Cre
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Set resource-level credentials if provided (enables same-apply with project creation)
+	r.setResourceCredentials(plan.ProjectSlug, plan.ProjectAPIKey)
 
 	oauthClient := ory.OAuth2Client{
 		ClientName: ory.PtrString(plan.ClientName.ValueString()),
@@ -308,6 +331,9 @@ func (r *OIDCDynamicClientResource) Read(ctx context.Context, req resource.ReadR
 		return
 	}
 
+	// Set resource-level credentials if provided
+	r.setResourceCredentials(state.ProjectSlug, state.ProjectAPIKey)
+
 	oauthClient, err := r.client.GetOIDCDynamicClient(ctx, state.ClientID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -358,6 +384,9 @@ func (r *OIDCDynamicClientResource) Update(ctx context.Context, req resource.Upd
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Set resource-level credentials if provided
+	r.setResourceCredentials(plan.ProjectSlug, plan.ProjectAPIKey)
 
 	oauthClient := ory.OAuth2Client{
 		ClientId:   ory.PtrString(state.ClientID.ValueString()),
@@ -453,6 +482,9 @@ func (r *OIDCDynamicClientResource) Delete(ctx context.Context, req resource.Del
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Set resource-level credentials if provided
+	r.setResourceCredentials(state.ProjectSlug, state.ProjectAPIKey)
 
 	err := r.client.DeleteOIDCDynamicClient(ctx, state.ClientID.ValueString())
 	if err != nil {

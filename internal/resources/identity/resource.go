@@ -39,6 +39,8 @@ type IdentityResource struct {
 // IdentityResourceModel describes the resource data model.
 type IdentityResourceModel struct {
 	ID             types.String `tfsdk:"id"`
+	ProjectSlug    types.String `tfsdk:"project_slug"`
+	ProjectAPIKey  types.String `tfsdk:"project_api_key"`
 	SchemaID       types.String `tfsdk:"schema_id"`
 	Traits         types.String `tfsdk:"traits"`
 	State          types.String `tfsdk:"state"`
@@ -148,6 +150,15 @@ func (r *IdentityResource) Schema(ctx context.Context, req resource.SchemaReques
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"project_slug": schema.StringAttribute{
+				Description: "Project slug for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and identity in the same apply). Overrides the provider-level project_slug.",
+				Optional:    true,
+			},
+			"project_api_key": schema.StringAttribute{
+				Description: "Project API key for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and identity in the same apply). Overrides the provider-level project_api_key.",
+				Optional:    true,
+				Sensitive:   true,
+			},
 			"schema_id": schema.StringAttribute{
 				Description: "Identity schema ID. Must match a schema configured in your project (e.g., 'preset://email', a custom schema ID). Check your project's identity schemas in the Ory Console or API.",
 				Required:    true,
@@ -200,6 +211,15 @@ func (r *IdentityResource) Configure(ctx context.Context, req resource.Configure
 	r.client = oryClient
 }
 
+// setResourceCredentials creates an isolated client with resource-level project credentials.
+// This enables creating identities in the same apply as the project they belong to,
+// and allows for_each across multiple projects without provider aliases.
+func (r *IdentityResource) setResourceCredentials(slug, apiKey types.String) {
+	if !slug.IsNull() && !slug.IsUnknown() && !apiKey.IsNull() && !apiKey.IsUnknown() {
+		r.client = r.client.WithProjectCredentials(slug.ValueString(), apiKey.ValueString())
+	}
+}
+
 func (r *IdentityResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan IdentityResourceModel
 
@@ -207,6 +227,9 @@ func (r *IdentityResource) Create(ctx context.Context, req resource.CreateReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Set resource-level credentials if provided (enables same-apply with project creation)
+	r.setResourceCredentials(plan.ProjectSlug, plan.ProjectAPIKey)
 
 	cfg := r.client.Config()
 	if !helpers.ResolveProjectCreds(cfg.ProjectSlug, cfg.ProjectAPIKey, &resp.Diagnostics) {
@@ -293,6 +316,9 @@ func (r *IdentityResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
+	// Set resource-level credentials if provided
+	r.setResourceCredentials(state.ProjectSlug, state.ProjectAPIKey)
+
 	identity, err := r.client.GetIdentity(ctx, state.ID.ValueString())
 	if err != nil {
 		// Check if it's a 404 (identity deleted outside Terraform)
@@ -349,6 +375,9 @@ func (r *IdentityResource) Update(ctx context.Context, req resource.UpdateReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Set resource-level credentials if provided
+	r.setResourceCredentials(plan.ProjectSlug, plan.ProjectAPIKey)
 
 	var traits map[string]interface{}
 	if err := json.Unmarshal([]byte(plan.Traits.ValueString()), &traits); err != nil {
@@ -419,6 +448,9 @@ func (r *IdentityResource) Delete(ctx context.Context, req resource.DeleteReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Set resource-level credentials if provided
+	r.setResourceCredentials(state.ProjectSlug, state.ProjectAPIKey)
 
 	err := r.client.DeleteIdentity(ctx, state.ID.ValueString())
 	if err != nil {

@@ -36,6 +36,8 @@ type RelationshipResource struct {
 // RelationshipResourceModel describes the resource data model.
 type RelationshipResourceModel struct {
 	ID                  types.String `tfsdk:"id"`
+	ProjectSlug         types.String `tfsdk:"project_slug"`
+	ProjectAPIKey       types.String `tfsdk:"project_api_key"`
 	Namespace           types.String `tfsdk:"namespace"`
 	Object              types.String `tfsdk:"object"`
 	Relation            types.String `tfsdk:"relation"`
@@ -113,6 +115,15 @@ func (r *RelationshipResource) Schema(ctx context.Context, req resource.SchemaRe
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"project_slug": schema.StringAttribute{
+				Description: "Project slug for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and relationship in the same apply). Overrides the provider-level project_slug.",
+				Optional:    true,
+			},
+			"project_api_key": schema.StringAttribute{
+				Description: "Project API key for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and relationship in the same apply). Overrides the provider-level project_api_key.",
+				Optional:    true,
+				Sensitive:   true,
+			},
 			"namespace": schema.StringAttribute{
 				Description: "The namespace of the relationship (e.g., 'documents', 'folders').",
 				Required:    true,
@@ -183,6 +194,15 @@ func (r *RelationshipResource) Configure(ctx context.Context, req resource.Confi
 	r.client = oryClient
 }
 
+// setResourceCredentials creates an isolated client with resource-level project credentials.
+// This enables creating relationships in the same apply as the project they belong to,
+// and allows for_each across multiple projects without provider aliases.
+func (r *RelationshipResource) setResourceCredentials(slug, apiKey types.String) {
+	if !slug.IsNull() && !slug.IsUnknown() && !apiKey.IsNull() && !apiKey.IsUnknown() {
+		r.client = r.client.WithProjectCredentials(slug.ValueString(), apiKey.ValueString())
+	}
+}
+
 func (r *RelationshipResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan RelationshipResourceModel
 
@@ -190,6 +210,9 @@ func (r *RelationshipResource) Create(ctx context.Context, req resource.CreateRe
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Set resource-level credentials if provided (enables same-apply with project creation)
+	r.setResourceCredentials(plan.ProjectSlug, plan.ProjectAPIKey)
 
 	// Validate that either subject_id or subject_set is provided, not both
 	hasSubjectID := !plan.SubjectID.IsNull() && !plan.SubjectID.IsUnknown()
@@ -263,6 +286,9 @@ func (r *RelationshipResource) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 
+	// Set resource-level credentials if provided
+	r.setResourceCredentials(state.ProjectSlug, state.ProjectAPIKey)
+
 	// Query for the specific relationship
 	var subjectID *string
 	if !state.SubjectID.IsNull() && !state.SubjectID.IsUnknown() {
@@ -316,6 +342,9 @@ func (r *RelationshipResource) Delete(ctx context.Context, req resource.DeleteRe
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Set resource-level credentials if provided
+	r.setResourceCredentials(state.ProjectSlug, state.ProjectAPIKey)
 
 	var subjectID *string
 	if !state.SubjectID.IsNull() && !state.SubjectID.IsUnknown() {

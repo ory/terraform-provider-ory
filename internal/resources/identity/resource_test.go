@@ -61,6 +61,38 @@ func TestAccIdentityResource_withMetadata(t *testing.T) {
 	})
 }
 
+func TestAccIdentityResource_withResourceCredentials(t *testing.T) {
+	project := acctest.GetTestProject(t)
+
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with resource-level project credentials
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_resource_credentials.tf.tmpl", map[string]string{
+					"ProjectSlug":   project.Slug,
+					"ProjectAPIKey": project.APIKey,
+					"Username":      "test-creds-user",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_identity.test", "id"),
+					resource.TestCheckResourceAttr("ory_identity.test", "schema_id", "preset://username"),
+					resource.TestCheckResourceAttr("ory_identity.test", "state", "active"),
+					resource.TestCheckResourceAttr("ory_identity.test", "project_slug", project.Slug),
+				),
+			},
+			// ImportState — ignore resource-level credentials (not in API response)
+			{
+				ResourceName:            "ory_identity.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"password", "project_slug", "project_api_key"},
+			},
+		},
+	})
+}
+
 func TestAccIdentityResource_inactive(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
