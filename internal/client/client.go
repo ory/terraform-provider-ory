@@ -23,6 +23,10 @@ import (
 // ErrCustomDomainNotFound is returned when a custom domain ID is not found in the project's domain list.
 var ErrCustomDomainNotFound = errors.New("custom domain not found")
 
+// ErrConsoleClientNotConfigured is returned when a console API method is called
+// without a workspace API key configured. Callers can check with errors.Is.
+var ErrConsoleClientNotConfigured = errors.New("console API client not configured")
+
 const (
 	// maxRetries is the maximum number of retry attempts for rate-limited requests.
 	maxRetries = 3
@@ -556,6 +560,18 @@ func (c *OryClient) ensureProjectClient() error {
 	return nil
 }
 
+// requireConsoleClient returns an error wrapping ErrConsoleClientNotConfigured
+// if the console API client is not initialized (no workspace API key).
+// This prevents nil pointer panics when methods are called without credentials.
+func (c *OryClient) requireConsoleClient(operation string) error {
+	if c.consoleClient == nil {
+		return fmt.Errorf("%s: %w. "+
+			"Set workspace_api_key (ORY_WORKSPACE_API_KEY) in the provider configuration",
+			operation, ErrConsoleClientNotConfigured)
+	}
+	return nil
+}
+
 // =============================================================================
 // Project Operations (Console API)
 // =============================================================================
@@ -563,6 +579,9 @@ func (c *OryClient) ensureProjectClient() error {
 // CreateProject creates a new Ory project.
 // Returns the project, HTTP response (for status code inspection), and any error.
 func (c *OryClient) CreateProject(ctx context.Context, name, environment, homeRegion string) (*ory.Project, *http.Response, error) {
+	if err := c.requireConsoleClient("creating project"); err != nil {
+		return nil, nil, err
+	}
 	body := ory.CreateProjectBody{
 		Name:        name,
 		Environment: environment,
@@ -580,6 +599,9 @@ func (c *OryClient) CreateProject(ctx context.Context, name, environment, homeRe
 
 // GetProject retrieves a project by ID.
 func (c *OryClient) GetProject(ctx context.Context, projectID string) (*ory.Project, error) {
+	if err := c.requireConsoleClient("getting project"); err != nil {
+		return nil, err
+	}
 	project, httpResp, err := c.consoleClient.ProjectAPI.GetProject(ctx, projectID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -589,6 +611,9 @@ func (c *OryClient) GetProject(ctx context.Context, projectID string) (*ory.Proj
 
 // DeleteProject purges a project.
 func (c *OryClient) DeleteProject(ctx context.Context, projectID string) error {
+	if err := c.requireConsoleClient("deleting project"); err != nil {
+		return err
+	}
 	httpResp, err := c.consoleClient.ProjectAPI.PurgeProject(ctx, projectID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -599,6 +624,9 @@ func (c *OryClient) DeleteProject(ctx context.Context, projectID string) error {
 // PatchProject applies JSON Patch operations to a project.
 // The response is automatically cached to avoid stale GetProject reads.
 func (c *OryClient) PatchProject(ctx context.Context, projectID string, patches []ory.JsonPatch) (*ory.SuccessfulProjectUpdate, error) {
+	if err := c.requireConsoleClient("patching project"); err != nil {
+		return nil, err
+	}
 	result, httpResp, err := c.consoleClient.ProjectAPI.PatchProject(ctx, projectID).
 		JsonPatch(patches).
 		Execute()
@@ -627,6 +655,9 @@ func (c *OryClient) GetCachedProject(projectID string) *ory.Project {
 
 // CreateWorkspace creates a new workspace.
 func (c *OryClient) CreateWorkspace(ctx context.Context, name string) (*ory.Workspace, error) {
+	if err := c.requireConsoleClient("creating workspace"); err != nil {
+		return nil, err
+	}
 	body := ory.CreateWorkspaceBody{
 		Name: name,
 	}
@@ -642,6 +673,9 @@ func (c *OryClient) CreateWorkspace(ctx context.Context, name string) (*ory.Work
 // but not get a specific workspace. We fall back to listing and filtering if
 // the direct GET fails with 403.
 func (c *OryClient) GetWorkspace(ctx context.Context, workspaceID string) (*ory.Workspace, error) {
+	if err := c.requireConsoleClient("getting workspace"); err != nil {
+		return nil, err
+	}
 	workspace, httpResp, err := c.consoleClient.WorkspaceAPI.GetWorkspace(ctx, workspaceID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -672,6 +706,9 @@ func (c *OryClient) GetWorkspace(ctx context.Context, workspaceID string) (*ory.
 
 // UpdateWorkspace updates a workspace.
 func (c *OryClient) UpdateWorkspace(ctx context.Context, workspaceID, name string) (*ory.Workspace, error) {
+	if err := c.requireConsoleClient("updating workspace"); err != nil {
+		return nil, err
+	}
 	body := ory.UpdateWorkspaceBody{
 		Name: name,
 	}
@@ -955,6 +992,9 @@ func (c *OryClient) DeleteOAuth2Client(ctx context.Context, clientID string) err
 
 // CreateProjectAPIKey creates a new API key for a project.
 func (c *OryClient) CreateProjectAPIKey(ctx context.Context, projectID string, body ory.CreateProjectApiKeyRequest) (*ory.ProjectApiKey, error) {
+	if err := c.requireConsoleClient("creating project API key"); err != nil {
+		return nil, err
+	}
 	key, httpResp, err := c.consoleClient.ProjectAPI.CreateProjectApiKey(ctx, projectID).CreateProjectApiKeyRequest(body).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -964,6 +1004,9 @@ func (c *OryClient) CreateProjectAPIKey(ctx context.Context, projectID string, b
 
 // ListProjectAPIKeys lists all API keys for a project.
 func (c *OryClient) ListProjectAPIKeys(ctx context.Context, projectID string) ([]ory.ProjectApiKey, error) {
+	if err := c.requireConsoleClient("listing project API keys"); err != nil {
+		return nil, err
+	}
 	keys, httpResp, err := c.consoleClient.ProjectAPI.ListProjectApiKeys(ctx, projectID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -973,6 +1016,9 @@ func (c *OryClient) ListProjectAPIKeys(ctx context.Context, projectID string) ([
 
 // DeleteProjectAPIKey deletes an API key with retry logic for transient errors.
 func (c *OryClient) DeleteProjectAPIKey(ctx context.Context, projectID, keyID string) error {
+	if err := c.requireConsoleClient("deleting project API key"); err != nil {
+		return err
+	}
 	var lastErr error
 	backoff := initialBackoff
 
@@ -1115,6 +1161,9 @@ func (c *OryClient) DeleteRelationships(ctx context.Context, namespace string, o
 
 // CreateEventStream creates a new event stream for a project.
 func (c *OryClient) CreateEventStream(ctx context.Context, projectID string, body ory.CreateEventStreamBody) (*ory.EventStream, error) {
+	if err := c.requireConsoleClient("creating event stream"); err != nil {
+		return nil, err
+	}
 	stream, httpResp, err := c.consoleClient.EventsAPI.CreateEventStream(ctx, projectID).CreateEventStreamBody(body).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1128,6 +1177,9 @@ func (c *OryClient) CreateEventStream(ctx context.Context, projectID string, bod
 // GetEventStream retrieves an event stream by listing all and filtering by ID.
 // The Ory API does not have a direct GET endpoint for event streams.
 func (c *OryClient) GetEventStream(ctx context.Context, projectID, streamID string) (*ory.EventStream, error) {
+	if err := c.requireConsoleClient("getting event stream"); err != nil {
+		return nil, err
+	}
 	list, httpResp, err := c.consoleClient.EventsAPI.ListEventStreams(ctx, projectID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1146,6 +1198,9 @@ func (c *OryClient) GetEventStream(ctx context.Context, projectID, streamID stri
 
 // SetEventStream updates an event stream.
 func (c *OryClient) SetEventStream(ctx context.Context, projectID, streamID string, body ory.SetEventStreamBody) (*ory.EventStream, error) {
+	if err := c.requireConsoleClient("updating event stream"); err != nil {
+		return nil, err
+	}
 	stream, httpResp, err := c.consoleClient.EventsAPI.SetEventStream(ctx, projectID, streamID).SetEventStreamBody(body).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1158,6 +1213,9 @@ func (c *OryClient) SetEventStream(ctx context.Context, projectID, streamID stri
 
 // DeleteEventStream deletes an event stream.
 func (c *OryClient) DeleteEventStream(ctx context.Context, projectID, streamID string) error {
+	if err := c.requireConsoleClient("deleting event stream"); err != nil {
+		return err
+	}
 	httpResp, err := c.consoleClient.EventsAPI.DeleteEventStream(ctx, projectID, streamID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1167,6 +1225,9 @@ func (c *OryClient) DeleteEventStream(ctx context.Context, projectID, streamID s
 
 // ListEventStreams lists all event streams for a project.
 func (c *OryClient) ListEventStreams(ctx context.Context, projectID string) ([]ory.EventStream, error) {
+	if err := c.requireConsoleClient("listing event streams"); err != nil {
+		return nil, err
+	}
 	list, httpResp, err := c.consoleClient.EventsAPI.ListEventStreams(ctx, projectID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1325,6 +1386,9 @@ func (c *OryClient) ListOAuth2Clients(ctx context.Context) ([]ory.OAuth2Client, 
 
 // ListOrganizations lists all organizations in a project.
 func (c *OryClient) ListOrganizations(ctx context.Context, projectID string) ([]ory.Organization, error) {
+	if err := c.requireConsoleClient("listing organizations"); err != nil {
+		return nil, err
+	}
 	resp, httpResp, err := c.consoleClient.ProjectAPI.ListOrganizations(ctx, projectID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1832,6 +1896,9 @@ func (c *OryClient) DeleteCustomDomain(ctx context.Context, projectID, domainID 
 
 // ListWorkspaces lists all workspaces.
 func (c *OryClient) ListWorkspaces(ctx context.Context) ([]ory.Workspace, error) {
+	if err := c.requireConsoleClient("listing workspaces"); err != nil {
+		return nil, err
+	}
 	resp, httpResp, err := c.consoleClient.WorkspaceAPI.ListWorkspaces(ctx).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
