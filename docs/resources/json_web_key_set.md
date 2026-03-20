@@ -80,6 +80,18 @@ output "signing_jwks" {
   value     = ory_json_web_key_set.signing.keys
   sensitive = true
 }
+
+# Same-apply: Create project and JWK set together
+# Use resource-level credentials when the project doesn't exist yet
+resource "ory_json_web_key_set" "same_apply" {
+  project_slug    = ory_project.main.slug
+  project_api_key = ory_project_api_key.main.value
+
+  set_id    = "token-signing-keys"
+  key_id    = "rsa-sig-1"
+  algorithm = "RS256"
+  use       = "sig"
+}
 ```
 
 ## Keys Output
@@ -148,6 +160,50 @@ The `keys` attribute contains the full JSON Web Key Set as a JSON string, **incl
 
 On read, the provider extracts `algorithm`, `use`, and `key_id` from the **first key** in the set.
 
+## Resource-Level Credentials (Same-Apply with Project Creation)
+
+When creating an `ory_json_web_key_set` in the same `terraform apply` as the `ory_project` it belongs to, the provider may not have project credentials at configuration time. Use the `project_slug` and `project_api_key` attributes to pass credentials directly to the resource:
+
+```hcl
+resource "ory_project" "main" {
+  name        = "my-project"
+  environment = "prod"
+}
+
+resource "ory_project_api_key" "main" {
+  project_id = ory_project.main.id
+  name       = "terraform-key"
+}
+
+resource "ory_json_web_key_set" "signing" {
+  project_slug    = ory_project.main.slug
+  project_api_key = ory_project_api_key.main.value
+
+  set_id    = "token-signing-keys"
+  key_id    = "rsa-sig-1"
+  algorithm = "RS256"
+  use       = "sig"
+}
+```
+
+These attributes override the provider-level `project_slug` and `project_api_key`. If the provider already has valid project credentials, you do not need to set them on the resource.
+
+This also enables `for_each` across multiple projects without provider aliases:
+
+```hcl
+resource "ory_json_web_key_set" "signing" {
+  for_each = ory_project.this
+
+  project_slug    = each.value.slug
+  project_api_key = ory_project_api_key.this[each.key].value
+
+  set_id    = "token-signing-keys"
+  key_id    = "rsa-sig-1"
+  algorithm = "RS256"
+  use       = "sig"
+}
+```
+
 ## Import
 
 Import using the format `project_id/set_id` or just `set_id` (uses the provider's configured project context, either `project_id` or `project_slug`):
@@ -171,7 +227,9 @@ After import, `key_id` is populated from the first key in the set. If the set co
 
 ### Optional
 
+- `project_api_key` (String, Sensitive) Project API key for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and JWK set in the same apply). Overrides the provider-level project_api_key.
 - `project_id` (String) The project ID. If not set, uses the provider's project_id or project_slug.
+- `project_slug` (String) Project slug for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and JWK set in the same apply). Overrides the provider-level project_slug.
 
 ### Read-Only
 

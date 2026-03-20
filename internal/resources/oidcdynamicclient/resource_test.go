@@ -10,6 +10,39 @@ import (
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 )
 
+func TestAccOIDCDynamicClientResource_withResourceCredentials(t *testing.T) {
+	project := acctest.GetTestProject(t)
+
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with resource-level project credentials
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_resource_credentials.tf.tmpl", map[string]string{
+					"ProjectSlug":   project.Slug,
+					"ProjectAPIKey": project.APIKey,
+					"Name":          "Test Dynamic Client Creds",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_oidc_dynamic_client.test", "id"),
+					resource.TestCheckResourceAttr("ory_oidc_dynamic_client.test", "client_name", "Test Dynamic Client Creds"),
+					resource.TestCheckResourceAttr("ory_oidc_dynamic_client.test", "scope", "openid"),
+					resource.TestCheckResourceAttr("ory_oidc_dynamic_client.test", "project_slug", project.Slug),
+				),
+			},
+			// ImportState — ignore resource-level credentials (not in API response)
+			{
+				ResourceName:      "ory_oidc_dynamic_client.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				// These are only returned on create, not on read via the admin API
+				ImportStateVerifyIgnore: []string{"client_secret", "registration_access_token", "registration_client_uri", "project_slug", "project_api_key"},
+			},
+		},
+	})
+}
+
 func TestAccOIDCDynamicClientResource_basic(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },

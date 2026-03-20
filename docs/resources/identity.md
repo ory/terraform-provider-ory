@@ -102,6 +102,24 @@ variable "user_password" {
 - **Traits must match schema:** The JSON structure of `traits` must match the identity schema definition. Mismatched traits will cause API errors.
 - **Metadata visibility:** `metadata_public` is visible to the identity owner. `metadata_admin` is only visible via the admin API and is marked sensitive in Terraform.
 
+## Resource-Level Credentials
+
+When creating identities in the same `terraform apply` as the project they belong to, the provider may not have project credentials at configuration time. Use `project_slug` and `project_api_key` to pass credentials directly to the resource:
+
+```hcl
+resource "ory_identity" "user" {
+  project_slug    = ory_project.main.slug
+  project_api_key = ory_project_api_key.main.value
+
+  schema_id = "preset://email"
+  traits = jsonencode({
+    email = "user@example.com"
+  })
+}
+```
+
+This also enables `for_each` across multiple projects without provider aliases.
+
 ## Import
 
 ```shell
@@ -123,6 +141,8 @@ terraform import ory_identity.user <identity-id>
 - `metadata_admin` (String, Sensitive) Admin metadata as JSON string. Only visible to admins.
 - `metadata_public` (String) Public metadata as JSON string. Visible to the identity.
 - `password` (String, Sensitive) Password for the identity. Write-only, not returned on read.
+- `project_api_key` (String, Sensitive) Project API key for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and identity in the same apply). Overrides the provider-level project_api_key.
+- `project_slug` (String) Project slug for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and identity in the same apply). Overrides the provider-level project_slug.
 - `state` (String) Identity state: active or inactive.
 
 ### Read-Only

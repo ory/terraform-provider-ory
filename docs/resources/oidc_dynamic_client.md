@@ -42,6 +42,25 @@ output "client_secret" {
 }
 ```
 
+## Resource-Level Credentials
+
+When creating OIDC dynamic clients in the same `terraform apply` as the project they belong to, use `project_slug` and `project_api_key` to pass credentials directly to the resource:
+
+```hcl
+resource "ory_oidc_dynamic_client" "app" {
+  project_slug    = ory_project.main.slug
+  project_api_key = ory_project_api_key.main.value
+
+  client_name    = "My Application"
+  grant_types    = ["authorization_code", "refresh_token"]
+  response_types = ["code"]
+  scope          = "openid offline_access"
+  redirect_uris  = ["https://app.example.com/callback"]
+}
+```
+
+This also enables `for_each` across multiple projects without provider aliases.
+
 ## Import
 
 OIDC dynamic clients can be imported using their client ID:
@@ -62,6 +81,8 @@ terraform import ory_oidc_dynamic_client.example <client-id>
 ### Optional
 
 - `grant_types` (List of String) OAuth2 grant types: authorization_code, implicit, client_credentials, refresh_token.
+- `project_api_key` (String, Sensitive) Project API key for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and OIDC dynamic client in the same apply). Overrides the provider-level project_api_key.
+- `project_slug` (String) Project slug for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and OIDC dynamic client in the same apply). Overrides the provider-level project_slug.
 - `redirect_uris` (List of String) List of allowed redirect URIs for authorization code flow.
 - `response_types` (List of String) OAuth2 response types: code, token, id_token.
 - `scope` (String) Space-separated list of OAuth2 scopes. If not specified, the API will set a default scope.

@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
 
@@ -21,9 +23,10 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &IdentityResource{}
-	_ resource.ResourceWithConfigure   = &IdentityResource{}
-	_ resource.ResourceWithImportState = &IdentityResource{}
+	_ resource.Resource                   = &IdentityResource{}
+	_ resource.ResourceWithConfigure      = &IdentityResource{}
+	_ resource.ResourceWithImportState    = &IdentityResource{}
+	_ resource.ResourceWithValidateConfig = &IdentityResource{}
 )
 
 // NewResource returns a new Identity resource.
@@ -39,6 +42,8 @@ type IdentityResource struct {
 // IdentityResourceModel describes the resource data model.
 type IdentityResourceModel struct {
 	ID             types.String `tfsdk:"id"`
+	ProjectSlug    types.String `tfsdk:"project_slug"`
+	ProjectAPIKey  types.String `tfsdk:"project_api_key"`
 	SchemaID       types.String `tfsdk:"schema_id"`
 	Traits         types.String `tfsdk:"traits"`
 	State          types.String `tfsdk:"state"`
@@ -148,6 +153,21 @@ func (r *IdentityResource) Schema(ctx context.Context, req resource.SchemaReques
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"project_slug": schema.StringAttribute{
+				Description: "Project slug for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and identity in the same apply). Overrides the provider-level project_slug.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
+			"project_api_key": schema.StringAttribute{
+				Description: "Project API key for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and identity in the same apply). Overrides the provider-level project_api_key.",
+				Optional:    true,
+				Sensitive:   true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
 			"schema_id": schema.StringAttribute{
 				Description: "Identity schema ID. Must match a schema configured in your project (e.g., 'preset://email', a custom schema ID). Check your project's identity schemas in the Ory Console or API.",
 				Required:    true,
@@ -200,6 +220,15 @@ func (r *IdentityResource) Configure(ctx context.Context, req resource.Configure
 	r.client = oryClient
 }
 
+func (r *IdentityResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var config IdentityResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(helpers.ValidateProjectCredentialPair(config.ProjectSlug, config.ProjectAPIKey)...)
+}
+
 func (r *IdentityResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan IdentityResourceModel
 
@@ -208,7 +237,10 @@ func (r *IdentityResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	cfg := r.client.Config()
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := helpers.ResolveProjectClient(r.client, plan.ProjectSlug, plan.ProjectAPIKey)
+
+	cfg := client.Config()
 	if !helpers.ResolveProjectCreds(cfg.ProjectSlug, cfg.ProjectAPIKey, &resp.Diagnostics) {
 		return
 	}
@@ -262,7 +294,7 @@ func (r *IdentityResource) Create(ctx context.Context, req resource.CreateReques
 		body.MetadataAdmin = metadataAdmin
 	}
 
-	identity, err := r.client.CreateIdentity(ctx, body)
+	identity, err := client.CreateIdentity(ctx, body)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Identity",
@@ -293,7 +325,10 @@ func (r *IdentityResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
-	identity, err := r.client.GetIdentity(ctx, state.ID.ValueString())
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := helpers.ResolveProjectClient(r.client, state.ProjectSlug, state.ProjectAPIKey)
+
+	identity, err := client.GetIdentity(ctx, state.ID.ValueString())
 	if err != nil {
 		// Check if it's a 404 (identity deleted outside Terraform)
 		errStr := err.Error()
@@ -350,6 +385,9 @@ func (r *IdentityResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := helpers.ResolveProjectClient(r.client, plan.ProjectSlug, plan.ProjectAPIKey)
+
 	var traits map[string]interface{}
 	if err := json.Unmarshal([]byte(plan.Traits.ValueString()), &traits); err != nil {
 		resp.Diagnostics.AddError(
@@ -389,7 +427,7 @@ func (r *IdentityResource) Update(ctx context.Context, req resource.UpdateReques
 		body.MetadataAdmin = metadataAdmin
 	}
 
-	identity, err := r.client.UpdateIdentity(ctx, state.ID.ValueString(), body)
+	identity, err := client.UpdateIdentity(ctx, state.ID.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Identity",
@@ -420,7 +458,10 @@ func (r *IdentityResource) Delete(ctx context.Context, req resource.DeleteReques
 		return
 	}
 
-	err := r.client.DeleteIdentity(ctx, state.ID.ValueString())
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := helpers.ResolveProjectClient(r.client, state.ProjectSlug, state.ProjectAPIKey)
+
+	err := client.DeleteIdentity(ctx, state.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting Identity",
