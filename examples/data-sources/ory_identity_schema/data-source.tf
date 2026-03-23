@@ -45,21 +45,44 @@ data "ory_identity_schema" "bootstrap" {
   project_id = "your-project-uuid"
 }
 
-# Create a new project and reuse an existing workspace schema as default.
-# Use a human-chosen schema_id (not the hash-based ID from the data source)
-# and copy the schema content from the existing schema.
+# Bootstrap pattern: create a new project and set a custom schema as default.
+# Provide the schema content directly — the API deduplicates automatically
+# if the same content already exists in the workspace.
 resource "ory_project" "new" {
   name = "my-new-project"
-}
-
-data "ory_identity_schema" "existing" {
-  id         = "670f71...full-hash-id"
-  project_id = ory_project.new.id
 }
 
 resource "ory_identity_schema" "default" {
   schema_id   = "customer"
   project_id  = ory_project.new.id
-  schema      = data.ory_identity_schema.existing.schema
   set_default = true
+  schema = jsonencode({
+    "$id"     = "https://example.com/customer.schema.json"
+    "$schema" = "http://json-schema.org/draft-07/schema#"
+    title     = "Customer"
+    type      = "object"
+    properties = {
+      traits = {
+        type = "object"
+        properties = {
+          email = {
+            type   = "string"
+            format = "email"
+            "ory.sh/kratos" = {
+              credentials  = { password = { identifier = true } }
+              verification = { via = "email" }
+              recovery     = { via = "email" }
+            }
+          }
+        }
+        required = ["email"]
+      }
+    }
+  })
+}
+
+# After the schema is added, you can reference it via data source
+data "ory_identity_schema" "default" {
+  id         = ory_identity_schema.default.id
+  project_id = ory_project.new.id
 }

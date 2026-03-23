@@ -15,7 +15,9 @@ This data source retrieves a specific identity schema from the project, allowing
 
 ~> **Note:** Ory may assign hash-based IDs to schemas. Use the `ory_identity_schemas` (plural) data source to discover available schema IDs, or use the `id` output from an `ory_identity_schema` resource.
 
-~> **Tip:** Set `project_id` when only a workspace API key is available (e.g., during project bootstrap before `project_slug` and `project_api_key` exist). When project credentials are configured, the Kratos API is preferred automatically as it returns canonical hash-based IDs with full schema content.
+~> **Tip:** Set `project_id` when only a workspace API key is available (e.g., before `project_slug` and `project_api_key` exist). When project credentials are configured, the Kratos API is preferred automatically as it returns canonical hash-based IDs with full schema content.
+
+~> **Bootstrap:** This data source can only look up schemas that are already in a project's configuration. To set a custom schema as default on a brand-new project, use the `ory_identity_schema` resource with inline schema content instead of looking it up via this data source. The API deduplicates automatically if the same content already exists in the workspace.
 
 ## Example Usage
 
@@ -67,23 +69,46 @@ data "ory_identity_schema" "bootstrap" {
   project_id = "your-project-uuid"
 }
 
-# Create a new project and reuse an existing workspace schema as default.
-# Use a human-chosen schema_id (not the hash-based ID from the data source)
-# and copy the schema content from the existing schema.
+# Bootstrap pattern: create a new project and set a custom schema as default.
+# Provide the schema content directly — the API deduplicates automatically
+# if the same content already exists in the workspace.
 resource "ory_project" "new" {
   name = "my-new-project"
-}
-
-data "ory_identity_schema" "existing" {
-  id         = "670f71...full-hash-id"
-  project_id = ory_project.new.id
 }
 
 resource "ory_identity_schema" "default" {
   schema_id   = "customer"
   project_id  = ory_project.new.id
-  schema      = data.ory_identity_schema.existing.schema
   set_default = true
+  schema = jsonencode({
+    "$id"     = "https://example.com/customer.schema.json"
+    "$schema" = "http://json-schema.org/draft-07/schema#"
+    title     = "Customer"
+    type      = "object"
+    properties = {
+      traits = {
+        type = "object"
+        properties = {
+          email = {
+            type   = "string"
+            format = "email"
+            "ory.sh/kratos" = {
+              credentials  = { password = { identifier = true } }
+              verification = { via = "email" }
+              recovery     = { via = "email" }
+            }
+          }
+        }
+        required = ["email"]
+      }
+    }
+  })
+}
+
+# After the schema is added, you can reference it via data source
+data "ory_identity_schema" "default" {
+  id         = ory_identity_schema.default.id
+  project_id = ory_project.new.id
 }
 ```
 

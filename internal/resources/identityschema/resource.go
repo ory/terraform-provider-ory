@@ -219,18 +219,32 @@ func (r *IdentitySchemaResource) findSchemaByURL(schemas []map[string]interface{
 	return -1
 }
 
+// kratosAPIMatchesProject returns true when the provider-level Kratos API
+// client (configured via project_slug + project_api_key) targets the same
+// project as the given resource-level projectID. When the resource has a
+// different project_id, the Kratos API would query the wrong project and
+// the console API must be used instead.
+func (r *IdentitySchemaResource) kratosAPIMatchesProject(projectID string) bool {
+	if !r.client.HasProjectClient() {
+		return false
+	}
+	providerProjectID := r.client.ProjectID()
+	return projectID == "" || providerProjectID == "" || projectID == providerProjectID
+}
+
 // findExistingSchemaByContent checks all project schemas for one with
 // identical JSON content. Returns the schema's canonical (hash-based) ID if
 // found, or "". Used to detect and reuse existing schemas, preventing
 // duplicates when re-applying after a destroy.
 //
 // It uses ListIdentitySchemas (Kratos API) when a project client is available
-// because the Kratos API returns actual schema content with stable hash IDs.
-// The console API path (ListIdentitySchemasViaProject) reads the project config,
-// which may store non-base64 URLs after API transformation — making content
-// comparison impossible for those schemas.
+// AND targets the same project, because the Kratos API returns actual schema
+// content with stable hash IDs. The console API path
+// (ListIdentitySchemasViaProject) reads the project config, which may store
+// non-base64 URLs after API transformation — making content comparison
+// impossible for those schemas.
 // Falls back to ListIdentitySchemasViaProject when only a console client is
-// available (workspace-only configuration).
+// available or when the resource targets a different project.
 func (r *IdentitySchemaResource) findExistingSchemaByContent(ctx context.Context, projectID, schemaJSON string) (string, error) {
 	var target interface{}
 	if err := json.Unmarshal([]byte(schemaJSON), &target); err != nil {
@@ -244,11 +258,13 @@ func (r *IdentitySchemaResource) findExistingSchemaByContent(ctx context.Context
 	var schemas []ory.IdentitySchemaContainer
 	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
 		// Prefer the Kratos API (ListIdentitySchemas) because it returns actual
-		// schema content with canonical hash-based IDs. The console API path
-		// (ListIdentitySchemasViaProject) reads the project config, which may
-		// store non-base64 URLs after the API transforms them — making content
-		// comparison impossible.
-		if r.client.HasProjectClient() {
+		// schema content with canonical hash-based IDs. Only use it when the
+		// provider-level project client targets the same project as this resource;
+		// otherwise the Kratos API would return schemas from the wrong project.
+		// The console API path (ListIdentitySchemasViaProject) reads the project
+		// config, which may store non-base64 URLs after the API transforms them
+		// — making content comparison impossible.
+		if r.kratosAPIMatchesProject(projectID) {
 			schemas, err = r.client.ListIdentitySchemas(ctx)
 		} else if r.client.HasConsoleClient() {
 			schemas, err = r.client.ListIdentitySchemasViaProject(ctx, projectID)
@@ -451,7 +467,7 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 	//     ID-diff matching (any new schema ID not seen before the patch).
 	var actualID string
 	waitErr := helpers.WaitForCondition(ctx, func() (bool, error) {
-		if r.client.HasProjectClient() {
+		if r.kratosAPIMatchesProject(projectID) {
 			foundID, findErr := r.findExistingSchemaByContent(ctx, projectID, schemaJSON)
 			if findErr != nil {
 				if client.IsTransientError(findErr) {

@@ -64,6 +64,45 @@ Identity schemas use the `ory.sh/kratos` JSON Schema extension to configure auth
 }
 ```
 
+## Bootstrap Pattern
+
+When creating a new project and setting a custom identity schema as default, provide the schema content directly in the resource configuration. There is no need to look up the schema via a data source first — the provider adds the schema to the new project's configuration, and the API automatically deduplicates if identical content already exists in the workspace.
+
+```hcl
+resource "ory_project" "new" {
+  name = "my-new-project"
+}
+
+resource "ory_identity_schema" "default" {
+  schema_id   = "customer"
+  project_id  = ory_project.new.id
+  set_default = true
+  schema = jsonencode({
+    "$id"     = "https://example.com/customer.schema.json"
+    "$schema" = "http://json-schema.org/draft-07/schema#"
+    title     = "Customer"
+    type      = "object"
+    properties = {
+      traits = {
+        type = "object"
+        properties = {
+          email = {
+            type   = "string"
+            format = "email"
+            "ory.sh/kratos" = {
+              credentials  = { password = { identifier = true } }
+              verification = { via = "email" }
+              recovery     = { via = "email" }
+            }
+          }
+        }
+        required = ["email"]
+      }
+    }
+  })
+}
+```
+
 ## Example Usage
 
 {{ tffile "examples/resources/ory_identity_schema/resource.tf" }}

@@ -141,6 +141,41 @@ func TestAccIdentitySchemaResource_uniqueContent(t *testing.T) {
 	})
 }
 
+func TestAccIdentitySchemaResource_bootstrap(t *testing.T) {
+	suffix := time.Now().UnixNano()
+	schemaID := fmt.Sprintf("tf-test-bootstrap-%d", suffix)
+	projectName := fmt.Sprintf("tf-test-bootstrap-%d", suffix)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSchemaTests(t)
+			acctest.RequireProjectTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create a new project and immediately set a custom schema as default.
+			// This tests the bootstrap pattern where only workspace credentials
+			// are available and the new project has no custom schemas in its config.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/bootstrap.tf.tmpl", map[string]string{
+					"ProjectName": projectName,
+					"SchemaID":    schemaID,
+					"AppURL":      testutil.ExampleAppURL,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project.bootstrap", "id"),
+					resource.TestCheckResourceAttrSet("ory_identity_schema.bootstrap", "id"),
+					resource.TestCheckResourceAttr("ory_identity_schema.bootstrap", "schema_id", schemaID),
+					resource.TestCheckResourceAttr("ory_identity_schema.bootstrap", "set_default", "true"),
+					// The schema should be visible via the data source on the new project
+					resource.TestCheckResourceAttrSet("data.ory_identity_schemas.bootstrap", "schemas.#"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccIdentitySchemaResource_setDefault(t *testing.T) {
 	suffix := time.Now().UnixNano()
 	schemaID := fmt.Sprintf("tf-test-default-%d", suffix)
