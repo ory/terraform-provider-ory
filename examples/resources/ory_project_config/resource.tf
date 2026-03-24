@@ -34,11 +34,25 @@ resource "ory_project_config" "secure" {
   enable_oidc                  = true # Required for social providers (Google, GitHub, etc.)
   enable_oidc_auto_link_policy = true # Allow social providers with auto_link = true to link to existing identities
   enable_passkey               = true
+  enable_profile               = true # Allow users to update profile traits via settings flow
+
+  # Code Method Configuration
+  code_lifespan                            = "15m0s" # How long a code remains valid
+  code_missing_credential_fallback_enabled = true    # Use code as fallback when primary credential is missing
 
   # Flow Controls
   enable_registration = true
   enable_recovery     = true
   enable_verification = true
+
+  # Settings Flow
+  settings_lifespan                   = "30m0s" # How long a settings flow session is valid
+  settings_privileged_session_max_age = "15m0s" # Re-auth required for privileged changes after this duration
+
+  # Verification Flow
+  verification_use                       = "code"  # Use one-time code for verification (or "link")
+  verification_lifespan                  = "30m0s" # How long a verification flow session is valid
+  verification_notify_unknown_recipients = false   # Don't send verification emails to unknown addresses
 
   # MFA
   enable_totp              = true

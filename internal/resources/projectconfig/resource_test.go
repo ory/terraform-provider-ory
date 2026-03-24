@@ -460,6 +460,93 @@ func TestAccProjectConfigResource_loginStyle(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_settingsAndVerification(t *testing.T) {
+	createData := map[string]string{
+		"EnableProfile":                        "true",
+		"CodeLifespan":                         "15m0s",
+		"CodeMissingCredentialFallbackEnabled": "true",
+		"SettingsLifespan":                     "30m0s",
+		"SettingsPrivilegedSessionMaxAge":      "15m0s",
+		"RequiredAAL":                          "aal1",
+		"VerificationUse":                      "code",
+		"VerificationLifespan":                 "30m0s",
+		"VerificationNotifyUnknownRecipients":  "false",
+	}
+	updateData := map[string]string{
+		"EnableProfile":                        "true",
+		"CodeLifespan":                         "20m0s",
+		"CodeMissingCredentialFallbackEnabled": "false",
+		"SettingsLifespan":                     "1h0m0s",
+		"SettingsPrivilegedSessionMaxAge":      "30m0s",
+		"RequiredAAL":                          "highest_available",
+		"VerificationUse":                      "link",
+		"VerificationLifespan":                 "1h0m0s",
+		"VerificationNotifyUnknownRecipients":  "true",
+	}
+
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/settings_verification.tf.tmpl", createData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					// Profile method
+					resource.TestCheckResourceAttr("ory_project_config.test", "enable_profile", "true"),
+					// Code config
+					resource.TestCheckResourceAttr("ory_project_config.test", "code_lifespan", "15m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "code_missing_credential_fallback_enabled", "true"),
+					// Settings flow
+					resource.TestCheckResourceAttr("ory_project_config.test", "settings_lifespan", "30m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "settings_privileged_session_max_age", "15m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "required_aal", "aal1"),
+					// Verification flow
+					resource.TestCheckResourceAttr("ory_project_config.test", "verification_use", "code"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "verification_lifespan", "30m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "verification_notify_unknown_recipients", "false"),
+				),
+			},
+			// ImportState
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"enable_profile",
+					"enable_code", "code_lifespan", "code_missing_credential_fallback_enabled",
+					"settings_lifespan", "settings_privileged_session_max_age", "required_aal",
+					"enable_verification", "verification_use", "verification_lifespan", "verification_notify_unknown_recipients",
+					"cors_enabled", "password_min_length", "smtp_connection_uri",
+				},
+			},
+			// Update
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/settings_verification.tf.tmpl", updateData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					// Code config updated
+					resource.TestCheckResourceAttr("ory_project_config.test", "code_lifespan", "20m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "code_missing_credential_fallback_enabled", "false"),
+					// Settings flow updated
+					resource.TestCheckResourceAttr("ory_project_config.test", "settings_lifespan", "1h0m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "settings_privileged_session_max_age", "30m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "required_aal", "highest_available"),
+					// Verification flow updated
+					resource.TestCheckResourceAttr("ory_project_config.test", "verification_use", "link"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "verification_lifespan", "1h0m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "verification_notify_unknown_recipients", "true"),
+				),
+			},
+			// Verify no perpetual diff
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/settings_verification.tf.tmpl", updateData),
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_courierHTTP(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },

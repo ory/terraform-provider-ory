@@ -109,11 +109,28 @@ type ProjectConfigResourceModel struct {
 	PasswordMaxBreaches          types.Int64 `tfsdk:"password_max_breaches"`
 	PasswordIdentifierSimilarity types.Bool  `tfsdk:"password_identifier_similarity"`
 
+	// Profile method
+	EnableProfile types.Bool `tfsdk:"enable_profile"`
+
+	// Code method config
+	CodeLifespan                         types.String `tfsdk:"code_lifespan"`
+	CodeMaxSubmissions                   types.Int64  `tfsdk:"code_max_submissions"`
+	CodeMissingCredentialFallbackEnabled types.Bool   `tfsdk:"code_missing_credential_fallback_enabled"`
+
 	// Flow settings
 	EnableRecovery     types.Bool   `tfsdk:"enable_recovery"`
 	EnableVerification types.Bool   `tfsdk:"enable_verification"`
 	EnableRegistration types.Bool   `tfsdk:"enable_registration"`
 	LoginStyle         types.String `tfsdk:"login_style"`
+
+	// Settings flow
+	SettingsLifespan                types.String `tfsdk:"settings_lifespan"`
+	SettingsPrivilegedSessionMaxAge types.String `tfsdk:"settings_privileged_session_max_age"`
+
+	// Verification flow
+	VerificationUse                     types.String `tfsdk:"verification_use"`
+	VerificationLifespan                types.String `tfsdk:"verification_lifespan"`
+	VerificationNotifyUnknownRecipients types.Bool   `tfsdk:"verification_notify_unknown_recipients"`
 
 	// SMTP Configuration
 	SMTPConnectionURI types.String `tfsdk:"smtp_connection_uri"`
@@ -506,6 +523,24 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 				Description: "Enable backup/recovery codes.",
 				Optional:    true,
 			},
+			"enable_profile": schema.BoolAttribute{
+				Description: "Enable the profile authentication method. When enabled, users can update their identity traits (e.g., name, address) via the settings flow.",
+				Optional:    true,
+			},
+
+			// Code method config
+			"code_lifespan": schema.StringAttribute{
+				Description: "Lifespan of the code method's one-time codes (e.g., '15m0s'). Controls how long a code remains valid after being issued.",
+				Optional:    true,
+			},
+			"code_max_submissions": schema.Int64Attribute{
+				Description: "Maximum number of submission attempts for a code before a new code must be requested.",
+				Optional:    true,
+			},
+			"code_missing_credential_fallback_enabled": schema.BoolAttribute{
+				Description: "Enable missing credential fallback for the code method. When enabled, allows the code method to be used as a fallback when the primary credential is missing.",
+				Optional:    true,
+			},
 
 			// Password policy
 			"password_min_length": schema.Int64Attribute{
@@ -545,6 +580,32 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 					"'identifier_first' collects the identifier before showing auth methods.",
 				Optional:   true,
 				Validators: []validator.String{stringvalidator.OneOf("unified", "identifier_first")},
+			},
+
+			// Settings flow
+			"settings_lifespan": schema.StringAttribute{
+				Description: "Lifespan of the settings flow (e.g., '30m0s'). Controls how long a settings flow session remains valid.",
+				Optional:    true,
+			},
+			"settings_privileged_session_max_age": schema.StringAttribute{
+				Description: "Maximum age of a privileged session for the settings flow (e.g., '15m0s'). " +
+					"After this duration, the user must re-authenticate to make privileged changes like password updates.",
+				Optional: true,
+			},
+
+			// Verification flow
+			"verification_use": schema.StringAttribute{
+				Description: "Verification method to use: 'code' (one-time code) or 'link' (magic link).",
+				Optional:    true,
+				Validators:  []validator.String{stringvalidator.OneOf("code", "link")},
+			},
+			"verification_lifespan": schema.StringAttribute{
+				Description: "Lifespan of the verification flow (e.g., '30m0s'). Controls how long a verification flow session remains valid.",
+				Optional:    true,
+			},
+			"verification_notify_unknown_recipients": schema.BoolAttribute{
+				Description: "When enabled, verification emails are sent even if the email address is not associated with any known identity.",
+				Optional:    true,
 			},
 
 			// SMTP Configuration
@@ -600,8 +661,9 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 				Optional:    true,
 			},
 			"required_aal": schema.StringAttribute{
-				Description: "Required Authenticator Assurance Level for protected resources: 'aal1' or 'aal2'.",
+				Description: "Required Authenticator Assurance Level for the settings flow: 'aal1' or 'highest_available'.",
 				Optional:    true,
+				Validators:  []validator.String{stringvalidator.OneOf("aal1", "highest_available")},
 			},
 			"session_whoami_required_aal": schema.StringAttribute{
 				Description: "Required AAL for session whoami endpoint: 'aal1', 'aal2', or 'highest_available'.",
@@ -1020,6 +1082,7 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 		{&plan.EnableWebAuthn, "/services/identity/config/selfservice/methods/webauthn/enabled"},
 		{&plan.EnablePasskey, "/services/identity/config/selfservice/methods/passkey/enabled"},
 		{&plan.EnableLookupSecret, "/services/identity/config/selfservice/methods/lookup_secret/enabled"},
+		{&plan.EnableProfile, "/services/identity/config/selfservice/methods/profile/enabled"},
 	}
 	for _, m := range methodMappings {
 		if !m.field.IsNull() && !m.field.IsUnknown() {
@@ -1061,6 +1124,29 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 		})
 	}
 
+	// Code method config
+	if !plan.CodeLifespan.IsNull() && !plan.CodeLifespan.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/selfservice/methods/code/config/lifespan",
+			Value: plan.CodeLifespan.ValueString(),
+		})
+	}
+	if !plan.CodeMaxSubmissions.IsNull() && !plan.CodeMaxSubmissions.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/selfservice/methods/code/config/max_submissions",
+			Value: plan.CodeMaxSubmissions.ValueInt64(),
+		})
+	}
+	if !plan.CodeMissingCredentialFallbackEnabled.IsNull() && !plan.CodeMissingCredentialFallbackEnabled.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/selfservice/methods/code/config/missing_credential_fallback_enabled",
+			Value: plan.CodeMissingCredentialFallbackEnabled.ValueBool(),
+		})
+	}
+
 	// Flow settings
 	flowMappings := map[*types.Bool]string{
 		&plan.EnableRecovery:     "/services/identity/config/selfservice/flows/recovery/enabled",
@@ -1083,6 +1169,45 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 			Op:    "replace",
 			Path:  "/services/identity/config/selfservice/flows/login/style",
 			Value: plan.LoginStyle.ValueString(),
+		})
+	}
+
+	// Settings flow
+	if !plan.SettingsLifespan.IsNull() && !plan.SettingsLifespan.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/selfservice/flows/settings/lifespan",
+			Value: plan.SettingsLifespan.ValueString(),
+		})
+	}
+	if !plan.SettingsPrivilegedSessionMaxAge.IsNull() && !plan.SettingsPrivilegedSessionMaxAge.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/selfservice/flows/settings/privileged_session_max_age",
+			Value: plan.SettingsPrivilegedSessionMaxAge.ValueString(),
+		})
+	}
+
+	// Verification flow
+	if !plan.VerificationUse.IsNull() && !plan.VerificationUse.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/selfservice/flows/verification/use",
+			Value: plan.VerificationUse.ValueString(),
+		})
+	}
+	if !plan.VerificationLifespan.IsNull() && !plan.VerificationLifespan.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/selfservice/flows/verification/lifespan",
+			Value: plan.VerificationLifespan.ValueString(),
+		})
+	}
+	if !plan.VerificationNotifyUnknownRecipients.IsNull() && !plan.VerificationNotifyUnknownRecipients.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/selfservice/flows/verification/notify_unknown_recipients",
+			Value: plan.VerificationNotifyUnknownRecipients.ValueBool(),
 		})
 	}
 
@@ -1601,6 +1726,7 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 			&state.EnableWebAuthn:           {"selfservice", "methods", "webauthn", "enabled"},
 			&state.EnablePasskey:            {"selfservice", "methods", "passkey", "enabled"},
 			&state.EnableLookupSecret:       {"selfservice", "methods", "lookup_secret", "enabled"},
+			&state.EnableProfile:            {"selfservice", "methods", "profile", "enabled"},
 		}
 		for field, keys := range methodReadMappings {
 			if !field.IsNull() {
@@ -1632,6 +1758,23 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 			}
 		}
 
+		// Code method config
+		if !state.CodeLifespan.IsNull() {
+			if v, ok := getNestedString(identityConfig, "selfservice", "methods", "code", "config", "lifespan"); ok {
+				state.CodeLifespan = types.StringValue(v)
+			}
+		}
+		if !state.CodeMaxSubmissions.IsNull() {
+			if v, ok := getNestedFloat(identityConfig, "selfservice", "methods", "code", "config", "max_submissions"); ok {
+				state.CodeMaxSubmissions = types.Int64Value(int64(v))
+			}
+		}
+		if !state.CodeMissingCredentialFallbackEnabled.IsNull() {
+			if v, ok := getNestedBool(identityConfig, "selfservice", "methods", "code", "config", "missing_credential_fallback_enabled"); ok {
+				state.CodeMissingCredentialFallbackEnabled = types.BoolValue(v)
+			}
+		}
+
 		// Flow settings
 		flowReadMappings := map[*types.Bool][]string{
 			&state.EnableRecovery:     {"selfservice", "flows", "recovery", "enabled"},
@@ -1650,6 +1793,35 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 		if !state.LoginStyle.IsNull() {
 			if v, ok := getNestedString(identityConfig, "selfservice", "flows", "login", "style"); ok {
 				state.LoginStyle = types.StringValue(v)
+			}
+		}
+
+		// Settings flow
+		if !state.SettingsLifespan.IsNull() {
+			if v, ok := getNestedString(identityConfig, "selfservice", "flows", "settings", "lifespan"); ok {
+				state.SettingsLifespan = types.StringValue(v)
+			}
+		}
+		if !state.SettingsPrivilegedSessionMaxAge.IsNull() {
+			if v, ok := getNestedString(identityConfig, "selfservice", "flows", "settings", "privileged_session_max_age"); ok {
+				state.SettingsPrivilegedSessionMaxAge = types.StringValue(v)
+			}
+		}
+
+		// Verification flow
+		if !state.VerificationUse.IsNull() {
+			if v, ok := getNestedString(identityConfig, "selfservice", "flows", "verification", "use"); ok {
+				state.VerificationUse = types.StringValue(v)
+			}
+		}
+		if !state.VerificationLifespan.IsNull() {
+			if v, ok := getNestedString(identityConfig, "selfservice", "flows", "verification", "lifespan"); ok {
+				state.VerificationLifespan = types.StringValue(v)
+			}
+		}
+		if !state.VerificationNotifyUnknownRecipients.IsNull() {
+			if v, ok := getNestedBool(identityConfig, "selfservice", "flows", "verification", "notify_unknown_recipients"); ok {
+				state.VerificationNotifyUnknownRecipients = types.BoolValue(v)
 			}
 		}
 

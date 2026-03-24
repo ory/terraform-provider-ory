@@ -57,11 +57,25 @@ resource "ory_project_config" "secure" {
   enable_oidc                  = true # Required for social providers (Google, GitHub, etc.)
   enable_oidc_auto_link_policy = true # Allow social providers with auto_link = true to link to existing identities
   enable_passkey               = true
+  enable_profile               = true # Allow users to update profile traits via settings flow
+
+  # Code Method Configuration
+  code_lifespan                            = "15m0s" # How long a code remains valid
+  code_missing_credential_fallback_enabled = true    # Use code as fallback when primary credential is missing
 
   # Flow Controls
   enable_registration = true
   enable_recovery     = true
   enable_verification = true
+
+  # Settings Flow
+  settings_lifespan                   = "30m0s" # How long a settings flow session is valid
+  settings_privileged_session_max_age = "15m0s" # Re-auth required for privileged changes after this duration
+
+  # Verification Flow
+  verification_use                       = "code"  # Use one-time code for verification (or "link")
+  verification_lifespan                  = "30m0s" # How long a verification flow session is valid
+  verification_notify_unknown_recipients = false   # Don't send verification emails to unknown addresses
 
   # MFA
   enable_totp              = true
@@ -317,9 +331,11 @@ This resource exposes **75+ attributes** across these configuration categories:
 | Session settings | cookie same site, lifespan, whoami-required AAL |
 | CORS | public and admin origins, enabled/disabled |
 | Login flow | login style (unified, identifier_first) |
-| Authentication | passwordless, code, OIDC (social sign-in), OIDC auto-link policy, TOTP, passkey, WebAuthn, lookup secrets |
+| Authentication | passwordless, code, profile, OIDC (social sign-in), OIDC auto-link policy, TOTP, passkey, WebAuthn, lookup secrets |
+| Code method | lifespan, max submissions, missing credential fallback |
 | OAuth2/Hydra | token lifespans, access token strategy, PKCE, claims, scope strategy, consent/login URLs |
-| Recovery / Verification | enabled, methods, notify unknown recipients |
+| Settings flow | lifespan, privileged session max age, required AAL |
+| Recovery / Verification | enabled, methods, lifespan, notify unknown recipients |
 | Account enumeration | mitigation enabled |
 | Keto | namespace configuration |
 
@@ -342,7 +358,10 @@ Some Ory project settings are not yet available through this resource. For setti
 - `account_experience_name` (String) Application name shown in the hosted login UI.
 - `account_experience_stylesheet` (String) Custom CSS stylesheet for the hosted login UI.
 - `allowed_return_urls` (List of String) List of allowed return URLs.
+- `code_lifespan` (String) Lifespan of the code method's one-time codes (e.g., '15m0s'). Controls how long a code remains valid after being issued.
+- `code_max_submissions` (Number) Maximum number of submission attempts for a code before a new code must be requested.
 - `code_mfa_enabled` (Boolean) Enable the code method as a second factor for MFA. When enabled, users can use one-time codes as a second authentication factor.
+- `code_missing_credential_fallback_enabled` (Boolean) Enable missing credential fallback for the code method. When enabled, allows the code method to be used as a fallback when the primary credential is missing.
 - `cors_admin_enabled` (Boolean) Enable CORS for the admin API.
 - `cors_admin_origins` (List of String) Allowed CORS origins for the admin API.
 - `cors_enabled` (Boolean) Enable CORS for the public API.
@@ -357,6 +376,7 @@ Some Ory project settings are not yet available through this resource. For setti
 - `enable_oidc_auto_link_policy` (Boolean) Enable the OIDC auto-link policy. When true, social sign-in providers with auto_link enabled (on ory_social_provider) can automatically link to existing identities that share the same identifier (e.g., email).
 - `enable_passkey` (Boolean) Enable Passkey authentication.
 - `enable_password` (Boolean) Enable password authentication.
+- `enable_profile` (Boolean) Enable the profile authentication method. When enabled, users can update their identity traits (e.g., name, address) via the settings flow.
 - `enable_recovery` (Boolean) Enable password recovery flow.
 - `enable_registration` (Boolean) Enable user registration.
 - `enable_totp` (Boolean) Enable TOTP (Time-based One-Time Password).
@@ -394,19 +414,24 @@ Some Ory project settings are not yet available through this resource. For setti
 - `project_id` (String) Project ID to configure. If not set, uses provider's project_id.
 - `recovery_ui_url` (String) URL for the password recovery UI.
 - `registration_ui_url` (String) URL for the registration UI.
-- `required_aal` (String) Required Authenticator Assurance Level for protected resources: 'aal1' or 'aal2'.
+- `required_aal` (String) Required Authenticator Assurance Level for the settings flow: 'aal1' or 'highest_available'.
 - `session_cookie_persistent` (Boolean) Enable persistent session cookies (survive browser close).
 - `session_cookie_same_site` (String) SameSite cookie attribute (Lax, Strict, None).
 - `session_lifespan` (String) Session duration (e.g., '24h0m0s').
 - `session_tokenizer_templates` (Attributes Map) JWT tokenizer templates for the /sessions/whoami endpoint. Each key is a template name, and the value configures how JWTs are generated. (see [below for nested schema](#nestedatt--session_tokenizer_templates))
 - `session_whoami_required_aal` (String) Required AAL for session whoami endpoint: 'aal1', 'aal2', or 'highest_available'.
+- `settings_lifespan` (String) Lifespan of the settings flow (e.g., '30m0s'). Controls how long a settings flow session remains valid.
+- `settings_privileged_session_max_age` (String) Maximum age of a privileged session for the settings flow (e.g., '15m0s'). After this duration, the user must re-authenticate to make privileged changes like password updates.
 - `settings_ui_url` (String) URL for the account settings UI.
 - `smtp_connection_uri` (String, Sensitive) SMTP connection URI for sending emails.
 - `smtp_from_address` (String) Email address to send from.
 - `smtp_from_name` (String) Name to display as sender.
 - `smtp_headers` (Map of String) Custom headers to include in emails.
 - `totp_issuer` (String) TOTP issuer name shown in authenticator apps.
+- `verification_lifespan` (String) Lifespan of the verification flow (e.g., '30m0s'). Controls how long a verification flow session remains valid.
+- `verification_notify_unknown_recipients` (Boolean) When enabled, verification emails are sent even if the email address is not associated with any known identity.
 - `verification_ui_url` (String) URL for the verification UI.
+- `verification_use` (String) Verification method to use: 'code' (one-time code) or 'link' (magic link).
 - `webauthn_passwordless` (Boolean) Enable passwordless WebAuthn authentication.
 - `webauthn_rp_display_name` (String) WebAuthn Relying Party display name.
 - `webauthn_rp_id` (String) WebAuthn Relying Party ID (typically your domain).
