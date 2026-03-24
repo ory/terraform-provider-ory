@@ -309,65 +309,44 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	// Poll for the canonical (hash-based) schema ID. The API initially stores
-	// the schema with the user-provided schema_id, then transforms it to a
-	// hash-based ID.
-	//
-	// Strategy 1 (Kratos API): Match by normalized JSON content. Kratos always
-	// returns post-transformation hash IDs, making this deterministic.
-	//
-	// Strategy 2 (Console API fallback): Detect new IDs by diffing against
-	// pre-patch IDs. Less reliable because the project config may briefly show
-	// the user-provided schema_id before transformation.
-	var targetNormalized []byte
-	if r.client.HasProjectClient() {
-		var target interface{}
-		if err := json.Unmarshal([]byte(schemaJSON), &target); err == nil {
-			targetNormalized, _ = json.Marshal(target)
-		}
-	}
-
+	// Resolve the canonical schema ID using a fresh GetProject call.
+	// PatchProject's response may preserve our input name, but the API may
+	// internally assign a different ID (e.g., hash-based). A fresh GetProject
+	// returns the canonical IDs.
 	var actualID string
 	waitErr := helpers.WaitForCondition(ctx, func() (bool, error) {
-		// Strategy 1: Content match via Kratos API (preferred).
-		if len(targetNormalized) > 0 {
-			schemas, listErr := r.client.ListIdentitySchemas(ctx)
-			if listErr == nil {
-				for _, s := range schemas {
-					stored, _ := json.Marshal(s.GetSchema())
-					if string(stored) == string(targetNormalized) {
-						foundID := s.GetId()
-						if foundID != "" && foundID != schemaID {
-							actualID = foundID
-							return true, nil
-						}
-					}
-				}
-			}
-			return false, nil
-		}
-
-		// Strategy 2: ID-diff via Console API.
 		freshSchemas, gsErr := r.getSchemas(ctx, projectID)
 		if gsErr != nil {
 			return false, nil //nolint:nilerr
 		}
-		for _, s := range freshSchemas {
-			if id, ok := s["id"].(string); ok && !existingIDs[id] && id != schemaID {
+
+		// Try by user-provided schema_id
+		if idx := r.findSchemaIndex(freshSchemas, schemaID); idx >= 0 {
+			if id, ok := freshSchemas[idx]["id"].(string); ok {
 				actualID = id
 				return true, nil
 			}
 		}
+
+		// Try by URL match
+		if idx := r.findSchemaByURL(freshSchemas, schemaURL); idx >= 0 {
+			if id, ok := freshSchemas[idx]["id"].(string); ok {
+				actualID = id
+				return true, nil
+			}
+		}
+
+		// Try to find a new ID not in the pre-creation set
+		for _, s := range freshSchemas {
+			if id, ok := s["id"].(string); ok && !existingIDs[id] {
+				actualID = id
+				return true, nil
+			}
+		}
+
 		return false, nil
 	})
-	if waitErr != nil {
-		resp.Diagnostics.AddWarning("Schema ID Not Resolved",
-			fmt.Sprintf("Could not resolve canonical schema ID; "+
-				"using user-provided ID %q as fallback. "+
-				"The state will be corrected on the next plan/refresh. Reason: %v",
-				schemaID, waitErr))
-	}
-	if actualID == "" {
+	if waitErr != nil || actualID == "" {
 		actualID = schemaID
 	}
 
