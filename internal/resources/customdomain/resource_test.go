@@ -3,6 +3,7 @@
 package customdomain_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -23,11 +24,40 @@ func importStateCustomDomainID(s *terraform.State) (string, error) {
 	return fmt.Sprintf("%s/%s", projectID, domainID), nil
 }
 
+// cleanupStaleCustomDomains removes any existing custom domains from the test
+// project. This prevents "Duplicate custom hostname found (1406)" errors when a
+// previous test run failed before its destroy step could clean up.
+func cleanupStaleCustomDomains(t *testing.T) {
+	t.Helper()
+
+	oryClient, err := acctest.GetOryClient()
+	if err != nil {
+		t.Fatalf("failed to create Ory client for custom domain cleanup: %s", err)
+	}
+
+	projectID := acctest.GetTestProjectID(t)
+	ctx := context.Background()
+
+	domains, err := oryClient.ListCustomDomains(ctx, projectID)
+	if err != nil {
+		t.Logf("warning: could not list custom domains for cleanup: %s", err)
+		return
+	}
+
+	for _, d := range domains {
+		t.Logf("cleaning up stale custom domain: id=%s", d.GetId())
+		if err := oryClient.DeleteCustomDomain(ctx, projectID, d.GetId()); err != nil {
+			t.Fatalf("failed to delete stale custom domain %s: %s", d.GetId(), err)
+		}
+	}
+}
+
 func testAccPreCheckCustomDomain(t *testing.T) {
 	acctest.AccPreCheck(t)
 	if os.Getenv("ORY_CUSTOM_DOMAIN_HOSTNAME") == "" {
 		t.Skip("ORY_CUSTOM_DOMAIN_HOSTNAME must be set for custom domain tests (e.g., test.example-e2e.orycname.dev)")
 	}
+	cleanupStaleCustomDomains(t)
 }
 
 // TestAccCustomDomainResource_basic tests the full CRUD lifecycle of a custom domain.
