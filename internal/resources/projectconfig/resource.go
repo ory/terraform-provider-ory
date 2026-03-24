@@ -114,7 +114,6 @@ type ProjectConfigResourceModel struct {
 
 	// Code method config
 	CodeLifespan                         types.String `tfsdk:"code_lifespan"`
-	CodeMaxSubmissions                   types.Int64  `tfsdk:"code_max_submissions"`
 	CodeMissingCredentialFallbackEnabled types.Bool   `tfsdk:"code_missing_credential_fallback_enabled"`
 
 	// Flow settings
@@ -531,10 +530,6 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 			// Code method config
 			"code_lifespan": schema.StringAttribute{
 				Description: "Lifespan of the code method's one-time codes (e.g., '15m0s'). Controls how long a code remains valid after being issued.",
-				Optional:    true,
-			},
-			"code_max_submissions": schema.Int64Attribute{
-				Description: "Maximum number of submission attempts for a code before a new code must be requested.",
 				Optional:    true,
 			},
 			"code_missing_credential_fallback_enabled": schema.BoolAttribute{
@@ -1130,13 +1125,6 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 			Op:    "replace",
 			Path:  "/services/identity/config/selfservice/methods/code/config/lifespan",
 			Value: plan.CodeLifespan.ValueString(),
-		})
-	}
-	if !plan.CodeMaxSubmissions.IsNull() && !plan.CodeMaxSubmissions.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/methods/code/config/max_submissions",
-			Value: plan.CodeMaxSubmissions.ValueInt64(),
 		})
 	}
 	if !plan.CodeMissingCredentialFallbackEnabled.IsNull() && !plan.CodeMissingCredentialFallbackEnabled.IsUnknown() {
@@ -1762,11 +1750,6 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 		if !state.CodeLifespan.IsNull() {
 			if v, ok := getNestedString(identityConfig, "selfservice", "methods", "code", "config", "lifespan"); ok {
 				state.CodeLifespan = types.StringValue(v)
-			}
-		}
-		if !state.CodeMaxSubmissions.IsNull() {
-			if v, ok := getNestedFloat(identityConfig, "selfservice", "methods", "code", "config", "max_submissions"); ok {
-				state.CodeMaxSubmissions = types.Int64Value(int64(v))
 			}
 		}
 		if !state.CodeMissingCredentialFallbackEnabled.IsNull() {

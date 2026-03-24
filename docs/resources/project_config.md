@@ -359,7 +359,6 @@ Some Ory project settings are not yet available through this resource. For setti
 - `account_experience_stylesheet` (String) Custom CSS stylesheet for the hosted login UI.
 - `allowed_return_urls` (List of String) List of allowed return URLs.
 - `code_lifespan` (String) Lifespan of the code method's one-time codes (e.g., '15m0s'). Controls how long a code remains valid after being issued.
-- `code_max_submissions` (Number) Maximum number of submission attempts for a code before a new code must be requested.
 - `code_mfa_enabled` (Boolean) Enable the code method as a second factor for MFA. When enabled, users can use one-time codes as a second authentication factor.
 - `code_missing_credential_fallback_enabled` (Boolean) Enable missing credential fallback for the code method. When enabled, allows the code method to be used as a fallback when the primary credential is missing.
 - `cors_admin_enabled` (Boolean) Enable CORS for the admin API.
