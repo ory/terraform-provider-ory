@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -317,7 +318,10 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 	waitErr := helpers.WaitForCondition(ctx, func() (bool, error) {
 		freshSchemas, gsErr := r.getSchemas(ctx, projectID)
 		if gsErr != nil {
-			return false, nil //nolint:nilerr
+			if client.IsTransientError(gsErr) {
+				return false, nil // transient — keep retrying
+			}
+			return false, gsErr // non-retryable — fail fast
 		}
 
 		// Try by user-provided schema_id
@@ -346,7 +350,19 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 
 		return false, nil
 	})
-	if waitErr != nil || actualID == "" {
+	if errors.Is(waitErr, context.Canceled) || errors.Is(waitErr, context.DeadlineExceeded) {
+		resp.Diagnostics.AddError("Error Creating Identity Schema",
+			fmt.Sprintf("context canceled while waiting for schema ID resolution: %v", waitErr))
+		return
+	}
+	if waitErr != nil {
+		resp.Diagnostics.AddWarning("Schema ID Not Resolved",
+			fmt.Sprintf("Could not resolve canonical schema ID; "+
+				"using user-provided ID %q as fallback. "+
+				"The state will be corrected on the next plan/refresh. Reason: %v",
+				schemaID, waitErr))
+	}
+	if actualID == "" {
 		actualID = schemaID
 	}
 
