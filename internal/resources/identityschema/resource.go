@@ -311,9 +311,43 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 
 	// Poll for the canonical (hash-based) schema ID. The API initially stores
 	// the schema with the user-provided schema_id, then transforms it to a
-	// hash-based ID. We detect the new ID by diffing against pre-patch IDs.
+	// hash-based ID.
+	//
+	// Strategy 1 (Kratos API): Match by normalized JSON content. Kratos always
+	// returns post-transformation hash IDs, making this deterministic.
+	//
+	// Strategy 2 (Console API fallback): Detect new IDs by diffing against
+	// pre-patch IDs. Less reliable because the project config may briefly show
+	// the user-provided schema_id before transformation.
+	var targetNormalized []byte
+	if r.client.HasProjectClient() {
+		var target interface{}
+		if err := json.Unmarshal([]byte(schemaJSON), &target); err == nil {
+			targetNormalized, _ = json.Marshal(target)
+		}
+	}
+
 	var actualID string
 	waitErr := helpers.WaitForCondition(ctx, func() (bool, error) {
+		// Strategy 1: Content match via Kratos API (preferred).
+		if len(targetNormalized) > 0 {
+			schemas, listErr := r.client.ListIdentitySchemas(ctx)
+			if listErr == nil {
+				for _, s := range schemas {
+					stored, _ := json.Marshal(s.GetSchema())
+					if string(stored) == string(targetNormalized) {
+						foundID := s.GetId()
+						if foundID != "" && foundID != schemaID {
+							actualID = foundID
+							return true, nil
+						}
+					}
+				}
+			}
+			return false, nil
+		}
+
+		// Strategy 2: ID-diff via Console API.
 		freshSchemas, gsErr := r.getSchemas(ctx, projectID)
 		if gsErr != nil {
 			return false, nil //nolint:nilerr
