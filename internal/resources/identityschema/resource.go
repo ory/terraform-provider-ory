@@ -246,14 +246,19 @@ func (r *IdentitySchemaResource) resolveSchemaID(ctx context.Context, projectID,
 		return "", fmt.Errorf("failed to list identity schemas: %w", err)
 	}
 
+	var marshalFailures int
 	for _, s := range schemas {
 		storedNormalized, marshalErr := json.Marshal(s.GetSchema())
 		if marshalErr != nil {
+			marshalFailures++
 			continue
 		}
 		if string(targetNormalized) == string(storedNormalized) {
 			return s.GetId(), nil
 		}
+	}
+	if marshalFailures > 0 {
+		return "", fmt.Errorf("no content match found; %d of %d schemas could not be compared due to marshal errors", marshalFailures, len(schemas))
 	}
 	return "", nil
 }
@@ -353,41 +358,29 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 	// The Ory API transforms the user-provided schema_id into a content-hash ID.
 	// We use multiple strategies to find it:
 	//  1. Content-based matching via ListIdentitySchemas (most reliable)
-	//  2. ID-diff detection from the project config (new ID not seen before)
-	//  3. Direct schema_id or URL match in the project config
+	//  2. ID-diff detection from the project config (new hash ID not seen before)
 	var actualID string
-	_ = helpers.WaitForCondition(ctx, func() (bool, error) {
+	waitErr := helpers.WaitForCondition(ctx, func() (bool, error) {
 		// Strategy 1: content-based matching via Kratos API
 		if r.client.HasProjectClient() || r.client.HasConsoleClient() {
 			foundID, findErr := r.resolveSchemaID(ctx, projectID, schemaJSON)
-			if findErr == nil && foundID != "" {
+			if findErr != nil && !client.IsTransientError(findErr) {
+				return false, findErr // non-retryable — fail fast
+			}
+			if foundID != "" {
 				actualID = foundID
 				return true, nil
 			}
 		}
 
-		// Strategy 2+3: check project config for ID-diff, schema_id, or URL match
+		// Strategy 2: check project config for a new hash ID not seen before the patch.
+		// Exclude the user-provided schemaID to ensure we only accept a canonical hash.
 		freshSchemas, gsErr := r.getSchemas(ctx, projectID)
 		if gsErr != nil {
 			return false, nil //nolint:nilerr
 		}
-
-		if idx := r.findSchemaIndex(freshSchemas, schemaID); idx >= 0 {
-			if id, ok := freshSchemas[idx]["id"].(string); ok {
-				actualID = id
-				return true, nil
-			}
-		}
-
-		if idx := r.findSchemaByURL(freshSchemas, schemaURL); idx >= 0 {
-			if id, ok := freshSchemas[idx]["id"].(string); ok {
-				actualID = id
-				return true, nil
-			}
-		}
-
 		for _, s := range freshSchemas {
-			if id, ok := s["id"].(string); ok && !existingIDs[id] {
+			if id, ok := s["id"].(string); ok && !existingIDs[id] && id != schemaID {
 				actualID = id
 				return true, nil
 			}
@@ -395,8 +388,22 @@ func (r *IdentitySchemaResource) Create(ctx context.Context, req resource.Create
 
 		return false, nil
 	})
+	if waitErr != nil {
+		if ctx.Err() != nil {
+			resp.Diagnostics.AddError("Error Creating Identity Schema",
+				fmt.Sprintf("context canceled while waiting for schema ID transformation: %v", waitErr))
+			return
+		}
+		// Non-retryable API error. The schema was already created by PatchProject;
+		// fall back to user-provided ID so Terraform can write state.
+		resp.Diagnostics.AddWarning("Schema ID Not Resolved",
+			fmt.Sprintf("Could not resolve canonical schema ID; using %q as fallback. "+
+				"The state will be corrected on the next plan/refresh. Reason: %v",
+				schemaID, waitErr))
+	}
 	if actualID == "" {
-		// Fallback to user-provided schemaID if we can't resolve
+		// Polling timed out without observing a hash transformation. The API may
+		// store the schema under the user-provided ID permanently. Accept it as-is.
 		actualID = schemaID
 	}
 

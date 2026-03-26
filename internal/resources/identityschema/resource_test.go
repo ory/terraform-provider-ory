@@ -62,6 +62,41 @@ func TestAccIdentitySchemaResource_basic(t *testing.T) {
 	})
 }
 
+// TestAccIdentitySchemaResource_hashIDResolution verifies that Create resolves the
+// canonical hash-based ID (not the user-provided schema_id) and that Read can find
+// the schema after the API transforms both the ID and URL. This exercises the
+// content-based fallback in Read that was added to handle the API transformation.
+func TestAccIdentitySchemaResource_hashIDResolution(t *testing.T) {
+	suffix := time.Now().UnixNano()
+	schemaID := fmt.Sprintf("tf-test-hash-%d", suffix)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSchemaTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{"SchemaID": schemaID, "AppURL": testutil.ExampleAppURL}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_identity_schema.test", "id"),
+					resource.TestCheckResourceAttr("ory_identity_schema.test", "schema_id", schemaID),
+					// Verify the stored ID is the canonical hash, not the user-provided schema_id.
+					// This proves Create resolved the hash and Read can find the schema after
+					// the API transforms the ID and URL.
+					resource.TestCheckResourceAttrWith("ory_identity_schema.test", "id", func(value string) error {
+						if value == schemaID {
+							return fmt.Errorf("expected canonical hash ID, but got user-provided schema_id %q", value)
+						}
+						return nil
+					}),
+				),
+			},
+		},
+	})
+}
+
 func TestAccIdentitySchemaResource_uniqueContent(t *testing.T) {
 	suffix := time.Now().UnixNano()
 	schemaID1 := fmt.Sprintf("tf-test-unique1-%d", suffix)
