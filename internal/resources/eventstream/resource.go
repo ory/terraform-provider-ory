@@ -161,8 +161,8 @@ func (r *EventStreamResource) Create(ctx context.Context, req resource.CreateReq
 
 	body := ory.CreateEventStreamBody{
 		Type:     plan.Type.ValueString(),
-		TopicArn: plan.TopicArn.ValueString(),
-		RoleArn:  plan.RoleArn.ValueString(),
+		TopicArn: ory.PtrString(plan.TopicArn.ValueString()),
+		RoleArn:  ory.PtrString(plan.RoleArn.ValueString()),
 	}
 
 	stream, err := r.client.CreateEventStream(ctx, projectID, body)
@@ -241,8 +241,8 @@ func (r *EventStreamResource) Update(ctx context.Context, req resource.UpdateReq
 
 	body := ory.SetEventStreamBody{
 		Type:     plan.Type.ValueString(),
-		TopicArn: plan.TopicArn.ValueString(),
-		RoleArn:  plan.RoleArn.ValueString(),
+		TopicArn: ory.PtrString(plan.TopicArn.ValueString()),
+		RoleArn:  ory.PtrString(plan.RoleArn.ValueString()),
 	}
 
 	stream, err := r.client.SetEventStream(ctx, projectID, state.ID.ValueString(), body)
