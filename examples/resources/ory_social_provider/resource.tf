@@ -17,6 +17,17 @@ resource "ory_social_provider" "google_auto_link" {
   auto_link     = true # Requires enable_oidc_auto_link_policy = true in ory_project_config
 }
 
+# Google Sign-In with custom label and account linking
+resource "ory_social_provider" "google_labeled" {
+  provider_id          = "google-labeled"
+  provider_type        = "google"
+  client_id            = var.google_client_id
+  client_secret        = var.google_client_secret
+  scope                = ["email", "profile"]
+  label                = "Sign in with Corporate Google"
+  account_linking_mode = "automatic"
+}
+
 # Generic OIDC with a custom base redirect URI (e.g., when using a custom domain)
 resource "ory_social_provider" "corporate_sso_custom_domain" {
   provider_id       = "corporate-sso-custom-domain"

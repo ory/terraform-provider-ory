@@ -67,6 +67,17 @@ resource "ory_social_provider" "google_auto_link" {
   auto_link     = true # Requires enable_oidc_auto_link_policy = true in ory_project_config
 }
 
+# Google Sign-In with custom label and account linking
+resource "ory_social_provider" "google_labeled" {
+  provider_id          = "google-labeled"
+  provider_type        = "google"
+  client_id            = var.google_client_id
+  client_secret        = var.google_client_secret
+  scope                = ["email", "profile"]
+  label                = "Sign in with Corporate Google"
+  account_linking_mode = "automatic"
+}
+
 # Generic OIDC with a custom base redirect URI (e.g., when using a custom domain)
 resource "ory_social_provider" "corporate_sso_custom_domain" {
   provider_id       = "corporate-sso-custom-domain"
@@ -215,6 +226,33 @@ If not set, the provider uses a default mapper that extracts the email claim.
 
 ~> **Note:** The `mapper_url` value may be transformed by the API (e.g., stored as a GCS URL). The provider only tracks this field if you explicitly set it in your configuration to avoid false drift detection.
 
+## Label
+
+The `label` attribute sets a human-readable label for the provider. This is displayed on the login button in the default UI (e.g., "Sign in with Corporate SSO"). If not set, the default label for the provider type is used.
+
+## Account Linking Mode
+
+The `account_linking_mode` attribute controls how accounts are linked when a user signs in with this provider and a matching identity already exists:
+
+| Value | Description |
+|-------|-------------|
+| `automatic` | Automatically links the social sign-in to the existing identity without user interaction. |
+| `confirm_with_existing_credential` | Requires the user to verify ownership of the existing account before linking (default behavior). |
+
+```hcl
+resource "ory_social_provider" "google" {
+  provider_id          = "google"
+  provider_type        = "google"
+  client_id            = var.google_client_id
+  client_secret        = var.google_client_secret
+  scope                = ["email", "profile"]
+  label                = "Sign in with Corporate Google"
+  account_linking_mode = "automatic"
+}
+```
+
+~> **Note:** `account_linking_mode = "automatic"` is different from `auto_link = true`. The `account_linking_mode` is returned by the API and can be used independently, while `auto_link` is write-only and requires `enable_oidc_auto_link_policy` to be enabled at the project level.
+
 ## Auto-Link
 
 The `auto_link` attribute enables automatic account linking for a specific social provider. When set to `true`, if an identity with the same identifier (e.g., email) already exists, the social sign-in will automatically link to that existing identity instead of failing with a duplicate error.
@@ -289,6 +327,7 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 
 ### Optional
 
+- `account_linking_mode` (String) Controls how accounts are linked when a user signs in with this provider and a matching identity already exists. "automatic" links without user interaction; "confirm_with_existing_credential" requires the user to verify ownership of the existing account first.
 - `apple_private_key` (String, Sensitive) Apple private key in PEM format (contents of the .p8 file). Required when provider_type is "apple" and client_secret is not set. Ory uses this to generate the JWT client secret automatically.
 - `apple_private_key_id` (String) Apple private key ID from the Apple Developer portal (e.g., "UX56C66723"). Required when provider_type is "apple" and client_secret is not set.
 - `apple_team_id` (String) Apple Developer Team ID (e.g., "KP76DQS54M"). Required when provider_type is "apple" and client_secret is not set.
@@ -297,6 +336,7 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 - `base_redirect_uri` (String) Override the base redirect URI for OIDC callbacks (e.g., "https://iam.example.com"). When set, Ory constructs callback URLs using this base instead of the default project domain. This is a global OIDC config setting — if multiple social providers set different values, the last applied value wins.
 - `client_secret` (String, Sensitive) OAuth2 client secret from the provider. Required for all providers except Apple (where Ory generates the secret from apple_team_id, apple_private_key_id, and apple_private_key).
 - `issuer_url` (String) OIDC issuer URL (required for generic providers).
+- `label` (String) Human-readable label for the provider, displayed on the login button (e.g., "Sign in with Corporate SSO").
 - `mapper_url` (String) Jsonnet mapper URL for claims mapping. Can be a URL or base64-encoded Jsonnet (base64://...). If not set, a default mapper that extracts email from claims will be used.
 - `project_id` (String) Project ID. If not set, uses provider's project_id.
 - `scope` (List of String) OAuth2 scopes to request.

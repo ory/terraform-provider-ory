@@ -60,6 +60,33 @@ If not set, the provider uses a default mapper that extracts the email claim.
 
 ~> **Note:** The `mapper_url` value may be transformed by the API (e.g., stored as a GCS URL). The provider only tracks this field if you explicitly set it in your configuration to avoid false drift detection.
 
+## Label
+
+The `label` attribute sets a human-readable label for the provider. This is displayed on the login button in the default UI (e.g., "Sign in with Corporate SSO"). If not set, the default label for the provider type is used.
+
+## Account Linking Mode
+
+The `account_linking_mode` attribute controls how accounts are linked when a user signs in with this provider and a matching identity already exists:
+
+| Value | Description |
+|-------|-------------|
+| `automatic` | Automatically links the social sign-in to the existing identity without user interaction. |
+| `confirm_with_existing_credential` | Requires the user to verify ownership of the existing account before linking (default behavior). |
+
+```hcl
+resource "ory_social_provider" "google" {
+  provider_id          = "google"
+  provider_type        = "google"
+  client_id            = var.google_client_id
+  client_secret        = var.google_client_secret
+  scope                = ["email", "profile"]
+  label                = "Sign in with Corporate Google"
+  account_linking_mode = "automatic"
+}
+```
+
+~> **Note:** `account_linking_mode = "automatic"` is different from `auto_link = true`. The `account_linking_mode` is returned by the API and can be used independently, while `auto_link` is write-only and requires `enable_oidc_auto_link_policy` to be enabled at the project level.
+
 ## Auto-Link
 
 The `auto_link` attribute enables automatic account linking for a specific social provider. When set to `true`, if an identity with the same identifier (e.g., email) already exists, the social sign-in will automatically link to that existing identity instead of failing with a duplicate error.
