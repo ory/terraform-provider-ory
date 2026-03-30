@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
 
@@ -34,23 +36,25 @@ type SocialProviderResource struct {
 }
 
 type SocialProviderResourceModel struct {
-	ID                types.String `tfsdk:"id"`
-	ProjectID         types.String `tfsdk:"project_id"`
-	ProviderID        types.String `tfsdk:"provider_id"`
-	ProviderType      types.String `tfsdk:"provider_type"`
-	ClientID          types.String `tfsdk:"client_id"`
-	ClientSecret      types.String `tfsdk:"client_secret"`
-	IssuerURL         types.String `tfsdk:"issuer_url"`
-	Scope             types.List   `tfsdk:"scope"`
-	MapperURL         types.String `tfsdk:"mapper_url"`
-	AuthURL           types.String `tfsdk:"auth_url"`
-	TokenURL          types.String `tfsdk:"token_url"`
-	Tenant            types.String `tfsdk:"tenant"`
-	AppleTeamID       types.String `tfsdk:"apple_team_id"`
-	ApplePrivateKeyID types.String `tfsdk:"apple_private_key_id"`
-	ApplePrivateKey   types.String `tfsdk:"apple_private_key"`
-	AutoLink          types.Bool   `tfsdk:"auto_link"`
-	BaseRedirectURI   types.String `tfsdk:"base_redirect_uri"`
+	ID                 types.String `tfsdk:"id"`
+	ProjectID          types.String `tfsdk:"project_id"`
+	ProviderID         types.String `tfsdk:"provider_id"`
+	ProviderType       types.String `tfsdk:"provider_type"`
+	ClientID           types.String `tfsdk:"client_id"`
+	ClientSecret       types.String `tfsdk:"client_secret"`
+	IssuerURL          types.String `tfsdk:"issuer_url"`
+	Scope              types.List   `tfsdk:"scope"`
+	MapperURL          types.String `tfsdk:"mapper_url"`
+	AuthURL            types.String `tfsdk:"auth_url"`
+	TokenURL           types.String `tfsdk:"token_url"`
+	Tenant             types.String `tfsdk:"tenant"`
+	AppleTeamID        types.String `tfsdk:"apple_team_id"`
+	ApplePrivateKeyID  types.String `tfsdk:"apple_private_key_id"`
+	ApplePrivateKey    types.String `tfsdk:"apple_private_key"`
+	AutoLink           types.Bool   `tfsdk:"auto_link"`
+	Label              types.String `tfsdk:"label"`
+	AccountLinkingMode types.String `tfsdk:"account_linking_mode"`
+	BaseRedirectURI    types.String `tfsdk:"base_redirect_uri"`
 }
 
 func (r *SocialProviderResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -143,6 +147,17 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				Optional:    true,
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"label": schema.StringAttribute{
+				Description: "Human-readable label for the provider, displayed on the login button (e.g., \"Sign in with Corporate SSO\").",
+				Optional:    true,
+			},
+			"account_linking_mode": schema.StringAttribute{
+				Description: "Controls how accounts are linked when a user signs in with this provider and a matching identity already exists. \"automatic\" links without user interaction; \"confirm_with_existing_credential\" requires the user to verify ownership of the existing account first.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("automatic", "confirm_with_existing_credential"),
 				},
 			},
 			"base_redirect_uri": schema.StringAttribute{
@@ -302,6 +317,13 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 	// Auto-link — only send when explicitly set
 	if !plan.AutoLink.IsNull() && !plan.AutoLink.IsUnknown() {
 		config["auto_link"] = plan.AutoLink.ValueBool()
+	}
+
+	if !plan.Label.IsNull() && !plan.Label.IsUnknown() {
+		config["label"] = plan.Label.ValueString()
+	}
+	if !plan.AccountLinkingMode.IsNull() && !plan.AccountLinkingMode.IsUnknown() {
+		config["account_linking_mode"] = plan.AccountLinkingMode.ValueString()
 	}
 
 	// Apple-specific fields — skip empty strings to avoid sending blank credentials
@@ -597,6 +619,20 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 
 	// auto_link is write-only — the API does not return it in responses.
 	// Preserve the existing state value (same approach as client_secret).
+
+	// Read label from API (returned on read)
+	if label, ok := provider["label"].(string); ok && label != "" {
+		state.Label = types.StringValue(label)
+	} else {
+		state.Label = types.StringNull()
+	}
+
+	// Read account_linking_mode from API (returned on read)
+	if mode, ok := provider["account_linking_mode"].(string); ok && mode != "" {
+		state.AccountLinkingMode = types.StringValue(mode)
+	} else {
+		state.AccountLinkingMode = types.StringNull()
+	}
 
 	// Read Apple-specific fields, clearing stale state when not returned by the API
 	if teamID, ok := provider["apple_team_id"].(string); ok && teamID != "" {

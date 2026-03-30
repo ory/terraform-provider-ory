@@ -167,6 +167,62 @@ func TestAccSocialProviderResource_autoLink(t *testing.T) {
 	})
 }
 
+func TestAccSocialProviderResource_labelAndAccountLinkingMode(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with label and account_linking_mode
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_label_and_linking.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-google-label-linking"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "label", "Sign in with Google"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "account_linking_mode", "automatic"),
+				),
+			},
+			// Verify no perpetual diff
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_label_and_linking.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Update both fields
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_label_and_linking_updated.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "label", "Google SSO"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "account_linking_mode", "confirm_with_existing_credential"),
+				),
+			},
+			// Remove both fields
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_label_and_linking_removed.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "label"),
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "account_linking_mode"),
+				),
+			},
+			// Verify no diff after removal
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_label_and_linking_removed.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// ImportState
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           "test-google-label-linking",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+		},
+	})
+}
+
 func TestAccSocialProviderResource_apple(t *testing.T) {
 	tmplData := struct{ PrivateKey string }{PrivateKey: generateTestPrivateKey(t)}
 
