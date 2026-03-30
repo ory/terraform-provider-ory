@@ -53,6 +53,9 @@ on:
       ORY_CUSTOM_DOMAIN_COOKIE_DOMAIN:
         required: false
 
+permissions:
+  contents: read
+
 jobs:
   acceptance-test:
     name: Acceptance Tests

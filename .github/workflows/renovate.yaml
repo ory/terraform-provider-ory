@@ -6,6 +6,9 @@ on:
     # https://crontab.guru/#0_8,11,14,17_*_*_*
     - cron: '0 8,11,14,17 * * *'
 
+permissions:
+  contents: read
+
 concurrency:
   group: renovate-${{ github.ref }}
   cancel-in-progress: true
