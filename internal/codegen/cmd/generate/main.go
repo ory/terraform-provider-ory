@@ -115,7 +115,8 @@ type SpecProperty struct {
 
 // parseOpenAPISpec reads an OpenAPI spec and extracts normalizedProjectRevision properties.
 func parseOpenAPISpec(specPath string) (map[string]SpecProperty, error) {
-	data, err := os.ReadFile(specPath)
+	cleanPath := filepath.Clean(specPath)
+	data, err := os.ReadFile(cleanPath) // #nosec G304 -- specPath is a CLI flag controlled by the developer, not user input
 	if err != nil {
 		return nil, fmt.Errorf("reading spec: %w", err)
 	}

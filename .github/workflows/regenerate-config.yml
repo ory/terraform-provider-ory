@@ -129,21 +129,23 @@ jobs:
       - name: Report summary
         if: always()
         run: |
-          echo "### Codegen Summary" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ -f /tmp/codegen-output.txt ]; then
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-            cat /tmp/codegen-output.txt >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-          fi
-          if [ "${{ steps.diff.outputs.changed }}" == "true" ]; then
-            echo "Generated files have changes -- PR created" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "No changes detected in generated files" >> "$GITHUB_STEP_SUMMARY"
-          fi
-          if [ "${{ steps.unmapped.outputs.found }}" == "true" ]; then
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "**${{ steps.unmapped.outputs.count }} unmapped properties detected** -- issue created/updated" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "All spec properties are mapped" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          {
+            echo "### Codegen Summary"
+            echo ""
+            if [ -f /tmp/codegen-output.txt ]; then
+              echo '```'
+              cat /tmp/codegen-output.txt
+              echo '```'
+            fi
+            if [ "${{ steps.diff.outputs.changed }}" == "true" ]; then
+              echo "Generated files have changes -- PR created"
+            else
+              echo "No changes detected in generated files"
+            fi
+            if [ "${{ steps.unmapped.outputs.found }}" == "true" ]; then
+              echo ""
+              echo "**${{ steps.unmapped.outputs.count }} unmapped properties detected** -- issue created/updated"
+            else
+              echo "All spec properties are mapped"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
