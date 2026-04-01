@@ -90,16 +90,22 @@ clean: ## Remove build artifacts
 	GOBIN=$(PWD)/.bin go install github.com/google/go-licenses@$${VERSION}
 
 .PHONY: generate
-generate: ## Generate code from mappings.yaml (schema, patches, read tables)
-	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml -out ./internal/resources/projectconfig/
+generate: ## Generate code from mappings.yaml (auto-uses OpenAPI spec if present for governs-based validation)
+	@SPEC_FLAG=""; \
+	if [ -f ./internal/codegen/openapi.yaml ]; then \
+		SPEC_FLAG="-spec ./internal/codegen/openapi.yaml"; \
+		echo "Using OpenAPI spec for governs-based path validation..."; \
+	fi; \
+	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml $$SPEC_FLAG -out ./internal/resources/projectconfig/
 
-.PHONY: generate-with-spec
-generate-with-spec: internal/codegen/openapi.yaml ## Generate with OpenAPI spec validation (derives paths from 'governs' descriptions)
-	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml -spec ./internal/codegen/openapi.yaml -out ./internal/resources/projectconfig/
-
-internal/codegen/openapi.yaml: ## Download latest OpenAPI spec from client-go
+.PHONY: download-spec
+download-spec: ## Download latest OpenAPI spec from client-go
 	@echo "Downloading OpenAPI spec from ory/client-go..."
 	@curl -sSfL "https://raw.githubusercontent.com/ory/client-go/master/api/openapi.yaml" -o ./internal/codegen/openapi.yaml
+
+.PHONY: discover
+discover: download-spec ## Discover new unmapped properties from the OpenAPI spec and output YAML entries
+	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml -spec ./internal/codegen/openapi.yaml -discover
 
 .PHONY: format
 format: .bin/tfplugindocs .bin/golangci-lint ## Format all code (Go, Terraform, modules, docs, lint fixes)
