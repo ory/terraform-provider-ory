@@ -74,21 +74,27 @@ jobs:
           go build ./...
           go test ./internal/resources/projectconfig/
 
+      - name: Prepare PR body
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          {
+            echo "## Summary"
+            echo "- Auto-regenerated project_config schema, patches, and read tables from the latest OpenAPI spec"
+            echo "- Build and unit tests verified"
+            echo ""
+            echo "## Codegen Output"
+            echo '```'
+            cat /tmp/codegen-output.txt
+            echo '```'
+          } > /tmp/pr-body.md
+
       - name: Create PR for generated file changes
         if: steps.diff.outputs.changed == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.create_pr == 'true')
         uses: peter-evans/create-pull-request@v7
         with:
           commit-message: "feat: regenerate project_config from latest OpenAPI spec"
           title: "feat: regenerate project_config from latest OpenAPI spec"
-          body: |
-            ## Summary
-            - Auto-regenerated project_config schema, patches, and read tables from the latest OpenAPI spec
-            - Build and unit tests verified
-
-            ## Codegen Output
-            ```
-            $(cat /tmp/codegen-output.txt)
-            ```
+          body-path: /tmp/pr-body.md
           branch: chore/regenerate-project-config
           delete-branch: true
 

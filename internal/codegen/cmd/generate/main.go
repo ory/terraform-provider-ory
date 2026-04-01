@@ -300,12 +300,20 @@ func main() {
 		}
 	}
 
+	// Build sorted service names for deterministic template iteration
+	serviceNames := make([]string, 0, len(byService))
+	for svc := range byService {
+		serviceNames = append(serviceNames, svc)
+	}
+	sort.Strings(serviceNames)
+
 	td := struct {
 		Mappings
-		ByService map[string][]Attribute
-		Services  map[string]ServiceConfig
-		HasRegex  bool
-	}{m, byService, serviceConfigs, hasRegex}
+		ByService    map[string][]Attribute
+		ServiceNames []string
+		Services     map[string]ServiceConfig
+		HasRegex     bool
+	}{m, byService, serviceNames, serviceConfigs, hasRegex}
 
 	funcMap := template.FuncMap{
 		"readKeys": func(patchPath string) string {
@@ -594,6 +602,9 @@ func toGoFieldName(tfName string) string {
 	parts := strings.Split(tfName, "_")
 	var result strings.Builder
 	for _, part := range parts {
+		if part == "" {
+			continue
+		}
 		if upper, ok := acronymMap[strings.ToLower(part)]; ok {
 			result.WriteString(upper)
 		} else {
@@ -1020,7 +1031,8 @@ type MapStringReadEntry struct {
 
 // readSimpleFields reads all simple attributes from the API response into state.
 func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectConfigResourceModel) {
-{{- range $svc, $attrs := .ByService }}
+{{- range $svc := .ServiceNames }}
+{{- $attrs := index $.ByService $svc }}
 {{- $svcCfg := index $.Services $svc }}
 	if {{ $svcCfg.NilCheck }} {
 		{{ $svc }}Config := {{ $svcCfg.ConfigExpr }}
@@ -1122,7 +1134,8 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 {{- end }}
 }
 
-{{- range $svc, $attrs := .ByService }}
+{{- range $svc := .ServiceNames }}
+{{- $attrs := index $.ByService $svc }}
 {{- $strings := filterType $attrs "string" }}
 {{- if $strings }}
 
