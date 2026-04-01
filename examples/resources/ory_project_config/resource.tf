@@ -1,9 +1,9 @@
 # Basic project configuration
 resource "ory_project_config" "basic" {
-  cors_enabled        = true
-  cors_origins        = ["https://app.example.com"]
-  password_min_length = 10
-  session_lifespan    = "720h0m0s" # 30 days
+  cors_enabled                                            = true
+  cors_origins                                            = ["https://app.example.com"]
+  selfservice_methods_password_config_min_password_length = 10
+  session_lifespan                                        = "720h0m0s" # 30 days
 }
 
 # Full security configuration
@@ -22,49 +22,49 @@ resource "ory_project_config" "secure" {
   session_cookie_persistent = true
 
   # Password Policy
-  password_min_length            = 12
-  password_identifier_similarity = true
-  password_check_haveibeenpwned  = true
-  password_max_breaches          = 0
+  selfservice_methods_password_config_min_password_length                 = 12
+  selfservice_methods_password_config_identifier_similarity_check_enabled = true
+  selfservice_methods_password_config_haveibeenpwned_enabled              = true
+  selfservice_methods_password_config_max_breaches                        = 0
 
   # Authentication Methods
-  enable_password              = true
-  enable_code                  = true
-  code_mfa_enabled             = true # Enable code as a second factor for MFA
-  enable_oidc                  = true # Required for social providers (Google, GitHub, etc.)
-  enable_oidc_auto_link_policy = true # Allow social providers with auto_link = true to link to existing identities
-  enable_passkey               = true
-  enable_profile               = true # Allow users to update profile traits via settings flow
+  selfservice_methods_password_enabled             = true
+  selfservice_methods_code_enabled                 = true
+  selfservice_methods_code_mfa_enabled             = true # Code as a second factor for MFA
+  selfservice_methods_oidc_enabled                 = true # Required for social providers (Google, GitHub, etc.)
+  selfservice_methods_oidc_enable_auto_link_policy = true # Allow social providers with auto_link to link existing identities
+  selfservice_methods_passkey_enabled              = true
+  selfservice_methods_profile_enabled              = true # Allow users to update profile traits via settings flow
 
   # Code Method Configuration
-  code_lifespan                            = "15m0s" # How long a code remains valid
-  code_missing_credential_fallback_enabled = true    # Use code as fallback when primary credential is missing
+  selfservice_methods_code_config_lifespan                            = "15m0s" # How long a code remains valid
+  selfservice_methods_code_config_missing_credential_fallback_enabled = true    # Use code as fallback when primary credential is missing
 
   # Flow Controls
-  enable_registration = true
-  enable_recovery     = true
-  enable_verification = true
+  selfservice_flows_registration_enabled = true
+  selfservice_flows_recovery_enabled     = true
+  selfservice_flows_verification_enabled = true
 
   # Settings Flow
-  settings_lifespan                   = "30m0s" # How long a settings flow session is valid
-  settings_privileged_session_max_age = "15m0s" # Re-auth required for privileged changes after this duration
+  selfservice_flows_settings_lifespan                   = "30m0s" # How long a settings flow session is valid
+  selfservice_flows_settings_privileged_session_max_age = "15m0s" # Re-auth required for privileged changes after this duration
 
   # Verification Flow
-  verification_use                       = "code"  # Use one-time code for verification (or "link")
-  verification_lifespan                  = "30m0s" # How long a verification flow session is valid
-  verification_notify_unknown_recipients = false   # Don't send verification emails to unknown addresses
+  selfservice_flows_verification_use                       = "code"  # Use one-time code for verification (or "link")
+  selfservice_flows_verification_lifespan                  = "30m0s" # How long a verification flow session is valid
+  selfservice_flows_verification_notify_unknown_recipients = false   # Don't send verification emails to unknown addresses
 
   # MFA
-  enable_totp              = true
-  totp_issuer              = "MyApp"
-  enable_webauthn          = true
-  webauthn_rp_display_name = "MyApp"
-  webauthn_rp_id           = "app.example.com"
-  webauthn_rp_origins      = ["https://app.example.com"]
-  webauthn_passwordless    = true
-  enable_lookup_secret     = true
-  mfa_enforcement          = "optional"
-  required_aal             = "aal1"
+  selfservice_methods_totp_enabled                    = true
+  selfservice_methods_totp_config_issuer              = "MyApp"
+  selfservice_methods_webauthn_enabled                = true
+  selfservice_methods_webauthn_config_rp_display_name = "MyApp"
+  selfservice_methods_webauthn_config_rp_id           = "app.example.com"
+  webauthn_rp_origins                                 = ["https://app.example.com"]
+  selfservice_methods_webauthn_config_passwordless    = true
+  selfservice_methods_lookup_secret_enabled           = true
+  mfa_enforcement                                     = "optional"
+  selfservice_flows_settings_required_aal             = "aal1"
 
   # URLs
   default_return_url = "https://app.example.com/dashboard"
@@ -80,16 +80,16 @@ resource "ory_project_config" "secure" {
   account_experience_default_locale = "en"
 
   # OAuth2 Token Lifespans
-  oauth2_access_token_lifespan          = "1h0m0s"
-  oauth2_refresh_token_lifespan         = "720h0m0s"
-  oauth2_auth_code_lifespan             = "30m0s"
-  oauth2_id_token_lifespan              = "1h0m0s"
-  oauth2_login_consent_request_lifespan = "30m0s"
+  oauth2_ttl_access_token          = "1h0m0s"
+  oauth2_ttl_refresh_token         = "720h0m0s"
+  oauth2_ttl_auth_code             = "30m0s"
+  oauth2_ttl_id_token              = "1h0m0s"
+  oauth2_ttl_login_consent_request = "30m0s"
 
   # OAuth2 Strategies
-  oauth2_access_token_strategy = "jwt"
-  oauth2_jwt_scope_claim       = "list"
-  oauth2_scope_strategy        = "wildcard"
+  oauth2_strategies_access_token    = "jwt"
+  oauth2_strategies_jwt_scope_claim = "list"
+  oauth2_strategies_scope           = "wildcard"
 
   # OAuth2 PKCE
   oauth2_pkce_enforced                    = false
@@ -100,11 +100,11 @@ resource "ory_project_config" "secure" {
   oauth2_mirror_top_level_claims  = false
 
   # OAuth2 Issuer URL (custom issuer for OAuth2/OIDC tokens)
-  oauth2_issuer_url = "https://auth.example.com"
+  oauth2_urls_self_issuer = "https://auth.example.com"
 
   # OAuth2 Cookie Settings
-  oauth2_cookies_same_site_mode              = "Strict"
-  oauth2_cookies_same_site_legacy_workaround = false
+  oauth2_serve_cookies_same_site_mode              = "Strict"
+  oauth2_serve_cookies_same_site_legacy_workaround = false
 
   # Keto Namespaces (for fine-grained authorization)
   keto_namespaces = ["documents", "folders", "groups"]
@@ -114,36 +114,36 @@ resource "ory_project_config" "secure" {
 # Default is "unified" (all methods on one screen).
 # Use "identifier_first" to collect the identifier before showing auth methods.
 resource "ory_project_config" "identifier_first" {
-  login_style     = "identifier_first"
-  enable_password = true
-  enable_code     = true
+  selfservice_flows_login_style        = "identifier_first"
+  selfservice_methods_password_enabled = true
+  selfservice_methods_code_enabled     = true
 }
 
 # Self-hosted UI configuration (custom login/registration pages)
 resource "ory_project_config" "self_hosted_ui" {
-  login_ui_url        = "https://auth.example.com/login"
-  registration_ui_url = "https://auth.example.com/registration"
-  recovery_ui_url     = "https://auth.example.com/recovery"
-  verification_ui_url = "https://auth.example.com/verification"
-  settings_ui_url     = "https://auth.example.com/settings"
-  error_ui_url        = "https://auth.example.com/error"
+  selfservice_flows_login_ui_url        = "https://auth.example.com/login"
+  selfservice_flows_registration_ui_url = "https://auth.example.com/registration"
+  selfservice_flows_recovery_ui_url     = "https://auth.example.com/recovery"
+  selfservice_flows_verification_ui_url = "https://auth.example.com/verification"
+  selfservice_flows_settings_ui_url     = "https://auth.example.com/settings"
+  selfservice_flows_error_ui_url        = "https://auth.example.com/error"
 
-  enable_password     = true
-  enable_registration = true
-  enable_recovery     = true
-  enable_verification = true
+  selfservice_methods_password_enabled   = true
+  selfservice_flows_registration_enabled = true
+  selfservice_flows_recovery_enabled     = true
+  selfservice_flows_verification_enabled = true
 }
 
 # SMTP configuration for custom email delivery
 resource "ory_project_config" "with_smtp" {
-  smtp_connection_uri = var.smtp_connection_uri
-  smtp_from_address   = "noreply@example.com"
-  smtp_from_name      = "MyApp"
+  smtp_connection_uri       = var.smtp_connection_uri
+  courier_smtp_from_address = "noreply@example.com"
+  courier_smtp_from_name    = "MyApp"
   smtp_headers = {
     "X-SES-CONFIGURATION-SET" = "my-config-set"
   }
 
-  enable_password = true
+  selfservice_methods_password_enabled = true
 }
 
 variable "smtp_connection_uri" {
@@ -159,8 +159,8 @@ resource "ory_project_config" "native_only" {
   default_return_url  = ""
   allowed_return_urls = []
 
-  enable_password = true
-  enable_code     = true
+  selfservice_methods_password_enabled = true
+  selfservice_methods_code_enabled     = true
 }
 
 # Session tokenizer templates (JWT tokenization for /sessions/whoami)
