@@ -39,6 +39,9 @@ dist/
 .env.*
 !.env.example
 
+# Downloaded OpenAPI spec (fetched by make generate-with-spec)
+internal/codegen/openapi.yaml
+
 # OS files
 .DS_Store
 Thumbs.db

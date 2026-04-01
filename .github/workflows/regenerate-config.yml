@@ -1,0 +1,88 @@
+name: Regenerate Project Config
+
+on:
+  workflow_dispatch:
+    inputs:
+      create_pr:
+        description: 'Create a PR with changes (if any)'
+        type: boolean
+        default: true
+  schedule:
+    # Run at 9:00 UTC daily — 1 hour after Renovate's first run (8:00 UTC),
+    # giving client-go version bumps time to merge before we check the spec.
+    # https://crontab.guru/#0_9_*_*_*
+    - cron: '0 9 * * *'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Download OpenAPI spec
+        run: |
+          curl -sSfL "https://raw.githubusercontent.com/ory/client-go/master/api/openapi.yaml" \
+            -o ./internal/codegen/openapi.yaml
+
+      - name: Run codegen with spec validation
+        id: generate
+        run: |
+          go run ./internal/codegen/cmd/generate/ \
+            -mappings ./internal/codegen/mappings.yaml \
+            -spec ./internal/codegen/openapi.yaml \
+            -out ./internal/resources/projectconfig/ 2>&1 | tee /tmp/codegen-output.txt
+
+      - name: Check for changes
+        id: diff
+        run: |
+          git diff --exit-code --quiet internal/resources/projectconfig/ || echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build and test
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          go build ./...
+          go test ./internal/resources/projectconfig/
+
+      - name: Create Pull Request
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "feat: regenerate project_config from latest OpenAPI spec"
+          title: "feat: regenerate project_config from latest OpenAPI spec"
+          body: |
+            ## Summary
+            - Auto-regenerated project_config schema, patches, and read tables from the latest OpenAPI spec
+            - Build and unit tests verified
+
+            ## Codegen Output
+            ```
+            $(cat /tmp/codegen-output.txt)
+            ```
+          branch: chore/regenerate-project-config
+          delete-branch: true
+
+      - name: Report unmapped properties
+        if: always()
+        run: |
+          echo "### Codegen Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f /tmp/codegen-output.txt ]; then
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/codegen-output.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "${{ steps.diff.outputs.changed }}" == "true" ]; then
+            echo "Generated files have changes" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No changes detected in generated files" >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -584,3 +584,98 @@ func TestAccProjectConfigResource_courierHTTP(t *testing.T) {
 		},
 	})
 }
+
+func TestAccProjectConfigResource_featureFlags(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/feature_flags.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "feature_flags_cacheable_sessions", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "feature_flags_use_continue_with_transitions", "true"),
+				),
+			},
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"feature_flags_cacheable_sessions",
+					"feature_flags_cacheable_sessions_max_age",
+					"feature_flags_use_continue_with_transitions",
+					"cors_enabled",
+					"password_min_length",
+					"smtp_connection_uri",
+				},
+			},
+		},
+	})
+}
+
+func TestAccProjectConfigResource_recoveryFlow(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/recovery_flow.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "enable_recovery", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_recovery_use", "code"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_recovery_notify_unknown_recipients", "true"),
+				),
+			},
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"enable_recovery",
+					"selfservice_flows_recovery_use",
+					"selfservice_flows_recovery_lifespan",
+					"selfservice_flows_recovery_notify_unknown_recipients",
+					"cors_enabled",
+					"password_min_length",
+					"smtp_connection_uri",
+				},
+			},
+		},
+	})
+}
+
+func TestAccProjectConfigResource_oauth2Advanced(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_advanced.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_grant_jwt_jti_optional", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_grant_jwt_iat_optional", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_exclude_not_before_claim", "true"),
+				),
+			},
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"oauth2_grant_jwt_max_ttl",
+					"oauth2_grant_jwt_jti_optional",
+					"oauth2_grant_jwt_iat_optional",
+					"oauth2_exclude_not_before_claim",
+					"oauth2_client_credentials_default_grant_allowed_scope",
+					"cors_enabled",
+					"password_min_length",
+					"smtp_connection_uri",
+				},
+			},
+		},
+	})
+}

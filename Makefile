@@ -89,6 +89,18 @@ clean: ## Remove build artifacts
 	echo "Installing go-licenses $${VERSION}..."; \
 	GOBIN=$(PWD)/.bin go install github.com/google/go-licenses@$${VERSION}
 
+.PHONY: generate
+generate: ## Generate code from mappings.yaml (schema, patches, read tables)
+	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml -out ./internal/resources/projectconfig/
+
+.PHONY: generate-with-spec
+generate-with-spec: internal/codegen/openapi.yaml ## Generate with OpenAPI spec validation (derives paths from 'governs' descriptions)
+	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml -spec ./internal/codegen/openapi.yaml -out ./internal/resources/projectconfig/
+
+internal/codegen/openapi.yaml: ## Download latest OpenAPI spec from client-go
+	@echo "Downloading OpenAPI spec from ory/client-go..."
+	@curl -sSfL "https://raw.githubusercontent.com/ory/client-go/master/api/openapi.yaml" -o ./internal/codegen/openapi.yaml
+
 .PHONY: format
 format: .bin/tfplugindocs .bin/golangci-lint ## Format all code (Go, Terraform, modules, docs, lint fixes)
 	go fmt ./...

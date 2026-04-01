@@ -226,6 +226,57 @@ provider_installation {
 
 ## Making Changes
 
+### Adding a New Project Config Field
+
+The `ory_project_config` resource uses code generation for simple (string, bool, int64) attributes. To add a new config field:
+
+1. Add an entry to `internal/codegen/mappings.yaml`:
+
+```yaml
+- name: my_new_field          # Terraform attribute name
+  go_field: MyNewField        # Go struct field name
+  type: string                # string, bool, or int64
+  patch_path: /services/identity/config/path/to/field
+  description: "What this field does."
+```
+
+2. Add the struct field to `ProjectConfigResourceModel` in `internal/resources/projectconfig/resource.go`:
+
+```go
+MyNewField types.String `tfsdk:"my_new_field"`
+```
+
+3. Run `make generate` to regenerate the schema, patch, and read tables.
+
+4. Run `make format` to regenerate docs and fix lint.
+
+That's it — the field will automatically appear in the Terraform schema, JSON Patch operations, and API response reading. No other Go code changes needed for simple attributes.
+
+**Complex types** (nested objects, lists of objects, CORS, etc.) cannot use code generation and must be added manually in `resource.go`. See the existing courier channels or tokenizer templates code for examples.
+
+#### OpenAPI spec validation
+
+The codegen tool can optionally validate mappings against the published OpenAPI spec:
+
+```bash
+make generate-with-spec   # Downloads spec and validates/derives patch paths
+```
+
+This downloads the latest `api/openapi.yaml` from `ory/client-go` and:
+- Validates that `patch_path` values match the "governs" descriptions in the spec
+- Reports unmapped spec properties that could be added to `mappings.yaml`
+- For entries with `openapi_property` but no `patch_path`, auto-derives the path from the spec
+
+To link a YAML entry to the OpenAPI spec, add `openapi_property`:
+
+```yaml
+- name: session_lifespan
+  go_field: SessionLifespan
+  type: string
+  openapi_property: kratos_session_lifespan  # derives patch_path from spec
+  description: "Session duration."
+```
+
 ### Adding a New Resource
 
 1. Create a new package in `internal/resources/`
@@ -282,6 +333,7 @@ Run these checks locally before committing. They mirror what CI runs on every pu
 #### Required
 
 ```bash
+make generate       # Regenerate code from mappings.yaml (if you changed project_config)
 make build          # Verify the provider compiles
 make format         # Format code, tidy modules, regenerate docs, fix lint issues
 make test-short     # Run unit tests in short mode (matches CI)
@@ -317,10 +369,10 @@ You can also run security scans individually:
 
 ```bash
 # Minimum before committing:
-make build && make format && make test-short
+make generate && make build && make format && make test-short
 
 # Full CI-equivalent check:
-make build && make format && make test-short && make sec && make sec-trivy && make licenses
+make generate && make build && make format && make test-short && make sec && make sec-trivy && make licenses
 ```
 
 ### Code Style
