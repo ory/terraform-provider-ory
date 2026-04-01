@@ -73,7 +73,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 		for _, e := range account_experienceListStringReadEntries(state) {
 			if !e.Field.IsNull() {
 				if v := getNestedValue(account_experienceConfig, e.Keys...); v != nil {
-					if arr, ok := v.([]interface{}); ok && len(arr) > 0 {
+					if arr, ok := v.([]interface{}); ok {
 						strs := make([]string, 0, len(arr))
 						for _, item := range arr {
 							if s, ok := item.(string); ok {
@@ -117,7 +117,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 		for _, e := range identityListStringReadEntries(state) {
 			if !e.Field.IsNull() {
 				if v := getNestedValue(identityConfig, e.Keys...); v != nil {
-					if arr, ok := v.([]interface{}); ok && len(arr) > 0 {
+					if arr, ok := v.([]interface{}); ok {
 						strs := make([]string, 0, len(arr))
 						for _, item := range arr {
 							if s, ok := item.(string); ok {
@@ -135,7 +135,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 		for _, e := range identityMapStringReadEntries(state) {
 			if !e.Field.IsNull() {
 				if v := getNestedValue(identityConfig, e.Keys...); v != nil {
-					if m, ok := v.(map[string]interface{}); ok && len(m) > 0 {
+					if m, ok := v.(map[string]interface{}); ok {
 						strMap := make(map[string]attr.Value, len(m))
 						for k, val := range m {
 							if s, ok := val.(string); ok {
@@ -172,7 +172,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 		for _, e := range oauth2ListStringReadEntries(state) {
 			if !e.Field.IsNull() {
 				if v := getNestedValue(oauth2Config, e.Keys...); v != nil {
-					if arr, ok := v.([]interface{}); ok && len(arr) > 0 {
+					if arr, ok := v.([]interface{}); ok {
 						strs := make([]string, 0, len(arr))
 						for _, item := range arr {
 							if s, ok := item.(string); ok {
@@ -202,7 +202,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 		for _, e := range permissionListStringReadEntries(state) {
 			if !e.Field.IsNull() {
 				if v := getNestedValue(permissionConfig, e.Keys...); v != nil {
-					if arr, ok := v.([]interface{}); ok && len(arr) > 0 {
+					if arr, ok := v.([]interface{}); ok {
 						strs := make([]string, 0, len(arr))
 						for _, item := range arr {
 							if s, ok := item.(string); ok {
@@ -295,7 +295,7 @@ func identityStringReadEntries(state *ProjectConfigResourceModel) []StringReadEn
 		{&state.CourierTemplatesRecoveryCodeValidEmailSubject, []string{"courier", "smtp", "templates", "recovery_code", "valid", "email", "subject"}, false},
 		{&state.CourierTemplatesRecoveryInvalidEmailBodyHTML, []string{"courier", "smtp", "templates", "recovery", "invalid", "email", "body", "html"}, false},
 		{&state.CourierTemplatesRecoveryInvalidEmailBodyPlaintext, []string{"courier", "smtp", "templates", "recovery", "invalid", "email", "body", "plaintext"}, false},
-		{&state.CourierTemplatesRecoveryInvalidEmailSubject, []string{"courier", "smtp", "templates", "recovery", "invalid", "email", "body", "html"}, false},
+		{&state.CourierTemplatesRecoveryInvalidEmailSubject, []string{"courier", "smtp", "templates", "recovery", "invalid", "email", "subject"}, false},
 		{&state.CourierTemplatesRecoveryValidEmailBodyHTML, []string{"courier", "smtp", "templates", "recovery", "valid", "email", "body", "html"}, false},
 		{&state.CourierTemplatesRecoveryValidEmailBodyPlaintext, []string{"courier", "smtp", "templates", "recovery", "valid", "email", "body", "plaintext"}, false},
 		{&state.CourierTemplatesRecoveryValidEmailSubject, []string{"courier", "smtp", "templates", "recovery", "valid", "email", "subject"}, false},

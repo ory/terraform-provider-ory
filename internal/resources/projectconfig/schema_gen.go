@@ -89,17 +89,23 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 		"oauth2_access_token_strategy": schema.StringAttribute{
 			Description: "OAuth2 access token strategy ('jwt' or 'opaque').",
 			Optional:    true,
-			Validators:  []validator.String{stringvalidator.OneOf("jwt", "opaque")},
+			Validators: []validator.String{
+				stringvalidator.OneOf("jwt", "opaque"),
+			},
 		},
 		"oauth2_jwt_scope_claim": schema.StringAttribute{
 			Description: "How scopes are represented in JWT access tokens ('list', 'string', or 'both').",
 			Optional:    true,
-			Validators:  []validator.String{stringvalidator.OneOf("list", "string", "both")},
+			Validators: []validator.String{
+				stringvalidator.OneOf("list", "string", "both"),
+			},
 		},
 		"oauth2_scope_strategy": schema.StringAttribute{
 			Description: "OAuth2 scope matching strategy ('exact', 'wildcard').",
 			Optional:    true,
-			Validators:  []validator.String{stringvalidator.OneOf("exact", "wildcard", "DEPRECATED_HIERARCHICAL_SCOPE_STRATEGY")},
+			Validators: []validator.String{
+				stringvalidator.OneOf("exact", "wildcard", "DEPRECATED_HIERARCHICAL_SCOPE_STRATEGY"),
+			},
 		},
 		"oauth2_consent_url": schema.StringAttribute{
 			Description: "OAuth2 consent endpoint URL.",
@@ -124,7 +130,9 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 		"oauth2_cookies_same_site_mode": schema.StringAttribute{
 			Description: "SameSite attribute for OAuth2 cookies ('Lax', 'Strict', 'None').",
 			Optional:    true,
-			Validators:  []validator.String{stringvalidator.OneOf("Lax", "Strict", "None")},
+			Validators: []validator.String{
+				stringvalidator.OneOf("Lax", "Strict", "None"),
+			},
 		},
 		"login_ui_url": schema.StringAttribute{
 			Description: "URL for the login UI.",
@@ -231,7 +239,9 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 		"login_style": schema.StringAttribute{
 			Description: "Login flow style: 'unified' (default) shows all auth methods on one screen, 'identifier_first' collects the identifier before showing auth methods.",
 			Optional:    true,
-			Validators:  []validator.String{stringvalidator.OneOf("unified", "identifier_first")},
+			Validators: []validator.String{
+				stringvalidator.OneOf("unified", "identifier_first"),
+			},
 		},
 		"settings_lifespan": schema.StringAttribute{
 			Description: "Lifespan of the settings flow (e.g., '30m0s'). Controls how long a settings flow session remains valid.",
@@ -244,12 +254,16 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 		"required_aal": schema.StringAttribute{
 			Description: "Required Authenticator Assurance Level for the settings flow: 'aal1' or 'highest_available'.",
 			Optional:    true,
-			Validators:  []validator.String{stringvalidator.OneOf("aal1", "highest_available")},
+			Validators: []validator.String{
+				stringvalidator.OneOf("aal1", "highest_available"),
+			},
 		},
 		"verification_use": schema.StringAttribute{
 			Description: "Verification method to use: 'code' (one-time code) or 'link' (magic link).",
 			Optional:    true,
-			Validators:  []validator.String{stringvalidator.OneOf("code", "link")},
+			Validators: []validator.String{
+				stringvalidator.OneOf("code", "link"),
+			},
 		},
 		"verification_lifespan": schema.StringAttribute{
 			Description: "Lifespan of the verification flow (e.g., '30m0s'). Controls how long a verification flow session remains valid.",
@@ -292,7 +306,9 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 		"courier_delivery_strategy": schema.StringAttribute{
 			Description: "Courier delivery strategy: 'smtp' (default) or 'http'.",
 			Optional:    true,
-			Validators:  []validator.String{stringvalidator.OneOf("smtp", "http")},
+			Validators: []validator.String{
+				stringvalidator.OneOf("smtp", "http"),
+			},
 		},
 		"account_experience_favicon_url": schema.StringAttribute{
 			Description: "URL for the favicon in the hosted login UI.",

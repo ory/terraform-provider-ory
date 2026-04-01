@@ -787,7 +787,7 @@ attributes:
   - name: courier_templates_recovery_invalid_email_subject
     go_field: CourierTemplatesRecoveryInvalidEmailSubject
     type: string
-    patch_path: /services/identity/config/courier/smtp/templates/recovery/invalid/email/body/html
+    patch_path: /services/identity/config/courier/smtp/templates/recovery/invalid/email/subject
     openapi_property: kratos_courier_templates_recovery_invalid_email_subject
     description: "Subject template for invalid recovery emails."
 

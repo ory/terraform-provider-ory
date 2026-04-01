@@ -99,9 +99,10 @@ generate: ## Generate code from mappings.yaml (auto-uses OpenAPI spec if present
 	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml $$SPEC_FLAG -out ./internal/resources/projectconfig/
 
 .PHONY: download-spec
-download-spec: ## Download latest OpenAPI spec from client-go
-	@echo "Downloading OpenAPI spec from ory/client-go..."
-	@curl -sSfL "https://raw.githubusercontent.com/ory/client-go/master/api/openapi.yaml" -o ./internal/codegen/openapi.yaml
+download-spec: ## Download OpenAPI spec from client-go version pinned in go.mod
+	@VERSION=$$(go list -m -f '{{.Version}}' github.com/ory/client-go); \
+	echo "Downloading OpenAPI spec from ory/client-go@$$VERSION..."; \
+	curl -sSfL "https://raw.githubusercontent.com/ory/client-go/$$VERSION/api/openapi.yaml" -o ./internal/codegen/openapi.yaml
 
 .PHONY: discover
 discover: download-spec ## Discover new unmapped properties from the OpenAPI spec and output YAML entries

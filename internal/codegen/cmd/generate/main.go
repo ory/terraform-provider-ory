@@ -342,11 +342,11 @@ func main() {
 
 		formatted, err := format.Source(buf.Bytes())
 		if err != nil {
-			_ = os.WriteFile(filepath.Join(*outDir, gen.name), buf.Bytes(), 0600) //nolint:gosec // debug output for failed formatting
+			_ = os.WriteFile(filepath.Join(*outDir, gen.name), buf.Bytes(), 0644) // #nosec G306 -- generated source files need standard read permissions
 			log.Fatalf("formatting %s: %v (unformatted file written)", gen.name, err)
 		}
 
-		if err := os.WriteFile(filepath.Join(*outDir, gen.name), formatted, 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(*outDir, gen.name), formatted, 0644); err != nil { // #nosec G306 -- generated source files need standard read permissions
 			log.Fatalf("writing %s: %v", gen.name, err)
 		}
 	}
@@ -745,19 +745,27 @@ func buildSchemaAttr(a Attribute) string {
 	}
 
 	if a.Validators != nil {
+		var validatorExprs []string
 		if len(a.Validators.OneOf) > 0 {
 			quoted := make([]string, len(a.Validators.OneOf))
 			for i, s := range a.Validators.OneOf {
 				quoted[i] = fmt.Sprintf("%q", s)
 			}
-			fmt.Fprintf(&b, "\t\t\tValidators:  []validator.String{stringvalidator.OneOf(%s)},\n", strings.Join(quoted, ", "))
+			validatorExprs = append(validatorExprs, fmt.Sprintf("stringvalidator.OneOf(%s)", strings.Join(quoted, ", ")))
 		}
 		if a.Validators.Regex != "" {
 			msg := a.Validators.RegexMessage
 			if msg == "" {
 				msg = "must match pattern"
 			}
-			fmt.Fprintf(&b, "\t\t\tValidators: []validator.String{\n\t\t\t\tstringvalidator.RegexMatches(\n\t\t\t\t\tregexp.MustCompile(`%s`),\n\t\t\t\t\t%q,\n\t\t\t\t),\n\t\t\t},\n", a.Validators.Regex, msg)
+			validatorExprs = append(validatorExprs, fmt.Sprintf("stringvalidator.RegexMatches(\n\t\t\t\t\tregexp.MustCompile(`%s`),\n\t\t\t\t\t%q,\n\t\t\t\t)", a.Validators.Regex, msg))
+		}
+		if len(validatorExprs) > 0 {
+			fmt.Fprintf(&b, "\t\t\tValidators: []validator.String{\n")
+			for _, expr := range validatorExprs {
+				fmt.Fprintf(&b, "\t\t\t\t%s,\n", expr)
+			}
+			fmt.Fprintf(&b, "\t\t\t},\n")
 		}
 	}
 
@@ -987,7 +995,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 		for _, e := range {{ $svc }}ListStringReadEntries(state) {
 			if !e.Field.IsNull() {
 				if v := getNestedValue({{ $svc }}Config, e.Keys...); v != nil {
-					if arr, ok := v.([]interface{}); ok && len(arr) > 0 {
+					if arr, ok := v.([]interface{}); ok {
 						strs := make([]string, 0, len(arr))
 						for _, item := range arr {
 							if s, ok := item.(string); ok {
@@ -1008,7 +1016,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 		for _, e := range {{ $svc }}MapStringReadEntries(state) {
 			if !e.Field.IsNull() {
 				if v := getNestedValue({{ $svc }}Config, e.Keys...); v != nil {
-					if m, ok := v.(map[string]interface{}); ok && len(m) > 0 {
+					if m, ok := v.(map[string]interface{}); ok {
 						strMap := make(map[string]attr.Value, len(m))
 						for k, val := range m {
 							if s, ok := val.(string); ok {

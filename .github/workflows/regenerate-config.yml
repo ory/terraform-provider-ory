@@ -32,6 +32,7 @@ jobs:
 
       - name: Download OpenAPI spec
         run: |
+          # Use the latest spec from master to detect new properties early
           curl -sSfL "https://raw.githubusercontent.com/ory/client-go/master/api/openapi.yaml" \
             -o ./internal/codegen/openapi.yaml
 

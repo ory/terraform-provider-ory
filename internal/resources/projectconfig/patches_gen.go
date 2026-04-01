@@ -115,7 +115,7 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.CourierTemplatesRecoveryCodeValidEmailSubject, "/services/identity/config/courier/smtp/templates/recovery_code/valid/email/subject"},
 		{&plan.CourierTemplatesRecoveryInvalidEmailBodyHTML, "/services/identity/config/courier/smtp/templates/recovery/invalid/email/body/html"},
 		{&plan.CourierTemplatesRecoveryInvalidEmailBodyPlaintext, "/services/identity/config/courier/smtp/templates/recovery/invalid/email/body/plaintext"},
-		{&plan.CourierTemplatesRecoveryInvalidEmailSubject, "/services/identity/config/courier/smtp/templates/recovery/invalid/email/body/html"},
+		{&plan.CourierTemplatesRecoveryInvalidEmailSubject, "/services/identity/config/courier/smtp/templates/recovery/invalid/email/subject"},
 		{&plan.CourierTemplatesRecoveryValidEmailBodyHTML, "/services/identity/config/courier/smtp/templates/recovery/valid/email/body/html"},
 		{&plan.CourierTemplatesRecoveryValidEmailBodyPlaintext, "/services/identity/config/courier/smtp/templates/recovery/valid/email/body/plaintext"},
 		{&plan.CourierTemplatesRecoveryValidEmailSubject, "/services/identity/config/courier/smtp/templates/recovery/valid/email/subject"},
