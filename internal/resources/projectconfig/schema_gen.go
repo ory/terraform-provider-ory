@@ -374,8 +374,6 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 		"selfservice_methods_password_config_min_password_length": schema.Int64Attribute{
 			Description: "Minimum password length.",
 			Optional:    true,
-			Computed:    true,
-			Default:     int64default.StaticInt64(8),
 		},
 		"password_min_length": schema.Int64Attribute{
 			Description:        "Minimum password length.",

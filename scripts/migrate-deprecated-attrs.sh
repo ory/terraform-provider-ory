@@ -97,9 +97,8 @@ declare -A RENAMES=(
 )
 
 CHANGED=0
-TOTAL=0
 
-find "$DIR" -name '*.tf' -not -path '*/.terraform/*' | while read -r file; do
+while IFS= read -r file; do
   MODIFIED=false
   for old in "${!RENAMES[@]}"; do
     new="${RENAMES[$old]}"
@@ -117,9 +116,9 @@ find "$DIR" -name '*.tf' -not -path '*/.terraform/*' | while read -r file; do
   if [ "$MODIFIED" = true ]; then
     CHANGED=$((CHANGED + 1))
   fi
-  TOTAL=$((TOTAL + 1))
-done
+done < <(find "$DIR" -name '*.tf' -not -path '*/.terraform/*')
 
 echo ""
-echo "Migration complete. Review the changes and run 'terraform plan' to verify."
+echo "Migration complete. $CHANGED file(s) updated."
+echo "Review the changes and run 'terraform plan' to verify."
 echo "Backups saved as *.tf.bak"

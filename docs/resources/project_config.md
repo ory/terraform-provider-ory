@@ -323,7 +323,7 @@ Omitting these attributes entirely (or setting them to `null`) leaves the existi
 
 ## Coverage
 
-This resource exposes **218 attributes** (plus 53 deprecated aliases) covering 100% of the configurable properties in the Ory project API, including:
+This resource exposes **218 spec-mapped attributes** (plus 53 deprecated aliases and additional complex attributes like CORS, courier channels, and tokenizer templates), covering 100% of the configurable properties in the Ory project API:
 
 | Category | Examples |
 |----------|---------|

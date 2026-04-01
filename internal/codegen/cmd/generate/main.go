@@ -743,16 +743,20 @@ func buildSchemaAttr(a Attribute) string {
 		b.WriteString("\t\t\tElementType: types.StringType,\n")
 	}
 
-	if a.Computed {
+	// Skip Computed and Defaults on primary attributes that have deprecated aliases,
+	// otherwise Terraform applies the default to the primary even when only the
+	// deprecated alias is set, breaking the fallback logic.
+	hasAlias := a.DeprecatedName != ""
+	if a.Computed && !hasAlias {
 		b.WriteString("\t\t\tComputed:    true,\n")
 	}
 	if a.Sensitive {
 		b.WriteString("\t\t\tSensitive:   true,\n")
 	}
-	if a.DefaultBool != nil {
+	if a.DefaultBool != nil && !hasAlias {
 		fmt.Fprintf(&b, "\t\t\tDefault:     booldefault.StaticBool(%v),\n", *a.DefaultBool)
 	}
-	if a.DefaultInt64 != nil {
+	if a.DefaultInt64 != nil && !hasAlias {
 		fmt.Fprintf(&b, "\t\t\tDefault:     int64default.StaticInt64(%d),\n", *a.DefaultInt64)
 	}
 
@@ -786,8 +790,8 @@ func buildSchemaAttr(a Attribute) string {
 }
 
 // buildDeprecatedSchemaAttr generates a schema attribute for a deprecated alias.
-// It has the same type and description but includes a DeprecatedMessage and
-// omits validators, defaults, computed, and sensitive (those live on the primary).
+// It has the same type and description but includes a DeprecationMessage and
+// omits validators, defaults, and computed; sensitive is preserved to avoid leaking secrets.
 func buildDeprecatedSchemaAttr(a Attribute) string {
 	var b strings.Builder
 
