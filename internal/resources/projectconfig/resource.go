@@ -289,6 +289,71 @@ type ProjectConfigResourceModel struct {
 	SelfserviceMethodsPasswordConfigIgnoreNetworkErrors              types.Bool   `tfsdk:"selfservice_methods_password_config_ignore_network_errors"`
 	SelfserviceMethodsSAMLEnabled                                    types.Bool   `tfsdk:"selfservice_methods_saml_enabled"`
 	SelfserviceMethodsWebAuthnConfigRPIcon                           types.String `tfsdk:"selfservice_methods_webauthn_config_rp_icon"`
+
+	// Account Experience v2
+	AccountExperienceEnabledLocales       types.List   `tfsdk:"account_experience_enabled_locales"`
+	AccountExperienceFaviconDark          types.String `tfsdk:"account_experience_favicon_dark"`
+	AccountExperienceFaviconLight         types.String `tfsdk:"account_experience_favicon_light"`
+	AccountExperienceLocaleBehavior       types.String `tfsdk:"account_experience_locale_behavior"`
+	AccountExperienceLogoDark             types.String `tfsdk:"account_experience_logo_dark"`
+	AccountExperienceLogoLight            types.String `tfsdk:"account_experience_logo_light"`
+	AccountExperienceThemeVariablesDark   types.String `tfsdk:"account_experience_theme_variables_dark"`
+	AccountExperienceThemeVariablesLight  types.String `tfsdk:"account_experience_theme_variables_light"`
+	DisableAccountExperienceWelcomeScreen types.Bool   `tfsdk:"disable_account_experience_welcome_screen"`
+	EnableAXV2                            types.Bool   `tfsdk:"enable_ax_v2"`
+
+	// CAPTCHA
+	SelfserviceMethodsCaptchaConfigAllowedDomains        types.List   `tfsdk:"selfservice_methods_captcha_config_allowed_domains"`
+	SelfserviceMethodsCaptchaConfigBYO                   types.Bool   `tfsdk:"selfservice_methods_captcha_config_byo"`
+	SelfserviceMethodsCaptchaConfigCFTurnstileBYOSecret  types.String `tfsdk:"selfservice_methods_captcha_config_cf_turnstile_byo_secret"`
+	SelfserviceMethodsCaptchaConfigCFTurnstileBYOSitekey types.String `tfsdk:"selfservice_methods_captcha_config_cf_turnstile_byo_sitekey"`
+	SelfserviceMethodsCaptchaConfigCFTurnstileSecret     types.String `tfsdk:"selfservice_methods_captcha_config_cf_turnstile_secret"`
+	SelfserviceMethodsCaptchaConfigCFTurnstileSitekey    types.String `tfsdk:"selfservice_methods_captcha_config_cf_turnstile_sitekey"`
+	SelfserviceMethodsCaptchaConfigLegacyInjectNode      types.Bool   `tfsdk:"selfservice_methods_captcha_config_legacy_inject_node"`
+	SelfserviceMethodsCaptchaEnabled                     types.Bool   `tfsdk:"selfservice_methods_captcha_enabled"`
+
+	// Code max submissions
+	SelfserviceMethodsCodeConfigMaxSubmissions types.Int64 `tfsdk:"selfservice_methods_code_config_max_submissions"`
+
+	// Passkey origins
+	SelfserviceMethodsPasskeyConfigRPOrigins types.List `tfsdk:"selfservice_methods_passkey_config_rp_origins"`
+
+	// OAuth2 provider
+	OAuth2ProviderHeaders          types.Map  `tfsdk:"oauth2_provider_headers"`
+	OAuth2ProviderOverrideReturnTo types.Bool `tfsdk:"oauth2_provider_override_return_to"`
+
+	// Identity secrets
+	IdentitySecretsCipher     types.List `tfsdk:"identity_secrets_cipher"`
+	IdentitySecretsCookie     types.List `tfsdk:"identity_secrets_cookie"`
+	IdentitySecretsDefault    types.List `tfsdk:"identity_secrets_default"`
+	IdentitySecretsPagination types.List `tfsdk:"identity_secrets_pagination"`
+
+	// OAuth2 secrets
+	OAuth2SecretsCookie     types.List `tfsdk:"oauth2_secrets_cookie"`
+	OAuth2SecretsPagination types.List `tfsdk:"oauth2_secrets_pagination"`
+	OAuth2SecretsSystem     types.List `tfsdk:"oauth2_secrets_system"`
+
+	// OAuth2 OIDC
+	OIDCDynamicClientRegistrationDefaultScope types.List `tfsdk:"oidc_dynamic_client_registration_default_scope"`
+	OIDCSubjectIdentifiersSupportedTypes      types.List `tfsdk:"oidc_subject_identifiers_supported_types"`
+
+	// OAuth2 webfinger
+	OAuth2WebfingerJWKSBroadcastKeys            types.List `tfsdk:"oauth2_webfinger_jwks_broadcast_keys"`
+	OAuth2WebfingerOIDCDiscoverySupportedClaims types.List `tfsdk:"oauth2_webfinger_oidc_discovery_supported_claims"`
+	OAuth2WebfingerOIDCDiscoverySupportedScope  types.List `tfsdk:"oauth2_webfinger_oidc_discovery_supported_scope"`
+
+	// Keto
+	KetoNamespaceConfiguration types.String `tfsdk:"keto_namespace_configuration"`
+	KetoSecretsPagination      types.List   `tfsdk:"keto_secrets_pagination"`
+
+	// Security
+	SecurityAccountEnumerationMitigate types.Bool `tfsdk:"security_account_enumeration_mitigate"`
+
+	// Preview
+	PreviewDefaultReadConsistencyLevel types.String `tfsdk:"preview_default_read_consistency_level"`
+
+	// Feature flags
+	FeatureFlagsPasswordProfileRegistrationNodeGroup types.Bool `tfsdk:"feature_flags_password_profile_registration_node_group"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---
@@ -686,6 +751,28 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 			})
 		}
 	}
+	for _, e := range simpleListStringPatchEntries(plan) {
+		if !e.Field.IsNull() && !e.Field.IsUnknown() {
+			var vals []string
+			e.Field.ElementsAs(ctx, &vals, false)
+			patches = append(patches, ory.JsonPatch{
+				Op:    "replace",
+				Path:  e.Path,
+				Value: vals,
+			})
+		}
+	}
+	for _, e := range simpleMapStringPatchEntries(plan) {
+		if !e.Field.IsNull() && !e.Field.IsUnknown() {
+			var vals map[string]string
+			e.Field.ElementsAs(ctx, &vals, false)
+			patches = append(patches, ory.JsonPatch{
+				Op:    "replace",
+				Path:  e.Path,
+				Value: vals,
+			})
+		}
+	}
 
 	// --- Custom patches for complex types ---
 
@@ -1016,7 +1103,7 @@ func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadReque
 
 func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *ory.Project, state *ProjectConfigResourceModel) {
 	// --- Generated simple attribute reads ---
-	readSimpleFields(project, state)
+	readSimpleFields(ctx, project, state)
 
 	// --- Custom reads for complex types ---
 

@@ -1305,3 +1305,305 @@ attributes:
     openapi_property: kratos_selfservice_methods_webauthn_config_rp_icon
     description: "Deprecated. WebAuthn relying party icon URL (ignored for security reasons)."
 
+  # ============================================================================
+  # Account Experience v2
+  # ============================================================================
+  - name: account_experience_enabled_locales
+    go_field: AccountExperienceEnabledLocales
+    type: list_string
+    patch_path: /services/account_experience/config/enabled_locales
+    openapi_property: account_experience_enabled_locales
+    description: "Enabled locales for the hosted login UI."
+
+  - name: account_experience_favicon_dark
+    go_field: AccountExperienceFaviconDark
+    type: string
+    patch_path: /services/account_experience/config/favicon_dark
+    openapi_property: account_experience_favicon_dark
+    description: "URL for the dark theme favicon in the hosted login UI."
+    skip_empty_read: true
+
+  - name: account_experience_favicon_light
+    go_field: AccountExperienceFaviconLight
+    type: string
+    patch_path: /services/account_experience/config/favicon_light
+    openapi_property: account_experience_favicon_light
+    description: "URL for the light theme favicon in the hosted login UI."
+    skip_empty_read: true
+
+  - name: account_experience_locale_behavior
+    go_field: AccountExperienceLocaleBehavior
+    type: string
+    patch_path: /services/account_experience/config/locale_behavior
+    openapi_property: account_experience_locale_behavior
+    description: "Locale behavior: 'respect_accept_language' or 'force_default'."
+    skip_empty_read: true
+
+  - name: account_experience_logo_dark
+    go_field: AccountExperienceLogoDark
+    type: string
+    patch_path: /services/account_experience/config/logo_dark
+    openapi_property: account_experience_logo_dark
+    description: "URL for the dark theme logo in the hosted login UI."
+    skip_empty_read: true
+
+  - name: account_experience_logo_light
+    go_field: AccountExperienceLogoLight
+    type: string
+    patch_path: /services/account_experience/config/logo_light
+    openapi_property: account_experience_logo_light
+    description: "URL for the light theme logo in the hosted login UI."
+    skip_empty_read: true
+
+  - name: account_experience_theme_variables_dark
+    go_field: AccountExperienceThemeVariablesDark
+    type: string
+    patch_path: /services/account_experience/config/theme_variables_dark
+    openapi_property: account_experience_theme_variables_dark
+    description: "URL for dark theme CSS variables in the hosted login UI."
+    skip_empty_read: true
+
+  - name: account_experience_theme_variables_light
+    go_field: AccountExperienceThemeVariablesLight
+    type: string
+    patch_path: /services/account_experience/config/theme_variables_light
+    openapi_property: account_experience_theme_variables_light
+    description: "URL for light theme CSS variables in the hosted login UI."
+    skip_empty_read: true
+
+  - name: disable_account_experience_welcome_screen
+    go_field: DisableAccountExperienceWelcomeScreen
+    type: bool
+    patch_path: /services/account_experience/config/disable_welcome_screen
+    openapi_property: disable_account_experience_welcome_screen
+    description: "Disable the account experience welcome screen at /ui/welcome."
+
+  - name: enable_ax_v2
+    go_field: EnableAXV2
+    type: bool
+    patch_path: /services/account_experience/config/enable_ax_v2
+    openapi_property: enable_ax_v2
+    description: "Enable the new account experience UI."
+
+  # ============================================================================
+  # OAuth2/Hydra list_string properties
+  # ============================================================================
+  - name: oidc_dynamic_client_registration_default_scope
+    go_field: OIDCDynamicClientRegistrationDefaultScope
+    type: list_string
+    patch_path: /services/oauth2/config/oidc/dynamic_client_registration/default_scope
+    openapi_property: hydra_oidc_dynamic_client_registration_default_scope
+    description: "Default OAuth2 scopes granted to dynamically registered clients."
+
+  - name: oidc_subject_identifiers_supported_types
+    go_field: OIDCSubjectIdentifiersSupportedTypes
+    type: list_string
+    patch_path: /services/oauth2/config/oidc/subject_identifiers/supported_types
+    openapi_property: hydra_oidc_subject_identifiers_supported_types
+    description: "Supported OIDC subject identifier types ('public', 'pairwise')."
+
+  - name: oauth2_secrets_cookie
+    go_field: OAuth2SecretsCookie
+    type: list_string
+    patch_path: /services/oauth2/config/secrets/cookie
+    openapi_property: hydra_secrets_cookie
+    description: "Cookie signing secrets for the OAuth2 service."
+    sensitive: true
+
+  - name: oauth2_secrets_pagination
+    go_field: OAuth2SecretsPagination
+    type: list_string
+    patch_path: /services/oauth2/config/secrets/pagination
+    openapi_property: hydra_secrets_pagination
+    description: "Pagination encryption keys for the OAuth2 service."
+    sensitive: true
+
+  - name: oauth2_secrets_system
+    go_field: OAuth2SecretsSystem
+    type: list_string
+    patch_path: /services/oauth2/config/secrets/system
+    openapi_property: hydra_secrets_system
+    description: "System-wide encryption secrets for the OAuth2 service."
+    sensitive: true
+
+  - name: oauth2_webfinger_jwks_broadcast_keys
+    go_field: OAuth2WebfingerJWKSBroadcastKeys
+    type: list_string
+    patch_path: /services/oauth2/config/webfinger/jwks/broadcast_keys
+    openapi_property: hydra_webfinger_jwks_broadcast_keys
+    description: "JWK set IDs to broadcast via OIDC discovery."
+
+  - name: oauth2_webfinger_oidc_discovery_supported_claims
+    go_field: OAuth2WebfingerOIDCDiscoverySupportedClaims
+    type: list_string
+    patch_path: /services/oauth2/config/webfinger/oidc/discovery/supported_claims
+    openapi_property: hydra_webfinger_oidc_discovery_supported_claims
+    description: "Supported claims advertised in OIDC discovery."
+
+  - name: oauth2_webfinger_oidc_discovery_supported_scope
+    go_field: OAuth2WebfingerOIDCDiscoverySupportedScope
+    type: list_string
+    patch_path: /services/oauth2/config/webfinger/oidc/discovery/supported_scope
+    openapi_property: hydra_webfinger_oidc_discovery_supported_scope
+    description: "Supported scopes advertised in OIDC discovery."
+
+  # ============================================================================
+  # Keto/Permission
+  # ============================================================================
+  - name: keto_namespace_configuration
+    go_field: KetoNamespaceConfiguration
+    type: string
+    patch_path: /services/permission/config/namespace_configuration
+    openapi_property: keto_namespace_configuration
+    description: "URL pointing to an OPL file with the Keto namespace configuration."
+
+  - name: keto_secrets_pagination
+    go_field: KetoSecretsPagination
+    type: list_string
+    patch_path: /services/permission/config/secrets/pagination
+    openapi_property: keto_secrets_pagination
+    description: "Pagination encryption keys for the permission service."
+    sensitive: true
+
+  # ============================================================================
+  # Identity/Kratos additional
+  # ============================================================================
+  - name: feature_flags_password_profile_registration_node_group
+    go_field: FeatureFlagsPasswordProfileRegistrationNodeGroup
+    type: bool
+    patch_path: /services/identity/config/feature_flags/password_profile_registration_node_group
+    openapi_property: kratos_feature_flags_password_profile_registration_node_group
+    description: "Use password method group for profile registration node group."
+
+  - name: oauth2_provider_headers
+    go_field: OAuth2ProviderHeaders
+    type: map_string
+    patch_path: /services/identity/config/oauth2_provider/headers
+    openapi_property: kratos_oauth2_provider_headers
+    description: "Custom HTTP headers for the OAuth2 provider integration."
+
+  - name: oauth2_provider_override_return_to
+    go_field: OAuth2ProviderOverrideReturnTo
+    type: bool
+    patch_path: /services/identity/config/oauth2_provider/override_return_to
+    openapi_property: kratos_oauth2_provider_override_return_to
+    description: "Allow the OAuth2 provider to automatically set the return_to parameter."
+
+  - name: preview_default_read_consistency_level
+    go_field: PreviewDefaultReadConsistencyLevel
+    type: string
+    patch_path: /services/identity/config/preview/default_read_consistency_level
+    openapi_property: kratos_preview_default_read_consistency_level
+    description: "Default read consistency level for identity APIs ('strong' or 'eventual')."
+
+  - name: identity_secrets_cipher
+    go_field: IdentitySecretsCipher
+    type: list_string
+    patch_path: /services/identity/config/secrets/cipher
+    openapi_property: kratos_secrets_cipher
+    description: "Encryption secrets for identity data at rest."
+    sensitive: true
+
+  - name: identity_secrets_cookie
+    go_field: IdentitySecretsCookie
+    type: list_string
+    patch_path: /services/identity/config/secrets/cookie
+    openapi_property: kratos_secrets_cookie
+    description: "Cookie signing secrets for the identity service."
+    sensitive: true
+
+  - name: identity_secrets_default
+    go_field: IdentitySecretsDefault
+    type: list_string
+    patch_path: /services/identity/config/secrets/default
+    openapi_property: kratos_secrets_default
+    description: "Default signing secrets for the identity service."
+    sensitive: true
+
+  - name: identity_secrets_pagination
+    go_field: IdentitySecretsPagination
+    type: list_string
+    patch_path: /services/identity/config/secrets/pagination
+    openapi_property: kratos_secrets_pagination
+    description: "Pagination encryption keys for the identity service."
+    sensitive: true
+
+  - name: security_account_enumeration_mitigate
+    go_field: SecurityAccountEnumerationMitigate
+    type: bool
+    patch_path: /services/identity/config/security/account_enumeration/mitigate
+    openapi_property: kratos_security_account_enumeration_mitigate
+    description: "Mitigate account enumeration when using identifier-first login."
+
+  - name: selfservice_methods_captcha_config_allowed_domains
+    go_field: SelfserviceMethodsCaptchaConfigAllowedDomains
+    type: list_string
+    patch_path: /services/identity/config/selfservice/methods/captcha/config/allowed_domains
+    openapi_property: kratos_selfservice_methods_captcha_config_allowed_domains
+    description: "Domains allowed for CAPTCHA verification."
+
+  - name: selfservice_methods_captcha_config_byo
+    go_field: SelfserviceMethodsCaptchaConfigBYO
+    type: bool
+    patch_path: /services/identity/config/selfservice/methods/captcha/config/byo
+    openapi_property: kratos_selfservice_methods_captcha_config_byo
+    description: "Use bring-your-own CAPTCHA widget instead of managed."
+
+  - name: selfservice_methods_captcha_config_cf_turnstile_byo_secret
+    go_field: SelfserviceMethodsCaptchaConfigCFTurnstileBYOSecret
+    type: string
+    patch_path: /services/identity/config/selfservice/methods/captcha/config/cf_turnstile_byo_secret
+    openapi_property: kratos_selfservice_methods_captcha_config_cf_turnstile_byo_secret
+    description: "Cloudflare Turnstile site secret for BYO CAPTCHA."
+    sensitive: true
+
+  - name: selfservice_methods_captcha_config_cf_turnstile_byo_sitekey
+    go_field: SelfserviceMethodsCaptchaConfigCFTurnstileBYOSitekey
+    type: string
+    patch_path: /services/identity/config/selfservice/methods/captcha/config/cf_turnstile_byo_sitekey
+    openapi_property: kratos_selfservice_methods_captcha_config_cf_turnstile_byo_sitekey
+    description: "Cloudflare Turnstile site key for BYO CAPTCHA."
+
+  - name: selfservice_methods_captcha_config_cf_turnstile_secret
+    go_field: SelfserviceMethodsCaptchaConfigCFTurnstileSecret
+    type: string
+    patch_path: /services/identity/config/selfservice/methods/captcha/config/cf_turnstile_secret
+    openapi_property: kratos_selfservice_methods_captcha_config_cf_turnstile_secret
+    description: "Cloudflare Turnstile site secret for managed CAPTCHA."
+    sensitive: true
+
+  - name: selfservice_methods_captcha_config_cf_turnstile_sitekey
+    go_field: SelfserviceMethodsCaptchaConfigCFTurnstileSitekey
+    type: string
+    patch_path: /services/identity/config/selfservice/methods/captcha/config/cf_turnstile_sitekey
+    openapi_property: kratos_selfservice_methods_captcha_config_cf_turnstile_sitekey
+    description: "Cloudflare Turnstile site key for managed CAPTCHA."
+
+  - name: selfservice_methods_captcha_config_legacy_inject_node
+    go_field: SelfserviceMethodsCaptchaConfigLegacyInjectNode
+    type: bool
+    patch_path: /services/identity/config/selfservice/methods/captcha/config/legacy_inject_node
+    openapi_property: kratos_selfservice_methods_captcha_config_legacy_inject_node
+    description: "Inject CAPTCHA as a legacy UI node."
+
+  - name: selfservice_methods_captcha_enabled
+    go_field: SelfserviceMethodsCaptchaEnabled
+    type: bool
+    patch_path: /services/identity/config/selfservice/methods/captcha/enabled
+    openapi_property: kratos_selfservice_methods_captcha_enabled
+    description: "Enable CAPTCHA protection for self-service flows."
+
+  - name: selfservice_methods_code_config_max_submissions
+    go_field: SelfserviceMethodsCodeConfigMaxSubmissions
+    type: int64
+    patch_path: /services/identity/config/selfservice/methods/code/config/max_submissions
+    openapi_property: kratos_selfservice_methods_code_config_max_submissions
+    description: "Maximum number of code submission attempts before invalidation."
+
+  - name: selfservice_methods_passkey_config_rp_origins
+    go_field: SelfserviceMethodsPasskeyConfigRPOrigins
+    type: list_string
+    patch_path: /services/identity/config/selfservice/methods/passkey/config/rp/origins
+    openapi_property: kratos_selfservice_methods_passkey_config_rp_origins
+    description: "Allowed origins for passkey relying party verification."
+

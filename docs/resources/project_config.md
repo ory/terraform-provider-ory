@@ -353,10 +353,18 @@ Some Ory project settings are not yet available through this resource. For setti
 ### Optional
 
 - `account_experience_default_locale` (String) Default locale for the hosted login UI (e.g., 'en', 'de').
+- `account_experience_enabled_locales` (List of String) Enabled locales for the hosted login UI.
+- `account_experience_favicon_dark` (String) URL for the dark theme favicon in the hosted login UI.
+- `account_experience_favicon_light` (String) URL for the light theme favicon in the hosted login UI.
 - `account_experience_favicon_url` (String) URL for the favicon in the hosted login UI.
+- `account_experience_locale_behavior` (String) Locale behavior: 'respect_accept_language' or 'force_default'.
+- `account_experience_logo_dark` (String) URL for the dark theme logo in the hosted login UI.
+- `account_experience_logo_light` (String) URL for the light theme logo in the hosted login UI.
 - `account_experience_logo_url` (String) URL for the logo in the hosted login UI.
 - `account_experience_name` (String) Application name shown in the hosted login UI.
 - `account_experience_stylesheet` (String) Custom CSS stylesheet for the hosted login UI.
+- `account_experience_theme_variables_dark` (String) URL for dark theme CSS variables in the hosted login UI.
+- `account_experience_theme_variables_light` (String) URL for light theme CSS variables in the hosted login UI.
 - `allowed_return_urls` (List of String) List of allowed return URLs.
 - `code_lifespan` (String) Lifespan of the code method's one-time codes (e.g., '15m0s'). Controls how long a code remains valid after being issued.
 - `code_mfa_enabled` (Boolean) Enable the code method as a second factor for MFA. When enabled, users can use one-time codes as a second authentication factor.
@@ -412,6 +420,8 @@ Some Ory project settings are not yet available through this resource. For setti
 - `courier_templates_verification_valid_email_body_plaintext` (String) Plaintext body template for valid verification emails.
 - `courier_templates_verification_valid_email_subject` (String) Subject template for valid verification emails.
 - `default_return_url` (String) Default URL to redirect after flows.
+- `disable_account_experience_welcome_screen` (Boolean) Disable the account experience welcome screen at /ui/welcome.
+- `enable_ax_v2` (Boolean) Enable the new account experience UI.
 - `enable_code` (Boolean) Enable code-based authentication.
 - `enable_lookup_secret` (Boolean) Enable backup/recovery codes.
 - `enable_oidc` (Boolean) Enable OIDC (OpenID Connect) social sign-in. Must be enabled for social providers (e.g. Google, GitHub) to work.
@@ -432,8 +442,15 @@ Some Ory project settings are not yet available through this resource. For setti
 - `feature_flags_legacy_continue_with_verification_ui` (Boolean) Deprecated. Restore legacy behavior of always including show_verification_ui in continue_with.
 - `feature_flags_legacy_oidc_registration_node_group` (Boolean) Use legacy 'oidc' node group for OIDC registration when required fields are missing.
 - `feature_flags_legacy_require_verified_login_error` (Boolean) Deprecated. Return a form error instead of continue_with when the login identifier is not verified.
+- `feature_flags_password_profile_registration_node_group` (Boolean) Use password method group for profile registration node group.
 - `feature_flags_use_continue_with_transitions` (Boolean) Enable continue_with transitions for session flows.
+- `identity_secrets_cipher` (List of String, Sensitive) Encryption secrets for identity data at rest.
+- `identity_secrets_cookie` (List of String, Sensitive) Cookie signing secrets for the identity service.
+- `identity_secrets_default` (List of String, Sensitive) Default signing secrets for the identity service.
+- `identity_secrets_pagination` (List of String, Sensitive) Pagination encryption keys for the identity service.
+- `keto_namespace_configuration` (String) URL pointing to an OPL file with the Keto namespace configuration.
 - `keto_namespaces` (List of String) List of Keto namespace names to configure for Ory Permissions. Namespaces define the types of resources in your permission model (e.g., 'documents', 'folders'). Each namespace name must be unique.
+- `keto_secrets_pagination` (List of String, Sensitive) Pagination encryption keys for the permission service.
 - `login_style` (String) Login flow style: 'unified' (default) shows all auth methods on one screen, 'identifier_first' collects the identifier before showing auth methods.
 - `login_ui_url` (String) URL for the login UI.
 - `mfa_enforcement` (String) MFA enforcement level: 'none', 'optional', or 'required'.
@@ -460,29 +477,41 @@ Some Ory project settings are not yet available through this resource. For setti
 - `oauth2_mirror_top_level_claims` (Boolean) Mirror top-level claims in OAuth2 ID tokens.
 - `oauth2_pkce_enforced` (Boolean) Enforce PKCE for all OAuth2 clients.
 - `oauth2_pkce_enforced_for_public_clients` (Boolean) Enforce PKCE for public OAuth2 clients only.
+- `oauth2_provider_headers` (Map of String) Custom HTTP headers for the OAuth2 provider integration.
+- `oauth2_provider_override_return_to` (Boolean) Allow the OAuth2 provider to automatically set the return_to parameter.
 - `oauth2_provider_url` (String) OAuth2 provider integration URL.
 - `oauth2_refresh_token_hook` (String) Webhook URL called during OAuth2 token refresh to update access token claims.
 - `oauth2_refresh_token_lifespan` (String) OAuth2 refresh token lifespan (e.g., '720h' for 30 days). Requires Hydra service.
 - `oauth2_scope_strategy` (String) OAuth2 scope matching strategy ('exact', 'wildcard').
+- `oauth2_secrets_cookie` (List of String, Sensitive) Cookie signing secrets for the OAuth2 service.
+- `oauth2_secrets_pagination` (List of String, Sensitive) Pagination encryption keys for the OAuth2 service.
+- `oauth2_secrets_system` (List of String, Sensitive) System-wide encryption secrets for the OAuth2 service.
 - `oauth2_session_encrypt_at_rest` (Boolean) Encrypt OAuth2 sessions at rest.
 - `oauth2_token_hook` (String) Webhook URL called during token issuance for all grant types to customize claims.
 - `oauth2_urls_post_logout_redirect` (String) Default redirect URL after OAuth2 logout.
 - `oauth2_urls_registration` (String) Registration endpoint URL for the OAuth2 login and consent flow.
+- `oauth2_webfinger_jwks_broadcast_keys` (List of String) JWK set IDs to broadcast via OIDC discovery.
 - `oauth2_webfinger_oidc_discovery_auth_url` (String) Override the OAuth2 authorization URL in OIDC discovery.
 - `oauth2_webfinger_oidc_discovery_client_registration_url` (String) Override the dynamic client registration URL in OIDC discovery.
 - `oauth2_webfinger_oidc_discovery_jwks_url` (String) Override the JWKS URL in OIDC discovery.
+- `oauth2_webfinger_oidc_discovery_supported_claims` (List of String) Supported claims advertised in OIDC discovery.
+- `oauth2_webfinger_oidc_discovery_supported_scope` (List of String) Supported scopes advertised in OIDC discovery.
 - `oauth2_webfinger_oidc_discovery_token_url` (String) Override the OAuth2 token URL in OIDC discovery.
 - `oauth2_webfinger_oidc_discovery_userinfo_url` (String) Override the userinfo endpoint URL in OIDC discovery.
+- `oidc_dynamic_client_registration_default_scope` (List of String) Default OAuth2 scopes granted to dynamically registered clients.
 - `oidc_dynamic_client_registration_enabled` (Boolean) Enable OpenID Connect dynamic client registration.
 - `oidc_subject_identifiers_pairwise_salt` (String) Salt for the OIDC pairwise subject identifier algorithm.
+- `oidc_subject_identifiers_supported_types` (List of String) Supported OIDC subject identifier types ('public', 'pairwise').
 - `password_check_haveibeenpwned` (Boolean) Check passwords against HaveIBeenPwned.
 - `password_identifier_similarity` (Boolean) Check password similarity to identifier.
 - `password_max_breaches` (Number) Maximum allowed breaches in HaveIBeenPwned.
 - `password_min_length` (Number) Minimum password length.
+- `preview_default_read_consistency_level` (String) Default read consistency level for identity APIs ('strong' or 'eventual').
 - `project_id` (String) Project ID to configure. If not set, uses provider's project_id.
 - `recovery_ui_url` (String) URL for the password recovery UI.
 - `registration_ui_url` (String) URL for the registration UI.
 - `required_aal` (String) Required Authenticator Assurance Level for the settings flow: 'aal1' or 'highest_available'.
+- `security_account_enumeration_mitigate` (Boolean) Mitigate account enumeration when using identifier-first login.
 - `selfservice_default_browser_return_url` (String) Default browser return URL for self-service flows.
 - `selfservice_flows_login_after_code_default_browser_return_url` (String) Return URL after login via code method.
 - `selfservice_flows_login_after_default_browser_return_url` (String) Default return URL after login.
@@ -516,6 +545,15 @@ Some Ory project settings are not yet available through this resource. For setti
 - `selfservice_flows_settings_after_totp_default_browser_return_url` (String) Return URL after updating TOTP in settings.
 - `selfservice_flows_settings_after_webauthn_default_browser_return_url` (String) Return URL after updating WebAuthn in settings.
 - `selfservice_flows_verification_after_default_browser_return_url` (String) Default return URL after verification.
+- `selfservice_methods_captcha_config_allowed_domains` (List of String) Domains allowed for CAPTCHA verification.
+- `selfservice_methods_captcha_config_byo` (Boolean) Use bring-your-own CAPTCHA widget instead of managed.
+- `selfservice_methods_captcha_config_cf_turnstile_byo_secret` (String, Sensitive) Cloudflare Turnstile site secret for BYO CAPTCHA.
+- `selfservice_methods_captcha_config_cf_turnstile_byo_sitekey` (String) Cloudflare Turnstile site key for BYO CAPTCHA.
+- `selfservice_methods_captcha_config_cf_turnstile_secret` (String, Sensitive) Cloudflare Turnstile site secret for managed CAPTCHA.
+- `selfservice_methods_captcha_config_cf_turnstile_sitekey` (String) Cloudflare Turnstile site key for managed CAPTCHA.
+- `selfservice_methods_captcha_config_legacy_inject_node` (Boolean) Inject CAPTCHA as a legacy UI node.
+- `selfservice_methods_captcha_enabled` (Boolean) Enable CAPTCHA protection for self-service flows.
+- `selfservice_methods_code_config_max_submissions` (Number) Maximum number of code submission attempts before invalidation.
 - `selfservice_methods_code_passwordless_enabled` (Boolean) Enable passwordless login via the code method.
 - `selfservice_methods_code_passwordless_login_fallback_enabled` (Boolean) Allow code-based login as a fallback for users registered with other methods.
 - `selfservice_methods_link_config_base_url` (String) Base URL for recovery, verification, and login links. Leave empty for automatic detection.
@@ -524,6 +562,7 @@ Some Ory project settings are not yet available through this resource. For setti
 - `selfservice_methods_oidc_config_base_redirect_uri` (String) Base redirect URI for OIDC/social sign-in callbacks.
 - `selfservice_methods_passkey_config_rp_display_name` (String) Passkey relying party display name.
 - `selfservice_methods_passkey_config_rp_id` (String) Passkey relying party ID (typically your domain).
+- `selfservice_methods_passkey_config_rp_origins` (List of String) Allowed origins for passkey relying party verification.
 - `selfservice_methods_password_config_ignore_network_errors` (Boolean) Ignore HaveIBeenPwned network errors during password validation.
 - `selfservice_methods_saml_enabled` (Boolean) Enable SAML login method.
 - `selfservice_methods_webauthn_config_rp_icon` (String) Deprecated. WebAuthn relying party icon URL (ignored for security reasons).

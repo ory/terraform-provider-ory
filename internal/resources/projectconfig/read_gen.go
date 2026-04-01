@@ -5,12 +5,19 @@
 package projectconfig
 
 import (
+	"context"
+
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
 )
 
 // Ensure imports are used.
-var _ *ory.Project
+var (
+	_ *ory.Project
+	_ context.Context
+	_ attr.Value
+)
 
 // StringReadEntry maps a string state field to its config read path.
 type StringReadEntry struct {
@@ -31,8 +38,20 @@ type Int64ReadEntry struct {
 	Keys  []string
 }
 
+// ListStringReadEntry maps a list(string) state field to its config read path.
+type ListStringReadEntry struct {
+	Field *types.List
+	Keys  []string
+}
+
+// MapStringReadEntry maps a map(string) state field to its config read path.
+type MapStringReadEntry struct {
+	Field *types.Map
+	Keys  []string
+}
+
 // readSimpleFields reads all simple attributes from the API response into state.
-func readSimpleFields(project *ory.Project, state *ProjectConfigResourceModel) {
+func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectConfigResourceModel) {
 	if project.Services.AccountExperience != nil {
 		account_experienceConfig := project.Services.AccountExperience.Config
 		for _, e := range account_experienceStringReadEntries(state) {
@@ -40,6 +59,31 @@ func readSimpleFields(project *ory.Project, state *ProjectConfigResourceModel) {
 				if v, ok := getNestedString(account_experienceConfig, e.Keys...); ok {
 					if !e.SkipEmpty || v != "" {
 						*e.Field = types.StringValue(v)
+					}
+				}
+			}
+		}
+		for _, e := range account_experienceBoolReadEntries(state) {
+			if !e.Field.IsNull() {
+				if v, ok := getNestedBool(account_experienceConfig, e.Keys...); ok {
+					*e.Field = types.BoolValue(v)
+				}
+			}
+		}
+		for _, e := range account_experienceListStringReadEntries(state) {
+			if !e.Field.IsNull() {
+				if v := getNestedValue(account_experienceConfig, e.Keys...); v != nil {
+					if arr, ok := v.([]interface{}); ok && len(arr) > 0 {
+						strs := make([]string, 0, len(arr))
+						for _, item := range arr {
+							if s, ok := item.(string); ok {
+								strs = append(strs, s)
+							}
+						}
+						listVal, diags := types.ListValueFrom(ctx, types.StringType, strs)
+						if !diags.HasError() {
+							*e.Field = listVal
+						}
 					}
 				}
 			}
@@ -70,6 +114,42 @@ func readSimpleFields(project *ory.Project, state *ProjectConfigResourceModel) {
 				}
 			}
 		}
+		for _, e := range identityListStringReadEntries(state) {
+			if !e.Field.IsNull() {
+				if v := getNestedValue(identityConfig, e.Keys...); v != nil {
+					if arr, ok := v.([]interface{}); ok && len(arr) > 0 {
+						strs := make([]string, 0, len(arr))
+						for _, item := range arr {
+							if s, ok := item.(string); ok {
+								strs = append(strs, s)
+							}
+						}
+						listVal, diags := types.ListValueFrom(ctx, types.StringType, strs)
+						if !diags.HasError() {
+							*e.Field = listVal
+						}
+					}
+				}
+			}
+		}
+		for _, e := range identityMapStringReadEntries(state) {
+			if !e.Field.IsNull() {
+				if v := getNestedValue(identityConfig, e.Keys...); v != nil {
+					if m, ok := v.(map[string]interface{}); ok && len(m) > 0 {
+						strMap := make(map[string]attr.Value, len(m))
+						for k, val := range m {
+							if s, ok := val.(string); ok {
+								strMap[k] = types.StringValue(s)
+							}
+						}
+						mapVal, diags := types.MapValue(types.StringType, strMap)
+						if !diags.HasError() {
+							*e.Field = mapVal
+						}
+					}
+				}
+			}
+		}
 	}
 	if project.Services.Oauth2 != nil {
 		oauth2Config := project.Services.Oauth2.Config
@@ -89,6 +169,54 @@ func readSimpleFields(project *ory.Project, state *ProjectConfigResourceModel) {
 				}
 			}
 		}
+		for _, e := range oauth2ListStringReadEntries(state) {
+			if !e.Field.IsNull() {
+				if v := getNestedValue(oauth2Config, e.Keys...); v != nil {
+					if arr, ok := v.([]interface{}); ok && len(arr) > 0 {
+						strs := make([]string, 0, len(arr))
+						for _, item := range arr {
+							if s, ok := item.(string); ok {
+								strs = append(strs, s)
+							}
+						}
+						listVal, diags := types.ListValueFrom(ctx, types.StringType, strs)
+						if !diags.HasError() {
+							*e.Field = listVal
+						}
+					}
+				}
+			}
+		}
+	}
+	if project.Services.Permission != nil {
+		permissionConfig := project.Services.Permission.Config
+		for _, e := range permissionStringReadEntries(state) {
+			if !e.Field.IsNull() {
+				if v, ok := getNestedString(permissionConfig, e.Keys...); ok {
+					if !e.SkipEmpty || v != "" {
+						*e.Field = types.StringValue(v)
+					}
+				}
+			}
+		}
+		for _, e := range permissionListStringReadEntries(state) {
+			if !e.Field.IsNull() {
+				if v := getNestedValue(permissionConfig, e.Keys...); v != nil {
+					if arr, ok := v.([]interface{}); ok && len(arr) > 0 {
+						strs := make([]string, 0, len(arr))
+						for _, item := range arr {
+							if s, ok := item.(string); ok {
+								strs = append(strs, s)
+							}
+						}
+						listVal, diags := types.ListValueFrom(ctx, types.StringType, strs)
+						if !diags.HasError() {
+							*e.Field = listVal
+						}
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -99,6 +227,26 @@ func account_experienceStringReadEntries(state *ProjectConfigResourceModel) []St
 		{&state.AccountExperienceName, []string{"name"}, true},
 		{&state.AccountExperienceStylesheet, []string{"stylesheet"}, true},
 		{&state.AccountExperienceLocale, []string{"default_locale"}, true},
+		{&state.AccountExperienceFaviconDark, []string{"favicon_dark"}, true},
+		{&state.AccountExperienceFaviconLight, []string{"favicon_light"}, true},
+		{&state.AccountExperienceLocaleBehavior, []string{"locale_behavior"}, true},
+		{&state.AccountExperienceLogoDark, []string{"logo_dark"}, true},
+		{&state.AccountExperienceLogoLight, []string{"logo_light"}, true},
+		{&state.AccountExperienceThemeVariablesDark, []string{"theme_variables_dark"}, true},
+		{&state.AccountExperienceThemeVariablesLight, []string{"theme_variables_light"}, true},
+	}
+}
+
+func account_experienceBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry {
+	return []BoolReadEntry{
+		{&state.DisableAccountExperienceWelcomeScreen, []string{"disable_welcome_screen"}},
+		{&state.EnableAXV2, []string{"enable_ax_v2"}},
+	}
+}
+
+func account_experienceListStringReadEntries(state *ProjectConfigResourceModel) []ListStringReadEntry {
+	return []ListStringReadEntry{
+		{&state.AccountExperienceEnabledLocales, []string{"enabled_locales"}},
 	}
 }
 
@@ -207,6 +355,11 @@ func identityStringReadEntries(state *ProjectConfigResourceModel) []StringReadEn
 		{&state.SelfserviceMethodsPasskeyConfigRPDisplayName, []string{"selfservice", "methods", "passkey", "config", "rp", "display_name"}, false},
 		{&state.SelfserviceMethodsPasskeyConfigRPID, []string{"selfservice", "methods", "passkey", "config", "rp", "id"}, false},
 		{&state.SelfserviceMethodsWebAuthnConfigRPIcon, []string{"selfservice", "methods", "webauthn", "config", "rp", "icon"}, false},
+		{&state.PreviewDefaultReadConsistencyLevel, []string{"preview", "default_read_consistency_level"}, false},
+		{&state.SelfserviceMethodsCaptchaConfigCFTurnstileBYOSecret, []string{"selfservice", "methods", "captcha", "config", "cf_turnstile_byo_secret"}, false},
+		{&state.SelfserviceMethodsCaptchaConfigCFTurnstileBYOSitekey, []string{"selfservice", "methods", "captcha", "config", "cf_turnstile_byo_sitekey"}, false},
+		{&state.SelfserviceMethodsCaptchaConfigCFTurnstileSecret, []string{"selfservice", "methods", "captcha", "config", "cf_turnstile_secret"}, false},
+		{&state.SelfserviceMethodsCaptchaConfigCFTurnstileSitekey, []string{"selfservice", "methods", "captcha", "config", "cf_turnstile_sitekey"}, false},
 	}
 }
 
@@ -246,6 +399,12 @@ func identityBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry 
 		{&state.SelfserviceMethodsLinkEnabled, []string{"selfservice", "methods", "link", "enabled"}},
 		{&state.SelfserviceMethodsPasswordConfigIgnoreNetworkErrors, []string{"selfservice", "methods", "password", "config", "ignore_network_errors"}},
 		{&state.SelfserviceMethodsSAMLEnabled, []string{"selfservice", "methods", "saml", "enabled"}},
+		{&state.FeatureFlagsPasswordProfileRegistrationNodeGroup, []string{"feature_flags", "password_profile_registration_node_group"}},
+		{&state.OAuth2ProviderOverrideReturnTo, []string{"oauth2_provider", "override_return_to"}},
+		{&state.SecurityAccountEnumerationMitigate, []string{"security", "account_enumeration", "mitigate"}},
+		{&state.SelfserviceMethodsCaptchaConfigBYO, []string{"selfservice", "methods", "captcha", "config", "byo"}},
+		{&state.SelfserviceMethodsCaptchaConfigLegacyInjectNode, []string{"selfservice", "methods", "captcha", "config", "legacy_inject_node"}},
+		{&state.SelfserviceMethodsCaptchaEnabled, []string{"selfservice", "methods", "captcha", "enabled"}},
 	}
 }
 
@@ -253,6 +412,24 @@ func identityInt64ReadEntries(state *ProjectConfigResourceModel) []Int64ReadEntr
 	return []Int64ReadEntry{
 		{&state.PasswordMinLength, []string{"selfservice", "methods", "password", "config", "min_password_length"}},
 		{&state.PasswordMaxBreaches, []string{"selfservice", "methods", "password", "config", "max_breaches"}},
+		{&state.SelfserviceMethodsCodeConfigMaxSubmissions, []string{"selfservice", "methods", "code", "config", "max_submissions"}},
+	}
+}
+
+func identityListStringReadEntries(state *ProjectConfigResourceModel) []ListStringReadEntry {
+	return []ListStringReadEntry{
+		{&state.IdentitySecretsCipher, []string{"secrets", "cipher"}},
+		{&state.IdentitySecretsCookie, []string{"secrets", "cookie"}},
+		{&state.IdentitySecretsDefault, []string{"secrets", "default"}},
+		{&state.IdentitySecretsPagination, []string{"secrets", "pagination"}},
+		{&state.SelfserviceMethodsCaptchaConfigAllowedDomains, []string{"selfservice", "methods", "captcha", "config", "allowed_domains"}},
+		{&state.SelfserviceMethodsPasskeyConfigRPOrigins, []string{"selfservice", "methods", "passkey", "config", "rp", "origins"}},
+	}
+}
+
+func identityMapStringReadEntries(state *ProjectConfigResourceModel) []MapStringReadEntry {
+	return []MapStringReadEntry{
+		{&state.OAuth2ProviderHeaders, []string{"oauth2_provider", "headers"}},
 	}
 }
 
@@ -299,5 +476,30 @@ func oauth2BoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry {
 		{&state.OAuth2GrantJWTIATOptional, []string{"oauth2", "grant", "jwt", "iat_optional"}},
 		{&state.OAuth2GrantJWTJTIOptional, []string{"oauth2", "grant", "jwt", "jti_optional"}},
 		{&state.OIDCDynamicClientRegistrationEnabled, []string{"oidc", "dynamic_client_registration", "enabled"}},
+	}
+}
+
+func oauth2ListStringReadEntries(state *ProjectConfigResourceModel) []ListStringReadEntry {
+	return []ListStringReadEntry{
+		{&state.OIDCDynamicClientRegistrationDefaultScope, []string{"oidc", "dynamic_client_registration", "default_scope"}},
+		{&state.OIDCSubjectIdentifiersSupportedTypes, []string{"oidc", "subject_identifiers", "supported_types"}},
+		{&state.OAuth2SecretsCookie, []string{"secrets", "cookie"}},
+		{&state.OAuth2SecretsPagination, []string{"secrets", "pagination"}},
+		{&state.OAuth2SecretsSystem, []string{"secrets", "system"}},
+		{&state.OAuth2WebfingerJWKSBroadcastKeys, []string{"webfinger", "jwks", "broadcast_keys"}},
+		{&state.OAuth2WebfingerOIDCDiscoverySupportedClaims, []string{"webfinger", "oidc", "discovery", "supported_claims"}},
+		{&state.OAuth2WebfingerOIDCDiscoverySupportedScope, []string{"webfinger", "oidc", "discovery", "supported_scope"}},
+	}
+}
+
+func permissionStringReadEntries(state *ProjectConfigResourceModel) []StringReadEntry {
+	return []StringReadEntry{
+		{&state.KetoNamespaceConfiguration, []string{"namespace_configuration"}, false},
+	}
+}
+
+func permissionListStringReadEntries(state *ProjectConfigResourceModel) []ListStringReadEntry {
+	return []ListStringReadEntry{
+		{&state.KetoSecretsPagination, []string{"secrets", "pagination"}},
 	}
 }

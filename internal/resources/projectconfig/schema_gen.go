@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 // Ensure imported packages are used.
@@ -20,11 +21,13 @@ var (
 	_ = booldefault.StaticBool
 	_ = int64default.StaticInt64
 	_ validator.String
+	_ = types.StringType
 )
 
 // simpleSchemaAttributes returns the schema attributes for all simple
-// (string, bool, int64) configuration fields. Complex nested types
-// (tokenizer templates, courier channels, etc.) are defined separately.
+// (string, bool, int64, list_string, map_string) configuration fields.
+// Complex nested types (tokenizer templates, courier channels, etc.) are
+// defined separately.
 func simpleSchemaAttributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
 		"session_lifespan": schema.StringAttribute{
@@ -762,6 +765,189 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 		"selfservice_methods_webauthn_config_rp_icon": schema.StringAttribute{
 			Description: "Deprecated. WebAuthn relying party icon URL (ignored for security reasons).",
 			Optional:    true,
+		},
+		"account_experience_enabled_locales": schema.ListAttribute{
+			Description: "Enabled locales for the hosted login UI.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"account_experience_favicon_dark": schema.StringAttribute{
+			Description: "URL for the dark theme favicon in the hosted login UI.",
+			Optional:    true,
+		},
+		"account_experience_favicon_light": schema.StringAttribute{
+			Description: "URL for the light theme favicon in the hosted login UI.",
+			Optional:    true,
+		},
+		"account_experience_locale_behavior": schema.StringAttribute{
+			Description: "Locale behavior: 'respect_accept_language' or 'force_default'.",
+			Optional:    true,
+		},
+		"account_experience_logo_dark": schema.StringAttribute{
+			Description: "URL for the dark theme logo in the hosted login UI.",
+			Optional:    true,
+		},
+		"account_experience_logo_light": schema.StringAttribute{
+			Description: "URL for the light theme logo in the hosted login UI.",
+			Optional:    true,
+		},
+		"account_experience_theme_variables_dark": schema.StringAttribute{
+			Description: "URL for dark theme CSS variables in the hosted login UI.",
+			Optional:    true,
+		},
+		"account_experience_theme_variables_light": schema.StringAttribute{
+			Description: "URL for light theme CSS variables in the hosted login UI.",
+			Optional:    true,
+		},
+		"disable_account_experience_welcome_screen": schema.BoolAttribute{
+			Description: "Disable the account experience welcome screen at /ui/welcome.",
+			Optional:    true,
+		},
+		"enable_ax_v2": schema.BoolAttribute{
+			Description: "Enable the new account experience UI.",
+			Optional:    true,
+		},
+		"oidc_dynamic_client_registration_default_scope": schema.ListAttribute{
+			Description: "Default OAuth2 scopes granted to dynamically registered clients.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"oidc_subject_identifiers_supported_types": schema.ListAttribute{
+			Description: "Supported OIDC subject identifier types ('public', 'pairwise').",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"oauth2_secrets_cookie": schema.ListAttribute{
+			Description: "Cookie signing secrets for the OAuth2 service.",
+			Optional:    true,
+			ElementType: types.StringType,
+			Sensitive:   true,
+		},
+		"oauth2_secrets_pagination": schema.ListAttribute{
+			Description: "Pagination encryption keys for the OAuth2 service.",
+			Optional:    true,
+			ElementType: types.StringType,
+			Sensitive:   true,
+		},
+		"oauth2_secrets_system": schema.ListAttribute{
+			Description: "System-wide encryption secrets for the OAuth2 service.",
+			Optional:    true,
+			ElementType: types.StringType,
+			Sensitive:   true,
+		},
+		"oauth2_webfinger_jwks_broadcast_keys": schema.ListAttribute{
+			Description: "JWK set IDs to broadcast via OIDC discovery.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"oauth2_webfinger_oidc_discovery_supported_claims": schema.ListAttribute{
+			Description: "Supported claims advertised in OIDC discovery.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"oauth2_webfinger_oidc_discovery_supported_scope": schema.ListAttribute{
+			Description: "Supported scopes advertised in OIDC discovery.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"keto_namespace_configuration": schema.StringAttribute{
+			Description: "URL pointing to an OPL file with the Keto namespace configuration.",
+			Optional:    true,
+		},
+		"keto_secrets_pagination": schema.ListAttribute{
+			Description: "Pagination encryption keys for the permission service.",
+			Optional:    true,
+			ElementType: types.StringType,
+			Sensitive:   true,
+		},
+		"feature_flags_password_profile_registration_node_group": schema.BoolAttribute{
+			Description: "Use password method group for profile registration node group.",
+			Optional:    true,
+		},
+		"oauth2_provider_headers": schema.MapAttribute{
+			Description: "Custom HTTP headers for the OAuth2 provider integration.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"oauth2_provider_override_return_to": schema.BoolAttribute{
+			Description: "Allow the OAuth2 provider to automatically set the return_to parameter.",
+			Optional:    true,
+		},
+		"preview_default_read_consistency_level": schema.StringAttribute{
+			Description: "Default read consistency level for identity APIs ('strong' or 'eventual').",
+			Optional:    true,
+		},
+		"identity_secrets_cipher": schema.ListAttribute{
+			Description: "Encryption secrets for identity data at rest.",
+			Optional:    true,
+			ElementType: types.StringType,
+			Sensitive:   true,
+		},
+		"identity_secrets_cookie": schema.ListAttribute{
+			Description: "Cookie signing secrets for the identity service.",
+			Optional:    true,
+			ElementType: types.StringType,
+			Sensitive:   true,
+		},
+		"identity_secrets_default": schema.ListAttribute{
+			Description: "Default signing secrets for the identity service.",
+			Optional:    true,
+			ElementType: types.StringType,
+			Sensitive:   true,
+		},
+		"identity_secrets_pagination": schema.ListAttribute{
+			Description: "Pagination encryption keys for the identity service.",
+			Optional:    true,
+			ElementType: types.StringType,
+			Sensitive:   true,
+		},
+		"security_account_enumeration_mitigate": schema.BoolAttribute{
+			Description: "Mitigate account enumeration when using identifier-first login.",
+			Optional:    true,
+		},
+		"selfservice_methods_captcha_config_allowed_domains": schema.ListAttribute{
+			Description: "Domains allowed for CAPTCHA verification.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"selfservice_methods_captcha_config_byo": schema.BoolAttribute{
+			Description: "Use bring-your-own CAPTCHA widget instead of managed.",
+			Optional:    true,
+		},
+		"selfservice_methods_captcha_config_cf_turnstile_byo_secret": schema.StringAttribute{
+			Description: "Cloudflare Turnstile site secret for BYO CAPTCHA.",
+			Optional:    true,
+			Sensitive:   true,
+		},
+		"selfservice_methods_captcha_config_cf_turnstile_byo_sitekey": schema.StringAttribute{
+			Description: "Cloudflare Turnstile site key for BYO CAPTCHA.",
+			Optional:    true,
+		},
+		"selfservice_methods_captcha_config_cf_turnstile_secret": schema.StringAttribute{
+			Description: "Cloudflare Turnstile site secret for managed CAPTCHA.",
+			Optional:    true,
+			Sensitive:   true,
+		},
+		"selfservice_methods_captcha_config_cf_turnstile_sitekey": schema.StringAttribute{
+			Description: "Cloudflare Turnstile site key for managed CAPTCHA.",
+			Optional:    true,
+		},
+		"selfservice_methods_captcha_config_legacy_inject_node": schema.BoolAttribute{
+			Description: "Inject CAPTCHA as a legacy UI node.",
+			Optional:    true,
+		},
+		"selfservice_methods_captcha_enabled": schema.BoolAttribute{
+			Description: "Enable CAPTCHA protection for self-service flows.",
+			Optional:    true,
+		},
+		"selfservice_methods_code_config_max_submissions": schema.Int64Attribute{
+			Description: "Maximum number of code submission attempts before invalidation.",
+			Optional:    true,
+		},
+		"selfservice_methods_passkey_config_rp_origins": schema.ListAttribute{
+			Description: "Allowed origins for passkey relying party verification.",
+			Optional:    true,
+			ElementType: types.StringType,
 		},
 	}
 }

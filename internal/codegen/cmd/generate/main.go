@@ -27,7 +27,7 @@ import (
 type Attribute struct {
 	Name            string     `yaml:"name"`
 	GoField         string     `yaml:"go_field"`
-	Type            string     `yaml:"type"` // string, bool, int64
+	Type            string     `yaml:"type"` // string, bool, int64, list_string, map_string
 	PatchPath       string     `yaml:"patch_path"`
 	OpenAPIProperty string     `yaml:"openapi_property"` // maps to normalizedProjectRevision property name
 	Description     string     `yaml:"description"`
@@ -184,9 +184,11 @@ func navigateMap(m map[string]interface{}, keys ...string) interface{} {
 }
 
 const (
-	typeString = "string"
-	typeBool   = "bool"
-	typeInt64  = "int64"
+	typeString     = "string"
+	typeBool       = "bool"
+	typeInt64      = "int64"
+	typeListString = "list_string"
+	typeMapString  = "map_string"
 )
 
 // openAPITypeToTFType maps OpenAPI types to Terraform types.
@@ -198,6 +200,19 @@ func openAPITypeToTFType(oaType string) string {
 		return typeBool
 	case "integer":
 		return typeInt64
+	default:
+		return ""
+	}
+}
+
+// discoverTypeToTFType extends openAPITypeToTFType with array support for discover mode.
+func discoverTypeToTFType(oaType string) string {
+	if t := openAPITypeToTFType(oaType); t != "" {
+		return t
+	}
+	switch oaType {
+	case "array":
+		return typeListString
 	default:
 		return ""
 	}
@@ -249,7 +264,7 @@ func main() {
 		if a.Name == "" || a.GoField == "" || a.Type == "" || a.PatchPath == "" {
 			log.Fatalf("attribute %d (%s): name, go_field, type, and patch_path are required (patch_path can be derived from spec via openapi_property)", i, a.Name)
 		}
-		if a.Type != typeString && a.Type != typeBool && a.Type != typeInt64 {
+		if a.Type != typeString && a.Type != typeBool && a.Type != typeInt64 && a.Type != typeListString && a.Type != typeMapString {
 			log.Fatalf("attribute %q: unsupported type %q", a.Name, a.Type)
 		}
 	}
@@ -423,8 +438,8 @@ func reportUnmapped(m Mappings, specProps map[string]SpecProperty) {
 		if sp.GovernsPath != "" && mappedPaths[sp.GovernsPath] {
 			continue
 		}
-		// Only report simple types with governs paths
-		if sp.GovernsPath != "" && openAPITypeToTFType(sp.Type) != "" {
+		// Only report supported types with governs paths
+		if sp.GovernsPath != "" && discoverTypeToTFType(sp.Type) != "" {
 			unmapped = append(unmapped, sp)
 		}
 	}
@@ -473,7 +488,7 @@ func discoverNewEntries(m Mappings, specProps map[string]SpecProperty) {
 		if sp.GovernsPath != "" && mappedPaths[sp.GovernsPath] {
 			continue
 		}
-		if sp.GovernsPath != "" && openAPITypeToTFType(sp.Type) != "" {
+		if sp.GovernsPath != "" && discoverTypeToTFType(sp.Type) != "" {
 			unmapped = append(unmapped, sp)
 		}
 	}
@@ -491,7 +506,7 @@ func discoverNewEntries(m Mappings, specProps map[string]SpecProperty) {
 	for _, sp := range unmapped {
 		tfName := deriveTerraformName(sp.Name)
 		goField := toGoFieldName(tfName)
-		tfType := openAPITypeToTFType(sp.Type)
+		tfType := discoverTypeToTFType(sp.Type)
 		desc := cleanDescription(sp.Description)
 
 		fmt.Printf("  - name: %s\n", tfName)
@@ -505,10 +520,14 @@ func discoverNewEntries(m Mappings, specProps map[string]SpecProperty) {
 		// Collect Go struct field lines
 		goType := "types.String"
 		switch tfType {
-		case "bool":
+		case typeBool:
 			goType = "types.Bool"
-		case "int64":
+		case typeInt64:
 			goType = "types.Int64"
+		case typeListString:
+			goType = "types.List"
+		case typeMapString:
+			goType = "types.Map"
 		}
 		goFields = append(goFields, fmt.Sprintf("\t%s %s `tfsdk:\"%s\"`", goField, goType, tfName))
 	}
@@ -654,10 +673,18 @@ func buildSchemaAttr(a Attribute) string {
 		b.WriteString("schema.BoolAttribute{\n")
 	case typeInt64:
 		b.WriteString("schema.Int64Attribute{\n")
+	case typeListString:
+		b.WriteString("schema.ListAttribute{\n")
+	case typeMapString:
+		b.WriteString("schema.MapAttribute{\n")
 	}
 
 	fmt.Fprintf(&b, "\t\t\tDescription: %q,\n", a.Description)
 	b.WriteString("\t\t\tOptional:    true,\n")
+
+	if a.Type == typeListString || a.Type == typeMapString {
+		b.WriteString("\t\t\tElementType: types.StringType,\n")
+	}
 
 	if a.Computed {
 		b.WriteString("\t\t\tComputed:    true,\n")
@@ -709,6 +736,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 // Ensure imported packages are used.
@@ -717,11 +745,13 @@ var (
 	_ = booldefault.StaticBool
 	_ = int64default.StaticInt64
 	_ validator.String
+	_ = types.StringType
 )
 
 // simpleSchemaAttributes returns the schema attributes for all simple
-// (string, bool, int64) configuration fields. Complex nested types
-// (tokenizer templates, courier channels, etc.) are defined separately.
+// (string, bool, int64, list_string, map_string) configuration fields.
+// Complex nested types (tokenizer templates, courier channels, etc.) are
+// defined separately.
 func simpleSchemaAttributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
 {{- range .Attributes }}
@@ -759,6 +789,18 @@ type Int64PatchEntry struct {
 	Path  string
 }
 
+// ListStringPatchEntry maps a list(string) field to its JSON Patch path.
+type ListStringPatchEntry struct {
+	Field *types.List
+	Path  string
+}
+
+// MapStringPatchEntry maps a map(string) field to its JSON Patch path.
+type MapStringPatchEntry struct {
+	Field *types.Map
+	Path  string
+}
+
 // simpleStringPatchEntries returns all simple string attribute patch mappings.
 func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEntry {
 	return []StringPatchEntry{
@@ -785,6 +827,24 @@ func simpleInt64PatchEntries(plan *ProjectConfigResourceModel) []Int64PatchEntry
 {{- end }}
 	}
 }
+
+// simpleListStringPatchEntries returns all simple list(string) attribute patch mappings.
+func simpleListStringPatchEntries(plan *ProjectConfigResourceModel) []ListStringPatchEntry {
+	return []ListStringPatchEntry{
+{{- range filterType .Attributes "list_string" }}
+		{&plan.{{ .GoField }}, {{ printf "%q" .PatchPath }}},
+{{- end }}
+	}
+}
+
+// simpleMapStringPatchEntries returns all simple map(string) attribute patch mappings.
+func simpleMapStringPatchEntries(plan *ProjectConfigResourceModel) []MapStringPatchEntry {
+	return []MapStringPatchEntry{
+{{- range filterType .Attributes "map_string" }}
+		{&plan.{{ .GoField }}, {{ printf "%q" .PatchPath }}},
+{{- end }}
+	}
+}
 `
 
 var readTemplate = `// Code generated by go generate; DO NOT EDIT.
@@ -794,12 +854,19 @@ var readTemplate = `// Code generated by go generate; DO NOT EDIT.
 package projectconfig
 
 import (
+	"context"
+
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
 )
 
 // Ensure imports are used.
-var _ *ory.Project
+var (
+	_ *ory.Project
+	_ context.Context
+	_ attr.Value
+)
 
 // StringReadEntry maps a string state field to its config read path.
 type StringReadEntry struct {
@@ -820,8 +887,20 @@ type Int64ReadEntry struct {
 	Keys  []string
 }
 
+// ListStringReadEntry maps a list(string) state field to its config read path.
+type ListStringReadEntry struct {
+	Field *types.List
+	Keys  []string
+}
+
+// MapStringReadEntry maps a map(string) state field to its config read path.
+type MapStringReadEntry struct {
+	Field *types.Map
+	Keys  []string
+}
+
 // readSimpleFields reads all simple attributes from the API response into state.
-func readSimpleFields(project *ory.Project, state *ProjectConfigResourceModel) {
+func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectConfigResourceModel) {
 {{- range $svc, $attrs := .ByService }}
 {{- $svcCfg := index $.Services $svc }}
 	if {{ $svcCfg.NilCheck }} {
@@ -854,6 +933,48 @@ func readSimpleFields(project *ory.Project, state *ProjectConfigResourceModel) {
 			if !e.Field.IsNull() {
 				if v, ok := getNestedFloat({{ $svc }}Config, e.Keys...); ok {
 					*e.Field = types.Int64Value(int64(v))
+				}
+			}
+		}
+{{- end }}
+{{- $listStrings := filterType $attrs "list_string" }}
+{{- if $listStrings }}
+		for _, e := range {{ $svc }}ListStringReadEntries(state) {
+			if !e.Field.IsNull() {
+				if v := getNestedValue({{ $svc }}Config, e.Keys...); v != nil {
+					if arr, ok := v.([]interface{}); ok && len(arr) > 0 {
+						strs := make([]string, 0, len(arr))
+						for _, item := range arr {
+							if s, ok := item.(string); ok {
+								strs = append(strs, s)
+							}
+						}
+						listVal, diags := types.ListValueFrom(ctx, types.StringType, strs)
+						if !diags.HasError() {
+							*e.Field = listVal
+						}
+					}
+				}
+			}
+		}
+{{- end }}
+{{- $mapStrings := filterType $attrs "map_string" }}
+{{- if $mapStrings }}
+		for _, e := range {{ $svc }}MapStringReadEntries(state) {
+			if !e.Field.IsNull() {
+				if v := getNestedValue({{ $svc }}Config, e.Keys...); v != nil {
+					if m, ok := v.(map[string]interface{}); ok && len(m) > 0 {
+						strMap := make(map[string]attr.Value, len(m))
+						for k, val := range m {
+							if s, ok := val.(string); ok {
+								strMap[k] = types.StringValue(s)
+							}
+						}
+						mapVal, diags := types.MapValue(types.StringType, strMap)
+						if !diags.HasError() {
+							*e.Field = mapVal
+						}
+					}
 				}
 			}
 		}
@@ -893,6 +1014,30 @@ func {{ $svc }}BoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntr
 func {{ $svc }}Int64ReadEntries(state *ProjectConfigResourceModel) []Int64ReadEntry {
 	return []Int64ReadEntry{
 {{- range $ints }}
+		{&state.{{ .GoField }}, []string{ {{ readKeys .PatchPath }} }},
+{{- end }}
+	}
+}
+{{- end }}
+
+{{- $listStrings := filterType $attrs "list_string" }}
+{{- if $listStrings }}
+
+func {{ $svc }}ListStringReadEntries(state *ProjectConfigResourceModel) []ListStringReadEntry {
+	return []ListStringReadEntry{
+{{- range $listStrings }}
+		{&state.{{ .GoField }}, []string{ {{ readKeys .PatchPath }} }},
+{{- end }}
+	}
+}
+{{- end }}
+
+{{- $mapStrings := filterType $attrs "map_string" }}
+{{- if $mapStrings }}
+
+func {{ $svc }}MapStringReadEntries(state *ProjectConfigResourceModel) []MapStringReadEntry {
+	return []MapStringReadEntry{
+{{- range $mapStrings }}
 		{&state.{{ .GoField }}, []string{ {{ readKeys .PatchPath }} }},
 {{- end }}
 	}

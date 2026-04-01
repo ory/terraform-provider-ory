@@ -26,6 +26,18 @@ type Int64PatchEntry struct {
 	Path  string
 }
 
+// ListStringPatchEntry maps a list(string) field to its JSON Patch path.
+type ListStringPatchEntry struct {
+	Field *types.List
+	Path  string
+}
+
+// MapStringPatchEntry maps a map(string) field to its JSON Patch path.
+type MapStringPatchEntry struct {
+	Field *types.Map
+	Path  string
+}
+
 // simpleStringPatchEntries returns all simple string attribute patch mappings.
 func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEntry {
 	return []StringPatchEntry{
@@ -163,6 +175,19 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.SelfserviceMethodsPasskeyConfigRPDisplayName, "/services/identity/config/selfservice/methods/passkey/config/rp/display_name"},
 		{&plan.SelfserviceMethodsPasskeyConfigRPID, "/services/identity/config/selfservice/methods/passkey/config/rp/id"},
 		{&plan.SelfserviceMethodsWebAuthnConfigRPIcon, "/services/identity/config/selfservice/methods/webauthn/config/rp/icon"},
+		{&plan.AccountExperienceFaviconDark, "/services/account_experience/config/favicon_dark"},
+		{&plan.AccountExperienceFaviconLight, "/services/account_experience/config/favicon_light"},
+		{&plan.AccountExperienceLocaleBehavior, "/services/account_experience/config/locale_behavior"},
+		{&plan.AccountExperienceLogoDark, "/services/account_experience/config/logo_dark"},
+		{&plan.AccountExperienceLogoLight, "/services/account_experience/config/logo_light"},
+		{&plan.AccountExperienceThemeVariablesDark, "/services/account_experience/config/theme_variables_dark"},
+		{&plan.AccountExperienceThemeVariablesLight, "/services/account_experience/config/theme_variables_light"},
+		{&plan.KetoNamespaceConfiguration, "/services/permission/config/namespace_configuration"},
+		{&plan.PreviewDefaultReadConsistencyLevel, "/services/identity/config/preview/default_read_consistency_level"},
+		{&plan.SelfserviceMethodsCaptchaConfigCFTurnstileBYOSecret, "/services/identity/config/selfservice/methods/captcha/config/cf_turnstile_byo_secret"},
+		{&plan.SelfserviceMethodsCaptchaConfigCFTurnstileBYOSitekey, "/services/identity/config/selfservice/methods/captcha/config/cf_turnstile_byo_sitekey"},
+		{&plan.SelfserviceMethodsCaptchaConfigCFTurnstileSecret, "/services/identity/config/selfservice/methods/captcha/config/cf_turnstile_secret"},
+		{&plan.SelfserviceMethodsCaptchaConfigCFTurnstileSitekey, "/services/identity/config/selfservice/methods/captcha/config/cf_turnstile_sitekey"},
 	}
 }
 
@@ -213,6 +238,14 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 		{&plan.SelfserviceMethodsLinkEnabled, "/services/identity/config/selfservice/methods/link/enabled"},
 		{&plan.SelfserviceMethodsPasswordConfigIgnoreNetworkErrors, "/services/identity/config/selfservice/methods/password/config/ignore_network_errors"},
 		{&plan.SelfserviceMethodsSAMLEnabled, "/services/identity/config/selfservice/methods/saml/enabled"},
+		{&plan.DisableAccountExperienceWelcomeScreen, "/services/account_experience/config/disable_welcome_screen"},
+		{&plan.EnableAXV2, "/services/account_experience/config/enable_ax_v2"},
+		{&plan.FeatureFlagsPasswordProfileRegistrationNodeGroup, "/services/identity/config/feature_flags/password_profile_registration_node_group"},
+		{&plan.OAuth2ProviderOverrideReturnTo, "/services/identity/config/oauth2_provider/override_return_to"},
+		{&plan.SecurityAccountEnumerationMitigate, "/services/identity/config/security/account_enumeration/mitigate"},
+		{&plan.SelfserviceMethodsCaptchaConfigBYO, "/services/identity/config/selfservice/methods/captcha/config/byo"},
+		{&plan.SelfserviceMethodsCaptchaConfigLegacyInjectNode, "/services/identity/config/selfservice/methods/captcha/config/legacy_inject_node"},
+		{&plan.SelfserviceMethodsCaptchaEnabled, "/services/identity/config/selfservice/methods/captcha/enabled"},
 	}
 }
 
@@ -221,5 +254,35 @@ func simpleInt64PatchEntries(plan *ProjectConfigResourceModel) []Int64PatchEntry
 	return []Int64PatchEntry{
 		{&plan.PasswordMinLength, "/services/identity/config/selfservice/methods/password/config/min_password_length"},
 		{&plan.PasswordMaxBreaches, "/services/identity/config/selfservice/methods/password/config/max_breaches"},
+		{&plan.SelfserviceMethodsCodeConfigMaxSubmissions, "/services/identity/config/selfservice/methods/code/config/max_submissions"},
+	}
+}
+
+// simpleListStringPatchEntries returns all simple list(string) attribute patch mappings.
+func simpleListStringPatchEntries(plan *ProjectConfigResourceModel) []ListStringPatchEntry {
+	return []ListStringPatchEntry{
+		{&plan.AccountExperienceEnabledLocales, "/services/account_experience/config/enabled_locales"},
+		{&plan.OIDCDynamicClientRegistrationDefaultScope, "/services/oauth2/config/oidc/dynamic_client_registration/default_scope"},
+		{&plan.OIDCSubjectIdentifiersSupportedTypes, "/services/oauth2/config/oidc/subject_identifiers/supported_types"},
+		{&plan.OAuth2SecretsCookie, "/services/oauth2/config/secrets/cookie"},
+		{&plan.OAuth2SecretsPagination, "/services/oauth2/config/secrets/pagination"},
+		{&plan.OAuth2SecretsSystem, "/services/oauth2/config/secrets/system"},
+		{&plan.OAuth2WebfingerJWKSBroadcastKeys, "/services/oauth2/config/webfinger/jwks/broadcast_keys"},
+		{&plan.OAuth2WebfingerOIDCDiscoverySupportedClaims, "/services/oauth2/config/webfinger/oidc/discovery/supported_claims"},
+		{&plan.OAuth2WebfingerOIDCDiscoverySupportedScope, "/services/oauth2/config/webfinger/oidc/discovery/supported_scope"},
+		{&plan.KetoSecretsPagination, "/services/permission/config/secrets/pagination"},
+		{&plan.IdentitySecretsCipher, "/services/identity/config/secrets/cipher"},
+		{&plan.IdentitySecretsCookie, "/services/identity/config/secrets/cookie"},
+		{&plan.IdentitySecretsDefault, "/services/identity/config/secrets/default"},
+		{&plan.IdentitySecretsPagination, "/services/identity/config/secrets/pagination"},
+		{&plan.SelfserviceMethodsCaptchaConfigAllowedDomains, "/services/identity/config/selfservice/methods/captcha/config/allowed_domains"},
+		{&plan.SelfserviceMethodsPasskeyConfigRPOrigins, "/services/identity/config/selfservice/methods/passkey/config/rp/origins"},
+	}
+}
+
+// simpleMapStringPatchEntries returns all simple map(string) attribute patch mappings.
+func simpleMapStringPatchEntries(plan *ProjectConfigResourceModel) []MapStringPatchEntry {
+	return []MapStringPatchEntry{
+		{&plan.OAuth2ProviderHeaders, "/services/identity/config/oauth2_provider/headers"},
 	}
 }
