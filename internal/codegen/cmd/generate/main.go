@@ -750,7 +750,7 @@ func buildSchemaAttr(a Attribute) string {
 		fmt.Fprintf(&b, "\t\t\tDefault:     int64default.StaticInt64(%d),\n", *a.DefaultInt64)
 	}
 
-	if a.Validators != nil {
+	if a.Validators != nil && a.Type == typeString {
 		var validatorExprs []string
 		if len(a.Validators.OneOf) > 0 {
 			quoted := make([]string, len(a.Validators.OneOf))
@@ -803,6 +803,10 @@ func buildDeprecatedSchemaAttr(a Attribute) string {
 
 	if a.Type == typeListString || a.Type == typeMapString {
 		b.WriteString("\t\t\tElementType: types.StringType,\n")
+	}
+
+	if a.Sensitive {
+		b.WriteString("\t\t\tSensitive:   true,\n")
 	}
 
 	fmt.Fprintf(&b, "\t\t\tDeprecationMessage: %q,\n",

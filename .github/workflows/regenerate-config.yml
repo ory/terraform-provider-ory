@@ -74,7 +74,7 @@ jobs:
           go test ./internal/resources/projectconfig/
 
       - name: Create PR for generated file changes
-        if: steps.diff.outputs.changed == 'true'
+        if: steps.diff.outputs.changed == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.create_pr == 'true')
         uses: peter-evans/create-pull-request@v7
         with:
           commit-message: "feat: regenerate project_config from latest OpenAPI spec"

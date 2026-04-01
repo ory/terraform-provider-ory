@@ -111,8 +111,8 @@ find "$DIR" -name '*.tf' -not -path '*/.terraform/*' | while read -r file; do
         MODIFIED=true
       fi
       # Replace only whole-word matches in attribute position (start of line or after whitespace)
-      sed -i.tmp "s/\b${old}\b/${new}/g" "$file"
-      rm -f "${file}.tmp"
+      # Use perl for proper word boundary support (available on macOS and Linux)
+      perl -pi -e "s/\\b\\Q${old}\\E\\b/${new}/g" "$file"
       echo "  $file: $old -> $new"
     fi
   done
