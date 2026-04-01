@@ -46,25 +46,50 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Required AAL for session whoami endpoint: 'aal1', 'aal2', or 'highest_available'.",
 			Optional:    true,
 		},
-		"oauth2_access_token_lifespan": schema.StringAttribute{
+		"oauth2_ttl_access_token": schema.StringAttribute{
 			Description: "OAuth2 access token lifespan (e.g., '1h', '30m'). Requires Hydra service.",
 			Optional:    true,
 		},
-		"oauth2_refresh_token_lifespan": schema.StringAttribute{
+		"oauth2_access_token_lifespan": schema.StringAttribute{
+			Description:        "OAuth2 access token lifespan (e.g., '1h', '30m'). Requires Hydra service.",
+			Optional:           true,
+			DeprecationMessage: "Use oauth2_ttl_access_token instead. This attribute will be removed in a future major version.",
+		},
+		"oauth2_ttl_refresh_token": schema.StringAttribute{
 			Description: "OAuth2 refresh token lifespan (e.g., '720h' for 30 days). Requires Hydra service.",
 			Optional:    true,
 		},
-		"oauth2_auth_code_lifespan": schema.StringAttribute{
+		"oauth2_refresh_token_lifespan": schema.StringAttribute{
+			Description:        "OAuth2 refresh token lifespan (e.g., '720h' for 30 days). Requires Hydra service.",
+			Optional:           true,
+			DeprecationMessage: "Use oauth2_ttl_refresh_token instead. This attribute will be removed in a future major version.",
+		},
+		"oauth2_ttl_auth_code": schema.StringAttribute{
 			Description: "OAuth2 authorization code lifespan (e.g., '30m'). Requires Hydra service.",
 			Optional:    true,
 		},
-		"oauth2_id_token_lifespan": schema.StringAttribute{
+		"oauth2_auth_code_lifespan": schema.StringAttribute{
+			Description:        "OAuth2 authorization code lifespan (e.g., '30m'). Requires Hydra service.",
+			Optional:           true,
+			DeprecationMessage: "Use oauth2_ttl_auth_code instead. This attribute will be removed in a future major version.",
+		},
+		"oauth2_ttl_id_token": schema.StringAttribute{
 			Description: "OAuth2 ID token lifespan (e.g., '1h'). Requires Hydra service.",
 			Optional:    true,
 		},
-		"oauth2_login_consent_request_lifespan": schema.StringAttribute{
+		"oauth2_id_token_lifespan": schema.StringAttribute{
+			Description:        "OAuth2 ID token lifespan (e.g., '1h'). Requires Hydra service.",
+			Optional:           true,
+			DeprecationMessage: "Use oauth2_ttl_id_token instead. This attribute will be removed in a future major version.",
+		},
+		"oauth2_ttl_login_consent_request": schema.StringAttribute{
 			Description: "OAuth2 login/consent request lifespan (e.g., '30m'). Requires Hydra service.",
 			Optional:    true,
+		},
+		"oauth2_login_consent_request_lifespan": schema.StringAttribute{
+			Description:        "OAuth2 login/consent request lifespan (e.g., '30m'). Requires Hydra service.",
+			Optional:           true,
+			DeprecationMessage: "Use oauth2_ttl_login_consent_request instead. This attribute will be removed in a future major version.",
 		},
 		"oauth2_mirror_top_level_claims": schema.BoolAttribute{
 			Description: "Mirror top-level claims in OAuth2 ID tokens.",
@@ -82,198 +107,408 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Encrypt OAuth2 sessions at rest.",
 			Optional:    true,
 		},
-		"oauth2_cookies_same_site_legacy_workaround": schema.BoolAttribute{
+		"oauth2_serve_cookies_same_site_legacy_workaround": schema.BoolAttribute{
 			Description: "Enable the SameSite=None legacy workaround for OAuth2 cookies. When enabled, a fallback cookie without SameSite is set alongside the main cookie for clients that don't support SameSite=None.",
 			Optional:    true,
 		},
-		"oauth2_access_token_strategy": schema.StringAttribute{
+		"oauth2_cookies_same_site_legacy_workaround": schema.BoolAttribute{
+			Description:        "Enable the SameSite=None legacy workaround for OAuth2 cookies. When enabled, a fallback cookie without SameSite is set alongside the main cookie for clients that don't support SameSite=None.",
+			Optional:           true,
+			DeprecationMessage: "Use oauth2_serve_cookies_same_site_legacy_workaround instead. This attribute will be removed in a future major version.",
+		},
+		"oauth2_strategies_access_token": schema.StringAttribute{
 			Description: "OAuth2 access token strategy ('jwt' or 'opaque').",
 			Optional:    true,
 			Validators: []validator.String{
 				stringvalidator.OneOf("jwt", "opaque"),
 			},
 		},
-		"oauth2_jwt_scope_claim": schema.StringAttribute{
+		"oauth2_access_token_strategy": schema.StringAttribute{
+			Description:        "OAuth2 access token strategy ('jwt' or 'opaque').",
+			Optional:           true,
+			DeprecationMessage: "Use oauth2_strategies_access_token instead. This attribute will be removed in a future major version.",
+		},
+		"oauth2_strategies_jwt_scope_claim": schema.StringAttribute{
 			Description: "How scopes are represented in JWT access tokens ('list', 'string', or 'both').",
 			Optional:    true,
 			Validators: []validator.String{
 				stringvalidator.OneOf("list", "string", "both"),
 			},
 		},
-		"oauth2_scope_strategy": schema.StringAttribute{
+		"oauth2_jwt_scope_claim": schema.StringAttribute{
+			Description:        "How scopes are represented in JWT access tokens ('list', 'string', or 'both').",
+			Optional:           true,
+			DeprecationMessage: "Use oauth2_strategies_jwt_scope_claim instead. This attribute will be removed in a future major version.",
+		},
+		"oauth2_strategies_scope": schema.StringAttribute{
 			Description: "OAuth2 scope matching strategy ('exact', 'wildcard').",
 			Optional:    true,
 			Validators: []validator.String{
 				stringvalidator.OneOf("exact", "wildcard", "DEPRECATED_HIERARCHICAL_SCOPE_STRATEGY"),
 			},
 		},
-		"oauth2_consent_url": schema.StringAttribute{
+		"oauth2_scope_strategy": schema.StringAttribute{
+			Description:        "OAuth2 scope matching strategy ('exact', 'wildcard').",
+			Optional:           true,
+			DeprecationMessage: "Use oauth2_strategies_scope instead. This attribute will be removed in a future major version.",
+		},
+		"oauth2_urls_consent": schema.StringAttribute{
 			Description: "OAuth2 consent endpoint URL.",
 			Optional:    true,
 		},
-		"oauth2_login_url": schema.StringAttribute{
+		"oauth2_consent_url": schema.StringAttribute{
+			Description:        "OAuth2 consent endpoint URL.",
+			Optional:           true,
+			DeprecationMessage: "Use oauth2_urls_consent instead. This attribute will be removed in a future major version.",
+		},
+		"oauth2_urls_login": schema.StringAttribute{
 			Description: "OAuth2 login endpoint URL.",
 			Optional:    true,
 		},
-		"oauth2_logout_url": schema.StringAttribute{
+		"oauth2_login_url": schema.StringAttribute{
+			Description:        "OAuth2 login endpoint URL.",
+			Optional:           true,
+			DeprecationMessage: "Use oauth2_urls_login instead. This attribute will be removed in a future major version.",
+		},
+		"oauth2_urls_logout": schema.StringAttribute{
 			Description: "OAuth2 logout endpoint URL.",
 			Optional:    true,
 		},
-		"oauth2_error_url": schema.StringAttribute{
+		"oauth2_logout_url": schema.StringAttribute{
+			Description:        "OAuth2 logout endpoint URL.",
+			Optional:           true,
+			DeprecationMessage: "Use oauth2_urls_logout instead. This attribute will be removed in a future major version.",
+		},
+		"oauth2_urls_error": schema.StringAttribute{
 			Description: "OAuth2 error endpoint URL.",
 			Optional:    true,
 		},
-		"oauth2_issuer_url": schema.StringAttribute{
+		"oauth2_error_url": schema.StringAttribute{
+			Description:        "OAuth2 error endpoint URL.",
+			Optional:           true,
+			DeprecationMessage: "Use oauth2_urls_error instead. This attribute will be removed in a future major version.",
+		},
+		"oauth2_urls_self_issuer": schema.StringAttribute{
 			Description: "OAuth2 issuer URL. Overrides the default project URL used as the OAuth2/OIDC issuer.",
 			Optional:    true,
 		},
-		"oauth2_cookies_same_site_mode": schema.StringAttribute{
+		"oauth2_issuer_url": schema.StringAttribute{
+			Description:        "OAuth2 issuer URL. Overrides the default project URL used as the OAuth2/OIDC issuer.",
+			Optional:           true,
+			DeprecationMessage: "Use oauth2_urls_self_issuer instead. This attribute will be removed in a future major version.",
+		},
+		"oauth2_serve_cookies_same_site_mode": schema.StringAttribute{
 			Description: "SameSite attribute for OAuth2 cookies ('Lax', 'Strict', 'None').",
 			Optional:    true,
 			Validators: []validator.String{
 				stringvalidator.OneOf("Lax", "Strict", "None"),
 			},
 		},
-		"login_ui_url": schema.StringAttribute{
+		"oauth2_cookies_same_site_mode": schema.StringAttribute{
+			Description:        "SameSite attribute for OAuth2 cookies ('Lax', 'Strict', 'None').",
+			Optional:           true,
+			DeprecationMessage: "Use oauth2_serve_cookies_same_site_mode instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_flows_login_ui_url": schema.StringAttribute{
 			Description: "URL for the login UI.",
 			Optional:    true,
 		},
-		"registration_ui_url": schema.StringAttribute{
+		"login_ui_url": schema.StringAttribute{
+			Description:        "URL for the login UI.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_flows_login_ui_url instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_flows_registration_ui_url": schema.StringAttribute{
 			Description: "URL for the registration UI.",
 			Optional:    true,
 		},
-		"recovery_ui_url": schema.StringAttribute{
+		"registration_ui_url": schema.StringAttribute{
+			Description:        "URL for the registration UI.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_flows_registration_ui_url instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_flows_recovery_ui_url": schema.StringAttribute{
 			Description: "URL for the password recovery UI.",
 			Optional:    true,
 		},
-		"verification_ui_url": schema.StringAttribute{
+		"recovery_ui_url": schema.StringAttribute{
+			Description:        "URL for the password recovery UI.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_flows_recovery_ui_url instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_flows_verification_ui_url": schema.StringAttribute{
 			Description: "URL for the verification UI.",
 			Optional:    true,
 		},
-		"settings_ui_url": schema.StringAttribute{
+		"verification_ui_url": schema.StringAttribute{
+			Description:        "URL for the verification UI.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_flows_verification_ui_url instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_flows_settings_ui_url": schema.StringAttribute{
 			Description: "URL for the account settings UI.",
 			Optional:    true,
 		},
-		"error_ui_url": schema.StringAttribute{
+		"settings_ui_url": schema.StringAttribute{
+			Description:        "URL for the account settings UI.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_flows_settings_ui_url instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_flows_error_ui_url": schema.StringAttribute{
 			Description: "URL for the error UI.",
 			Optional:    true,
 		},
-		"enable_password": schema.BoolAttribute{
+		"error_ui_url": schema.StringAttribute{
+			Description:        "URL for the error UI.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_flows_error_ui_url instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_password_enabled": schema.BoolAttribute{
 			Description: "Enable password authentication.",
 			Optional:    true,
 		},
-		"enable_code": schema.BoolAttribute{
+		"enable_password": schema.BoolAttribute{
+			Description:        "Enable password authentication.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_password_enabled instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_code_enabled": schema.BoolAttribute{
 			Description: "Enable code-based authentication.",
 			Optional:    true,
 		},
-		"code_mfa_enabled": schema.BoolAttribute{
+		"enable_code": schema.BoolAttribute{
+			Description:        "Enable code-based authentication.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_code_enabled instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_code_mfa_enabled": schema.BoolAttribute{
 			Description: "Enable the code method as a second factor for MFA. When enabled, users can use one-time codes as a second authentication factor.",
 			Optional:    true,
 		},
-		"enable_oidc": schema.BoolAttribute{
+		"code_mfa_enabled": schema.BoolAttribute{
+			Description:        "Enable the code method as a second factor for MFA. When enabled, users can use one-time codes as a second authentication factor.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_code_mfa_enabled instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_oidc_enabled": schema.BoolAttribute{
 			Description: "Enable OIDC (OpenID Connect) social sign-in. Must be enabled for social providers (e.g. Google, GitHub) to work.",
 			Optional:    true,
 		},
-		"enable_oidc_auto_link_policy": schema.BoolAttribute{
+		"enable_oidc": schema.BoolAttribute{
+			Description:        "Enable OIDC (OpenID Connect) social sign-in. Must be enabled for social providers (e.g. Google, GitHub) to work.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_oidc_enabled instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_oidc_enable_auto_link_policy": schema.BoolAttribute{
 			Description: "Enable the OIDC auto-link policy. When true, social sign-in providers with auto_link enabled (on ory_social_provider) can automatically link to existing identities that share the same identifier (e.g., email).",
 			Optional:    true,
 		},
-		"enable_totp": schema.BoolAttribute{
+		"enable_oidc_auto_link_policy": schema.BoolAttribute{
+			Description:        "Enable the OIDC auto-link policy. When true, social sign-in providers with auto_link enabled (on ory_social_provider) can automatically link to existing identities that share the same identifier (e.g., email).",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_oidc_enable_auto_link_policy instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_totp_enabled": schema.BoolAttribute{
 			Description: "Enable TOTP (Time-based One-Time Password).",
 			Optional:    true,
 		},
-		"enable_webauthn": schema.BoolAttribute{
+		"enable_totp": schema.BoolAttribute{
+			Description:        "Enable TOTP (Time-based One-Time Password).",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_totp_enabled instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_webauthn_enabled": schema.BoolAttribute{
 			Description: "Enable WebAuthn (hardware keys).",
 			Optional:    true,
 		},
-		"enable_passkey": schema.BoolAttribute{
+		"enable_webauthn": schema.BoolAttribute{
+			Description:        "Enable WebAuthn (hardware keys).",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_webauthn_enabled instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_passkey_enabled": schema.BoolAttribute{
 			Description: "Enable Passkey authentication.",
 			Optional:    true,
 		},
-		"enable_lookup_secret": schema.BoolAttribute{
+		"enable_passkey": schema.BoolAttribute{
+			Description:        "Enable Passkey authentication.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_passkey_enabled instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_lookup_secret_enabled": schema.BoolAttribute{
 			Description: "Enable backup/recovery codes.",
 			Optional:    true,
 		},
-		"enable_profile": schema.BoolAttribute{
+		"enable_lookup_secret": schema.BoolAttribute{
+			Description:        "Enable backup/recovery codes.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_lookup_secret_enabled instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_profile_enabled": schema.BoolAttribute{
 			Description: "Enable the profile authentication method. When enabled, users can update their identity traits (e.g., name, address) via the settings flow.",
 			Optional:    true,
 		},
-		"code_lifespan": schema.StringAttribute{
+		"enable_profile": schema.BoolAttribute{
+			Description:        "Enable the profile authentication method. When enabled, users can update their identity traits (e.g., name, address) via the settings flow.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_profile_enabled instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_code_config_lifespan": schema.StringAttribute{
 			Description: "Lifespan of the code method's one-time codes (e.g., '15m0s'). Controls how long a code remains valid after being issued.",
 			Optional:    true,
 		},
-		"code_missing_credential_fallback_enabled": schema.BoolAttribute{
+		"code_lifespan": schema.StringAttribute{
+			Description:        "Lifespan of the code method's one-time codes (e.g., '15m0s'). Controls how long a code remains valid after being issued.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_code_config_lifespan instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_code_config_missing_credential_fallback_enabled": schema.BoolAttribute{
 			Description: "Enable missing credential fallback for the code method. When enabled, allows the code method to be used as a fallback when the primary credential is missing.",
 			Optional:    true,
 		},
-		"password_min_length": schema.Int64Attribute{
+		"code_missing_credential_fallback_enabled": schema.BoolAttribute{
+			Description:        "Enable missing credential fallback for the code method. When enabled, allows the code method to be used as a fallback when the primary credential is missing.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_code_config_missing_credential_fallback_enabled instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_password_config_min_password_length": schema.Int64Attribute{
 			Description: "Minimum password length.",
 			Optional:    true,
 			Computed:    true,
 			Default:     int64default.StaticInt64(8),
 		},
-		"password_check_haveibeenpwned": schema.BoolAttribute{
+		"password_min_length": schema.Int64Attribute{
+			Description:        "Minimum password length.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_password_config_min_password_length instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_password_config_haveibeenpwned_enabled": schema.BoolAttribute{
 			Description: "Check passwords against HaveIBeenPwned.",
 			Optional:    true,
 		},
-		"password_max_breaches": schema.Int64Attribute{
+		"password_check_haveibeenpwned": schema.BoolAttribute{
+			Description:        "Check passwords against HaveIBeenPwned.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_password_config_haveibeenpwned_enabled instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_password_config_max_breaches": schema.Int64Attribute{
 			Description: "Maximum allowed breaches in HaveIBeenPwned.",
 			Optional:    true,
 		},
-		"password_identifier_similarity": schema.BoolAttribute{
+		"password_max_breaches": schema.Int64Attribute{
+			Description:        "Maximum allowed breaches in HaveIBeenPwned.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_password_config_max_breaches instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_password_config_identifier_similarity_check_enabled": schema.BoolAttribute{
 			Description: "Check password similarity to identifier.",
 			Optional:    true,
 		},
-		"enable_recovery": schema.BoolAttribute{
+		"password_identifier_similarity": schema.BoolAttribute{
+			Description:        "Check password similarity to identifier.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_password_config_identifier_similarity_check_enabled instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_flows_recovery_enabled": schema.BoolAttribute{
 			Description: "Enable password recovery flow.",
 			Optional:    true,
 		},
-		"enable_verification": schema.BoolAttribute{
+		"enable_recovery": schema.BoolAttribute{
+			Description:        "Enable password recovery flow.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_flows_recovery_enabled instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_flows_verification_enabled": schema.BoolAttribute{
 			Description: "Enable email verification flow.",
 			Optional:    true,
 		},
-		"enable_registration": schema.BoolAttribute{
+		"enable_verification": schema.BoolAttribute{
+			Description:        "Enable email verification flow.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_flows_verification_enabled instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_flows_registration_enabled": schema.BoolAttribute{
 			Description: "Enable user registration.",
 			Optional:    true,
 		},
-		"login_style": schema.StringAttribute{
+		"enable_registration": schema.BoolAttribute{
+			Description:        "Enable user registration.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_flows_registration_enabled instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_flows_login_style": schema.StringAttribute{
 			Description: "Login flow style: 'unified' (default) shows all auth methods on one screen, 'identifier_first' collects the identifier before showing auth methods.",
 			Optional:    true,
 			Validators: []validator.String{
 				stringvalidator.OneOf("unified", "identifier_first"),
 			},
 		},
-		"settings_lifespan": schema.StringAttribute{
+		"login_style": schema.StringAttribute{
+			Description:        "Login flow style: 'unified' (default) shows all auth methods on one screen, 'identifier_first' collects the identifier before showing auth methods.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_flows_login_style instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_flows_settings_lifespan": schema.StringAttribute{
 			Description: "Lifespan of the settings flow (e.g., '30m0s'). Controls how long a settings flow session remains valid.",
 			Optional:    true,
 		},
-		"settings_privileged_session_max_age": schema.StringAttribute{
+		"settings_lifespan": schema.StringAttribute{
+			Description:        "Lifespan of the settings flow (e.g., '30m0s'). Controls how long a settings flow session remains valid.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_flows_settings_lifespan instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_flows_settings_privileged_session_max_age": schema.StringAttribute{
 			Description: "Maximum age of a privileged session for the settings flow (e.g., '15m0s'). After this duration, the user must re-authenticate to make privileged changes like password updates.",
 			Optional:    true,
 		},
-		"required_aal": schema.StringAttribute{
+		"settings_privileged_session_max_age": schema.StringAttribute{
+			Description:        "Maximum age of a privileged session for the settings flow (e.g., '15m0s'). After this duration, the user must re-authenticate to make privileged changes like password updates.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_flows_settings_privileged_session_max_age instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_flows_settings_required_aal": schema.StringAttribute{
 			Description: "Required Authenticator Assurance Level for the settings flow: 'aal1' or 'highest_available'.",
 			Optional:    true,
 			Validators: []validator.String{
 				stringvalidator.OneOf("aal1", "highest_available"),
 			},
 		},
-		"verification_use": schema.StringAttribute{
+		"required_aal": schema.StringAttribute{
+			Description:        "Required Authenticator Assurance Level for the settings flow: 'aal1' or 'highest_available'.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_flows_settings_required_aal instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_flows_verification_use": schema.StringAttribute{
 			Description: "Verification method to use: 'code' (one-time code) or 'link' (magic link).",
 			Optional:    true,
 			Validators: []validator.String{
 				stringvalidator.OneOf("code", "link"),
 			},
 		},
-		"verification_lifespan": schema.StringAttribute{
+		"verification_use": schema.StringAttribute{
+			Description:        "Verification method to use: 'code' (one-time code) or 'link' (magic link).",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_flows_verification_use instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_flows_verification_lifespan": schema.StringAttribute{
 			Description: "Lifespan of the verification flow (e.g., '30m0s'). Controls how long a verification flow session remains valid.",
 			Optional:    true,
 		},
-		"verification_notify_unknown_recipients": schema.BoolAttribute{
+		"verification_lifespan": schema.StringAttribute{
+			Description:        "Lifespan of the verification flow (e.g., '30m0s'). Controls how long a verification flow session remains valid.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_flows_verification_lifespan instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_flows_verification_notify_unknown_recipients": schema.BoolAttribute{
 			Description: "When enabled, verification emails are sent even if the email address is not associated with any known identity.",
 			Optional:    true,
 		},
-		"smtp_from_address": schema.StringAttribute{
+		"verification_notify_unknown_recipients": schema.BoolAttribute{
+			Description:        "When enabled, verification emails are sent even if the email address is not associated with any known identity.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_flows_verification_notify_unknown_recipients instead. This attribute will be removed in a future major version.",
+		},
+		"courier_smtp_from_address": schema.StringAttribute{
 			Description: "Email address to send from.",
 			Optional:    true,
 			Validators: []validator.String{
@@ -283,25 +518,55 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 				),
 			},
 		},
-		"smtp_from_name": schema.StringAttribute{
+		"smtp_from_address": schema.StringAttribute{
+			Description:        "Email address to send from.",
+			Optional:           true,
+			DeprecationMessage: "Use courier_smtp_from_address instead. This attribute will be removed in a future major version.",
+		},
+		"courier_smtp_from_name": schema.StringAttribute{
 			Description: "Name to display as sender.",
 			Optional:    true,
 		},
-		"totp_issuer": schema.StringAttribute{
+		"smtp_from_name": schema.StringAttribute{
+			Description:        "Name to display as sender.",
+			Optional:           true,
+			DeprecationMessage: "Use courier_smtp_from_name instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_totp_config_issuer": schema.StringAttribute{
 			Description: "TOTP issuer name shown in authenticator apps.",
 			Optional:    true,
 		},
-		"webauthn_rp_display_name": schema.StringAttribute{
+		"totp_issuer": schema.StringAttribute{
+			Description:        "TOTP issuer name shown in authenticator apps.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_totp_config_issuer instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_webauthn_config_rp_display_name": schema.StringAttribute{
 			Description: "WebAuthn Relying Party display name.",
 			Optional:    true,
 		},
-		"webauthn_rp_id": schema.StringAttribute{
+		"webauthn_rp_display_name": schema.StringAttribute{
+			Description:        "WebAuthn Relying Party display name.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_webauthn_config_rp_display_name instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_webauthn_config_rp_id": schema.StringAttribute{
 			Description: "WebAuthn Relying Party ID (typically your domain).",
 			Optional:    true,
 		},
-		"webauthn_passwordless": schema.BoolAttribute{
+		"webauthn_rp_id": schema.StringAttribute{
+			Description:        "WebAuthn Relying Party ID (typically your domain).",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_webauthn_config_rp_id instead. This attribute will be removed in a future major version.",
+		},
+		"selfservice_methods_webauthn_config_passwordless": schema.BoolAttribute{
 			Description: "Enable passwordless WebAuthn authentication.",
 			Optional:    true,
+		},
+		"webauthn_passwordless": schema.BoolAttribute{
+			Description:        "Enable passwordless WebAuthn authentication.",
+			Optional:           true,
+			DeprecationMessage: "Use selfservice_methods_webauthn_config_passwordless instead. This attribute will be removed in a future major version.",
 		},
 		"courier_delivery_strategy": schema.StringAttribute{
 			Description: "Courier delivery strategy: 'smtp' (default) or 'http'.",

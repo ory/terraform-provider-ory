@@ -238,9 +238,9 @@ func TestGeneratedReadRoundTrip(t *testing.T) {
 // TestGeneratedSchemaAttributes_Count verifies we have the expected number of generated attributes.
 func TestGeneratedSchemaAttributes_Count(t *testing.T) {
 	attrs := simpleSchemaAttributes()
-	// 218 generated attributes from mappings.yaml (219 entries minus 1 removed duplicate).
+	// 271 generated attributes: 218 primary + 53 deprecated aliases from mappings.yaml.
 	// Use exact count to detect accidental additions/removals.
-	const expected = 218
+	const expected = 271
 	if len(attrs) != expected {
 		t.Errorf("expected %d generated schema attributes, got %d", expected, len(attrs))
 	}

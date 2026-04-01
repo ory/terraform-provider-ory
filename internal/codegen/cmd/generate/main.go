@@ -37,6 +37,11 @@ type Attribute struct {
 	Sensitive       bool       `yaml:"sensitive"`
 	SkipEmptyRead   bool       `yaml:"skip_empty_read"`
 	Validators      *Validator `yaml:"validators"`
+
+	// Deprecated alias support: when set, generates a second schema attribute
+	// with the old name that shows a deprecation warning directing users to Name.
+	DeprecatedName    string `yaml:"deprecated_name"`     // old terraform attribute name
+	DeprecatedGoField string `yaml:"deprecated_go_field"` // old Go struct field name
 }
 
 type Validator struct {
@@ -319,7 +324,8 @@ func main() {
 			}
 			return strings.Join(quoted, ", ")
 		},
-		"schemaAttr": buildSchemaAttr,
+		"schemaAttr":           buildSchemaAttr,
+		"deprecatedSchemaAttr": buildDeprecatedSchemaAttr,
 	}
 
 	for _, gen := range []struct {
@@ -633,29 +639,29 @@ func excludedProperties() map[string]bool {
 		"kratos_identity_schemas":                          true,
 		"kratos_selfservice_methods_oidc_config_providers": true,
 		"kratos_selfservice_methods_saml_config_providers": true,
-		"organizations":              true,
-		"project_revision_hooks":     true,
-		"scim_clients":               true,
+		"organizations":                          true,
+		"project_revision_hooks":                 true,
+		"scim_clients":                           true,
 		"account_experience_custom_translations": true,
 		// Handled by custom code in resource.go under different terraform names
-		"serve_public_cors_enabled":         true, // → cors_enabled
-		"serve_public_cors_allowed_origins": true, // → cors_origins
-		"serve_admin_cors_enabled":          true, // → cors_admin_enabled
-		"serve_admin_cors_allowed_origins":  true, // → cors_admin_origins
-		"keto_namespaces":                   true, // → keto_namespaces (custom list handler)
-		"kratos_courier_channels":           true, // → courier_channels (custom nested)
-		"kratos_courier_smtp_headers":       true, // → smtp_headers (custom map)
-		"kratos_courier_http_request_config_headers": true, // → part of courier_http_request_config
-		"kratos_courier_http_request_config_auth_type": true, // → part of courier_http_request_config
-		"kratos_courier_http_request_config_method":    true, // → part of courier_http_request_config
-		"kratos_courier_delivery_strategy":   true, // → courier_delivery_strategy (in mappings)
-		"kratos_selfservice_allowed_return_urls":              true, // → allowed_return_urls (custom)
+		"serve_public_cors_enabled":                             true, // → cors_enabled
+		"serve_public_cors_allowed_origins":                     true, // → cors_origins
+		"serve_admin_cors_enabled":                              true, // → cors_admin_enabled
+		"serve_admin_cors_allowed_origins":                      true, // → cors_admin_origins
+		"keto_namespaces":                                       true, // → keto_namespaces (custom list handler)
+		"kratos_courier_channels":                               true, // → courier_channels (custom nested)
+		"kratos_courier_smtp_headers":                           true, // → smtp_headers (custom map)
+		"kratos_courier_http_request_config_headers":            true, // → part of courier_http_request_config
+		"kratos_courier_http_request_config_auth_type":          true, // → part of courier_http_request_config
+		"kratos_courier_http_request_config_method":             true, // → part of courier_http_request_config
+		"kratos_courier_delivery_strategy":                      true, // → courier_delivery_strategy (in mappings)
+		"kratos_selfservice_allowed_return_urls":                true, // → allowed_return_urls (custom)
 		"kratos_selfservice_methods_webauthn_config_rp_origins": true, // → webauthn_rp_origins (custom)
-		"hydra_oauth2_allowed_top_level_claims":                true, // → oauth2_allowed_top_level_claims (custom)
-		"kratos_session_whoami_tokenizer_templates":            true, // → session_tokenizer_templates (custom)
-		"kratos_courier_smtp_connection_uri":                   true, // → smtp_connection_uri (custom, sensitive)
-		"account_experience_default_locale":                    true, // → account_experience_default_locale (in mappings)
-		"kratos_oauth2_provider_headers":                       true, // → oauth2_provider_headers (in mappings)
+		"hydra_oauth2_allowed_top_level_claims":                 true, // → oauth2_allowed_top_level_claims (custom)
+		"kratos_session_whoami_tokenizer_templates":             true, // → session_tokenizer_templates (custom)
+		"kratos_courier_smtp_connection_uri":                    true, // → smtp_connection_uri (custom, sensitive)
+		"account_experience_default_locale":                     true, // → account_experience_default_locale (in mappings)
+		"kratos_oauth2_provider_headers":                        true, // → oauth2_provider_headers (in mappings)
 	}
 }
 
@@ -773,6 +779,39 @@ func buildSchemaAttr(a Attribute) string {
 	return b.String()
 }
 
+// buildDeprecatedSchemaAttr generates a schema attribute for a deprecated alias.
+// It has the same type and description but includes a DeprecatedMessage and
+// omits validators, defaults, computed, and sensitive (those live on the primary).
+func buildDeprecatedSchemaAttr(a Attribute) string {
+	var b strings.Builder
+
+	switch a.Type {
+	case typeString:
+		b.WriteString("schema.StringAttribute{\n")
+	case typeBool:
+		b.WriteString("schema.BoolAttribute{\n")
+	case typeInt64:
+		b.WriteString("schema.Int64Attribute{\n")
+	case typeListString:
+		b.WriteString("schema.ListAttribute{\n")
+	case typeMapString:
+		b.WriteString("schema.MapAttribute{\n")
+	}
+
+	fmt.Fprintf(&b, "\t\t\tDescription: %q,\n", a.Description)
+	b.WriteString("\t\t\tOptional:    true,\n")
+
+	if a.Type == typeListString || a.Type == typeMapString {
+		b.WriteString("\t\t\tElementType: types.StringType,\n")
+	}
+
+	fmt.Fprintf(&b, "\t\t\tDeprecationMessage: %q,\n",
+		fmt.Sprintf("Use %s instead. This attribute will be removed in a future major version.", a.Name))
+
+	b.WriteString("\t\t}")
+	return b.String()
+}
+
 var schemaTemplate = `// Code generated by go generate; DO NOT EDIT.
 // Source: internal/codegen/cmd/generate/main.go
 // Mappings: internal/codegen/mappings.yaml
@@ -809,6 +848,9 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
 {{- range .Attributes }}
 		{{ printf "%q" .Name }}: {{ schemaAttr . }},
+{{- if .DeprecatedName }}
+		{{ printf "%q" .DeprecatedName }}: {{ deprecatedSchemaAttr . }},
+{{- end }}
 {{- end }}
 	}
 }
@@ -826,39 +868,44 @@ import (
 
 // StringPatchEntry maps a string field to its JSON Patch path.
 type StringPatchEntry struct {
-	Field *types.String
-	Path  string
+	Field      *types.String
+	Deprecated *types.String // fallback when Field is null (deprecated alias)
+	Path       string
 }
 
 // BoolPatchEntry maps a bool field to its JSON Patch path.
 type BoolPatchEntry struct {
-	Field *types.Bool
-	Path  string
+	Field      *types.Bool
+	Deprecated *types.Bool // fallback when Field is null (deprecated alias)
+	Path       string
 }
 
 // Int64PatchEntry maps an int64 field to its JSON Patch path.
 type Int64PatchEntry struct {
-	Field *types.Int64
-	Path  string
+	Field      *types.Int64
+	Deprecated *types.Int64 // fallback when Field is null (deprecated alias)
+	Path       string
 }
 
 // ListStringPatchEntry maps a list(string) field to its JSON Patch path.
 type ListStringPatchEntry struct {
-	Field *types.List
-	Path  string
+	Field      *types.List
+	Deprecated *types.List // fallback when Field is null (deprecated alias)
+	Path       string
 }
 
 // MapStringPatchEntry maps a map(string) field to its JSON Patch path.
 type MapStringPatchEntry struct {
-	Field *types.Map
-	Path  string
+	Field      *types.Map
+	Deprecated *types.Map // fallback when Field is null (deprecated alias)
+	Path       string
 }
 
 // simpleStringPatchEntries returns all simple string attribute patch mappings.
 func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEntry {
 	return []StringPatchEntry{
 {{- range filterType .Attributes "string" }}
-		{&plan.{{ .GoField }}, {{ printf "%q" .PatchPath }}},
+		{&plan.{{ .GoField }}, {{ if .DeprecatedGoField }}&plan.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, {{ printf "%q" .PatchPath }}},
 {{- end }}
 	}
 }
@@ -867,7 +914,7 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 	return []BoolPatchEntry{
 {{- range filterType .Attributes "bool" }}
-		{&plan.{{ .GoField }}, {{ printf "%q" .PatchPath }}},
+		{&plan.{{ .GoField }}, {{ if .DeprecatedGoField }}&plan.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, {{ printf "%q" .PatchPath }}},
 {{- end }}
 	}
 }
@@ -876,7 +923,7 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 func simpleInt64PatchEntries(plan *ProjectConfigResourceModel) []Int64PatchEntry {
 	return []Int64PatchEntry{
 {{- range filterType .Attributes "int64" }}
-		{&plan.{{ .GoField }}, {{ printf "%q" .PatchPath }}},
+		{&plan.{{ .GoField }}, {{ if .DeprecatedGoField }}&plan.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, {{ printf "%q" .PatchPath }}},
 {{- end }}
 	}
 }
@@ -885,7 +932,7 @@ func simpleInt64PatchEntries(plan *ProjectConfigResourceModel) []Int64PatchEntry
 func simpleListStringPatchEntries(plan *ProjectConfigResourceModel) []ListStringPatchEntry {
 	return []ListStringPatchEntry{
 {{- range filterType .Attributes "list_string" }}
-		{&plan.{{ .GoField }}, {{ printf "%q" .PatchPath }}},
+		{&plan.{{ .GoField }}, {{ if .DeprecatedGoField }}&plan.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, {{ printf "%q" .PatchPath }}},
 {{- end }}
 	}
 }
@@ -894,7 +941,7 @@ func simpleListStringPatchEntries(plan *ProjectConfigResourceModel) []ListString
 func simpleMapStringPatchEntries(plan *ProjectConfigResourceModel) []MapStringPatchEntry {
 	return []MapStringPatchEntry{
 {{- range filterType .Attributes "map_string" }}
-		{&plan.{{ .GoField }}, {{ printf "%q" .PatchPath }}},
+		{&plan.{{ .GoField }}, {{ if .DeprecatedGoField }}&plan.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, {{ printf "%q" .PatchPath }}},
 {{- end }}
 	}
 }
@@ -923,33 +970,38 @@ var (
 
 // StringReadEntry maps a string state field to its config read path.
 type StringReadEntry struct {
-	Field     *types.String
-	Keys      []string
-	SkipEmpty bool
+	Field      *types.String
+	Deprecated *types.String // write to deprecated alias when it is non-null in state
+	Keys       []string
+	SkipEmpty  bool
 }
 
 // BoolReadEntry maps a bool state field to its config read path.
 type BoolReadEntry struct {
-	Field *types.Bool
-	Keys  []string
+	Field      *types.Bool
+	Deprecated *types.Bool // write to deprecated alias when it is non-null in state
+	Keys       []string
 }
 
 // Int64ReadEntry maps an int64 state field to its config read path.
 type Int64ReadEntry struct {
-	Field *types.Int64
-	Keys  []string
+	Field      *types.Int64
+	Deprecated *types.Int64 // write to deprecated alias when it is non-null in state
+	Keys       []string
 }
 
 // ListStringReadEntry maps a list(string) state field to its config read path.
 type ListStringReadEntry struct {
-	Field *types.List
-	Keys  []string
+	Field      *types.List
+	Deprecated *types.List // write to deprecated alias when it is non-null in state
+	Keys       []string
 }
 
 // MapStringReadEntry maps a map(string) state field to its config read path.
 type MapStringReadEntry struct {
-	Field *types.Map
-	Keys  []string
+	Field      *types.Map
+	Deprecated *types.Map // write to deprecated alias when it is non-null in state
+	Keys       []string
 }
 
 // readSimpleFields reads all simple attributes from the API response into state.
@@ -961,10 +1013,14 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 {{- $strings := filterType $attrs "string" }}
 {{- if $strings }}
 		for _, e := range {{ $svc }}StringReadEntries(state) {
-			if !e.Field.IsNull() {
+			target := e.Field
+			if target.IsNull() && e.Deprecated != nil && !e.Deprecated.IsNull() {
+				target = e.Deprecated
+			}
+			if !target.IsNull() {
 				if v, ok := getNestedString({{ $svc }}Config, e.Keys...); ok {
 					if !e.SkipEmpty || v != "" {
-						*e.Field = types.StringValue(v)
+						*target = types.StringValue(v)
 					}
 				}
 			}
@@ -973,9 +1029,13 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 {{- $bools := filterType $attrs "bool" }}
 {{- if $bools }}
 		for _, e := range {{ $svc }}BoolReadEntries(state) {
-			if !e.Field.IsNull() {
+			target := e.Field
+			if target.IsNull() && e.Deprecated != nil && !e.Deprecated.IsNull() {
+				target = e.Deprecated
+			}
+			if !target.IsNull() {
 				if v, ok := getNestedBool({{ $svc }}Config, e.Keys...); ok {
-					*e.Field = types.BoolValue(v)
+					*target = types.BoolValue(v)
 				}
 			}
 		}
@@ -983,9 +1043,13 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 {{- $ints := filterType $attrs "int64" }}
 {{- if $ints }}
 		for _, e := range {{ $svc }}Int64ReadEntries(state) {
-			if !e.Field.IsNull() {
+			target := e.Field
+			if target.IsNull() && e.Deprecated != nil && !e.Deprecated.IsNull() {
+				target = e.Deprecated
+			}
+			if !target.IsNull() {
 				if v, ok := getNestedFloat({{ $svc }}Config, e.Keys...); ok {
-					*e.Field = types.Int64Value(int64(v))
+					*target = types.Int64Value(int64(v))
 				}
 			}
 		}
@@ -993,7 +1057,11 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 {{- $listStrings := filterType $attrs "list_string" }}
 {{- if $listStrings }}
 		for _, e := range {{ $svc }}ListStringReadEntries(state) {
-			if !e.Field.IsNull() {
+			target := e.Field
+			if target.IsNull() && e.Deprecated != nil && !e.Deprecated.IsNull() {
+				target = e.Deprecated
+			}
+			if !target.IsNull() {
 				if v := getNestedValue({{ $svc }}Config, e.Keys...); v != nil {
 					if arr, ok := v.([]interface{}); ok {
 						strs := make([]string, 0, len(arr))
@@ -1004,7 +1072,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 						}
 						listVal, diags := types.ListValueFrom(ctx, types.StringType, strs)
 						if !diags.HasError() {
-							*e.Field = listVal
+							*target = listVal
 						}
 					}
 				}
@@ -1014,7 +1082,11 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 {{- $mapStrings := filterType $attrs "map_string" }}
 {{- if $mapStrings }}
 		for _, e := range {{ $svc }}MapStringReadEntries(state) {
-			if !e.Field.IsNull() {
+			target := e.Field
+			if target.IsNull() && e.Deprecated != nil && !e.Deprecated.IsNull() {
+				target = e.Deprecated
+			}
+			if !target.IsNull() {
 				if v := getNestedValue({{ $svc }}Config, e.Keys...); v != nil {
 					if m, ok := v.(map[string]interface{}); ok {
 						strMap := make(map[string]attr.Value, len(m))
@@ -1025,7 +1097,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 						}
 						mapVal, diags := types.MapValue(types.StringType, strMap)
 						if !diags.HasError() {
-							*e.Field = mapVal
+							*target = mapVal
 						}
 					}
 				}
@@ -1043,7 +1115,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 func {{ $svc }}StringReadEntries(state *ProjectConfigResourceModel) []StringReadEntry {
 	return []StringReadEntry{
 {{- range $strings }}
-		{&state.{{ .GoField }}, []string{ {{ readKeys .PatchPath }} }, {{ .SkipEmptyRead }}},
+		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }, {{ .SkipEmptyRead }}},
 {{- end }}
 	}
 }
@@ -1055,7 +1127,7 @@ func {{ $svc }}StringReadEntries(state *ProjectConfigResourceModel) []StringRead
 func {{ $svc }}BoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry {
 	return []BoolReadEntry{
 {{- range $bools }}
-		{&state.{{ .GoField }}, []string{ {{ readKeys .PatchPath }} }},
+		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }},
 {{- end }}
 	}
 }
@@ -1067,7 +1139,7 @@ func {{ $svc }}BoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntr
 func {{ $svc }}Int64ReadEntries(state *ProjectConfigResourceModel) []Int64ReadEntry {
 	return []Int64ReadEntry{
 {{- range $ints }}
-		{&state.{{ .GoField }}, []string{ {{ readKeys .PatchPath }} }},
+		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }},
 {{- end }}
 	}
 }
@@ -1079,7 +1151,7 @@ func {{ $svc }}Int64ReadEntries(state *ProjectConfigResourceModel) []Int64ReadEn
 func {{ $svc }}ListStringReadEntries(state *ProjectConfigResourceModel) []ListStringReadEntry {
 	return []ListStringReadEntry{
 {{- range $listStrings }}
-		{&state.{{ .GoField }}, []string{ {{ readKeys .PatchPath }} }},
+		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }},
 {{- end }}
 	}
 }
@@ -1091,7 +1163,7 @@ func {{ $svc }}ListStringReadEntries(state *ProjectConfigResourceModel) []ListSt
 func {{ $svc }}MapStringReadEntries(state *ProjectConfigResourceModel) []MapStringReadEntry {
 	return []MapStringReadEntry{
 {{- range $mapStrings }}
-		{&state.{{ .GoField }}, []string{ {{ readKeys .PatchPath }} }},
+		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }},
 {{- end }}
 	}
 }

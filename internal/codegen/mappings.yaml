@@ -63,35 +63,45 @@ attributes:
   # ============================================================================
   # OAuth2/Hydra Token Lifespans
   # ============================================================================
-  - name: oauth2_access_token_lifespan
-    go_field: OAuth2AccessTokenLifespan
+  - name: oauth2_ttl_access_token
+    go_field: OAuth2TTLAccessToken
     type: string
     patch_path: /services/oauth2/config/ttl/access_token
     description: "OAuth2 access token lifespan (e.g., '1h', '30m'). Requires Hydra service."
+    deprecated_name: oauth2_access_token_lifespan
+    deprecated_go_field: OAuth2AccessTokenLifespan
 
-  - name: oauth2_refresh_token_lifespan
-    go_field: OAuth2RefreshTokenLifespan
+  - name: oauth2_ttl_refresh_token
+    go_field: OAuth2TTLRefreshToken
     type: string
     patch_path: /services/oauth2/config/ttl/refresh_token
     description: "OAuth2 refresh token lifespan (e.g., '720h' for 30 days). Requires Hydra service."
+    deprecated_name: oauth2_refresh_token_lifespan
+    deprecated_go_field: OAuth2RefreshTokenLifespan
 
-  - name: oauth2_auth_code_lifespan
-    go_field: OAuth2AuthCodeLifespan
+  - name: oauth2_ttl_auth_code
+    go_field: OAuth2TTLAuthCode
     type: string
     patch_path: /services/oauth2/config/ttl/auth_code
     description: "OAuth2 authorization code lifespan (e.g., '30m'). Requires Hydra service."
+    deprecated_name: oauth2_auth_code_lifespan
+    deprecated_go_field: OAuth2AuthCodeLifespan
 
-  - name: oauth2_id_token_lifespan
-    go_field: OAuth2IDTokenLifespan
+  - name: oauth2_ttl_id_token
+    go_field: OAuth2TTLIDToken
     type: string
     patch_path: /services/oauth2/config/ttl/id_token
     description: "OAuth2 ID token lifespan (e.g., '1h'). Requires Hydra service."
+    deprecated_name: oauth2_id_token_lifespan
+    deprecated_go_field: OAuth2IDTokenLifespan
 
-  - name: oauth2_login_consent_request_lifespan
-    go_field: OAuth2LoginConsentRequestLifespan
+  - name: oauth2_ttl_login_consent_request
+    go_field: OAuth2TTLLoginConsentRequest
     type: string
     patch_path: /services/oauth2/config/ttl/login_consent_request
     description: "OAuth2 login/consent request lifespan (e.g., '30m'). Requires Hydra service."
+    deprecated_name: oauth2_login_consent_request_lifespan
+    deprecated_go_field: OAuth2LoginConsentRequestLifespan
 
   # ============================================================================
   # OAuth2/Hydra Boolean Settings
@@ -120,251 +130,321 @@ attributes:
     patch_path: /services/oauth2/config/oauth2/session/encrypt_at_rest
     description: "Encrypt OAuth2 sessions at rest."
 
-  - name: oauth2_cookies_same_site_legacy_workaround
-    go_field: OAuth2CookiesSameSiteLegacyWorkaround
+  - name: oauth2_serve_cookies_same_site_legacy_workaround
+    go_field: OAuth2ServeCookiesSameSiteLegacyWorkaround
     type: bool
     patch_path: /services/oauth2/config/serve/cookies/same_site_legacy_workaround
     description: >-
       Enable the SameSite=None legacy workaround for OAuth2 cookies.
       When enabled, a fallback cookie without SameSite is set alongside the main cookie
       for clients that don't support SameSite=None.
+    deprecated_name: oauth2_cookies_same_site_legacy_workaround
+    deprecated_go_field: OAuth2CookiesSameSiteLegacyWorkaround
 
   # ============================================================================
   # OAuth2/Hydra Strategies and URLs
   # ============================================================================
-  - name: oauth2_access_token_strategy
-    go_field: OAuth2AccessTokenStrategy
+  - name: oauth2_strategies_access_token
+    go_field: OAuth2StrategiesAccessToken
     type: string
     patch_path: /services/oauth2/config/strategies/access_token
     description: "OAuth2 access token strategy ('jwt' or 'opaque')."
     validators:
       one_of: ["jwt", "opaque"]
+    deprecated_name: oauth2_access_token_strategy
+    deprecated_go_field: OAuth2AccessTokenStrategy
 
-  - name: oauth2_jwt_scope_claim
-    go_field: OAuth2JWTScopeClaim
+  - name: oauth2_strategies_jwt_scope_claim
+    go_field: OAuth2StrategiesJWTScopeClaim
     type: string
     patch_path: /services/oauth2/config/strategies/jwt/scope_claim
     description: "How scopes are represented in JWT access tokens ('list', 'string', or 'both')."
     validators:
       one_of: ["list", "string", "both"]
+    deprecated_name: oauth2_jwt_scope_claim
+    deprecated_go_field: OAuth2JWTScopeClaim
 
-  - name: oauth2_scope_strategy
-    go_field: OAuth2ScopeStrategy
+  - name: oauth2_strategies_scope
+    go_field: OAuth2StrategiesScope
     type: string
     patch_path: /services/oauth2/config/strategies/scope
     description: "OAuth2 scope matching strategy ('exact', 'wildcard')."
     validators:
       one_of: ["exact", "wildcard", "DEPRECATED_HIERARCHICAL_SCOPE_STRATEGY"]
+    deprecated_name: oauth2_scope_strategy
+    deprecated_go_field: OAuth2ScopeStrategy
 
-  - name: oauth2_consent_url
-    go_field: OAuth2ConsentURL
+  - name: oauth2_urls_consent
+    go_field: OAuth2URLsConsent
     type: string
     patch_path: /services/oauth2/config/urls/consent
     description: "OAuth2 consent endpoint URL."
+    deprecated_name: oauth2_consent_url
+    deprecated_go_field: OAuth2ConsentURL
 
-  - name: oauth2_login_url
-    go_field: OAuth2LoginURL
+  - name: oauth2_urls_login
+    go_field: OAuth2URLsLogin
     type: string
     patch_path: /services/oauth2/config/urls/login
     description: "OAuth2 login endpoint URL."
+    deprecated_name: oauth2_login_url
+    deprecated_go_field: OAuth2LoginURL
 
-  - name: oauth2_logout_url
-    go_field: OAuth2LogoutURL
+  - name: oauth2_urls_logout
+    go_field: OAuth2URLsLogout
     type: string
     patch_path: /services/oauth2/config/urls/logout
     description: "OAuth2 logout endpoint URL."
+    deprecated_name: oauth2_logout_url
+    deprecated_go_field: OAuth2LogoutURL
 
-  - name: oauth2_error_url
-    go_field: OAuth2ErrorURL
+  - name: oauth2_urls_error
+    go_field: OAuth2URLsError
     type: string
     patch_path: /services/oauth2/config/urls/error
     description: "OAuth2 error endpoint URL."
+    deprecated_name: oauth2_error_url
+    deprecated_go_field: OAuth2ErrorURL
 
-  - name: oauth2_issuer_url
-    go_field: OAuth2IssuerURL
+  - name: oauth2_urls_self_issuer
+    go_field: OAuth2URLsSelfIssuer
     type: string
     patch_path: /services/oauth2/config/urls/self/issuer
     description: "OAuth2 issuer URL. Overrides the default project URL used as the OAuth2/OIDC issuer."
+    deprecated_name: oauth2_issuer_url
+    deprecated_go_field: OAuth2IssuerURL
 
-  - name: oauth2_cookies_same_site_mode
-    go_field: OAuth2CookiesSameSiteMode
+  - name: oauth2_serve_cookies_same_site_mode
+    go_field: OAuth2ServeCookiesSameSiteMode
     type: string
     patch_path: /services/oauth2/config/serve/cookies/same_site_mode
     description: "SameSite attribute for OAuth2 cookies ('Lax', 'Strict', 'None')."
     validators:
       one_of: ["Lax", "Strict", "None"]
+    deprecated_name: oauth2_cookies_same_site_mode
+    deprecated_go_field: OAuth2CookiesSameSiteMode
 
   # ============================================================================
   # UI URLs (identity service)
   # ============================================================================
-  - name: login_ui_url
-    go_field: LoginUIURL
+  - name: selfservice_flows_login_ui_url
+    go_field: SelfserviceFlowsLoginUIURL
     type: string
     patch_path: /services/identity/config/selfservice/flows/login/ui_url
     description: "URL for the login UI."
+    deprecated_name: login_ui_url
+    deprecated_go_field: LoginUIURL
 
-  - name: registration_ui_url
-    go_field: RegistrationUIURL
+  - name: selfservice_flows_registration_ui_url
+    go_field: SelfserviceFlowsRegistrationUIURL
     type: string
     patch_path: /services/identity/config/selfservice/flows/registration/ui_url
     description: "URL for the registration UI."
+    deprecated_name: registration_ui_url
+    deprecated_go_field: RegistrationUIURL
 
-  - name: recovery_ui_url
-    go_field: RecoveryUIURL
+  - name: selfservice_flows_recovery_ui_url
+    go_field: SelfserviceFlowsRecoveryUIURL
     type: string
     patch_path: /services/identity/config/selfservice/flows/recovery/ui_url
     description: "URL for the password recovery UI."
+    deprecated_name: recovery_ui_url
+    deprecated_go_field: RecoveryUIURL
 
-  - name: verification_ui_url
-    go_field: VerificationUIURL
+  - name: selfservice_flows_verification_ui_url
+    go_field: SelfserviceFlowsVerificationUIURL
     type: string
     patch_path: /services/identity/config/selfservice/flows/verification/ui_url
     description: "URL for the verification UI."
+    deprecated_name: verification_ui_url
+    deprecated_go_field: VerificationUIURL
 
-  - name: settings_ui_url
-    go_field: SettingsUIURL
+  - name: selfservice_flows_settings_ui_url
+    go_field: SelfserviceFlowsSettingsUIURL
     type: string
     patch_path: /services/identity/config/selfservice/flows/settings/ui_url
     description: "URL for the account settings UI."
+    deprecated_name: settings_ui_url
+    deprecated_go_field: SettingsUIURL
 
-  - name: error_ui_url
-    go_field: ErrorUIURL
+  - name: selfservice_flows_error_ui_url
+    go_field: SelfserviceFlowsErrorUIURL
     type: string
     patch_path: /services/identity/config/selfservice/flows/error/ui_url
     description: "URL for the error UI."
+    deprecated_name: error_ui_url
+    deprecated_go_field: ErrorUIURL
 
   # ============================================================================
   # Authentication Methods (identity service)
   # ============================================================================
-  - name: enable_password
-    go_field: EnablePassword
+  - name: selfservice_methods_password_enabled
+    go_field: SelfserviceMethodsPasswordEnabled
     type: bool
     patch_path: /services/identity/config/selfservice/methods/password/enabled
     description: "Enable password authentication."
+    deprecated_name: enable_password
+    deprecated_go_field: EnablePassword
 
-  - name: enable_code
-    go_field: EnableCode
+  - name: selfservice_methods_code_enabled
+    go_field: SelfserviceMethodsCodeEnabled
     type: bool
     patch_path: /services/identity/config/selfservice/methods/code/enabled
     description: "Enable code-based authentication."
+    deprecated_name: enable_code
+    deprecated_go_field: EnableCode
 
-  - name: code_mfa_enabled
-    go_field: CodeMFAEnabled
+  - name: selfservice_methods_code_mfa_enabled
+    go_field: SelfserviceMethodsCodeMFAEnabled
     type: bool
     patch_path: /services/identity/config/selfservice/methods/code/mfa_enabled
     description: >-
       Enable the code method as a second factor for MFA.
       When enabled, users can use one-time codes as a second authentication factor.
+    deprecated_name: code_mfa_enabled
+    deprecated_go_field: CodeMFAEnabled
 
-  - name: enable_oidc
-    go_field: EnableOIDC
+  - name: selfservice_methods_oidc_enabled
+    go_field: SelfserviceMethodsOIDCEnabled
     type: bool
     patch_path: /services/identity/config/selfservice/methods/oidc/enabled
     description: "Enable OIDC (OpenID Connect) social sign-in. Must be enabled for social providers (e.g. Google, GitHub) to work."
+    deprecated_name: enable_oidc
+    deprecated_go_field: EnableOIDC
 
-  - name: enable_oidc_auto_link_policy
-    go_field: EnableOIDCAutoLinkPolicy
+  - name: selfservice_methods_oidc_enable_auto_link_policy
+    go_field: SelfserviceMethodsOIDCEnableAutoLinkPolicy
     type: bool
     patch_path: /services/identity/config/selfservice/methods/oidc/enable_auto_link_policy
     description: "Enable the OIDC auto-link policy. When true, social sign-in providers with auto_link enabled (on ory_social_provider) can automatically link to existing identities that share the same identifier (e.g., email)."
+    deprecated_name: enable_oidc_auto_link_policy
+    deprecated_go_field: EnableOIDCAutoLinkPolicy
 
-  - name: enable_totp
-    go_field: EnableTOTP
+  - name: selfservice_methods_totp_enabled
+    go_field: SelfserviceMethodsTOTPEnabled
     type: bool
     patch_path: /services/identity/config/selfservice/methods/totp/enabled
     description: "Enable TOTP (Time-based One-Time Password)."
+    deprecated_name: enable_totp
+    deprecated_go_field: EnableTOTP
 
-  - name: enable_webauthn
-    go_field: EnableWebAuthn
+  - name: selfservice_methods_webauthn_enabled
+    go_field: SelfserviceMethodsWebAuthnEnabled
     type: bool
     patch_path: /services/identity/config/selfservice/methods/webauthn/enabled
     description: "Enable WebAuthn (hardware keys)."
+    deprecated_name: enable_webauthn
+    deprecated_go_field: EnableWebAuthn
 
-  - name: enable_passkey
-    go_field: EnablePasskey
+  - name: selfservice_methods_passkey_enabled
+    go_field: SelfserviceMethodsPasskeyEnabled
     type: bool
     patch_path: /services/identity/config/selfservice/methods/passkey/enabled
     description: "Enable Passkey authentication."
+    deprecated_name: enable_passkey
+    deprecated_go_field: EnablePasskey
 
-  - name: enable_lookup_secret
-    go_field: EnableLookupSecret
+  - name: selfservice_methods_lookup_secret_enabled
+    go_field: SelfserviceMethodsLookupSecretEnabled
     type: bool
     patch_path: /services/identity/config/selfservice/methods/lookup_secret/enabled
     description: "Enable backup/recovery codes."
+    deprecated_name: enable_lookup_secret
+    deprecated_go_field: EnableLookupSecret
 
-  - name: enable_profile
-    go_field: EnableProfile
+  - name: selfservice_methods_profile_enabled
+    go_field: SelfserviceMethodsProfileEnabled
     type: bool
     patch_path: /services/identity/config/selfservice/methods/profile/enabled
     description: "Enable the profile authentication method. When enabled, users can update their identity traits (e.g., name, address) via the settings flow."
+    deprecated_name: enable_profile
+    deprecated_go_field: EnableProfile
 
   # ============================================================================
   # Code Method Config (identity service)
   # ============================================================================
-  - name: code_lifespan
-    go_field: CodeLifespan
+  - name: selfservice_methods_code_config_lifespan
+    go_field: SelfserviceMethodsCodeConfigLifespan
     type: string
     patch_path: /services/identity/config/selfservice/methods/code/config/lifespan
     description: "Lifespan of the code method's one-time codes (e.g., '15m0s'). Controls how long a code remains valid after being issued."
+    deprecated_name: code_lifespan
+    deprecated_go_field: CodeLifespan
 
-  - name: code_missing_credential_fallback_enabled
-    go_field: CodeMissingCredentialFallbackEnabled
+  - name: selfservice_methods_code_config_missing_credential_fallback_enabled
+    go_field: SelfserviceMethodsCodeConfigMissingCredentialFallbackEnabled
     type: bool
     patch_path: /services/identity/config/selfservice/methods/code/config/missing_credential_fallback_enabled
     description: "Enable missing credential fallback for the code method. When enabled, allows the code method to be used as a fallback when the primary credential is missing."
+    deprecated_name: code_missing_credential_fallback_enabled
+    deprecated_go_field: CodeMissingCredentialFallbackEnabled
 
   # ============================================================================
   # Password Policy (identity service)
   # ============================================================================
-  - name: password_min_length
-    go_field: PasswordMinLength
+  - name: selfservice_methods_password_config_min_password_length
+    go_field: SelfserviceMethodsPasswordConfigMinPasswordLength
     type: int64
     patch_path: /services/identity/config/selfservice/methods/password/config/min_password_length
     description: "Minimum password length."
     computed: true
     default_int64: 8
+    deprecated_name: password_min_length
+    deprecated_go_field: PasswordMinLength
 
-  - name: password_check_haveibeenpwned
-    go_field: PasswordCheckHaveIBeenPwned
+  - name: selfservice_methods_password_config_haveibeenpwned_enabled
+    go_field: SelfserviceMethodsPasswordConfigHaveIBeenPwnedEnabled
     type: bool
     patch_path: /services/identity/config/selfservice/methods/password/config/haveibeenpwned_enabled
     description: "Check passwords against HaveIBeenPwned."
+    deprecated_name: password_check_haveibeenpwned
+    deprecated_go_field: PasswordCheckHaveIBeenPwned
 
-  - name: password_max_breaches
-    go_field: PasswordMaxBreaches
+  - name: selfservice_methods_password_config_max_breaches
+    go_field: SelfserviceMethodsPasswordConfigMaxBreaches
     type: int64
     patch_path: /services/identity/config/selfservice/methods/password/config/max_breaches
     description: "Maximum allowed breaches in HaveIBeenPwned."
+    deprecated_name: password_max_breaches
+    deprecated_go_field: PasswordMaxBreaches
 
-  - name: password_identifier_similarity
-    go_field: PasswordIdentifierSimilarity
+  - name: selfservice_methods_password_config_identifier_similarity_check_enabled
+    go_field: SelfserviceMethodsPasswordConfigIdentifierSimilarityCheckEnabled
     type: bool
     patch_path: /services/identity/config/selfservice/methods/password/config/identifier_similarity_check_enabled
     description: "Check password similarity to identifier."
+    deprecated_name: password_identifier_similarity
+    deprecated_go_field: PasswordIdentifierSimilarity
 
   # ============================================================================
   # Flow Settings (identity service)
   # ============================================================================
-  - name: enable_recovery
-    go_field: EnableRecovery
+  - name: selfservice_flows_recovery_enabled
+    go_field: SelfserviceFlowsRecoveryEnabled
     type: bool
     patch_path: /services/identity/config/selfservice/flows/recovery/enabled
     description: "Enable password recovery flow."
+    deprecated_name: enable_recovery
+    deprecated_go_field: EnableRecovery
 
-  - name: enable_verification
-    go_field: EnableVerification
+  - name: selfservice_flows_verification_enabled
+    go_field: SelfserviceFlowsVerificationEnabled
     type: bool
     patch_path: /services/identity/config/selfservice/flows/verification/enabled
     description: "Enable email verification flow."
+    deprecated_name: enable_verification
+    deprecated_go_field: EnableVerification
 
-  - name: enable_registration
-    go_field: EnableRegistration
+  - name: selfservice_flows_registration_enabled
+    go_field: SelfserviceFlowsRegistrationEnabled
     type: bool
     patch_path: /services/identity/config/selfservice/flows/registration/enabled
     description: "Enable user registration."
+    deprecated_name: enable_registration
+    deprecated_go_field: EnableRegistration
 
-  - name: login_style
-    go_field: LoginStyle
+  - name: selfservice_flows_login_style
+    go_field: SelfserviceFlowsLoginStyle
     type: string
     patch_path: /services/identity/config/selfservice/flows/login/style
     description: >-
@@ -372,99 +452,125 @@ attributes:
       'identifier_first' collects the identifier before showing auth methods.
     validators:
       one_of: ["unified", "identifier_first"]
+    deprecated_name: login_style
+    deprecated_go_field: LoginStyle
 
   # ============================================================================
   # Settings Flow (identity service)
   # ============================================================================
-  - name: settings_lifespan
-    go_field: SettingsLifespan
+  - name: selfservice_flows_settings_lifespan
+    go_field: SelfserviceFlowsSettingsLifespan
     type: string
     patch_path: /services/identity/config/selfservice/flows/settings/lifespan
     description: "Lifespan of the settings flow (e.g., '30m0s'). Controls how long a settings flow session remains valid."
+    deprecated_name: settings_lifespan
+    deprecated_go_field: SettingsLifespan
 
-  - name: settings_privileged_session_max_age
-    go_field: SettingsPrivilegedSessionMaxAge
+  - name: selfservice_flows_settings_privileged_session_max_age
+    go_field: SelfserviceFlowsSettingsPrivilegedSessionMaxAge
     type: string
     patch_path: /services/identity/config/selfservice/flows/settings/privileged_session_max_age
     description: >-
       Maximum age of a privileged session for the settings flow (e.g., '15m0s').
       After this duration, the user must re-authenticate to make privileged changes like password updates.
+    deprecated_name: settings_privileged_session_max_age
+    deprecated_go_field: SettingsPrivilegedSessionMaxAge
 
-  - name: required_aal
-    go_field: RequiredAAL
+  - name: selfservice_flows_settings_required_aal
+    go_field: SelfserviceFlowsSettingsRequiredAAL
     type: string
     patch_path: /services/identity/config/selfservice/flows/settings/required_aal
     description: "Required Authenticator Assurance Level for the settings flow: 'aal1' or 'highest_available'."
     validators:
       one_of: ["aal1", "highest_available"]
+    deprecated_name: required_aal
+    deprecated_go_field: RequiredAAL
 
   # ============================================================================
   # Verification Flow (identity service)
   # ============================================================================
-  - name: verification_use
-    go_field: VerificationUse
+  - name: selfservice_flows_verification_use
+    go_field: SelfserviceFlowsVerificationUse
     type: string
     patch_path: /services/identity/config/selfservice/flows/verification/use
     description: "Verification method to use: 'code' (one-time code) or 'link' (magic link)."
     validators:
       one_of: ["code", "link"]
+    deprecated_name: verification_use
+    deprecated_go_field: VerificationUse
 
-  - name: verification_lifespan
-    go_field: VerificationLifespan
+  - name: selfservice_flows_verification_lifespan
+    go_field: SelfserviceFlowsVerificationLifespan
     type: string
     patch_path: /services/identity/config/selfservice/flows/verification/lifespan
     description: "Lifespan of the verification flow (e.g., '30m0s'). Controls how long a verification flow session remains valid."
+    deprecated_name: verification_lifespan
+    deprecated_go_field: VerificationLifespan
 
-  - name: verification_notify_unknown_recipients
-    go_field: VerificationNotifyUnknownRecipients
+  - name: selfservice_flows_verification_notify_unknown_recipients
+    go_field: SelfserviceFlowsVerificationNotifyUnknownRecipients
     type: bool
     patch_path: /services/identity/config/selfservice/flows/verification/notify_unknown_recipients
     description: "When enabled, verification emails are sent even if the email address is not associated with any known identity."
+    deprecated_name: verification_notify_unknown_recipients
+    deprecated_go_field: VerificationNotifyUnknownRecipients
 
   # ============================================================================
   # SMTP Configuration (identity service)
   # ============================================================================
-  - name: smtp_from_address
-    go_field: SMTPFromAddress
+  - name: courier_smtp_from_address
+    go_field: CourierSMTPFromAddress
     type: string
     patch_path: /services/identity/config/courier/smtp/from_address
     description: "Email address to send from."
     validators:
       regex: '^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$'
       regex_message: "must be a valid email address"
+    deprecated_name: smtp_from_address
+    deprecated_go_field: SMTPFromAddress
 
-  - name: smtp_from_name
-    go_field: SMTPFromName
+  - name: courier_smtp_from_name
+    go_field: CourierSMTPFromName
     type: string
     patch_path: /services/identity/config/courier/smtp/from_name
     description: "Name to display as sender."
+    deprecated_name: smtp_from_name
+    deprecated_go_field: SMTPFromName
 
   # ============================================================================
   # MFA / WebAuthn / TOTP (identity service)
   # ============================================================================
-  - name: totp_issuer
-    go_field: TOTPIssuer
+  - name: selfservice_methods_totp_config_issuer
+    go_field: SelfserviceMethodsTOTPConfigIssuer
     type: string
     patch_path: /services/identity/config/selfservice/methods/totp/config/issuer
     description: "TOTP issuer name shown in authenticator apps."
+    deprecated_name: totp_issuer
+    deprecated_go_field: TOTPIssuer
 
-  - name: webauthn_rp_display_name
-    go_field: WebAuthnRPDisplayName
+  - name: selfservice_methods_webauthn_config_rp_display_name
+    go_field: SelfserviceMethodsWebAuthnConfigRPDisplayName
     type: string
     patch_path: /services/identity/config/selfservice/methods/webauthn/config/rp/display_name
     description: "WebAuthn Relying Party display name."
+    deprecated_name: webauthn_rp_display_name
+    deprecated_go_field: WebAuthnRPDisplayName
 
-  - name: webauthn_rp_id
-    go_field: WebAuthnRPID
+  - name: selfservice_methods_webauthn_config_rp_id
+    go_field: SelfserviceMethodsWebAuthnConfigRPID
     type: string
     patch_path: /services/identity/config/selfservice/methods/webauthn/config/rp/id
     description: "WebAuthn Relying Party ID (typically your domain)."
+    deprecated_name: webauthn_rp_id
+    deprecated_go_field: WebAuthnRPID
 
-  - name: webauthn_passwordless
-    go_field: WebAuthnPasswordless
+  - name: selfservice_methods_webauthn_config_passwordless
+    go_field: SelfserviceMethodsWebAuthnConfigPasswordless
     type: bool
     patch_path: /services/identity/config/selfservice/methods/webauthn/config/passwordless
     description: "Enable passwordless WebAuthn authentication."
+    deprecated_name: webauthn_passwordless
+    deprecated_go_field: WebAuthnPasswordless
 
   # ============================================================================
   # Courier Delivery (identity service)

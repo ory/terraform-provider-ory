@@ -191,8 +191,8 @@ type ProjectConfigResourceModel struct {
 	CourierHTTPRequestConfigAuthAPIKeyValue       types.String `tfsdk:"courier_http_request_config_auth_api_key_value"`
 	CourierHTTPRequestConfigAuthBasicAuthPassword types.String `tfsdk:"courier_http_request_config_auth_basic_auth_password"`
 	CourierHTTPRequestConfigAuthBasicAuthUser     types.String `tfsdk:"courier_http_request_config_auth_basic_auth_user"`
-	CourierHTTPRequestConfigBody types.String `tfsdk:"courier_http_request_config_body"`
-	CourierHTTPRequestConfigURL types.String `tfsdk:"courier_http_request_config_url"`
+	CourierHTTPRequestConfigBody                  types.String `tfsdk:"courier_http_request_config_body"`
+	CourierHTTPRequestConfigURL                   types.String `tfsdk:"courier_http_request_config_url"`
 	// courier_smtp_connection_uri is handled by SMTPConnectionURI above (sensitive, write-only)
 	CourierSMTPLocalName types.String `tfsdk:"courier_smtp_local_name"`
 
@@ -354,6 +354,84 @@ type ProjectConfigResourceModel struct {
 
 	// Feature flags
 	FeatureFlagsPasswordProfileRegistrationNodeGroup types.Bool `tfsdk:"feature_flags_password_profile_registration_node_group"`
+
+	// --- Spec-derived aliases for deprecated attribute names ---
+	// These are the preferred names. The old names above still work but show deprecation warnings.
+
+	// OAuth2 TTLs
+	OAuth2TTLAccessToken         types.String `tfsdk:"oauth2_ttl_access_token"`
+	OAuth2TTLRefreshToken        types.String `tfsdk:"oauth2_ttl_refresh_token"`
+	OAuth2TTLAuthCode            types.String `tfsdk:"oauth2_ttl_auth_code"`
+	OAuth2TTLIDToken             types.String `tfsdk:"oauth2_ttl_id_token"`
+	OAuth2TTLLoginConsentRequest types.String `tfsdk:"oauth2_ttl_login_consent_request"`
+
+	// OAuth2 Strategies
+	OAuth2StrategiesAccessToken   types.String `tfsdk:"oauth2_strategies_access_token"`
+	OAuth2StrategiesJWTScopeClaim types.String `tfsdk:"oauth2_strategies_jwt_scope_claim"`
+	OAuth2StrategiesScope         types.String `tfsdk:"oauth2_strategies_scope"`
+
+	// OAuth2 URLs
+	OAuth2URLsConsent    types.String `tfsdk:"oauth2_urls_consent"`
+	OAuth2URLsLogin      types.String `tfsdk:"oauth2_urls_login"`
+	OAuth2URLsLogout     types.String `tfsdk:"oauth2_urls_logout"`
+	OAuth2URLsError      types.String `tfsdk:"oauth2_urls_error"`
+	OAuth2URLsSelfIssuer types.String `tfsdk:"oauth2_urls_self_issuer"`
+
+	// OAuth2 Cookies
+	OAuth2ServeCookiesSameSiteMode             types.String `tfsdk:"oauth2_serve_cookies_same_site_mode"`
+	OAuth2ServeCookiesSameSiteLegacyWorkaround types.Bool   `tfsdk:"oauth2_serve_cookies_same_site_legacy_workaround"`
+
+	// UI URLs
+	SelfserviceFlowsLoginUIURL        types.String `tfsdk:"selfservice_flows_login_ui_url"`
+	SelfserviceFlowsRegistrationUIURL types.String `tfsdk:"selfservice_flows_registration_ui_url"`
+	SelfserviceFlowsRecoveryUIURL     types.String `tfsdk:"selfservice_flows_recovery_ui_url"`
+	SelfserviceFlowsVerificationUIURL types.String `tfsdk:"selfservice_flows_verification_ui_url"`
+	SelfserviceFlowsSettingsUIURL     types.String `tfsdk:"selfservice_flows_settings_ui_url"`
+	SelfserviceFlowsErrorUIURL        types.String `tfsdk:"selfservice_flows_error_ui_url"`
+
+	// Auth method enables
+	SelfserviceMethodsPasswordEnabled          types.Bool `tfsdk:"selfservice_methods_password_enabled"`
+	SelfserviceMethodsCodeEnabled              types.Bool `tfsdk:"selfservice_methods_code_enabled"`
+	SelfserviceMethodsCodeMFAEnabled           types.Bool `tfsdk:"selfservice_methods_code_mfa_enabled"`
+	SelfserviceMethodsOIDCEnabled              types.Bool `tfsdk:"selfservice_methods_oidc_enabled"`
+	SelfserviceMethodsOIDCEnableAutoLinkPolicy types.Bool `tfsdk:"selfservice_methods_oidc_enable_auto_link_policy"`
+	SelfserviceMethodsTOTPEnabled              types.Bool `tfsdk:"selfservice_methods_totp_enabled"`
+	SelfserviceMethodsWebAuthnEnabled          types.Bool `tfsdk:"selfservice_methods_webauthn_enabled"`
+	SelfserviceMethodsPasskeyEnabled           types.Bool `tfsdk:"selfservice_methods_passkey_enabled"`
+	SelfserviceMethodsLookupSecretEnabled      types.Bool `tfsdk:"selfservice_methods_lookup_secret_enabled"`
+	SelfserviceMethodsProfileEnabled           types.Bool `tfsdk:"selfservice_methods_profile_enabled"`
+
+	// Code config
+	SelfserviceMethodsCodeConfigLifespan                         types.String `tfsdk:"selfservice_methods_code_config_lifespan"`
+	SelfserviceMethodsCodeConfigMissingCredentialFallbackEnabled types.Bool   `tfsdk:"selfservice_methods_code_config_missing_credential_fallback_enabled"`
+
+	// Password config
+	SelfserviceMethodsPasswordConfigMinPasswordLength                types.Int64 `tfsdk:"selfservice_methods_password_config_min_password_length"`
+	SelfserviceMethodsPasswordConfigHaveIBeenPwnedEnabled            types.Bool  `tfsdk:"selfservice_methods_password_config_haveibeenpwned_enabled"`
+	SelfserviceMethodsPasswordConfigMaxBreaches                      types.Int64 `tfsdk:"selfservice_methods_password_config_max_breaches"`
+	SelfserviceMethodsPasswordConfigIdentifierSimilarityCheckEnabled types.Bool  `tfsdk:"selfservice_methods_password_config_identifier_similarity_check_enabled"`
+
+	// Flow enables/settings
+	SelfserviceFlowsRecoveryEnabled                     types.Bool   `tfsdk:"selfservice_flows_recovery_enabled"`
+	SelfserviceFlowsVerificationEnabled                 types.Bool   `tfsdk:"selfservice_flows_verification_enabled"`
+	SelfserviceFlowsRegistrationEnabled                 types.Bool   `tfsdk:"selfservice_flows_registration_enabled"`
+	SelfserviceFlowsLoginStyle                          types.String `tfsdk:"selfservice_flows_login_style"`
+	SelfserviceFlowsSettingsLifespan                    types.String `tfsdk:"selfservice_flows_settings_lifespan"`
+	SelfserviceFlowsSettingsPrivilegedSessionMaxAge     types.String `tfsdk:"selfservice_flows_settings_privileged_session_max_age"`
+	SelfserviceFlowsSettingsRequiredAAL                 types.String `tfsdk:"selfservice_flows_settings_required_aal"`
+	SelfserviceFlowsVerificationUse                     types.String `tfsdk:"selfservice_flows_verification_use"`
+	SelfserviceFlowsVerificationLifespan                types.String `tfsdk:"selfservice_flows_verification_lifespan"`
+	SelfserviceFlowsVerificationNotifyUnknownRecipients types.Bool   `tfsdk:"selfservice_flows_verification_notify_unknown_recipients"`
+
+	// SMTP
+	CourierSMTPFromAddress types.String `tfsdk:"courier_smtp_from_address"`
+	CourierSMTPFromName    types.String `tfsdk:"courier_smtp_from_name"`
+
+	// MFA/WebAuthn/TOTP
+	SelfserviceMethodsTOTPConfigIssuer            types.String `tfsdk:"selfservice_methods_totp_config_issuer"`
+	SelfserviceMethodsWebAuthnConfigRPDisplayName types.String `tfsdk:"selfservice_methods_webauthn_config_rp_display_name"`
+	SelfserviceMethodsWebAuthnConfigRPID          types.String `tfsdk:"selfservice_methods_webauthn_config_rp_id"`
+	SelfserviceMethodsWebAuthnConfigPasswordless  types.Bool   `tfsdk:"selfservice_methods_webauthn_config_passwordless"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---
@@ -725,36 +803,52 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 
 	// --- Generated simple attribute patches ---
 	for _, e := range simpleStringPatchEntries(plan) {
-		if !e.Field.IsNull() && !e.Field.IsUnknown() {
+		field := e.Field
+		if (field.IsNull() || field.IsUnknown()) && e.Deprecated != nil {
+			field = e.Deprecated
+		}
+		if !field.IsNull() && !field.IsUnknown() {
 			patches = append(patches, ory.JsonPatch{
 				Op:    "replace",
 				Path:  e.Path,
-				Value: e.Field.ValueString(),
+				Value: field.ValueString(),
 			})
 		}
 	}
 	for _, e := range simpleBoolPatchEntries(plan) {
-		if !e.Field.IsNull() && !e.Field.IsUnknown() {
+		field := e.Field
+		if (field.IsNull() || field.IsUnknown()) && e.Deprecated != nil {
+			field = e.Deprecated
+		}
+		if !field.IsNull() && !field.IsUnknown() {
 			patches = append(patches, ory.JsonPatch{
 				Op:    "replace",
 				Path:  e.Path,
-				Value: e.Field.ValueBool(),
+				Value: field.ValueBool(),
 			})
 		}
 	}
 	for _, e := range simpleInt64PatchEntries(plan) {
-		if !e.Field.IsNull() && !e.Field.IsUnknown() {
+		field := e.Field
+		if (field.IsNull() || field.IsUnknown()) && e.Deprecated != nil {
+			field = e.Deprecated
+		}
+		if !field.IsNull() && !field.IsUnknown() {
 			patches = append(patches, ory.JsonPatch{
 				Op:    "replace",
 				Path:  e.Path,
-				Value: e.Field.ValueInt64(),
+				Value: field.ValueInt64(),
 			})
 		}
 	}
 	for _, e := range simpleListStringPatchEntries(plan) {
-		if !e.Field.IsNull() && !e.Field.IsUnknown() {
+		field := e.Field
+		if (field.IsNull() || field.IsUnknown()) && e.Deprecated != nil {
+			field = e.Deprecated
+		}
+		if !field.IsNull() && !field.IsUnknown() {
 			var vals []string
-			e.Field.ElementsAs(ctx, &vals, false)
+			field.ElementsAs(ctx, &vals, false)
 			patches = append(patches, ory.JsonPatch{
 				Op:    "replace",
 				Path:  e.Path,
@@ -763,9 +857,13 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 		}
 	}
 	for _, e := range simpleMapStringPatchEntries(plan) {
-		if !e.Field.IsNull() && !e.Field.IsUnknown() {
+		field := e.Field
+		if (field.IsNull() || field.IsUnknown()) && e.Deprecated != nil {
+			field = e.Deprecated
+		}
+		if !field.IsNull() && !field.IsUnknown() {
 			var vals map[string]string
-			e.Field.ElementsAs(ctx, &vals, false)
+			field.ElementsAs(ctx, &vals, false)
 			patches = append(patches, ory.JsonPatch{
 				Op:    "replace",
 				Path:  e.Path,

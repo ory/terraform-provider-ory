@@ -315,6 +315,8 @@ That's it — the field appears in the Terraform schema, JSON Patch operations, 
 | `sensitive` | No | If `true`, value is masked in Terraform output |
 | `skip_empty_read` | No | If `true`, skip reading empty strings from API (used for account_experience fields) |
 | `validators` | No | `one_of: [...]` or `regex: "..."` + `regex_message: "..."` |
+| `deprecated_name` | No | Old terraform attribute name (shows deprecation warning in Terraform) |
+| `deprecated_go_field` | No | Old Go struct field name for the deprecated attribute |
 
 #### Makefile targets
 
@@ -332,6 +334,31 @@ A daily GitHub Actions workflow (`.github/workflows/regenerate-config.yml`) runs
 2. Regenerates code and creates a PR if the generated files changed
 3. Runs `--strict` mode to detect unmapped properties
 4. If new properties are found, creates a GitHub issue with the `codegen-drift` label listing the new properties and instructions to add them
+
+#### Renaming attributes (deprecated aliases)
+
+When renaming an attribute, use `deprecated_name` / `deprecated_go_field` to keep the old name working with a deprecation warning:
+
+```yaml
+- name: selfservice_methods_password_enabled   # new spec-derived name
+  go_field: SelfserviceMethodsPasswordEnabled
+  type: bool
+  patch_path: /services/identity/config/selfservice/methods/password/enabled
+  description: "Enable password authentication."
+  deprecated_name: enable_password              # old name (shows warning)
+  deprecated_go_field: EnablePassword
+```
+
+Both names work. When a user uses the old name, Terraform shows:
+```
+Warning: Argument is deprecated
+Use selfservice_methods_password_enabled instead. This attribute will be removed in a future major version.
+```
+
+The model struct needs BOTH fields (old and new). The codegen generates:
+- Both schema attributes (new is normal, old has `DeprecationMessage`)
+- Patch logic that checks the new field first, falls back to the deprecated
+- Read logic that writes to whichever field is set in state
 
 #### Complex types (not codegen'd)
 
