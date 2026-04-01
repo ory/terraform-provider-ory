@@ -107,6 +107,12 @@ download-spec: ## Download latest OpenAPI spec from client-go
 discover: download-spec ## Discover new unmapped properties from the OpenAPI spec and output YAML entries
 	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml -spec ./internal/codegen/openapi.yaml -discover
 
+.PHONY: check-coverage
+check-coverage: download-spec ## Check that all spec properties are mapped (fails if unmapped properties found)
+	@TMPDIR=$$(mktemp -d) && \
+	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml -spec ./internal/codegen/openapi.yaml -strict -out "$$TMPDIR" && \
+	rm -rf "$$TMPDIR"
+
 .PHONY: format
 format: .bin/tfplugindocs .bin/golangci-lint ## Format all code (Go, Terraform, modules, docs, lint fixes)
 	go fmt ./...

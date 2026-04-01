@@ -223,6 +223,7 @@ func main() {
 	outDir := flag.String("out", ".", "output directory for generated files")
 	specPath := flag.String("spec", "", "path to OpenAPI spec (JSON or YAML) for governs-based path derivation and validation")
 	discover := flag.Bool("discover", false, "output YAML entries for unmapped spec properties (requires --spec)")
+	strict := flag.Bool("strict", false, "fail if any spec properties are unmapped (use in CI to detect drift)")
 	flag.Parse()
 
 	data, err := os.ReadFile(*mappingsPath)
@@ -254,9 +255,14 @@ func main() {
 		}
 
 		// Report unmapped spec properties (candidates for new entries)
-		reportUnmapped(m, specProps)
+		unmappedCount := reportUnmapped(m, specProps)
+		if *strict && unmappedCount > 0 {
+			log.Fatalf("STRICT MODE: %d unmapped spec properties found. Run 'make discover' to generate YAML entries.", unmappedCount)
+		}
 	} else if *discover {
 		log.Fatal("--discover requires --spec")
+	} else if *strict {
+		log.Fatal("--strict requires --spec")
 	}
 
 	// Validate all attributes have required fields
@@ -401,8 +407,8 @@ func resolveFromSpec(m *Mappings, specProps map[string]SpecProperty) {
 }
 
 // reportUnmapped prints spec properties that have "governs" descriptions but
-// aren't mapped in mappings.yaml. These are candidates for new entries.
-func reportUnmapped(m Mappings, specProps map[string]SpecProperty) {
+// aren't mapped in mappings.yaml. Returns the count of unmapped properties.
+func reportUnmapped(m Mappings, specProps map[string]SpecProperty) int {
 	// Build set of mapped openapi_property values
 	mapped := make(map[string]bool)
 	for _, a := range m.Attributes {
@@ -451,6 +457,7 @@ func reportUnmapped(m Mappings, specProps map[string]SpecProperty) {
 		}
 		fmt.Printf("  Total: %d unmapped properties\n", len(unmapped))
 	}
+	return len(unmapped)
 }
 
 // =============================================================================

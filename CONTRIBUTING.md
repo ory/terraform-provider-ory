@@ -323,6 +323,15 @@ That's it — the field appears in the Terraform schema, JSON Patch operations, 
 | `make generate` | Generate Go files from mappings.yaml. Auto-validates against the OpenAPI spec if `internal/codegen/openapi.yaml` exists |
 | `make download-spec` | Download the latest OpenAPI spec from `ory/client-go` |
 | `make discover` | Download spec and output YAML entries + Go struct fields for all unmapped properties |
+| `make check-coverage` | Download spec and fail if any properties are unmapped (used in CI to detect drift) |
+
+#### CI drift detection
+
+A daily GitHub Actions workflow (`.github/workflows/regenerate-config.yml`) runs at 09:00 UTC and:
+1. Downloads the latest OpenAPI spec from `ory/client-go`
+2. Regenerates code and creates a PR if the generated files changed
+3. Runs `--strict` mode to detect unmapped properties
+4. If new properties are found, creates a GitHub issue with the `codegen-drift` label listing the new properties and instructions to add them
 
 #### Complex types (not codegen'd)
 
