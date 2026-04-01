@@ -427,11 +427,9 @@ func reportUnmapped(m Mappings, specProps map[string]SpecProperty) int {
 		}
 	}
 
-	// Exclusion list: properties that are managed elsewhere or read-only
-	excluded := map[string]bool{
-		"id": true, "project_id": true, "created_at": true, "updated_at": true,
-		"name": true, "state": true, "workspace_id": true, "production": true,
-	}
+	// Exclusion list: properties that are read-only, managed by other resources,
+	// or handled by custom code in resource.go under a different terraform name.
+	excluded := excludedProperties()
 
 	var unmapped []SpecProperty
 	for _, sp := range specProps {
@@ -620,6 +618,45 @@ var acronymMap = map[string]string{
 	"iat":      "IAT",
 	"b2b":      "B2B",
 	"sso":      "SSO",
+}
+
+// excludedProperties returns properties that should be excluded from unmapped
+// reports because they are read-only, managed by other resources, or handled
+// by custom code in resource.go under a different terraform attribute name.
+func excludedProperties() map[string]bool {
+	return map[string]bool{
+		// Read-only / metadata
+		"id": true, "project_id": true, "created_at": true, "updated_at": true,
+		"name": true, "state": true, "workspace_id": true, "production": true,
+		"strict_security": true, "project_name": true,
+		// Managed by separate terraform resources
+		"kratos_identity_schemas":                          true,
+		"kratos_selfservice_methods_oidc_config_providers": true,
+		"kratos_selfservice_methods_saml_config_providers": true,
+		"organizations":              true,
+		"project_revision_hooks":     true,
+		"scim_clients":               true,
+		"account_experience_custom_translations": true,
+		// Handled by custom code in resource.go under different terraform names
+		"serve_public_cors_enabled":         true, // → cors_enabled
+		"serve_public_cors_allowed_origins": true, // → cors_origins
+		"serve_admin_cors_enabled":          true, // → cors_admin_enabled
+		"serve_admin_cors_allowed_origins":  true, // → cors_admin_origins
+		"keto_namespaces":                   true, // → keto_namespaces (custom list handler)
+		"kratos_courier_channels":           true, // → courier_channels (custom nested)
+		"kratos_courier_smtp_headers":       true, // → smtp_headers (custom map)
+		"kratos_courier_http_request_config_headers": true, // → part of courier_http_request_config
+		"kratos_courier_http_request_config_auth_type": true, // → part of courier_http_request_config
+		"kratos_courier_http_request_config_method":    true, // → part of courier_http_request_config
+		"kratos_courier_delivery_strategy":   true, // → courier_delivery_strategy (in mappings)
+		"kratos_selfservice_allowed_return_urls":              true, // → allowed_return_urls (custom)
+		"kratos_selfservice_methods_webauthn_config_rp_origins": true, // → webauthn_rp_origins (custom)
+		"hydra_oauth2_allowed_top_level_claims":                true, // → oauth2_allowed_top_level_claims (custom)
+		"kratos_session_whoami_tokenizer_templates":            true, // → session_tokenizer_templates (custom)
+		"kratos_courier_smtp_connection_uri":                   true, // → smtp_connection_uri (custom, sensitive)
+		"account_experience_default_locale":                    true, // → account_experience_default_locale (in mappings)
+		"kratos_oauth2_provider_headers":                       true, // → oauth2_provider_headers (in mappings)
+	}
 }
 
 // cleanDescription removes the "governs" sentence, collapses newlines,

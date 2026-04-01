@@ -660,6 +660,7 @@ attributes:
     patch_path: /services/identity/config/courier/http/auth/config/value
     openapi_property: kratos_courier_http_request_config_auth_api_key_value
     description: "API key value for HTTP courier authentication."
+    sensitive: true
 
   - name: courier_http_request_config_auth_basic_auth_password
     go_field: CourierHTTPRequestConfigAuthBasicAuthPassword
@@ -667,6 +668,7 @@ attributes:
     patch_path: /services/identity/config/courier/http/auth/config/password
     openapi_property: kratos_courier_http_request_config_auth_basic_auth_password
     description: "Password for HTTP courier basic authentication."
+    sensitive: true
 
   - name: courier_http_request_config_auth_basic_auth_user
     go_field: CourierHTTPRequestConfigAuthBasicAuthUser
@@ -689,12 +691,7 @@ attributes:
     openapi_property: kratos_courier_http_request_config_url
     description: "URL of the remote HTTP email sending service."
 
-  - name: courier_smtp_connection_uri
-    go_field: CourierSMTPConnectionURI
-    type: string
-    patch_path: /services/identity/config/courier/smtp/connection_uri
-    openapi_property: kratos_courier_smtp_connection_uri
-    description: "SMTP connection URI for sending emails."
+  # courier_smtp_connection_uri is handled as smtp_connection_uri in resource.go (sensitive, write-only)
 
   - name: courier_smtp_local_name
     go_field: CourierSMTPLocalName
@@ -748,7 +745,7 @@ attributes:
   - name: courier_templates_recovery_code_invalid_email_subject
     go_field: CourierTemplatesRecoveryCodeInvalidEmailSubject
     type: string
-    patch_path: /services/identity/config/courier/smtp/templates/recovery_code/invalid/email/body/html
+    patch_path: /services/identity/config/courier/smtp/templates/recovery_code/invalid/email/subject
     openapi_property: kratos_courier_templates_recovery_code_invalid_email_subject
     description: "Subject template for invalid recovery-by-code emails."
 
@@ -1000,7 +997,7 @@ attributes:
   - name: selfservice_default_browser_return_url
     go_field: SelfserviceDefaultBrowserReturnURL
     type: string
-    patch_path: /services/identity/config/selfservice/allowed_return_urls
+    patch_path: /services/identity/config/selfservice/default_browser_return_url
     openapi_property: kratos_selfservice_default_browser_return_url
     description: "Default browser return URL for self-service flows."
 
@@ -1554,7 +1551,7 @@ attributes:
     type: string
     patch_path: /services/identity/config/selfservice/methods/captcha/config/cf_turnstile_byo_secret
     openapi_property: kratos_selfservice_methods_captcha_config_cf_turnstile_byo_secret
-    description: "Cloudflare Turnstile site secret for BYO CAPTCHA."
+    description: "Cloudflare Turnstile BYO site secret (private)."
     sensitive: true
 
   - name: selfservice_methods_captcha_config_cf_turnstile_byo_sitekey
@@ -1569,7 +1566,7 @@ attributes:
     type: string
     patch_path: /services/identity/config/selfservice/methods/captcha/config/cf_turnstile_secret
     openapi_property: kratos_selfservice_methods_captcha_config_cf_turnstile_secret
-    description: "Cloudflare Turnstile site secret for managed CAPTCHA."
+    description: "Cloudflare Turnstile managed site secret (private)."
     sensitive: true
 
   - name: selfservice_methods_captcha_config_cf_turnstile_sitekey

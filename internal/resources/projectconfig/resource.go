@@ -191,10 +191,10 @@ type ProjectConfigResourceModel struct {
 	CourierHTTPRequestConfigAuthAPIKeyValue       types.String `tfsdk:"courier_http_request_config_auth_api_key_value"`
 	CourierHTTPRequestConfigAuthBasicAuthPassword types.String `tfsdk:"courier_http_request_config_auth_basic_auth_password"`
 	CourierHTTPRequestConfigAuthBasicAuthUser     types.String `tfsdk:"courier_http_request_config_auth_basic_auth_user"`
-	CourierHTTPRequestConfigBody                  types.String `tfsdk:"courier_http_request_config_body"`
-	CourierHTTPRequestConfigURL                   types.String `tfsdk:"courier_http_request_config_url"`
-	CourierSMTPConnectionURI                      types.String `tfsdk:"courier_smtp_connection_uri"`
-	CourierSMTPLocalName                          types.String `tfsdk:"courier_smtp_local_name"`
+	CourierHTTPRequestConfigBody types.String `tfsdk:"courier_http_request_config_body"`
+	CourierHTTPRequestConfigURL types.String `tfsdk:"courier_http_request_config_url"`
+	// courier_smtp_connection_uri is handled by SMTPConnectionURI above (sensitive, write-only)
+	CourierSMTPLocalName types.String `tfsdk:"courier_smtp_local_name"`
 
 	// Courier email/SMS templates
 	CourierTemplatesLoginCodeValidEmailBodyHTML               types.String `tfsdk:"courier_templates_login_code_valid_email_body_html"`

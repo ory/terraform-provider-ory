@@ -397,10 +397,12 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 		"courier_http_request_config_auth_api_key_value": schema.StringAttribute{
 			Description: "API key value for HTTP courier authentication.",
 			Optional:    true,
+			Sensitive:   true,
 		},
 		"courier_http_request_config_auth_basic_auth_password": schema.StringAttribute{
 			Description: "Password for HTTP courier basic authentication.",
 			Optional:    true,
+			Sensitive:   true,
 		},
 		"courier_http_request_config_auth_basic_auth_user": schema.StringAttribute{
 			Description: "Username for HTTP courier basic authentication.",
@@ -412,10 +414,6 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 		},
 		"courier_http_request_config_url": schema.StringAttribute{
 			Description: "URL of the remote HTTP email sending service.",
-			Optional:    true,
-		},
-		"courier_smtp_connection_uri": schema.StringAttribute{
-			Description: "SMTP connection URI for sending emails.",
 			Optional:    true,
 		},
 		"courier_smtp_local_name": schema.StringAttribute{
@@ -915,7 +913,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 		},
 		"selfservice_methods_captcha_config_cf_turnstile_byo_secret": schema.StringAttribute{
-			Description: "Cloudflare Turnstile site secret for BYO CAPTCHA.",
+			Description: "Cloudflare Turnstile BYO site secret (private).",
 			Optional:    true,
 			Sensitive:   true,
 		},
@@ -924,7 +922,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 		},
 		"selfservice_methods_captcha_config_cf_turnstile_secret": schema.StringAttribute{
-			Description: "Cloudflare Turnstile site secret for managed CAPTCHA.",
+			Description: "Cloudflare Turnstile managed site secret (private).",
 			Optional:    true,
 			Sensitive:   true,
 		},
