@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"text/template"
 
@@ -114,6 +115,7 @@ func governsToPatchPath(propertyName, description string) (string, bool) {
 type SpecProperty struct {
 	Name        string
 	Type        string // "string", "boolean", "integer", "array", "object"
+	ItemType    string // for arrays: the element type (e.g., "string")
 	Description string
 	GovernsPath string // derived patch path from "governs" description, or ""
 }
@@ -156,6 +158,11 @@ func parseOpenAPISpec(specPath string) (map[string]SpecProperty, error) {
 
 		if t, ok := prop["type"].(string); ok {
 			sp.Type = t
+		}
+		if items, ok := prop["items"].(map[string]interface{}); ok {
+			if it, ok := items["type"].(string); ok {
+				sp.ItemType = it
+			}
 		}
 		if d, ok := prop["description"].(string); ok {
 			sp.Description = d
@@ -212,12 +219,13 @@ func openAPITypeToTFType(oaType string) string {
 }
 
 // discoverTypeToTFType extends openAPITypeToTFType with array support for discover mode.
-func discoverTypeToTFType(oaType string) string {
+// For arrays, itemType must be "string" to map to list_string; other array element types are unsupported.
+func discoverTypeToTFType(oaType, itemType string) string {
 	if t := openAPITypeToTFType(oaType); t != "" {
 		return t
 	}
-	switch oaType {
-	case "array":
+	switch {
+	case oaType == "array" && itemType == "string":
 		return typeListString
 	default:
 		return ""
@@ -450,7 +458,7 @@ func reportUnmapped(m Mappings, specProps map[string]SpecProperty) int {
 			continue
 		}
 		// Only report supported types with governs paths
-		if sp.GovernsPath != "" && discoverTypeToTFType(sp.Type) != "" {
+		if sp.GovernsPath != "" && discoverTypeToTFType(sp.Type, sp.ItemType) != "" {
 			unmapped = append(unmapped, sp)
 		}
 	}
@@ -500,7 +508,7 @@ func discoverNewEntries(m Mappings, specProps map[string]SpecProperty) {
 		if sp.GovernsPath != "" && mappedPaths[sp.GovernsPath] {
 			continue
 		}
-		if sp.GovernsPath != "" && discoverTypeToTFType(sp.Type) != "" {
+		if sp.GovernsPath != "" && discoverTypeToTFType(sp.Type, sp.ItemType) != "" {
 			unmapped = append(unmapped, sp)
 		}
 	}
@@ -518,7 +526,7 @@ func discoverNewEntries(m Mappings, specProps map[string]SpecProperty) {
 	for _, sp := range unmapped {
 		tfName := deriveTerraformName(sp.Name)
 		goField := toGoFieldName(tfName)
-		tfType := discoverTypeToTFType(sp.Type)
+		tfType := discoverTypeToTFType(sp.Type, sp.ItemType)
 		desc := cleanDescription(sp.Description)
 
 		fmt.Printf("  - name: %s\n", tfName)
@@ -556,11 +564,9 @@ func discoverNewEntries(m Mappings, specProps map[string]SpecProperty) {
 
 // sortSpecProperties sorts spec properties by name for deterministic output.
 func sortSpecProperties(props []SpecProperty) {
-	for i := 1; i < len(props); i++ {
-		for j := i; j > 0 && props[j].Name < props[j-1].Name; j-- {
-			props[j], props[j-1] = props[j-1], props[j]
-		}
-	}
+	sort.Slice(props, func(i, j int) bool {
+		return props[i].Name < props[j].Name
+	})
 }
 
 // deriveTerraformName converts an OpenAPI property name to a terraform attribute name.

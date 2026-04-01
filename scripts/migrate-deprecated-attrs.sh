@@ -103,16 +103,14 @@ find "$DIR" -name '*.tf' -not -path '*/.terraform/*' | while read -r file; do
   MODIFIED=false
   for old in "${!RENAMES[@]}"; do
     new="${RENAMES[$old]}"
-    # Match attribute assignments like: old_name = value
-    # Use word boundaries to avoid partial matches
-    if grep -qw "$old" "$file" 2>/dev/null; then
+    # Only match HCL attribute assignments: optional whitespace + key + optional whitespace + =
+    if grep -qE "^[[:space:]]*${old}[[:space:]]*=" "$file" 2>/dev/null; then
       if [ "$MODIFIED" = false ]; then
         cp "$file" "${file}.bak"
         MODIFIED=true
       fi
-      # Replace only whole-word matches in attribute position (start of line or after whitespace)
-      # Use perl for proper word boundary support (available on macOS and Linux)
-      perl -pi -e "s/\\b\\Q${old}\\E\\b/${new}/g" "$file"
+      # Replace attribute name only in assignment position (not in comments/strings)
+      perl -pi -e "s/^([\\s]*)\\Q${old}\\E(\\s*=)/\${1}${new}\${2}/gm" "$file"
       echo "  $file: $old -> $new"
     fi
   done
