@@ -1110,7 +1110,7 @@ attributes:
   - name: selfservice_flows_login_after_code_default_browser_return_url
     go_field: SelfserviceFlowsLoginAfterCodeDefaultBrowserReturnURL
     type: string
-    patch_path: /services/identity/config/selfservice/flows/code/after/password/default_browser_return_url
+    patch_path: /services/identity/config/selfservice/flows/login/after/code/default_browser_return_url
     openapi_property: kratos_selfservice_flows_login_after_code_default_browser_return_url
     description: "Return URL after login via code method."
 
@@ -1124,7 +1124,7 @@ attributes:
   - name: selfservice_flows_login_after_lookup_secret_default_browser_return_url
     go_field: SelfserviceFlowsLoginAfterLookupSecretDefaultBrowserReturnURL
     type: string
-    patch_path: /services/identity/config/selfservice/flows/lookup_secret/after/password/default_browser_return_url
+    patch_path: /services/identity/config/selfservice/flows/login/after/lookup_secret/default_browser_return_url
     openapi_property: kratos_selfservice_flows_login_after_lookup_secret_default_browser_return_url
     description: "Return URL after login via lookup secret method."
 
@@ -1152,7 +1152,7 @@ attributes:
   - name: selfservice_flows_login_after_totp_default_browser_return_url
     go_field: SelfserviceFlowsLoginAfterTOTPDefaultBrowserReturnURL
     type: string
-    patch_path: /services/identity/config/selfservice/flows/totp/after/password/default_browser_return_url
+    patch_path: /services/identity/config/selfservice/flows/login/after/totp/default_browser_return_url
     openapi_property: kratos_selfservice_flows_login_after_totp_default_browser_return_url
     description: "Return URL after login via TOTP."
 
@@ -1229,7 +1229,7 @@ attributes:
   - name: selfservice_flows_registration_after_passkey_default_browser_return_url
     go_field: SelfserviceFlowsRegistrationAfterPasskeyDefaultBrowserReturnURL
     type: string
-    patch_path: /services/identity/config/selfservice/flows/registration/after/password/default_browser_return_url
+    patch_path: /services/identity/config/selfservice/flows/registration/after/passkey/default_browser_return_url
     openapi_property: kratos_selfservice_flows_registration_after_passkey_default_browser_return_url
     description: "Return URL after registration via passkey."
 

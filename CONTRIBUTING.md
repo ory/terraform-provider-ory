@@ -360,6 +360,20 @@ The model struct needs BOTH fields (old and new). The codegen generates:
 - Patch logic that checks the new field first, falls back to the deprecated
 - Read logic that writes to whichever field is set in state
 
+#### Migrating to spec-derived attribute names
+
+53 attributes have been renamed from short user-friendly names to spec-derived names for consistency. The old names still work but show deprecation warnings. A migration script is provided:
+
+```bash
+# Preview changes (creates .tf.bak backups)
+./scripts/migrate-deprecated-attrs.sh .
+
+# Verify no infrastructure changes
+terraform plan
+```
+
+The script renames all deprecated attributes in `.tf` files. After running, verify with `terraform plan` that no changes are detected.
+
 #### Complex types (not codegen'd)
 
 These require hand-written code in `resource.go` because they have non-trivial serialization:
