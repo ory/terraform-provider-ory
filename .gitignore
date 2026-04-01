@@ -8,6 +8,9 @@ terraform-provider-ory
 # Local tool binaries (managed by Makefile)
 .bin/
 
+# Codegen binary (produced by `go build` in the codegen directory)
+generate
+
 # Test binary
 *.test
 
