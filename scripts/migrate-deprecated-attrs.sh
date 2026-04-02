@@ -104,9 +104,8 @@ while IFS= read -r -d '' file; do
   for entry in "${RENAMES[@]}"; do
     old="${entry%%=*}"
     new="${entry#*=}"
-    # Only match HCL attribute assignments: optional whitespace + key + optional whitespace + =
-    # Use grep -F (fixed string) for the key, then verify assignment context with perl
-    if grep -qF "${old}" "$file" 2>/dev/null && grep -qE "^[[:space:]]*${old}[[:space:]]*=" "$file" 2>/dev/null; then
+    # Only match HCL attribute assignments: fixed-string pre-check + perl assignment match
+    if grep -qF "${old}" "$file" 2>/dev/null && perl -ne "exit 0 if /^\\s*\\Q${old}\\E\\s*=/; END { exit 1 }" "$file" 2>/dev/null; then
       if [ "$MODIFIED" = false ]; then
         if [ -e "${file}.bak" ]; then
           echo "Error: Backup file '${file}.bak' already exists; refusing to overwrite." >&2

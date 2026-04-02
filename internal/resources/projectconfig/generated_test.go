@@ -192,12 +192,37 @@ func TestGeneratedReadEntries_AllFieldsExist(t *testing.T) {
 			}
 		}
 	}
+	checkListStringEntries := func(name string, entries []ListStringReadEntry) {
+		for _, e := range entries {
+			if e.Field == nil {
+				t.Errorf("%s: list_string read entry with keys %v has nil field", name, e.Keys)
+			}
+			if len(e.Keys) == 0 {
+				t.Errorf("%s: list_string read entry has empty keys", name)
+			}
+		}
+	}
+	checkMapStringEntries := func(name string, entries []MapStringReadEntry) {
+		for _, e := range entries {
+			if e.Field == nil {
+				t.Errorf("%s: map_string read entry with keys %v has nil field", name, e.Keys)
+			}
+			if len(e.Keys) == 0 {
+				t.Errorf("%s: map_string read entry has empty keys", name)
+			}
+		}
+	}
 
 	checkStringEntries("identity", identityStringReadEntries(state))
 	checkBoolEntries("identity", identityBoolReadEntries(state))
 	checkInt64Entries("identity", identityInt64ReadEntries(state))
+	checkListStringEntries("identity", identityListStringReadEntries(state))
+	checkMapStringEntries("identity", identityMapStringReadEntries(state))
 	checkStringEntries("oauth2", oauth2StringReadEntries(state))
 	checkBoolEntries("oauth2", oauth2BoolReadEntries(state))
+	checkListStringEntries("oauth2", oauth2ListStringReadEntries(state))
+	checkStringEntries("permission", permissionStringReadEntries(state))
+	checkListStringEntries("permission", permissionListStringReadEntries(state))
 	checkStringEntries("account_experience", account_experienceStringReadEntries(state))
 }
 
