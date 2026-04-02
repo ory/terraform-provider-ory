@@ -312,10 +312,6 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 
 func account_experienceStringReadEntries(state *ProjectConfigResourceModel) []StringReadEntry {
 	return []StringReadEntry{
-		{&state.AccountExperienceFaviconURL, nil, []string{"favicon_url"}, true},
-		{&state.AccountExperienceLogoURL, nil, []string{"logo_url"}, true},
-		{&state.AccountExperienceName, nil, []string{"name"}, true},
-		{&state.AccountExperienceStylesheet, nil, []string{"stylesheet"}, true},
 		{&state.AccountExperienceLocale, nil, []string{"default_locale"}, true},
 		{&state.AccountExperienceFaviconDark, nil, []string{"favicon_dark"}, true},
 		{&state.AccountExperienceFaviconLight, nil, []string{"favicon_light"}, true},
@@ -556,7 +552,6 @@ func oauth2BoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry {
 		{&state.OAuth2MirrorTopLevelClaims, nil, []string{"oauth2", "mirror_top_level_claims"}},
 		{&state.OAuth2PKCEEnforced, nil, []string{"oauth2", "pkce", "enforced"}},
 		{&state.OAuth2PKCEEnforcedForPublicClients, nil, []string{"oauth2", "pkce", "enforced_for_public_clients"}},
-		{&state.OAuth2SessionEncryptAtRest, nil, []string{"oauth2", "session", "encrypt_at_rest"}},
 		{&state.OAuth2ServeCookiesSameSiteLegacyWorkaround, &state.OAuth2CookiesSameSiteLegacyWorkaround, []string{"serve", "cookies", "same_site_legacy_workaround"}},
 		{&state.OAuth2ClientCredentialsDefaultGrantAllowedScope, nil, []string{"oauth2", "client_credentials", "default_grant_allowed_scope"}},
 		{&state.OAuth2ExcludeNotBeforeClaim, nil, []string{"oauth2", "exclude_not_before_claim"}},

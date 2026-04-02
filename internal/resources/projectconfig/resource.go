@@ -69,7 +69,6 @@ type ProjectConfigResourceModel struct {
 	OAuth2MirrorTopLevelClaims            types.Bool   `tfsdk:"oauth2_mirror_top_level_claims"`
 	OAuth2PKCEEnforced                    types.Bool   `tfsdk:"oauth2_pkce_enforced"`
 	OAuth2PKCEEnforcedForPublicClients    types.Bool   `tfsdk:"oauth2_pkce_enforced_for_public_clients"`
-	OAuth2SessionEncryptAtRest            types.Bool   `tfsdk:"oauth2_session_encrypt_at_rest"`
 	OAuth2AccessTokenStrategy             types.String `tfsdk:"oauth2_access_token_strategy"`
 	OAuth2JWTScopeClaim                   types.String `tfsdk:"oauth2_jwt_scope_claim"`
 	OAuth2ScopeStrategy                   types.String `tfsdk:"oauth2_scope_strategy"`
@@ -147,11 +146,7 @@ type ProjectConfigResourceModel struct {
 	SessionWhoamiRequiredAAL types.String `tfsdk:"session_whoami_required_aal"`
 
 	// Account Experience (Branding)
-	AccountExperienceFaviconURL types.String `tfsdk:"account_experience_favicon_url"`
-	AccountExperienceLogoURL    types.String `tfsdk:"account_experience_logo_url"`
-	AccountExperienceName       types.String `tfsdk:"account_experience_name"`
-	AccountExperienceStylesheet types.String `tfsdk:"account_experience_stylesheet"`
-	AccountExperienceLocale     types.String `tfsdk:"account_experience_default_locale"`
+	AccountExperienceLocale types.String `tfsdk:"account_experience_default_locale"`
 
 	// Session Tokenizer Templates
 	SessionTokenizerTemplates types.Map `tfsdk:"session_tokenizer_templates"`

@@ -18,6 +18,20 @@ set -euo pipefail
 
 DIR="${1:-.}"
 
+# Removed attributes (no longer functional, safe to delete from configs):
+# - account_experience_favicon_url   (use account_experience_favicon_light / account_experience_favicon_dark)
+# - account_experience_logo_url      (use account_experience_logo_light / account_experience_logo_dark)
+# - account_experience_name          (removed from API)
+# - account_experience_stylesheet    (removed from API)
+# - oauth2_session_encrypt_at_rest   (removed from API)
+REMOVED=(
+  "account_experience_favicon_url"
+  "account_experience_logo_url"
+  "account_experience_name"
+  "account_experience_stylesheet"
+  "oauth2_session_encrypt_at_rest"
+)
+
 # Mapping of old attribute names to new names (compatible with Bash 3.2+)
 # Format: "old_name=new_name"
 RENAMES=(
@@ -137,7 +151,31 @@ while IFS= read -r -d '' file; do
   fi
 done < <(find "$DIR" -type f -name '*.tf' -not -path '*/.terraform/*' -print0)
 
+# Check for removed attributes
+FOUND_REMOVED=false
+while IFS= read -r -d '' file; do
+  for removed in "${REMOVED[@]}"; do
+    if grep -qF "$removed" "$file" 2>/dev/null; then
+      if [ "$FOUND_REMOVED" = false ]; then
+        echo ""
+        echo "WARNING: The following attributes have been removed and should be deleted:"
+        FOUND_REMOVED=true
+      fi
+      echo "  $file: $removed (no longer functional, remove this line)"
+    fi
+  done
+done < <(find "$DIR" -type f -name '*.tf' -not -path '*/.terraform/*' -print0)
+
 echo ""
 echo "Migration complete. $CHANGED file(s) updated."
+if [ "$FOUND_REMOVED" = true ]; then
+  echo ""
+  echo "Removed attributes replacements:"
+  echo "  account_experience_favicon_url -> account_experience_favicon_light / account_experience_favicon_dark"
+  echo "  account_experience_logo_url    -> account_experience_logo_light / account_experience_logo_dark"
+  echo "  account_experience_name        -> (removed, delete the line)"
+  echo "  account_experience_stylesheet  -> (removed, delete the line)"
+  echo "  oauth2_session_encrypt_at_rest -> (removed, delete the line)"
+fi
 echo "Review the changes and run 'terraform plan' to verify."
 echo "Backups saved as *.tf.bak"

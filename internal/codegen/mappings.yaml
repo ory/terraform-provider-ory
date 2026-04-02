@@ -121,11 +121,7 @@ attributes:
     openapi_property: hydra_oauth2_pkce_enforced_for_public_clients
     description: "Enforce PKCE for public OAuth2 clients only."
 
-  - name: oauth2_session_encrypt_at_rest
-    go_field: OAuth2SessionEncryptAtRest
-    type: bool
-    patch_path: /services/oauth2/config/oauth2/session/encrypt_at_rest
-    description: "Encrypt OAuth2 sessions at rest."
+
 
   - name: oauth2_serve_cookies_same_site_legacy_workaround
     go_field: OAuth2ServeCookiesSameSiteLegacyWorkaround
@@ -583,34 +579,6 @@ attributes:
   # ============================================================================
   # Account Experience / Branding (account_experience service)
   # ============================================================================
-  - name: account_experience_favicon_url
-    go_field: AccountExperienceFaviconURL
-    type: string
-    patch_path: /services/account_experience/config/favicon_url
-    description: "URL for the favicon in the hosted login UI."
-    skip_empty_read: true
-
-  - name: account_experience_logo_url
-    go_field: AccountExperienceLogoURL
-    type: string
-    patch_path: /services/account_experience/config/logo_url
-    description: "URL for the logo in the hosted login UI."
-    skip_empty_read: true
-
-  - name: account_experience_name
-    go_field: AccountExperienceName
-    type: string
-    patch_path: /services/account_experience/config/name
-    description: "Application name shown in the hosted login UI."
-    skip_empty_read: true
-
-  - name: account_experience_stylesheet
-    go_field: AccountExperienceStylesheet
-    type: string
-    patch_path: /services/account_experience/config/stylesheet
-    description: "Custom CSS stylesheet for the hosted login UI."
-    skip_empty_read: true
-
   - name: account_experience_default_locale
     go_field: AccountExperienceLocale
     type: string

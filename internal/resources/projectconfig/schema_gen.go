@@ -103,10 +103,6 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Enforce PKCE for public OAuth2 clients only.",
 			Optional:    true,
 		},
-		"oauth2_session_encrypt_at_rest": schema.BoolAttribute{
-			Description: "Encrypt OAuth2 sessions at rest.",
-			Optional:    true,
-		},
 		"oauth2_serve_cookies_same_site_legacy_workaround": schema.BoolAttribute{
 			Description: "Enable the SameSite=None legacy workaround for OAuth2 cookies. When enabled, a fallback cookie without SameSite is set alongside the main cookie for clients that don't support SameSite=None.",
 			Optional:    true,
@@ -572,22 +568,6 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Validators: []validator.String{
 				stringvalidator.OneOf("smtp", "http"),
 			},
-		},
-		"account_experience_favicon_url": schema.StringAttribute{
-			Description: "URL for the favicon in the hosted login UI.",
-			Optional:    true,
-		},
-		"account_experience_logo_url": schema.StringAttribute{
-			Description: "URL for the logo in the hosted login UI.",
-			Optional:    true,
-		},
-		"account_experience_name": schema.StringAttribute{
-			Description: "Application name shown in the hosted login UI.",
-			Optional:    true,
-		},
-		"account_experience_stylesheet": schema.StringAttribute{
-			Description: "Custom CSS stylesheet for the hosted login UI.",
-			Optional:    true,
 		},
 		"account_experience_default_locale": schema.StringAttribute{
 			Description: "Default locale for the hosted login UI (e.g., 'en', 'de').",
