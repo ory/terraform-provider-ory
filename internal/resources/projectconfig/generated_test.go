@@ -94,22 +94,35 @@ func TestGeneratedPatchEntries_PathFormat(t *testing.T) {
 	}
 }
 
-// TestGeneratedStringPatch_NullSkipped verifies null string fields produce no patch.
+// TestGeneratedStringPatch_NullSkipped verifies null generated fields produce no patch.
 func TestGeneratedStringPatch_NullSkipped(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{} // all fields are zero-value (null)
 
+	// Build set of all generated patch paths; none should appear in patches
+	// when the plan is all-null.
+	generatedPaths := make(map[string]bool)
+	for _, e := range simpleStringPatchEntries(plan) {
+		generatedPaths[e.Path] = true
+	}
+	for _, e := range simpleBoolPatchEntries(plan) {
+		generatedPaths[e.Path] = true
+	}
+	for _, e := range simpleInt64PatchEntries(plan) {
+		generatedPaths[e.Path] = true
+	}
+	for _, e := range simpleListStringPatchEntries(plan) {
+		generatedPaths[e.Path] = true
+	}
+	for _, e := range simpleMapStringPatchEntries(plan) {
+		generatedPaths[e.Path] = true
+	}
+
 	patches := r.buildPatches(context.Background(), plan)
 
-	// With all null fields, only hand-written attributes with non-null defaults
-	// may produce patches. Generated attributes with deprecated aliases have
-	// defaults intentionally omitted to avoid overriding the alias fallback.
 	for _, p := range patches {
-		// None of the generated simple attrs should produce patches when null
-		if strings.Contains(p.Path, "/selfservice/flows/login/after/") ||
-			strings.Contains(p.Path, "/courier/smtp/templates/") ||
-			strings.Contains(p.Path, "/feature_flags/") {
-			t.Errorf("unexpected patch for null field: %s", p.Path)
+		if generatedPaths[p.Path] {
+			t.Errorf("unexpected patch for null generated field: %s", p.Path)
 		}
 	}
 }

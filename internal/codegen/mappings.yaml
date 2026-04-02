@@ -830,7 +830,7 @@ attributes:
   - name: courier_templates_login_code_valid_sms_body_plaintext
     go_field: CourierTemplatesLoginCodeValidSMSBodyPlaintext
     type: string
-    patch_path: /services/identity/config/courier/smtp/templates/login_code/valid/sms/plaintext
+    patch_path: /services/identity/config/courier/smtp/templates/login_code/valid/sms/body/plaintext
     openapi_property: kratos_courier_templates_login_code_valid_sms_body_plaintext
     description: "Plaintext body template for valid login-by-code SMS messages."
 
