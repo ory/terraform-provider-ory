@@ -15,6 +15,37 @@ import (
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 )
 
+// TestAccSocialProviderResource_concurrentCreate verifies that multiple social
+// providers created in a single apply (no depends_on) all persist correctly.
+// This is the regression test for https://github.com/ory/terraform-provider-ory/issues/165
+// where concurrent read-modify-write operations caused last-write-wins data loss.
+func TestAccSocialProviderResource_concurrentCreate(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create 4 providers concurrently (no depends_on)
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/concurrent_create.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.concurrent_google", "provider_id", "test-concurrent-google"),
+					resource.TestCheckResourceAttr("ory_social_provider.concurrent_github", "provider_id", "test-concurrent-github"),
+					resource.TestCheckResourceAttr("ory_social_provider.concurrent_discord", "provider_id", "test-concurrent-discord"),
+					resource.TestCheckResourceAttr("ory_social_provider.concurrent_slack", "provider_id", "test-concurrent-slack"),
+				),
+			},
+			// Verify no diff — all 4 providers should already exist
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/concurrent_create.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
 func TestAccSocialProviderResource_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {

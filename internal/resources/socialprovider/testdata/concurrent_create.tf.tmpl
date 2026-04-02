@@ -1,0 +1,31 @@
+resource "ory_social_provider" "concurrent_google" {
+  provider_id   = "test-concurrent-google"
+  provider_type = "google"
+  client_id     = "test-concurrent-google-id.apps.googleusercontent.com"
+  client_secret = "test-concurrent-google-secret"
+  scope         = ["email", "profile"]
+}
+
+resource "ory_social_provider" "concurrent_github" {
+  provider_id   = "test-concurrent-github"
+  provider_type = "github"
+  client_id     = "test-concurrent-github-id"
+  client_secret = "test-concurrent-github-secret"
+  scope         = ["user:email"]
+}
+
+resource "ory_social_provider" "concurrent_discord" {
+  provider_id   = "test-concurrent-discord"
+  provider_type = "discord"
+  client_id     = "test-concurrent-discord-id"
+  client_secret = "test-concurrent-discord-secret"
+  scope         = ["identify", "email"]
+}
+
+resource "ory_social_provider" "concurrent_slack" {
+  provider_id   = "test-concurrent-slack"
+  provider_type = "slack"
+  client_id     = "test-concurrent-slack-id"
+  client_secret = "test-concurrent-slack-secret"
+  scope         = ["openid", "email"]
+}
