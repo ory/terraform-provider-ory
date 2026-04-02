@@ -2,7 +2,9 @@ package socialprovider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -26,6 +28,24 @@ var (
 	_ resource.ResourceWithImportState    = &SocialProviderResource{}
 	_ resource.ResourceWithValidateConfig = &SocialProviderResource{}
 )
+
+// projectMutexes serializes Create, Update, and Delete operations per project.
+// The Ory API stores social providers as an array in the project config. All
+// mutations use a read-modify-write pattern (read providers → build patch →
+// PatchProject). Without serialization, concurrent operations read the same
+// stale state and the last write wins, silently discarding the others.
+// See: https://github.com/ory/terraform-provider-ory/issues/165
+//
+// This map is never pruned, but Terraform provider processes are short-lived
+// (one per apply/plan) and typically target a single project, so the map
+// holds at most a handful of entries before the process exits.
+var projectMutexes sync.Map // map[projectID]*sync.Mutex
+
+// projectMutex returns the mutex for the given project, creating one if needed.
+func projectMutex(projectID string) *sync.Mutex {
+	v, _ := projectMutexes.LoadOrStore(projectID, &sync.Mutex{})
+	return v.(*sync.Mutex)
+}
 
 func NewResource() resource.Resource {
 	return &SocialProviderResource{}
@@ -386,7 +406,31 @@ func extractProvidersFromProject(project *ory.Project) []map[string]interface{} 
 	return result
 }
 
+// copyProviders returns a deep copy of the provider slice via a JSON
+// round-trip so callers cannot accidentally mutate the cached project state.
+// This data originates from JSON, so the round-trip is lossless and handles
+// all container types without a hand-rolled recursive copy.
+func copyProviders(providers []map[string]interface{}) []map[string]interface{} {
+	b, err := json.Marshal(providers)
+	if err != nil {
+		// Should never happen — the data was decoded from JSON.
+		return providers
+	}
+	var cp []map[string]interface{}
+	if err := json.Unmarshal(b, &cp); err != nil {
+		return providers
+	}
+	return cp
+}
+
 func (r *SocialProviderResource) getProviders(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
+	// Prefer cached project state from a previous PatchProject call in this
+	// Terraform run. This avoids reading stale data from the eventually-consistent
+	// GetProject API, which is critical when the mutex serializes back-to-back
+	// mutations — the second operation must see the first operation's result.
+	if cached := r.client.GetCachedProject(projectID); cached != nil {
+		return copyProviders(extractProvidersFromProject(cached)), nil
+	}
 	project, err := r.client.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get project %s: %w", projectID, err)
@@ -416,6 +460,11 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 	}
 
 	providerConfig := r.buildProviderConfig(ctx, &plan)
+
+	// Serialize mutations to prevent concurrent read-modify-write races.
+	mu := projectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
 
 	// Get current providers
 	providers, err := r.getProviders(ctx, projectID)
@@ -683,6 +732,20 @@ func (r *SocialProviderResource) Update(ctx context.Context, req resource.Update
 		projectID = r.client.ProjectID()
 	}
 
+	providerConfig := r.buildProviderConfig(ctx, &plan)
+
+	// If auto_link was previously set but is now removed from config,
+	// explicitly send false to disable it server-side (auto_link is write-only
+	// and has security implications, so removal should reliably disable it).
+	if plan.AutoLink.IsNull() && !state.AutoLink.IsNull() {
+		providerConfig["auto_link"] = false
+	}
+
+	// Serialize mutations to prevent concurrent read-modify-write races.
+	mu := projectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
+
 	providers, err := r.getProviders(ctx, projectID)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Getting Providers", err.Error())
@@ -694,15 +757,6 @@ func (r *SocialProviderResource) Update(ctx context.Context, req resource.Update
 		resp.Diagnostics.AddError("Provider Not Found",
 			fmt.Sprintf("Provider '%s' not found", plan.ProviderID.ValueString()))
 		return
-	}
-
-	providerConfig := r.buildProviderConfig(ctx, &plan)
-
-	// If auto_link was previously set but is now removed from config,
-	// explicitly send false to disable it server-side (auto_link is write-only
-	// and has security implications, so removal should reliably disable it).
-	if plan.AutoLink.IsNull() && !state.AutoLink.IsNull() {
-		providerConfig["auto_link"] = false
 	}
 
 	patches := []ory.JsonPatch{{
@@ -761,6 +815,11 @@ func (r *SocialProviderResource) Delete(ctx context.Context, req resource.Delete
 	if projectID == "" {
 		projectID = r.client.ProjectID()
 	}
+
+	// Serialize mutations to prevent concurrent read-modify-write races.
+	mu := projectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
 
 	providers, err := r.getProviders(ctx, projectID)
 	if err != nil {
