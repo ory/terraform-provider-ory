@@ -926,6 +926,9 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 		"selfservice_flows_recovery_use": schema.StringAttribute{
 			Description: "Recovery strategy to use ('link' or 'code').",
 			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.OneOf("link", "code"),
+			},
 		},
 		"selfservice_flows_registration_after_code_default_browser_return_url": schema.StringAttribute{
 			Description: "Return URL after registration via code method.",

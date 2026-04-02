@@ -50,12 +50,20 @@ jobs:
       - name: Check for unmapped properties (against latest master spec)
         id: unmapped
         run: |
+          set -o pipefail
           TMPDIR=$(mktemp -d)
-          go run ./internal/codegen/cmd/generate/ \
+          if ! go run ./internal/codegen/cmd/generate/ \
             -mappings ./internal/codegen/mappings.yaml \
             -spec /tmp/openapi-master.yaml \
             -strict \
-            -out "$TMPDIR" 2>&1 | tee /tmp/strict-output.txt || true
+            -out "$TMPDIR" 2>&1 | tee /tmp/strict-output.txt; then
+            # Expected strict-mode failure (unmapped properties) is not a job error.
+            # Unexpected failures (e.g., network, Go tooling) should fail the job.
+            if ! grep -q "STRICT MODE" /tmp/strict-output.txt; then
+              rm -rf "$TMPDIR"
+              exit 1
+            fi
+          fi
           rm -rf "$TMPDIR"
 
           if grep -q "STRICT MODE" /tmp/strict-output.txt; then

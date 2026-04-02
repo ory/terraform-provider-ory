@@ -1204,6 +1204,8 @@ attributes:
     patch_path: /services/identity/config/selfservice/flows/recovery/use
     openapi_property: kratos_selfservice_flows_recovery_use
     description: "Recovery strategy to use ('link' or 'code')."
+    validators:
+      one_of: ["link", "code"]
 
   - name: selfservice_flows_registration_after_code_default_browser_return_url
     go_field: SelfserviceFlowsRegistrationAfterCodeDefaultBrowserReturnURL

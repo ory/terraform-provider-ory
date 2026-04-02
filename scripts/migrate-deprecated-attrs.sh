@@ -119,7 +119,7 @@ while IFS= read -r -d '' file; do
       # Tracks brace depth; handles opening brace on same or next line.
       perl -pi -e '
         BEGIN { $in_block = 0; $depth = 0; $seen_open = 0; }
-        if (!$in_block && /resource\s+"ory_project_config"/) { $in_block = 1; $depth = 0; $seen_open = 0; }
+        if (!$in_block && /^\s*resource\s+"ory_project_config"\b/ && !/^\s*#/ && !/^\s*\/\//) { $in_block = 1; $depth = 0; $seen_open = 0; }
         if ($in_block) {
           my $opens = () = /\{/g;
           my $closes = () = /\}/g;
