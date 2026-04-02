@@ -117,13 +117,16 @@ while IFS= read -r -d '' file; do
         MODIFIED=true
       fi
       # Replace attribute name only inside resource "ory_project_config" blocks.
-      # Tracks brace depth to avoid renaming keys in unrelated blocks.
+      # Tracks brace depth; handles opening brace on same or next line.
       perl -pi -e '
-        BEGIN { $in_block = 0; $depth = 0; }
-        if (!$in_block && /resource\s+"ory_project_config"/) { $in_block = 1; $depth = 0; }
+        BEGIN { $in_block = 0; $depth = 0; $seen_open = 0; }
+        if (!$in_block && /resource\s+"ory_project_config"/) { $in_block = 1; $depth = 0; $seen_open = 0; }
         if ($in_block) {
-          $depth += (tr/{/{/) - (tr/}/}/);
-          if ($depth <= 0) { $in_block = 0; $depth = 0; }
+          my $opens = () = /\{/g;
+          my $closes = () = /\}/g;
+          $depth += $opens - $closes;
+          $seen_open = 1 if $opens > 0;
+          if ($seen_open && $depth <= 0) { $in_block = 0; $depth = 0; $seen_open = 0; }
         }
         if ($in_block) { s/^(\s*)\Q'"${old}"'\E(\s*=)/${1}'"${new}"'${2}/; }
       ' "$file"
