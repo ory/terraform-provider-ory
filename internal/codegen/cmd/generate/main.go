@@ -68,11 +68,14 @@ var serviceConfigs = map[string]ServiceConfig{
 }
 
 // prefixToService maps OpenAPI property name prefixes to service paths.
+// Longer prefixes are checked first to avoid partial matches.
 var prefixToService = map[string]string{
-	"kratos_":             "/services/identity/config/",
-	"hydra_":              "/services/oauth2/config/",
-	"keto_":               "/services/permission/config/",
-	"account_experience_": "/services/account_experience/config/",
+	"kratos_":                     "/services/identity/config/",
+	"hydra_":                      "/services/oauth2/config/",
+	"keto_":                       "/services/permission/config/",
+	"account_experience_":         "/services/account_experience/config/",
+	"disable_account_experience_": "/services/account_experience/config/",
+	"enable_ax_":                  "/services/account_experience/config/",
 }
 
 // governsRegex extracts the config path from a "governs" description.
@@ -96,12 +99,18 @@ func governsToPatchPath(propertyName, description string) (string, bool) {
 	}
 	governsPath := matches[1]
 
-	// Find the prefix that matches this property name
-	for prefix, servicePath := range prefixToService {
+	// Sort prefixes longest first to avoid partial matches
+	// (e.g., "disable_account_experience_" before "account_experience_")
+	prefixes := make([]string, 0, len(prefixToService))
+	for prefix := range prefixToService {
+		prefixes = append(prefixes, prefix)
+	}
+	sort.Slice(prefixes, func(i, j int) bool { return len(prefixes[i]) > len(prefixes[j]) })
+
+	for _, prefix := range prefixes {
 		if strings.HasPrefix(propertyName, prefix) {
-			// Convert dots to slashes: "session.lifespan" -> "session/lifespan"
 			configPath := strings.ReplaceAll(governsPath, ".", "/")
-			return servicePath + configPath, true
+			return prefixToService[prefix] + configPath, true
 		}
 	}
 	return "", false

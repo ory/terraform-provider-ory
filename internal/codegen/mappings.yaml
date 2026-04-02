@@ -1301,14 +1301,12 @@ attributes:
   - name: account_experience_enabled_locales
     go_field: AccountExperienceEnabledLocales
     type: list_string
-    patch_path: /services/account_experience/config/enabled_locales
     openapi_property: account_experience_enabled_locales
     description: "Enabled locales for the hosted login UI."
 
   - name: account_experience_favicon_dark
     go_field: AccountExperienceFaviconDark
     type: string
-    patch_path: /services/account_experience/config/favicon_dark
     openapi_property: account_experience_favicon_dark
     description: "URL for the dark theme favicon in the hosted login UI."
     skip_empty_read: true
@@ -1316,7 +1314,6 @@ attributes:
   - name: account_experience_favicon_light
     go_field: AccountExperienceFaviconLight
     type: string
-    patch_path: /services/account_experience/config/favicon_light
     openapi_property: account_experience_favicon_light
     description: "URL for the light theme favicon in the hosted login UI."
     skip_empty_read: true
@@ -1324,7 +1321,6 @@ attributes:
   - name: account_experience_locale_behavior
     go_field: AccountExperienceLocaleBehavior
     type: string
-    patch_path: /services/account_experience/config/locale_behavior
     openapi_property: account_experience_locale_behavior
     description: "Locale behavior: 'respect_accept_language' or 'force_default'."
     skip_empty_read: true
@@ -1332,7 +1328,6 @@ attributes:
   - name: account_experience_logo_dark
     go_field: AccountExperienceLogoDark
     type: string
-    patch_path: /services/account_experience/config/logo_dark
     openapi_property: account_experience_logo_dark
     description: "URL for the dark theme logo in the hosted login UI."
     skip_empty_read: true
@@ -1340,7 +1335,6 @@ attributes:
   - name: account_experience_logo_light
     go_field: AccountExperienceLogoLight
     type: string
-    patch_path: /services/account_experience/config/logo_light
     openapi_property: account_experience_logo_light
     description: "URL for the light theme logo in the hosted login UI."
     skip_empty_read: true
@@ -1348,7 +1342,6 @@ attributes:
   - name: account_experience_theme_variables_dark
     go_field: AccountExperienceThemeVariablesDark
     type: string
-    patch_path: /services/account_experience/config/theme_variables_dark
     openapi_property: account_experience_theme_variables_dark
     description: "URL for dark theme CSS variables in the hosted login UI."
     skip_empty_read: true
@@ -1356,7 +1349,6 @@ attributes:
   - name: account_experience_theme_variables_light
     go_field: AccountExperienceThemeVariablesLight
     type: string
-    patch_path: /services/account_experience/config/theme_variables_light
     openapi_property: account_experience_theme_variables_light
     description: "URL for light theme CSS variables in the hosted login UI."
     skip_empty_read: true
@@ -1364,14 +1356,12 @@ attributes:
   - name: disable_account_experience_welcome_screen
     go_field: DisableAccountExperienceWelcomeScreen
     type: bool
-    patch_path: /services/account_experience/config/disable_welcome_screen
     openapi_property: disable_account_experience_welcome_screen
     description: "Disable the account experience welcome screen at /ui/welcome."
 
   - name: enable_ax_v2
     go_field: EnableAXV2
     type: bool
-    patch_path: /services/account_experience/config/enable_ax_v2
     openapi_property: enable_ax_v2
     description: "Enable the new account experience UI."
 
@@ -1381,21 +1371,18 @@ attributes:
   - name: oidc_dynamic_client_registration_default_scope
     go_field: OIDCDynamicClientRegistrationDefaultScope
     type: list_string
-    patch_path: /services/oauth2/config/oidc/dynamic_client_registration/default_scope
     openapi_property: hydra_oidc_dynamic_client_registration_default_scope
     description: "Default OAuth2 scopes granted to dynamically registered clients."
 
   - name: oidc_subject_identifiers_supported_types
     go_field: OIDCSubjectIdentifiersSupportedTypes
     type: list_string
-    patch_path: /services/oauth2/config/oidc/subject_identifiers/supported_types
     openapi_property: hydra_oidc_subject_identifiers_supported_types
     description: "Supported OIDC subject identifier types ('public', 'pairwise')."
 
   - name: oauth2_secrets_cookie
     go_field: OAuth2SecretsCookie
     type: list_string
-    patch_path: /services/oauth2/config/secrets/cookie
     openapi_property: hydra_secrets_cookie
     description: "Cookie signing secrets for the OAuth2 service."
     sensitive: true
@@ -1403,7 +1390,6 @@ attributes:
   - name: oauth2_secrets_pagination
     go_field: OAuth2SecretsPagination
     type: list_string
-    patch_path: /services/oauth2/config/secrets/pagination
     openapi_property: hydra_secrets_pagination
     description: "Pagination encryption keys for the OAuth2 service."
     sensitive: true
@@ -1411,7 +1397,6 @@ attributes:
   - name: oauth2_secrets_system
     go_field: OAuth2SecretsSystem
     type: list_string
-    patch_path: /services/oauth2/config/secrets/system
     openapi_property: hydra_secrets_system
     description: "System-wide encryption secrets for the OAuth2 service."
     sensitive: true
@@ -1419,7 +1404,6 @@ attributes:
   - name: oauth2_webfinger_jwks_broadcast_keys
     go_field: OAuth2WebfingerJWKSBroadcastKeys
     type: list_string
-    patch_path: /services/oauth2/config/webfinger/jwks/broadcast_keys
     openapi_property: hydra_webfinger_jwks_broadcast_keys
     description: "JWK set IDs to broadcast via OIDC discovery."
 
@@ -1447,7 +1431,6 @@ attributes:
   - name: keto_secrets_pagination
     go_field: KetoSecretsPagination
     type: list_string
-    patch_path: /services/permission/config/secrets/pagination
     openapi_property: keto_secrets_pagination
     description: "Pagination encryption keys for the permission service."
     sensitive: true
@@ -1464,7 +1447,6 @@ attributes:
   - name: oauth2_provider_headers
     go_field: OAuth2ProviderHeaders
     type: map_string
-    patch_path: /services/identity/config/oauth2_provider/headers
     openapi_property: kratos_oauth2_provider_headers
     description: "Custom HTTP headers for the OAuth2 provider integration."
 
@@ -1483,7 +1465,6 @@ attributes:
   - name: identity_secrets_cipher
     go_field: IdentitySecretsCipher
     type: list_string
-    patch_path: /services/identity/config/secrets/cipher
     openapi_property: kratos_secrets_cipher
     description: "Encryption secrets for identity data at rest."
     sensitive: true
@@ -1491,7 +1472,6 @@ attributes:
   - name: identity_secrets_cookie
     go_field: IdentitySecretsCookie
     type: list_string
-    patch_path: /services/identity/config/secrets/cookie
     openapi_property: kratos_secrets_cookie
     description: "Cookie signing secrets for the identity service."
     sensitive: true
@@ -1499,7 +1479,6 @@ attributes:
   - name: identity_secrets_default
     go_field: IdentitySecretsDefault
     type: list_string
-    patch_path: /services/identity/config/secrets/default
     openapi_property: kratos_secrets_default
     description: "Default signing secrets for the identity service."
     sensitive: true
@@ -1507,7 +1486,6 @@ attributes:
   - name: identity_secrets_pagination
     go_field: IdentitySecretsPagination
     type: list_string
-    patch_path: /services/identity/config/secrets/pagination
     openapi_property: kratos_secrets_pagination
     description: "Pagination encryption keys for the identity service."
     sensitive: true
@@ -1521,7 +1499,6 @@ attributes:
   - name: selfservice_methods_captcha_config_allowed_domains
     go_field: SelfserviceMethodsCaptchaConfigAllowedDomains
     type: list_string
-    patch_path: /services/identity/config/selfservice/methods/captcha/config/allowed_domains
     openapi_property: kratos_selfservice_methods_captcha_config_allowed_domains
     description: "Domains allowed for CAPTCHA verification."
 
@@ -1570,7 +1547,6 @@ attributes:
   - name: selfservice_methods_passkey_config_rp_origins
     go_field: SelfserviceMethodsPasskeyConfigRPOrigins
     type: list_string
-    patch_path: /services/identity/config/selfservice/methods/passkey/config/rp/origins
     openapi_property: kratos_selfservice_methods_passkey_config_rp_origins
     description: "Allowed origins for passkey relying party verification."
 
