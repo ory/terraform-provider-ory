@@ -573,6 +573,17 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 			stringplanmodifier.RequiresReplace(),
 		},
 	}
+	// --- Hand-written attributes (not in mappings.yaml) ---
+	// These require custom logic that the codegen can't express:
+	//   CORS (4):                   project-level /cors_* paths (not /services/*/config/)
+	//   keto_namespaces:            transforms name list to [{name,id}] objects
+	//   default_return_url:         remove-on-empty (empty string sends "remove" patch)
+	//   allowed_return_urls:        remove-on-empty (empty list sends "remove" patch)
+	//   mfa_enforcement:            maps string to AAL enum
+	//   session_tokenizer_templates: nested object schema
+	//   courier_channels:           nested objects with sub-config
+	//   courier_http_request_config: nested object (url/method/headers/body/auth)
+
 	attrs["keto_namespaces"] = schema.ListAttribute{
 		Description: "List of Keto namespace names to configure for Ory Permissions. " +
 			"Namespaces define the types of resources in your permission model (e.g., 'documents', 'folders'). " +
