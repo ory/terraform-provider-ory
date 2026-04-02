@@ -512,10 +512,7 @@ func discoverNewEntries(m Mappings, specProps map[string]SpecProperty) {
 		}
 	}
 
-	excluded := map[string]bool{
-		"id": true, "project_id": true, "created_at": true, "updated_at": true,
-		"name": true, "state": true, "workspace_id": true, "production": true,
-	}
+	excluded := excludedProperties()
 
 	// Collect and sort unmapped properties
 	var unmapped []SpecProperty

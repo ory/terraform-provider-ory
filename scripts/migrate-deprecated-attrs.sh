@@ -105,7 +105,8 @@ while IFS= read -r -d '' file; do
     old="${entry%%=*}"
     new="${entry#*=}"
     # Only match HCL attribute assignments: optional whitespace + key + optional whitespace + =
-    if grep -qE "^[[:space:]]*${old}[[:space:]]*=" "$file" 2>/dev/null; then
+    # Use grep -F (fixed string) for the key, then verify assignment context with perl
+    if grep -qF "${old}" "$file" 2>/dev/null && grep -qE "^[[:space:]]*${old}[[:space:]]*=" "$file" 2>/dev/null; then
       if [ "$MODIFIED" = false ]; then
         if [ -e "${file}.bak" ]; then
           echo "Error: Backup file '${file}.bak' already exists; refusing to overwrite." >&2

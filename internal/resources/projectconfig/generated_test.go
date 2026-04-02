@@ -40,6 +40,12 @@ func TestGeneratedPatchEntries_ValidAndUnique(t *testing.T) {
 	for _, e := range simpleInt64PatchEntries(plan) {
 		checkEntry("int64", e.Path, e.Field)
 	}
+	for _, e := range simpleListStringPatchEntries(plan) {
+		checkEntry("list_string", e.Path, e.Field)
+	}
+	for _, e := range simpleMapStringPatchEntries(plan) {
+		checkEntry("map_string", e.Path, e.Field)
+	}
 }
 
 // TestGeneratedPatchEntries_PathFormat verifies all patch paths have the expected format.
@@ -80,6 +86,12 @@ func TestGeneratedPatchEntries_PathFormat(t *testing.T) {
 	for _, e := range simpleInt64PatchEntries(plan) {
 		checkPath(e.Path)
 	}
+	for _, e := range simpleListStringPatchEntries(plan) {
+		checkPath(e.Path)
+	}
+	for _, e := range simpleMapStringPatchEntries(plan) {
+		checkPath(e.Path)
+	}
 }
 
 // TestGeneratedStringPatch_NullSkipped verifies null string fields produce no patch.
@@ -89,8 +101,9 @@ func TestGeneratedStringPatch_NullSkipped(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 
-	// With all null fields, only computed defaults should produce patches
-	// (cors_enabled has a default, password_min_length has a default)
+	// With all null fields, only hand-written attributes with non-null defaults
+	// may produce patches. Generated attributes with deprecated aliases have
+	// defaults intentionally omitted to avoid overriding the alias fallback.
 	for _, p := range patches {
 		// None of the generated simple attrs should produce patches when null
 		if strings.Contains(p.Path, "/selfservice/flows/login/after/") ||
