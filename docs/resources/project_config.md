@@ -621,10 +621,10 @@ terraform plan  # verify no changes
 - `settings_lifespan` (String, Deprecated) Lifespan of the settings flow (e.g., '30m0s'). Controls how long a settings flow session remains valid.
 - `settings_privileged_session_max_age` (String, Deprecated) Maximum age of a privileged session for the settings flow (e.g., '15m0s'). After this duration, the user must re-authenticate to make privileged changes like password updates.
 - `settings_ui_url` (String, Deprecated) URL for the account settings UI.
-- `smtp_connection_uri` (String, Sensitive) SMTP connection URI for sending emails.
+- `smtp_connection_uri` (String, Sensitive) SMTP connection URI for sending emails (e.g., smtps://user:pass@host:port).
 - `smtp_from_address` (String, Deprecated) Email address to send from.
 - `smtp_from_name` (String, Deprecated) Name to display as sender.
-- `smtp_headers` (Map of String) Custom headers to include in emails.
+- `smtp_headers` (Map of String) Custom SMTP headers for outbound emails.
 - `totp_issuer` (String, Deprecated) TOTP issuer name shown in authenticator apps.
 - `verification_lifespan` (String, Deprecated) Lifespan of the verification flow (e.g., '30m0s'). Controls how long a verification flow session remains valid.
 - `verification_notify_unknown_recipients` (Boolean, Deprecated) When enabled, verification emails are sent even if the email address is not associated with any known identity.

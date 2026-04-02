@@ -609,16 +609,6 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 		Optional:    true,
 		ElementType: types.StringType,
 	}
-	attrs["smtp_connection_uri"] = schema.StringAttribute{
-		Description: "SMTP connection URI for sending emails.",
-		Optional:    true,
-		Sensitive:   true,
-	}
-	attrs["smtp_headers"] = schema.MapAttribute{
-		Description: "Custom headers to include in emails.",
-		Optional:    true,
-		ElementType: types.StringType,
-	}
 	attrs["mfa_enforcement"] = schema.StringAttribute{
 		Description: "MFA enforcement level: 'none', 'optional', or 'required'.",
 		Optional:    true,
@@ -941,24 +931,6 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 				Value: urls,
 			})
 		}
-	}
-
-	// SMTP connection URI (sensitive, write-only)
-	if !plan.SMTPConnectionURI.IsNull() && !plan.SMTPConnectionURI.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/courier/smtp/connection_uri",
-			Value: plan.SMTPConnectionURI.ValueString(),
-		})
-	}
-	if !plan.SMTPHeaders.IsNull() && !plan.SMTPHeaders.IsUnknown() {
-		var headers map[string]string
-		plan.SMTPHeaders.ElementsAs(ctx, &headers, false)
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/courier/smtp/headers",
-			Value: headers,
-		})
 	}
 
 	// MFA enforcement (special mapping)

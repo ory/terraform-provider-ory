@@ -1218,5 +1218,15 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "HTTP method for the courier HTTP request.",
 			Optional:    true,
 		},
+		"smtp_headers": schema.MapAttribute{
+			Description: "Custom SMTP headers for outbound emails.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"smtp_connection_uri": schema.StringAttribute{
+			Description: "SMTP connection URI for sending emails (e.g., smtps://user:pass@host:port).",
+			Optional:    true,
+			Sensitive:   true,
+		},
 	}
 }

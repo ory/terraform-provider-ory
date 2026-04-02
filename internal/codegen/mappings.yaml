@@ -1546,3 +1546,17 @@ attributes:
     type: string
     openapi_property: kratos_courier_http_request_config_method
     description: "HTTP method for the courier HTTP request."
+
+  - name: smtp_headers
+    go_field: SMTPHeaders
+    type: map_string
+    openapi_property: kratos_courier_smtp_headers
+    description: "Custom SMTP headers for outbound emails."
+
+  - name: smtp_connection_uri
+    go_field: SMTPConnectionURI
+    type: string
+    openapi_property: kratos_courier_smtp_connection_uri
+    description: "SMTP connection URI for sending emails (e.g., smtps://user:pass@host:port)."
+    sensitive: true
+    skip_empty_read: true

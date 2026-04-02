@@ -188,6 +188,7 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.SelfserviceMethodsCaptchaConfigCFTurnstileSitekey, nil, "/services/identity/config/selfservice/methods/captcha/config/cf_turnstile/sitekey"},
 		{&plan.CourierHTTPRequestConfigAuthType, nil, "/services/identity/config/courier/http/request_config/auth/type"},
 		{&plan.CourierHTTPRequestConfigMethod, nil, "/services/identity/config/courier/http/request_config/method"},
+		{&plan.SMTPConnectionURI, nil, "/services/identity/config/courier/smtp/connection_uri"},
 	}
 }
 
@@ -285,5 +286,6 @@ func simpleListStringPatchEntries(plan *ProjectConfigResourceModel) []ListString
 func simpleMapStringPatchEntries(plan *ProjectConfigResourceModel) []MapStringPatchEntry {
 	return []MapStringPatchEntry{
 		{&plan.OAuth2ProviderHeaders, nil, "/services/identity/config/oauth2_provider/headers"},
+		{&plan.SMTPHeaders, nil, "/services/identity/config/courier/smtp/headers"},
 	}
 }

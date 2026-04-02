@@ -445,6 +445,7 @@ func identityStringReadEntries(state *ProjectConfigResourceModel) []StringReadEn
 		{&state.SelfserviceMethodsCaptchaConfigCFTurnstileSitekey, nil, []string{"selfservice", "methods", "captcha", "config", "cf_turnstile", "sitekey"}, false},
 		{&state.CourierHTTPRequestConfigAuthType, nil, []string{"courier", "http", "request_config", "auth", "type"}, false},
 		{&state.CourierHTTPRequestConfigMethod, nil, []string{"courier", "http", "request_config", "method"}, false},
+		{&state.SMTPConnectionURI, nil, []string{"courier", "smtp", "connection_uri"}, true},
 	}
 }
 
@@ -516,6 +517,7 @@ func identityListStringReadEntries(state *ProjectConfigResourceModel) []ListStri
 func identityMapStringReadEntries(state *ProjectConfigResourceModel) []MapStringReadEntry {
 	return []MapStringReadEntry{
 		{&state.OAuth2ProviderHeaders, nil, []string{"oauth2_provider", "headers"}},
+		{&state.SMTPHeaders, nil, []string{"courier", "smtp", "headers"}},
 	}
 }
 
