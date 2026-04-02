@@ -405,16 +405,34 @@ func extractProvidersFromProject(project *ory.Project) []map[string]interface{} 
 	return result
 }
 
+// deepCopyValue recursively copies maps and slices so the caller gets a
+// fully independent value tree that is safe to mutate without affecting
+// the cached project state.
+func deepCopyValue(v interface{}) interface{} {
+	switch val := v.(type) {
+	case map[string]interface{}:
+		cp := make(map[string]interface{}, len(val))
+		for k, elem := range val {
+			cp[k] = deepCopyValue(elem)
+		}
+		return cp
+	case []interface{}:
+		cp := make([]interface{}, len(val))
+		for i, elem := range val {
+			cp[i] = deepCopyValue(elem)
+		}
+		return cp
+	default:
+		return v // primitive types (string, float64, bool, nil) are immutable
+	}
+}
+
 // copyProviders returns a deep copy of the provider slice so callers cannot
 // accidentally mutate the cached project state.
 func copyProviders(providers []map[string]interface{}) []map[string]interface{} {
 	result := make([]map[string]interface{}, len(providers))
 	for i, p := range providers {
-		cp := make(map[string]interface{}, len(p))
-		for k, v := range p {
-			cp[k] = v
-		}
-		result[i] = cp
+		result[i] = deepCopyValue(p).(map[string]interface{})
 	}
 	return result
 }
