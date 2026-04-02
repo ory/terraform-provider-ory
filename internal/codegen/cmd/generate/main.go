@@ -443,7 +443,7 @@ func resolveFromSpec(m *Mappings, specProps map[string]SpecProperty) {
 			a.PatchPath = sp.GovernsPath
 			fmt.Printf("  Derived patch_path for %q from spec: %s\n", a.Name, sp.GovernsPath)
 		} else if a.PatchPath != sp.GovernsPath {
-			log.Printf("WARNING: patch_path mismatch for %q: yaml=%s, governs=%s (using yaml value)", a.Name, a.PatchPath, sp.GovernsPath)
+			log.Fatalf("ERROR: patch_path mismatch for %q: yaml=%s, governs=%s. Remove explicit patch_path and let governs derive it.", a.Name, a.PatchPath, sp.GovernsPath)
 		}
 	}
 }
@@ -704,14 +704,8 @@ func excludedProperties() map[string]bool {
 func cleanDescription(desc string) string {
 	cleaned := governsRegex.ReplaceAllString(desc, "")
 
-	// Collapse newlines into spaces
-	cleaned = strings.ReplaceAll(cleaned, "\n\n", " ")
-	cleaned = strings.ReplaceAll(cleaned, "\n", " ")
-
-	// Collapse multiple spaces
-	for strings.Contains(cleaned, "  ") {
-		cleaned = strings.ReplaceAll(cleaned, "  ", " ")
-	}
+	// Normalize whitespace in one pass
+	cleaned = strings.Join(strings.Fields(cleaned), " ")
 
 	// Strip "Ory Kratos" / "Ory Hydra" / "Ory Keto" prefixes
 	cleaned = strings.ReplaceAll(cleaned, "Ory Kratos ", "")

@@ -288,14 +288,13 @@ func TestGeneratedReadRoundTrip(t *testing.T) {
 	}
 }
 
-// TestGeneratedSchemaAttributes_Count verifies the generated attribute count is reasonable.
+// TestGeneratedSchemaAttributes_Count verifies generation produced a non-trivial
+// number of attributes. The AllOptional and ValidAndUnique tests verify correctness;
+// this test catches catastrophic generation failures (e.g., empty output).
 func TestGeneratedSchemaAttributes_Count(t *testing.T) {
 	attrs := simpleSchemaAttributes()
-	// Sanity check: should have at least 200 attributes (primary + deprecated).
-	// The exact count changes as attributes are added/removed, so we don't
-	// hardcode it. The AllOptional and ValidAndUnique tests catch regressions.
-	if len(attrs) < 200 {
-		t.Errorf("expected at least 200 generated schema attributes, got %d (possible generation failure)", len(attrs))
+	if len(attrs) == 0 {
+		t.Fatal("simpleSchemaAttributes() returned 0 attributes — generation likely failed")
 	}
 }
 

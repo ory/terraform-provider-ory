@@ -155,7 +155,7 @@ done < <(find "$DIR" -type f -name '*.tf' -not -path '*/.terraform/*' -print0)
 FOUND_REMOVED=false
 while IFS= read -r -d '' file; do
   for removed in "${REMOVED[@]}"; do
-    if grep -qF "$removed" "$file" 2>/dev/null; then
+    if grep -qF "$removed" "$file" 2>/dev/null && perl -ne "exit 0 if /^\\s*\\Q${removed}\\E\\s*=/; END { exit 1 }" "$file" 2>/dev/null; then
       if [ "$FOUND_REMOVED" = false ]; then
         echo ""
         echo "WARNING: The following attributes have been removed and should be deleted:"
