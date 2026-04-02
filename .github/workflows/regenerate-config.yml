@@ -34,6 +34,7 @@ jobs:
 
       - name: Download latest spec for drift detection
         run: |
+          # ory/client-go uses 'master' as its default branch
           curl -sSfL "https://raw.githubusercontent.com/ory/client-go/master/api/openapi.yaml" \
             -o /tmp/openapi-master.yaml
 

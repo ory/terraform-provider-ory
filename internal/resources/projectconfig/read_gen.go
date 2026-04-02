@@ -23,7 +23,7 @@ var (
 // StringReadEntry maps a string state field to its config read path.
 type StringReadEntry struct {
 	Field      *types.String
-	Deprecated *types.String // write to deprecated alias when it is non-null in state
+	Deprecated *types.String // fallback: used only when the primary Field is null in state
 	Keys       []string
 	SkipEmpty  bool
 }
@@ -31,28 +31,28 @@ type StringReadEntry struct {
 // BoolReadEntry maps a bool state field to its config read path.
 type BoolReadEntry struct {
 	Field      *types.Bool
-	Deprecated *types.Bool // write to deprecated alias when it is non-null in state
+	Deprecated *types.Bool // fallback: used only when the primary Field is null in state
 	Keys       []string
 }
 
 // Int64ReadEntry maps an int64 state field to its config read path.
 type Int64ReadEntry struct {
 	Field      *types.Int64
-	Deprecated *types.Int64 // write to deprecated alias when it is non-null in state
+	Deprecated *types.Int64 // fallback: used only when the primary Field is null in state
 	Keys       []string
 }
 
 // ListStringReadEntry maps a list(string) state field to its config read path.
 type ListStringReadEntry struct {
 	Field      *types.List
-	Deprecated *types.List // write to deprecated alias when it is non-null in state
+	Deprecated *types.List // fallback: used only when the primary Field is null in state
 	Keys       []string
 }
 
 // MapStringReadEntry maps a map(string) state field to its config read path.
 type MapStringReadEntry struct {
 	Field      *types.Map
-	Deprecated *types.Map // write to deprecated alias when it is non-null in state
+	Deprecated *types.Map // fallback: used only when the primary Field is null in state
 	Keys       []string
 }
 
