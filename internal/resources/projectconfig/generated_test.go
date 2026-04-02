@@ -9,34 +9,36 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// TestGeneratedPatchEntries_AllFieldsExist verifies that every generated
-// patch entry references a real struct field that exists in the model.
-func TestGeneratedPatchEntries_AllFieldsExist(t *testing.T) {
+// TestGeneratedPatchEntries_ValidAndUnique verifies that every generated patch
+// entry has a non-empty path, non-nil field pointer, and that all paths are
+// unique (no two entries write to the same config location).
+func TestGeneratedPatchEntries_ValidAndUnique(t *testing.T) {
 	plan := &ProjectConfigResourceModel{}
+	seen := make(map[string]bool)
+
+	checkEntry := func(typeName, path string, field interface{}) {
+		t.Helper()
+		if path == "" {
+			t.Errorf("%s patch entry has empty path", typeName)
+			return
+		}
+		if field == nil {
+			t.Errorf("%s patch entry %q has nil field pointer", typeName, path)
+		}
+		if seen[path] {
+			t.Errorf("%s patch entry %q: duplicate path (already seen)", typeName, path)
+		}
+		seen[path] = true
+	}
 
 	for _, e := range simpleStringPatchEntries(plan) {
-		if e.Path == "" {
-			t.Error("string patch entry has empty path")
-		}
-		if e.Field == nil {
-			t.Errorf("string patch entry %q has nil field pointer", e.Path)
-		}
+		checkEntry("string", e.Path, e.Field)
 	}
 	for _, e := range simpleBoolPatchEntries(plan) {
-		if e.Path == "" {
-			t.Error("bool patch entry has empty path")
-		}
-		if e.Field == nil {
-			t.Errorf("bool patch entry %q has nil field pointer", e.Path)
-		}
+		checkEntry("bool", e.Path, e.Field)
 	}
 	for _, e := range simpleInt64PatchEntries(plan) {
-		if e.Path == "" {
-			t.Error("int64 patch entry has empty path")
-		}
-		if e.Field == nil {
-			t.Errorf("int64 patch entry %q has nil field pointer", e.Path)
-		}
+		checkEntry("int64", e.Path, e.Field)
 	}
 }
 

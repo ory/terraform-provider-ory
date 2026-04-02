@@ -113,11 +113,12 @@ func governsToPatchPath(propertyName, description string) (string, bool) {
 
 // SpecProperty represents a property from the OpenAPI normalizedProjectRevision schema.
 type SpecProperty struct {
-	Name        string
-	Type        string // "string", "boolean", "integer", "array", "object"
-	ItemType    string // for arrays: the element type (e.g., "string")
-	Description string
-	GovernsPath string // derived patch path from "governs" description, or ""
+	Name                     string
+	Type                     string // "string", "boolean", "integer", "array", "object"
+	ItemType                 string // for arrays: the element type (e.g., "string")
+	AdditionalPropertiesType string // for objects with additionalProperties: the value type
+	Description              string
+	GovernsPath              string // derived patch path from "governs" description, or ""
 }
 
 // parseOpenAPISpec reads an OpenAPI spec and extracts normalizedProjectRevision properties.
@@ -162,6 +163,11 @@ func parseOpenAPISpec(specPath string) (map[string]SpecProperty, error) {
 		if items, ok := prop["items"].(map[string]interface{}); ok {
 			if it, ok := items["type"].(string); ok {
 				sp.ItemType = it
+			}
+		}
+		if ap, ok := prop["additionalProperties"].(map[string]interface{}); ok {
+			if apt, ok := ap["type"].(string); ok {
+				sp.AdditionalPropertiesType = apt
 			}
 		}
 		if d, ok := prop["description"].(string); ok {
@@ -218,15 +224,19 @@ func openAPITypeToTFType(oaType string) string {
 	}
 }
 
-// discoverTypeToTFType extends openAPITypeToTFType with array support for discover mode.
-// For arrays, itemType must be "string" to map to list_string; other array element types are unsupported.
-func discoverTypeToTFType(oaType, itemType string) string {
+// discoverTypeToTFType extends openAPITypeToTFType with array and map support for discover mode.
+// For arrays, itemType must be "string" to map to list_string.
+// For objects, additionalPropertiesType must be "string" to map to map_string.
+// Other element types are unsupported and return "".
+func discoverTypeToTFType(oaType, itemType, additionalPropertiesType string) string {
 	if t := openAPITypeToTFType(oaType); t != "" {
 		return t
 	}
 	switch {
-	case oaType == "array" && itemType == "string":
+	case oaType == "array" && itemType == typeString:
 		return typeListString
+	case oaType == "object" && additionalPropertiesType == typeString:
+		return typeMapString
 	default:
 		return ""
 	}
@@ -466,7 +476,7 @@ func reportUnmapped(m Mappings, specProps map[string]SpecProperty) int {
 			continue
 		}
 		// Only report supported types with governs paths
-		if sp.GovernsPath != "" && discoverTypeToTFType(sp.Type, sp.ItemType) != "" {
+		if sp.GovernsPath != "" && discoverTypeToTFType(sp.Type, sp.ItemType, sp.AdditionalPropertiesType) != "" {
 			unmapped = append(unmapped, sp)
 		}
 	}
@@ -516,7 +526,7 @@ func discoverNewEntries(m Mappings, specProps map[string]SpecProperty) {
 		if sp.GovernsPath != "" && mappedPaths[sp.GovernsPath] {
 			continue
 		}
-		if sp.GovernsPath != "" && discoverTypeToTFType(sp.Type, sp.ItemType) != "" {
+		if sp.GovernsPath != "" && discoverTypeToTFType(sp.Type, sp.ItemType, sp.AdditionalPropertiesType) != "" {
 			unmapped = append(unmapped, sp)
 		}
 	}
@@ -534,7 +544,7 @@ func discoverNewEntries(m Mappings, specProps map[string]SpecProperty) {
 	for _, sp := range unmapped {
 		tfName := deriveTerraformName(sp.Name)
 		goField := toGoFieldName(tfName)
-		tfType := discoverTypeToTFType(sp.Type, sp.ItemType)
+		tfType := discoverTypeToTFType(sp.Type, sp.ItemType, sp.AdditionalPropertiesType)
 		desc := cleanDescription(sp.Description)
 
 		fmt.Printf("  - name: %s\n", tfName)

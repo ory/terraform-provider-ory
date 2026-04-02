@@ -99,7 +99,7 @@ RENAMES=(
 
 CHANGED=0
 
-while IFS= read -r file; do
+while IFS= read -r -d '' file; do
   MODIFIED=false
   for entry in "${RENAMES[@]}"; do
     old="${entry%%=*}"
@@ -123,7 +123,7 @@ while IFS= read -r file; do
   if [ "$MODIFIED" = true ]; then
     CHANGED=$((CHANGED + 1))
   fi
-done < <(find "$DIR" -name '*.tf' -not -path '*/.terraform/*')
+done < <(find "$DIR" -type f -name '*.tf' -not -path '*/.terraform/*' -print0)
 
 echo ""
 echo "Migration complete. $CHANGED file(s) updated."
