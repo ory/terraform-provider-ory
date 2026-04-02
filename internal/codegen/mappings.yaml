@@ -1426,14 +1426,12 @@ attributes:
   - name: oauth2_webfinger_oidc_discovery_supported_claims
     go_field: OAuth2WebfingerOIDCDiscoverySupportedClaims
     type: list_string
-    patch_path: /services/oauth2/config/webfinger/oidc/discovery/supported_claims
     openapi_property: hydra_webfinger_oidc_discovery_supported_claims
     description: "Supported claims advertised in OIDC discovery."
 
   - name: oauth2_webfinger_oidc_discovery_supported_scope
     go_field: OAuth2WebfingerOIDCDiscoverySupportedScope
     type: list_string
-    patch_path: /services/oauth2/config/webfinger/oidc/discovery/supported_scope
     openapi_property: hydra_webfinger_oidc_discovery_supported_scope
     description: "Supported scopes advertised in OIDC discovery."
 
@@ -1566,7 +1564,6 @@ attributes:
   - name: selfservice_methods_code_config_max_submissions
     go_field: SelfserviceMethodsCodeConfigMaxSubmissions
     type: int64
-    patch_path: /services/identity/config/selfservice/methods/code/config/max_submissions
     openapi_property: kratos_selfservice_methods_code_config_max_submissions
     description: "Maximum number of code submission attempts before invalidation."
 

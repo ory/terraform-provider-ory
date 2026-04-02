@@ -499,7 +499,7 @@ func identityInt64ReadEntries(state *ProjectConfigResourceModel) []Int64ReadEntr
 	return []Int64ReadEntry{
 		{&state.SelfserviceMethodsPasswordConfigMinPasswordLength, &state.PasswordMinLength, []string{"selfservice", "methods", "password", "config", "min_password_length"}},
 		{&state.SelfserviceMethodsPasswordConfigMaxBreaches, &state.PasswordMaxBreaches, []string{"selfservice", "methods", "password", "config", "max_breaches"}},
-		{&state.SelfserviceMethodsCodeConfigMaxSubmissions, nil, []string{"selfservice", "methods", "code", "config", "max_submissions"}},
+		{&state.SelfserviceMethodsCodeConfigMaxSubmissions, nil, []string{"selfservice", "methods", "code", "max_submissions"}},
 	}
 }
 
@@ -574,8 +574,8 @@ func oauth2ListStringReadEntries(state *ProjectConfigResourceModel) []ListString
 		{&state.OAuth2SecretsPagination, nil, []string{"secrets", "pagination"}},
 		{&state.OAuth2SecretsSystem, nil, []string{"secrets", "system"}},
 		{&state.OAuth2WebfingerJWKSBroadcastKeys, nil, []string{"webfinger", "jwks", "broadcast_keys"}},
-		{&state.OAuth2WebfingerOIDCDiscoverySupportedClaims, nil, []string{"webfinger", "oidc", "discovery", "supported_claims"}},
-		{&state.OAuth2WebfingerOIDCDiscoverySupportedScope, nil, []string{"webfinger", "oidc", "discovery", "supported_scope"}},
+		{&state.OAuth2WebfingerOIDCDiscoverySupportedClaims, nil, []string{"webfinger", "oidc_discovery", "supported_claims"}},
+		{&state.OAuth2WebfingerOIDCDiscoverySupportedScope, nil, []string{"webfinger", "oidc_discovery", "supported_scope"}},
 	}
 }
 

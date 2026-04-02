@@ -256,7 +256,7 @@ func simpleInt64PatchEntries(plan *ProjectConfigResourceModel) []Int64PatchEntry
 	return []Int64PatchEntry{
 		{&plan.SelfserviceMethodsPasswordConfigMinPasswordLength, &plan.PasswordMinLength, "/services/identity/config/selfservice/methods/password/config/min_password_length"},
 		{&plan.SelfserviceMethodsPasswordConfigMaxBreaches, &plan.PasswordMaxBreaches, "/services/identity/config/selfservice/methods/password/config/max_breaches"},
-		{&plan.SelfserviceMethodsCodeConfigMaxSubmissions, nil, "/services/identity/config/selfservice/methods/code/config/max_submissions"},
+		{&plan.SelfserviceMethodsCodeConfigMaxSubmissions, nil, "/services/identity/config/selfservice/methods/code/max_submissions"},
 	}
 }
 
@@ -270,8 +270,8 @@ func simpleListStringPatchEntries(plan *ProjectConfigResourceModel) []ListString
 		{&plan.OAuth2SecretsPagination, nil, "/services/oauth2/config/secrets/pagination"},
 		{&plan.OAuth2SecretsSystem, nil, "/services/oauth2/config/secrets/system"},
 		{&plan.OAuth2WebfingerJWKSBroadcastKeys, nil, "/services/oauth2/config/webfinger/jwks/broadcast_keys"},
-		{&plan.OAuth2WebfingerOIDCDiscoverySupportedClaims, nil, "/services/oauth2/config/webfinger/oidc/discovery/supported_claims"},
-		{&plan.OAuth2WebfingerOIDCDiscoverySupportedScope, nil, "/services/oauth2/config/webfinger/oidc/discovery/supported_scope"},
+		{&plan.OAuth2WebfingerOIDCDiscoverySupportedClaims, nil, "/services/oauth2/config/webfinger/oidc_discovery/supported_claims"},
+		{&plan.OAuth2WebfingerOIDCDiscoverySupportedScope, nil, "/services/oauth2/config/webfinger/oidc_discovery/supported_scope"},
 		{&plan.KetoSecretsPagination, nil, "/services/permission/config/secrets/pagination"},
 		{&plan.IdentitySecretsCipher, nil, "/services/identity/config/secrets/cipher"},
 		{&plan.IdentitySecretsCookie, nil, "/services/identity/config/secrets/cookie"},
