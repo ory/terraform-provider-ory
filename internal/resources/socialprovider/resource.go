@@ -2,6 +2,7 @@ package socialprovider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -405,50 +406,21 @@ func extractProvidersFromProject(project *ory.Project) []map[string]interface{} 
 	return result
 }
 
-// deepCopyValue recursively copies maps and slices so the caller gets a
-// fully independent value tree that is safe to mutate without affecting
-// the cached project state.
-//
-// The primary types from JSON decoding into interface{} are
-// map[string]interface{}, []interface{}, string, float64, bool, and nil.
-// Additional concrete container types are handled defensively.
-func deepCopyValue(v interface{}) interface{} {
-	switch val := v.(type) {
-	case map[string]interface{}:
-		cp := make(map[string]interface{}, len(val))
-		for k, elem := range val {
-			cp[k] = deepCopyValue(elem)
-		}
-		return cp
-	case []interface{}:
-		cp := make([]interface{}, len(val))
-		for i, elem := range val {
-			cp[i] = deepCopyValue(elem)
-		}
-		return cp
-	case []string:
-		cp := make([]string, len(val))
-		copy(cp, val)
-		return cp
-	case map[string]string:
-		cp := make(map[string]string, len(val))
-		for k, elem := range val {
-			cp[k] = elem
-		}
-		return cp
-	default:
-		return v // primitive types (string, float64, bool, nil) are immutable
-	}
-}
-
-// copyProviders returns a deep copy of the provider slice so callers cannot
-// accidentally mutate the cached project state.
+// copyProviders returns a deep copy of the provider slice via a JSON
+// round-trip so callers cannot accidentally mutate the cached project state.
+// This data originates from JSON, so the round-trip is lossless and handles
+// all container types without a hand-rolled recursive copy.
 func copyProviders(providers []map[string]interface{}) []map[string]interface{} {
-	result := make([]map[string]interface{}, len(providers))
-	for i, p := range providers {
-		result[i] = deepCopyValue(p).(map[string]interface{})
+	b, err := json.Marshal(providers)
+	if err != nil {
+		// Should never happen — the data was decoded from JSON.
+		return providers
 	}
-	return result
+	var cp []map[string]interface{}
+	if err := json.Unmarshal(b, &cp); err != nil {
+		return providers
+	}
+	return cp
 }
 
 func (r *SocialProviderResource) getProviders(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
