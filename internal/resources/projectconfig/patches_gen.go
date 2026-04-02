@@ -111,7 +111,7 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.CourierTemplatesLoginCodeValidEmailBodyHTML, nil, "/services/identity/config/courier/smtp/templates/login_code/valid/email/body/html"},
 		{&plan.CourierTemplatesLoginCodeValidEmailBodyPlaintext, nil, "/services/identity/config/courier/smtp/templates/login_code/valid/email/body/plaintext"},
 		{&plan.CourierTemplatesLoginCodeValidEmailSubject, nil, "/services/identity/config/courier/smtp/templates/login_code/valid/email/subject"},
-		{&plan.CourierTemplatesLoginCodeValidSMSBodyPlaintext, nil, "/services/identity/config/courier/smtp/templates/login_code/valid/sms/plaintext"},
+		{&plan.CourierTemplatesLoginCodeValidSMSBodyPlaintext, nil, "/services/identity/config/courier/smtp/templates/login_code/valid/sms/body/plaintext"},
 		{&plan.CourierTemplatesRecoveryCodeInvalidEmailBodyHTML, nil, "/services/identity/config/courier/smtp/templates/recovery_code/invalid/email/body/html"},
 		{&plan.CourierTemplatesRecoveryCodeInvalidEmailBodyPlaintext, nil, "/services/identity/config/courier/smtp/templates/recovery_code/invalid/email/body/plaintext"},
 		{&plan.CourierTemplatesRecoveryCodeInvalidEmailSubject, nil, "/services/identity/config/courier/smtp/templates/recovery_code/invalid/email/subject"},

@@ -93,14 +93,20 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				if v := getNestedValue(account_experienceConfig, e.Keys...); v != nil {
 					if arr, ok := v.([]interface{}); ok {
 						strs := make([]string, 0, len(arr))
+						allStrings := true
 						for _, item := range arr {
 							if s, ok := item.(string); ok {
 								strs = append(strs, s)
+							} else {
+								allStrings = false
+								break
 							}
 						}
-						listVal, diags := types.ListValueFrom(ctx, types.StringType, strs)
-						if !diags.HasError() {
-							*target = listVal
+						if allStrings {
+							listVal, diags := types.ListValueFrom(ctx, types.StringType, strs)
+							if !diags.HasError() {
+								*target = listVal
+							}
 						}
 					}
 				}
@@ -155,14 +161,20 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				if v := getNestedValue(identityConfig, e.Keys...); v != nil {
 					if arr, ok := v.([]interface{}); ok {
 						strs := make([]string, 0, len(arr))
+						allStrings := true
 						for _, item := range arr {
 							if s, ok := item.(string); ok {
 								strs = append(strs, s)
+							} else {
+								allStrings = false
+								break
 							}
 						}
-						listVal, diags := types.ListValueFrom(ctx, types.StringType, strs)
-						if !diags.HasError() {
-							*target = listVal
+						if allStrings {
+							listVal, diags := types.ListValueFrom(ctx, types.StringType, strs)
+							if !diags.HasError() {
+								*target = listVal
+							}
 						}
 					}
 				}
@@ -177,14 +189,20 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				if v := getNestedValue(identityConfig, e.Keys...); v != nil {
 					if m, ok := v.(map[string]interface{}); ok {
 						strMap := make(map[string]attr.Value, len(m))
+						allStrings := true
 						for k, val := range m {
 							if s, ok := val.(string); ok {
 								strMap[k] = types.StringValue(s)
+							} else {
+								allStrings = false
+								break
 							}
 						}
-						mapVal, diags := types.MapValue(types.StringType, strMap)
-						if !diags.HasError() {
-							*target = mapVal
+						if allStrings {
+							mapVal, diags := types.MapValue(types.StringType, strMap)
+							if !diags.HasError() {
+								*target = mapVal
+							}
 						}
 					}
 				}
@@ -226,14 +244,20 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				if v := getNestedValue(oauth2Config, e.Keys...); v != nil {
 					if arr, ok := v.([]interface{}); ok {
 						strs := make([]string, 0, len(arr))
+						allStrings := true
 						for _, item := range arr {
 							if s, ok := item.(string); ok {
 								strs = append(strs, s)
+							} else {
+								allStrings = false
+								break
 							}
 						}
-						listVal, diags := types.ListValueFrom(ctx, types.StringType, strs)
-						if !diags.HasError() {
-							*target = listVal
+						if allStrings {
+							listVal, diags := types.ListValueFrom(ctx, types.StringType, strs)
+							if !diags.HasError() {
+								*target = listVal
+							}
 						}
 					}
 				}
@@ -264,14 +288,20 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				if v := getNestedValue(permissionConfig, e.Keys...); v != nil {
 					if arr, ok := v.([]interface{}); ok {
 						strs := make([]string, 0, len(arr))
+						allStrings := true
 						for _, item := range arr {
 							if s, ok := item.(string); ok {
 								strs = append(strs, s)
+							} else {
+								allStrings = false
+								break
 							}
 						}
-						listVal, diags := types.ListValueFrom(ctx, types.StringType, strs)
-						if !diags.HasError() {
-							*target = listVal
+						if allStrings {
+							listVal, diags := types.ListValueFrom(ctx, types.StringType, strs)
+							if !diags.HasError() {
+								*target = listVal
+							}
 						}
 					}
 				}
@@ -346,7 +376,7 @@ func identityStringReadEntries(state *ProjectConfigResourceModel) []StringReadEn
 		{&state.CourierTemplatesLoginCodeValidEmailBodyHTML, nil, []string{"courier", "smtp", "templates", "login_code", "valid", "email", "body", "html"}, false},
 		{&state.CourierTemplatesLoginCodeValidEmailBodyPlaintext, nil, []string{"courier", "smtp", "templates", "login_code", "valid", "email", "body", "plaintext"}, false},
 		{&state.CourierTemplatesLoginCodeValidEmailSubject, nil, []string{"courier", "smtp", "templates", "login_code", "valid", "email", "subject"}, false},
-		{&state.CourierTemplatesLoginCodeValidSMSBodyPlaintext, nil, []string{"courier", "smtp", "templates", "login_code", "valid", "sms", "plaintext"}, false},
+		{&state.CourierTemplatesLoginCodeValidSMSBodyPlaintext, nil, []string{"courier", "smtp", "templates", "login_code", "valid", "sms", "body", "plaintext"}, false},
 		{&state.CourierTemplatesRecoveryCodeInvalidEmailBodyHTML, nil, []string{"courier", "smtp", "templates", "recovery_code", "invalid", "email", "body", "html"}, false},
 		{&state.CourierTemplatesRecoveryCodeInvalidEmailBodyPlaintext, nil, []string{"courier", "smtp", "templates", "recovery_code", "invalid", "email", "body", "plaintext"}, false},
 		{&state.CourierTemplatesRecoveryCodeInvalidEmailSubject, nil, []string{"courier", "smtp", "templates", "recovery_code", "invalid", "email", "subject"}, false},

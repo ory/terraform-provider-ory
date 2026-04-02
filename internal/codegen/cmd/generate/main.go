@@ -588,7 +588,7 @@ func sortSpecProperties(props []SpecProperty) {
 // hydra_oauth2_pkce_enforced -> oauth2_pkce_enforced
 func deriveTerraformName(openapiName string) string {
 	// Strip known prefixes
-	for _, prefix := range []string{"kratos_", "hydra_", "keto_"} {
+	for _, prefix := range []string{"kratos_", "hydra_"} {
 		if strings.HasPrefix(openapiName, prefix) {
 			stripped := strings.TrimPrefix(openapiName, prefix)
 			if prefix == "hydra_" && !strings.HasPrefix(stripped, "oauth2_") && !strings.HasPrefix(stripped, "oidc_") {
@@ -598,6 +598,7 @@ func deriveTerraformName(openapiName string) string {
 			return stripped
 		}
 	}
+	// Keep keto_ and account_experience_ prefixes as-is
 	return openapiName
 }
 
