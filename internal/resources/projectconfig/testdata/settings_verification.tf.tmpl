@@ -1,16 +1,16 @@
 resource "ory_project_config" "test" {
-  enable_profile = [[ .EnableProfile ]]
+  selfservice_methods_profile_enabled = [[ .EnableProfile ]]
 
-  enable_code                              = true
-  code_lifespan                            = "[[ .CodeLifespan ]]"
-  code_missing_credential_fallback_enabled = [[ .CodeMissingCredentialFallbackEnabled ]]
+  selfservice_methods_code_enabled                                 = true
+  selfservice_methods_code_config_lifespan                         = "[[ .CodeLifespan ]]"
+  selfservice_methods_code_config_missing_credential_fallback_enabled = [[ .CodeMissingCredentialFallbackEnabled ]]
 
-  settings_lifespan                = "[[ .SettingsLifespan ]]"
-  settings_privileged_session_max_age = "[[ .SettingsPrivilegedSessionMaxAge ]]"
-  required_aal                     = "[[ .RequiredAAL ]]"
+  selfservice_flows_settings_lifespan                   = "[[ .SettingsLifespan ]]"
+  selfservice_flows_settings_privileged_session_max_age  = "[[ .SettingsPrivilegedSessionMaxAge ]]"
+  selfservice_flows_settings_required_aal               = "[[ .RequiredAAL ]]"
 
-  enable_verification                      = true
-  verification_use                         = "[[ .VerificationUse ]]"
-  verification_lifespan                    = "[[ .VerificationLifespan ]]"
-  verification_notify_unknown_recipients   = [[ .VerificationNotifyUnknownRecipients ]]
+  selfservice_flows_verification_enabled                    = true
+  selfservice_flows_verification_use                        = "[[ .VerificationUse ]]"
+  selfservice_flows_verification_lifespan                   = "[[ .VerificationLifespan ]]"
+  selfservice_flows_verification_notify_unknown_recipients  = [[ .VerificationNotifyUnknownRecipients ]]
 }

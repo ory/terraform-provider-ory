@@ -24,7 +24,7 @@ func TestAccProjectConfigResource_basic(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "cors_enabled", "true"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "password_min_length", "10"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_password_config_min_password_length", "10"),
 				),
 			},
 			// ImportState - after import, Read only refreshes fields that are
@@ -35,8 +35,7 @@ func TestAccProjectConfigResource_basic(t *testing.T) {
 				ImportState:       true,
 				ImportStateVerify: true,
 				ImportStateVerifyIgnore: []string{
-					"cors_enabled", "cors_origins", "password_min_length",
-					"selfservice_methods_password_config_min_password_length",
+					"cors_enabled", "cors_origins", "selfservice_methods_password_config_min_password_length",
 					"smtp_connection_uri",
 				},
 			},
@@ -53,23 +52,22 @@ func TestAccProjectConfigResource_hydraConfig(t *testing.T) {
 				Config: acctest.LoadTestConfig(t, "testdata/hydra_config.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_access_token_lifespan", "1h0m0s"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_refresh_token_lifespan", "720h0m0s"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_auth_code_lifespan", "30m0s"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_id_token_lifespan", "1h0m0s"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_login_consent_request_lifespan", "30m0s"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_access_token_strategy", "jwt"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_jwt_scope_claim", "list"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_scope_strategy", "wildcard"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_ttl_access_token", "1h0m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_ttl_refresh_token", "720h0m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_ttl_auth_code", "30m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_ttl_id_token", "1h0m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_ttl_login_consent_request", "30m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_strategies_access_token", "jwt"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_strategies_jwt_scope_claim", "list"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_strategies_scope", "wildcard"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_pkce_enforced", "false"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_pkce_enforced_for_public_clients", "false"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_session_encrypt_at_rest", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_allowed_top_level_claims.#", "2"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_mirror_top_level_claims", "false"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_login_url", "https://example.com/login"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_consent_url", "https://example.com/consent"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_logout_url", "https://example.com/logout"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_error_url", "https://example.com/error"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_urls_login", "https://example.com/login"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_urls_consent", "https://example.com/consent"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_urls_logout", "https://example.com/logout"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_urls_error", "https://example.com/error"),
 				),
 			},
 		},
@@ -89,8 +87,8 @@ func TestAccProjectConfigResource_oauth2Cookies(t *testing.T) {
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_cookies_same_site_mode", "Strict"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_cookies_same_site_legacy_workaround", "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_serve_cookies_same_site_mode", "Strict"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_serve_cookies_same_site_legacy_workaround", "false"),
 				),
 			},
 			// Update to Lax with legacy workaround
@@ -100,8 +98,8 @@ func TestAccProjectConfigResource_oauth2Cookies(t *testing.T) {
 					"LegacyWorkaround": "true",
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_cookies_same_site_mode", "Lax"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_cookies_same_site_legacy_workaround", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_serve_cookies_same_site_mode", "Lax"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_serve_cookies_same_site_legacy_workaround", "true"),
 				),
 			},
 			// Verify no perpetual diff
@@ -127,7 +125,7 @@ func TestAccProjectConfigResource_oauth2IssuerURL(t *testing.T) {
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_issuer_url", "https://auth.example.com"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_urls_self_issuer", "https://auth.example.com"),
 				),
 			},
 			// ImportState
@@ -136,9 +134,8 @@ func TestAccProjectConfigResource_oauth2IssuerURL(t *testing.T) {
 				ImportState:       true,
 				ImportStateVerify: true,
 				ImportStateVerifyIgnore: []string{
-					"oauth2_issuer_url",
-					"cors_enabled", "password_min_length",
-					"selfservice_methods_password_config_min_password_length",
+					"oauth2_urls_self_issuer",
+					"cors_enabled", "selfservice_methods_password_config_min_password_length",
 					"smtp_connection_uri",
 				},
 			},
@@ -155,8 +152,8 @@ func TestAccProjectConfigResource_mfaPolicy(t *testing.T) {
 				Config: acctest.LoadTestConfig(t, "testdata/mfa.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "enable_totp", "true"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "totp_issuer", "TerraformTest"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_totp_enabled", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_totp_config_issuer", "TerraformTest"),
 				),
 			},
 		},
@@ -173,8 +170,8 @@ func TestAccProjectConfigResource_codeMFA(t *testing.T) {
 				Config: acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", map[string]string{"CodeMFAEnabled": "true"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "enable_code", "true"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "code_mfa_enabled", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_enabled", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_mfa_enabled", "true"),
 				),
 			},
 			// ImportState — config fields are ignored because import only sets
@@ -185,9 +182,8 @@ func TestAccProjectConfigResource_codeMFA(t *testing.T) {
 				ImportState:       true,
 				ImportStateVerify: true,
 				ImportStateVerifyIgnore: []string{
-					"enable_code", "code_mfa_enabled",
-					"cors_enabled", "password_min_length",
-					"selfservice_methods_password_config_min_password_length",
+					"selfservice_methods_code_enabled", "selfservice_methods_code_mfa_enabled",
+					"cors_enabled", "selfservice_methods_password_config_min_password_length",
 					"smtp_connection_uri",
 				},
 			},
@@ -195,8 +191,8 @@ func TestAccProjectConfigResource_codeMFA(t *testing.T) {
 			{
 				Config: acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", map[string]string{"CodeMFAEnabled": "false"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("ory_project_config.test", "enable_code", "true"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "code_mfa_enabled", "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_enabled", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_mfa_enabled", "false"),
 				),
 			},
 			// Verify no perpetual diff
@@ -219,7 +215,7 @@ func TestAccProjectConfigResource_oidc(t *testing.T) {
 				Config: acctest.LoadTestConfig(t, "testdata/oidc.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "enable_oidc", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_oidc_enabled", "true"),
 				),
 			},
 		},
@@ -235,8 +231,8 @@ func TestAccProjectConfigResource_oidcAutoLinkPolicy(t *testing.T) {
 				Config: acctest.LoadTestConfig(t, "testdata/oidc_auto_link_policy.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "enable_oidc", "true"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "enable_oidc_auto_link_policy", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_oidc_enabled", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_oidc_enable_auto_link_policy", "true"),
 				),
 			},
 		},
@@ -252,7 +248,6 @@ func TestAccProjectConfigResource_accountExperience(t *testing.T) {
 				Config: acctest.LoadTestConfig(t, "testdata/account_experience.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_name", "TF Test App"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_default_locale", "en"),
 				),
 			},
@@ -332,7 +327,6 @@ func TestAccProjectConfigResource_tokenizerTemplates(t *testing.T) {
 					"session_tokenizer_templates",
 					"smtp_connection_uri",
 					"cors_enabled",
-					"password_min_length",
 					"selfservice_methods_password_config_min_password_length",
 				},
 			},
@@ -434,7 +428,7 @@ func TestAccProjectConfigResource_loginStyle(t *testing.T) {
 				Config: acctest.LoadTestConfig(t, "testdata/login_style.tf.tmpl", map[string]string{"LoginStyle": "identifier_first"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "login_style", "identifier_first"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_login_style", "identifier_first"),
 				),
 			},
 			// ImportState
@@ -443,8 +437,8 @@ func TestAccProjectConfigResource_loginStyle(t *testing.T) {
 				ImportState:       true,
 				ImportStateVerify: true,
 				ImportStateVerifyIgnore: []string{
-					"login_style", "enable_password",
-					"cors_enabled", "password_min_length",
+					"selfservice_flows_login_style", "selfservice_methods_password_enabled",
+					"cors_enabled",
 					"selfservice_methods_password_config_min_password_length",
 					"smtp_connection_uri",
 				},
@@ -453,7 +447,7 @@ func TestAccProjectConfigResource_loginStyle(t *testing.T) {
 			{
 				Config: acctest.LoadTestConfig(t, "testdata/login_style.tf.tmpl", map[string]string{"LoginStyle": "unified"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("ory_project_config.test", "login_style", "unified"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_login_style", "unified"),
 				),
 			},
 			// Verify no perpetual diff
@@ -499,18 +493,18 @@ func TestAccProjectConfigResource_settingsAndVerification(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					// Profile method
-					resource.TestCheckResourceAttr("ory_project_config.test", "enable_profile", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_profile_enabled", "true"),
 					// Code config
-					resource.TestCheckResourceAttr("ory_project_config.test", "code_lifespan", "15m0s"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "code_missing_credential_fallback_enabled", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_config_lifespan", "15m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_config_missing_credential_fallback_enabled", "true"),
 					// Settings flow
-					resource.TestCheckResourceAttr("ory_project_config.test", "settings_lifespan", "30m0s"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "settings_privileged_session_max_age", "15m0s"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "required_aal", "aal1"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_lifespan", "30m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_privileged_session_max_age", "15m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_required_aal", "aal1"),
 					// Verification flow
-					resource.TestCheckResourceAttr("ory_project_config.test", "verification_use", "code"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "verification_lifespan", "30m0s"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "verification_notify_unknown_recipients", "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_verification_use", "code"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_verification_lifespan", "30m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_verification_notify_unknown_recipients", "false"),
 				),
 			},
 			// ImportState
@@ -519,11 +513,11 @@ func TestAccProjectConfigResource_settingsAndVerification(t *testing.T) {
 				ImportState:       true,
 				ImportStateVerify: true,
 				ImportStateVerifyIgnore: []string{
-					"enable_profile",
-					"enable_code", "code_lifespan", "code_missing_credential_fallback_enabled",
-					"settings_lifespan", "settings_privileged_session_max_age", "required_aal",
-					"enable_verification", "verification_use", "verification_lifespan", "verification_notify_unknown_recipients",
-					"cors_enabled", "password_min_length",
+					"selfservice_methods_profile_enabled",
+					"selfservice_methods_code_enabled", "selfservice_methods_code_config_lifespan", "selfservice_methods_code_config_missing_credential_fallback_enabled",
+					"selfservice_flows_settings_lifespan", "selfservice_flows_settings_privileged_session_max_age", "selfservice_flows_settings_required_aal",
+					"selfservice_flows_verification_enabled", "selfservice_flows_verification_use", "selfservice_flows_verification_lifespan", "selfservice_flows_verification_notify_unknown_recipients",
+					"cors_enabled",
 					"selfservice_methods_password_config_min_password_length",
 					"smtp_connection_uri",
 				},
@@ -533,16 +527,16 @@ func TestAccProjectConfigResource_settingsAndVerification(t *testing.T) {
 				Config: acctest.LoadTestConfig(t, "testdata/settings_verification.tf.tmpl", updateData),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					// Code config updated
-					resource.TestCheckResourceAttr("ory_project_config.test", "code_lifespan", "20m0s"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "code_missing_credential_fallback_enabled", "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_config_lifespan", "20m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_config_missing_credential_fallback_enabled", "false"),
 					// Settings flow updated
-					resource.TestCheckResourceAttr("ory_project_config.test", "settings_lifespan", "1h0m0s"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "settings_privileged_session_max_age", "30m0s"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "required_aal", "highest_available"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_lifespan", "1h0m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_privileged_session_max_age", "30m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_required_aal", "highest_available"),
 					// Verification flow updated
-					resource.TestCheckResourceAttr("ory_project_config.test", "verification_use", "link"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "verification_lifespan", "1h0m0s"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "verification_notify_unknown_recipients", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_verification_use", "link"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_verification_lifespan", "1h0m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_verification_notify_unknown_recipients", "true"),
 				),
 			},
 			// Verify no perpetual diff
@@ -585,7 +579,6 @@ func TestAccProjectConfigResource_courierHTTP(t *testing.T) {
 					"courier_channels",
 					"smtp_connection_uri",
 					"cors_enabled",
-					"password_min_length",
 					"selfservice_methods_password_config_min_password_length",
 				},
 			},
@@ -615,7 +608,6 @@ func TestAccProjectConfigResource_featureFlags(t *testing.T) {
 					"feature_flags_cacheable_sessions_max_age",
 					"feature_flags_use_continue_with_transitions",
 					"cors_enabled",
-					"password_min_length",
 					"selfservice_methods_password_config_min_password_length",
 					"smtp_connection_uri",
 				},
@@ -633,7 +625,7 @@ func TestAccProjectConfigResource_recoveryFlow(t *testing.T) {
 				Config: acctest.LoadTestConfig(t, "testdata/recovery_flow.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "enable_recovery", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_recovery_enabled", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_recovery_use", "code"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_recovery_notify_unknown_recipients", "true"),
 				),
@@ -643,12 +635,11 @@ func TestAccProjectConfigResource_recoveryFlow(t *testing.T) {
 				ImportState:       true,
 				ImportStateVerify: true,
 				ImportStateVerifyIgnore: []string{
-					"enable_recovery",
+					"selfservice_flows_recovery_enabled",
 					"selfservice_flows_recovery_use",
 					"selfservice_flows_recovery_lifespan",
 					"selfservice_flows_recovery_notify_unknown_recipients",
 					"cors_enabled",
-					"password_min_length",
 					"selfservice_methods_password_config_min_password_length",
 					"smtp_connection_uri",
 				},
@@ -682,7 +673,6 @@ func TestAccProjectConfigResource_oauth2Advanced(t *testing.T) {
 					"oauth2_exclude_not_before_claim",
 					"oauth2_client_credentials_default_grant_allowed_scope",
 					"cors_enabled",
-					"password_min_length",
 					"selfservice_methods_password_config_min_password_length",
 					"smtp_connection_uri",
 				},

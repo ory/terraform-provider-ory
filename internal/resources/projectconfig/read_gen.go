@@ -59,14 +59,14 @@ type MapStringReadEntry struct {
 // readSimpleFields reads all simple attributes from the API response into state.
 func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectConfigResourceModel) {
 	if project.Services.AccountExperience != nil {
-		account_experienceConfig := project.Services.AccountExperience.Config
+		accountExperienceConfig := project.Services.AccountExperience.Config
 		for _, e := range account_experienceStringReadEntries(state) {
 			target := e.Field
 			if target.IsNull() && e.Deprecated != nil && !e.Deprecated.IsNull() {
 				target = e.Deprecated
 			}
 			if !target.IsNull() {
-				if v, ok := getNestedString(account_experienceConfig, e.Keys...); ok {
+				if v, ok := getNestedString(accountExperienceConfig, e.Keys...); ok {
 					if !e.SkipEmpty || v != "" {
 						*target = types.StringValue(v)
 					}
@@ -79,7 +79,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				target = e.Deprecated
 			}
 			if !target.IsNull() {
-				if v, ok := getNestedBool(account_experienceConfig, e.Keys...); ok {
+				if v, ok := getNestedBool(accountExperienceConfig, e.Keys...); ok {
 					*target = types.BoolValue(v)
 				}
 			}
@@ -90,7 +90,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				target = e.Deprecated
 			}
 			if !target.IsNull() {
-				if v := getNestedValue(account_experienceConfig, e.Keys...); v != nil {
+				if v := getNestedValue(accountExperienceConfig, e.Keys...); v != nil {
 					if arr, ok := v.([]interface{}); ok {
 						strs := make([]string, 0, len(arr))
 						allStrings := true

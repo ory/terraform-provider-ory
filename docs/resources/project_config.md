@@ -97,9 +97,7 @@ resource "ory_project_config" "secure" {
   ]
 
   # Account Experience Branding
-  account_experience_name           = "MyApp"
-  account_experience_logo_url       = "https://cdn.example.com/logo.png"
-  account_experience_favicon_url    = "https://cdn.example.com/favicon.ico"
+  # (removed: account_experience_name, account_experience_logo_url, account_experience_favicon_url)
   account_experience_default_locale = "en"
 
   # OAuth2 Token Lifespans

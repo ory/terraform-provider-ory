@@ -45,6 +45,8 @@ attributes:
     type: string
     openapi_property: kratos_session_cookie_same_site
     description: "SameSite cookie attribute (Lax, Strict, None)."
+    validators:
+      one_of: ["Lax", "Strict", "None"]
 
   - name: session_cookie_persistent
     go_field: SessionCookiePersistent
@@ -57,6 +59,8 @@ attributes:
     type: string
     openapi_property: kratos_session_whoami_required_aal
     description: "Required AAL for session whoami endpoint: 'aal1', 'aal2', or 'highest_available'."
+    validators:
+      one_of: ["aal1", "aal2", "highest_available"]
 
   # ============================================================================
   # OAuth2/Hydra Token Lifespans

@@ -37,6 +37,9 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 		"session_cookie_same_site": schema.StringAttribute{
 			Description: "SameSite cookie attribute (Lax, Strict, None).",
 			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.OneOf("Lax", "Strict", "None"),
+			},
 		},
 		"session_cookie_persistent": schema.BoolAttribute{
 			Description: "Enable persistent session cookies (survive browser close).",
@@ -45,6 +48,9 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 		"session_whoami_required_aal": schema.StringAttribute{
 			Description: "Required AAL for session whoami endpoint: 'aal1', 'aal2', or 'highest_available'.",
 			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.OneOf("aal1", "aal2", "highest_available"),
+			},
 		},
 		"oauth2_ttl_access_token": schema.StringAttribute{
 			Description: "OAuth2 access token lifespan (e.g., '1h', '30m'). Requires Hydra service.",

@@ -12,7 +12,7 @@ A Terraform provider for managing [Ory Network](https://www.ory.sh/) resources u
 
 ## Migrating Deprecated `ory_project_config` Attributes
 
-53 attributes in the `ory_project_config` resource have been renamed to follow the OpenAPI spec naming convention. The old names still work but will show deprecation warnings in Terraform output and will be removed in a future major version.
+Many attributes in the `ory_project_config` resource have been renamed to follow the OpenAPI spec naming convention. The old names still work but will show deprecation warnings in Terraform output and will be removed in a future major version. Run `./scripts/migrate-deprecated-attrs.sh` to see the full list of renames.
 
 **Examples of renamed attributes:**
 

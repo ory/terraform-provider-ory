@@ -120,6 +120,11 @@ while IFS= read -r -d '' file; do
     new="${entry#*=}"
     # Only match HCL attribute assignments: fixed-string pre-check + perl assignment match
     if grep -qF "${old}" "$file" 2>/dev/null && perl -ne "exit 0 if /^\\s*\\Q${old}\\E\\s*=/; END { exit 1 }" "$file" 2>/dev/null; then
+      # Check if the new name already exists in the file to avoid duplicates
+      if perl -ne "exit 0 if /^\\s*\\Q${new}\\E\\s*=/; END { exit 1 }" "$file" 2>/dev/null; then
+        echo "  WARNING: $file: both '$old' and '$new' exist — skipping rename to avoid duplicate"
+        continue
+      fi
       if [ "$MODIFIED" = false ]; then
         if [ -e "${file}.bak" ]; then
           echo "Error: Backup file '${file}.bak' already exists; refusing to overwrite." >&2

@@ -1,7 +1,6 @@
 resource "ory_project_config" "test" {
-  # Uses deprecated alias `enable_recovery` to validate backward-compatibility.
-  enable_recovery = true
-  selfservice_flows_recovery_use = "code"
-  selfservice_flows_recovery_lifespan = "30m0s"
-  selfservice_flows_recovery_notify_unknown_recipients = true
+  selfservice_flows_recovery_enabled                    = true
+  selfservice_flows_recovery_use                        = "code"
+  selfservice_flows_recovery_lifespan                   = "30m0s"
+  selfservice_flows_recovery_notify_unknown_recipients  = true
 }

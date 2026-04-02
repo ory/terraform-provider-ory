@@ -347,6 +347,24 @@ func main() {
 			}
 			return strings.Join(quoted, ", ")
 		},
+		"varName": func(svc string) string {
+			// Convert service name to Go-idiomatic camelCase variable name.
+			// "account_experience" -> "accountExperience"
+			// "identity" -> "identity" (no underscores)
+			parts := strings.Split(svc, "_")
+			if len(parts) <= 1 {
+				return svc
+			}
+			var b strings.Builder
+			b.WriteString(parts[0])
+			for _, p := range parts[1:] {
+				if p == "" {
+					continue
+				}
+				b.WriteString(strings.ToUpper(p[:1]) + p[1:])
+			}
+			return b.String()
+		},
 		"filterType": func(attrs []Attribute, typ string) []Attribute {
 			var result []Attribute
 			for _, a := range attrs {
@@ -489,6 +507,9 @@ func reportUnmapped(m Mappings, specProps map[string]SpecProperty) int {
 			unmapped = append(unmapped, sp)
 		}
 	}
+
+	// Sort for deterministic output
+	sortSpecProperties(unmapped)
 
 	if len(unmapped) > 0 {
 		fmt.Printf("\n=== Unmapped spec properties with 'governs' (candidates for mappings.yaml) ===\n")
@@ -707,10 +728,12 @@ func cleanDescription(desc string) string {
 	// Normalize whitespace in one pass
 	cleaned = strings.Join(strings.Fields(cleaned), " ")
 
-	// Strip "Ory Kratos" / "Ory Hydra" / "Ory Keto" prefixes
-	cleaned = strings.ReplaceAll(cleaned, "Ory Kratos ", "")
-	cleaned = strings.ReplaceAll(cleaned, "Ory Hydra ", "")
-	cleaned = strings.ReplaceAll(cleaned, "Ory Keto ", "")
+	// Strip "Ory Kratos" / "Ory Hydra" / "Ory Keto" only at the start of a
+	// sentence (after "Configures the" prefix stripping) to avoid mangling
+	// product names that appear mid-sentence.
+	cleaned = strings.TrimPrefix(cleaned, "Ory Kratos ")
+	cleaned = strings.TrimPrefix(cleaned, "Ory Hydra ")
+	cleaned = strings.TrimPrefix(cleaned, "Ory Keto ")
 
 	// Strip "Configures the " / "Configures whether " prefixes for brevity
 	cleaned = strings.TrimPrefix(cleaned, "Configures the ")
@@ -1047,7 +1070,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 {{- $attrs := index $.ByService $svc }}
 {{- $svcCfg := index $.Services $svc }}
 	if {{ $svcCfg.NilCheck }} {
-		{{ $svc }}Config := {{ $svcCfg.ConfigExpr }}
+		{{ varName $svc }}Config := {{ $svcCfg.ConfigExpr }}
 {{- $strings := filterType $attrs "string" }}
 {{- if $strings }}
 		for _, e := range {{ $svc }}StringReadEntries(state) {
@@ -1056,7 +1079,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				target = e.Deprecated
 			}
 			if !target.IsNull() {
-				if v, ok := getNestedString({{ $svc }}Config, e.Keys...); ok {
+				if v, ok := getNestedString({{ varName $svc }}Config, e.Keys...); ok {
 					if !e.SkipEmpty || v != "" {
 						*target = types.StringValue(v)
 					}
@@ -1072,7 +1095,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				target = e.Deprecated
 			}
 			if !target.IsNull() {
-				if v, ok := getNestedBool({{ $svc }}Config, e.Keys...); ok {
+				if v, ok := getNestedBool({{ varName $svc }}Config, e.Keys...); ok {
 					*target = types.BoolValue(v)
 				}
 			}
@@ -1086,7 +1109,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				target = e.Deprecated
 			}
 			if !target.IsNull() {
-				if v, ok := getNestedFloat({{ $svc }}Config, e.Keys...); ok {
+				if v, ok := getNestedFloat({{ varName $svc }}Config, e.Keys...); ok {
 					if v == math.Trunc(v) {
 						*target = types.Int64Value(int64(v))
 					}
@@ -1102,7 +1125,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				target = e.Deprecated
 			}
 			if !target.IsNull() {
-				if v := getNestedValue({{ $svc }}Config, e.Keys...); v != nil {
+				if v := getNestedValue({{ varName $svc }}Config, e.Keys...); v != nil {
 					if arr, ok := v.([]interface{}); ok {
 						strs := make([]string, 0, len(arr))
 						allStrings := true
@@ -1133,7 +1156,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				target = e.Deprecated
 			}
 			if !target.IsNull() {
-				if v := getNestedValue({{ $svc }}Config, e.Keys...); v != nil {
+				if v := getNestedValue({{ varName $svc }}Config, e.Keys...); v != nil {
 					if m, ok := v.(map[string]interface{}); ok {
 						strMap := make(map[string]attr.Value, len(m))
 						allStrings := true
