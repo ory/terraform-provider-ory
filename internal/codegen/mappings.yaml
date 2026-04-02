@@ -1519,3 +1519,30 @@ attributes:
     openapi_property: kratos_selfservice_methods_passkey_config_rp_origins
     description: "Allowed origins for passkey relying party verification."
 
+
+  # ============================================================================
+  # Fields migrated from hand-written code
+  # ============================================================================
+  - name: oauth2_allowed_top_level_claims
+    go_field: OAuth2AllowedTopLevelClaims
+    type: list_string
+    openapi_property: hydra_oauth2_allowed_top_level_claims
+    description: "OAuth2 claims allowed as top-level fields in access tokens."
+
+  - name: webauthn_rp_origins
+    go_field: WebAuthnRPOrigins
+    type: list_string
+    openapi_property: kratos_selfservice_methods_webauthn_config_rp_origins
+    description: "Allowed origins for WebAuthn relying party."
+
+  - name: courier_http_request_config_auth_type
+    go_field: CourierHTTPRequestConfigAuthType
+    type: string
+    openapi_property: kratos_courier_http_request_config_auth_type
+    description: "Authentication type for the courier HTTP request (basic_auth, api_key, or empty)."
+
+  - name: courier_http_request_config_method
+    go_field: CourierHTTPRequestConfigMethod
+    type: string
+    openapi_property: kratos_courier_http_request_config_method
+    description: "HTTP method for the courier HTTP request."

@@ -443,6 +443,8 @@ func identityStringReadEntries(state *ProjectConfigResourceModel) []StringReadEn
 		{&state.PreviewDefaultReadConsistencyLevel, nil, []string{"preview", "default_read_consistency_level"}, false},
 		{&state.SelfserviceMethodsCaptchaConfigCFTurnstileSecret, nil, []string{"selfservice", "methods", "captcha", "config", "cf_turnstile", "secret"}, false},
 		{&state.SelfserviceMethodsCaptchaConfigCFTurnstileSitekey, nil, []string{"selfservice", "methods", "captcha", "config", "cf_turnstile", "sitekey"}, false},
+		{&state.CourierHTTPRequestConfigAuthType, nil, []string{"courier", "http", "request_config", "auth", "type"}, false},
+		{&state.CourierHTTPRequestConfigMethod, nil, []string{"courier", "http", "request_config", "method"}, false},
 	}
 }
 
@@ -507,6 +509,7 @@ func identityListStringReadEntries(state *ProjectConfigResourceModel) []ListStri
 		{&state.IdentitySecretsPagination, nil, []string{"secrets", "pagination"}},
 		{&state.SelfserviceMethodsCaptchaConfigAllowedDomains, nil, []string{"selfservice", "methods", "captcha", "config", "allowed_domains"}},
 		{&state.SelfserviceMethodsPasskeyConfigRPOrigins, nil, []string{"selfservice", "methods", "passkey", "config", "rp", "origins"}},
+		{&state.WebAuthnRPOrigins, nil, []string{"selfservice", "methods", "webauthn", "config", "rp", "origins"}},
 	}
 }
 
@@ -571,6 +574,7 @@ func oauth2ListStringReadEntries(state *ProjectConfigResourceModel) []ListString
 		{&state.OAuth2WebfingerJWKSBroadcastKeys, nil, []string{"webfinger", "jwks", "broadcast_keys"}},
 		{&state.OAuth2WebfingerOIDCDiscoverySupportedClaims, nil, []string{"webfinger", "oidc_discovery", "supported_claims"}},
 		{&state.OAuth2WebfingerOIDCDiscoverySupportedScope, nil, []string{"webfinger", "oidc_discovery", "supported_scope"}},
+		{&state.OAuth2AllowedTopLevelClaims, nil, []string{"oauth2", "allowed_top_level_claims"}},
 	}
 }
 

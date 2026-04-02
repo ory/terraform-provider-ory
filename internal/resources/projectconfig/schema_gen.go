@@ -1200,5 +1200,23 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 			ElementType: types.StringType,
 		},
+		"oauth2_allowed_top_level_claims": schema.ListAttribute{
+			Description: "OAuth2 claims allowed as top-level fields in access tokens.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"webauthn_rp_origins": schema.ListAttribute{
+			Description: "Allowed origins for WebAuthn relying party.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"courier_http_request_config_auth_type": schema.StringAttribute{
+			Description: "Authentication type for the courier HTTP request (basic_auth, api_key, or empty).",
+			Optional:    true,
+		},
+		"courier_http_request_config_method": schema.StringAttribute{
+			Description: "HTTP method for the courier HTTP request.",
+			Optional:    true,
+		},
 	}
 }

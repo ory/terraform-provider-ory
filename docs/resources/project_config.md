@@ -378,7 +378,9 @@ terraform plan  # verify no changes
 - `courier_http_request_config_auth_api_key_value` (String, Sensitive) API key value for HTTP courier authentication.
 - `courier_http_request_config_auth_basic_auth_password` (String, Sensitive) Password for HTTP courier basic authentication.
 - `courier_http_request_config_auth_basic_auth_user` (String) Username for HTTP courier basic authentication.
+- `courier_http_request_config_auth_type` (String) Authentication type for the courier HTTP request (basic_auth, api_key, or empty).
 - `courier_http_request_config_body` (String) Base64-encoded Jsonnet template for the HTTP courier request body.
+- `courier_http_request_config_method` (String) HTTP method for the courier HTTP request.
 - `courier_http_request_config_url` (String) URL of the remote HTTP email sending service.
 - `courier_smtp_from_address` (String) Email address to send from.
 - `courier_smtp_from_name` (String) Name to display as sender.
@@ -453,7 +455,7 @@ terraform plan  # verify no changes
 - `mfa_enforcement` (String) MFA enforcement level: 'none', 'optional', or 'required'.
 - `oauth2_access_token_lifespan` (String, Deprecated) OAuth2 access token lifespan (e.g., '1h', '30m'). Requires Hydra service.
 - `oauth2_access_token_strategy` (String, Deprecated) OAuth2 access token strategy ('jwt' or 'opaque').
-- `oauth2_allowed_top_level_claims` (List of String) List of allowed top-level claims in OAuth2 access tokens (e.g., 'amr', 'acr').
+- `oauth2_allowed_top_level_claims` (List of String) OAuth2 claims allowed as top-level fields in access tokens.
 - `oauth2_auth_code_lifespan` (String, Deprecated) OAuth2 authorization code lifespan (e.g., '30m'). Requires Hydra service.
 - `oauth2_client_credentials_default_grant_allowed_scope` (Boolean) Automatically grant the full authorized scope in OAuth2 client credentials flow.
 - `oauth2_consent_url` (String, Deprecated) OAuth2 consent endpoint URL.
@@ -631,7 +633,7 @@ terraform plan  # verify no changes
 - `webauthn_passwordless` (Boolean, Deprecated) Enable passwordless WebAuthn authentication.
 - `webauthn_rp_display_name` (String, Deprecated) WebAuthn Relying Party display name.
 - `webauthn_rp_id` (String, Deprecated) WebAuthn Relying Party ID (typically your domain).
-- `webauthn_rp_origins` (List of String) Allowed WebAuthn origins.
+- `webauthn_rp_origins` (List of String) Allowed origins for WebAuthn relying party.
 
 ### Read-Only
 

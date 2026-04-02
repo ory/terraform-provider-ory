@@ -186,6 +186,8 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.PreviewDefaultReadConsistencyLevel, nil, "/services/identity/config/preview/default_read_consistency_level"},
 		{&plan.SelfserviceMethodsCaptchaConfigCFTurnstileSecret, nil, "/services/identity/config/selfservice/methods/captcha/config/cf_turnstile/secret"},
 		{&plan.SelfserviceMethodsCaptchaConfigCFTurnstileSitekey, nil, "/services/identity/config/selfservice/methods/captcha/config/cf_turnstile/sitekey"},
+		{&plan.CourierHTTPRequestConfigAuthType, nil, "/services/identity/config/courier/http/request_config/auth/type"},
+		{&plan.CourierHTTPRequestConfigMethod, nil, "/services/identity/config/courier/http/request_config/method"},
 	}
 }
 
@@ -274,6 +276,8 @@ func simpleListStringPatchEntries(plan *ProjectConfigResourceModel) []ListString
 		{&plan.IdentitySecretsPagination, nil, "/services/identity/config/secrets/pagination"},
 		{&plan.SelfserviceMethodsCaptchaConfigAllowedDomains, nil, "/services/identity/config/selfservice/methods/captcha/config/allowed_domains"},
 		{&plan.SelfserviceMethodsPasskeyConfigRPOrigins, nil, "/services/identity/config/selfservice/methods/passkey/config/rp/origins"},
+		{&plan.OAuth2AllowedTopLevelClaims, nil, "/services/oauth2/config/oauth2/allowed_top_level_claims"},
+		{&plan.WebAuthnRPOrigins, nil, "/services/identity/config/selfservice/methods/webauthn/config/rp/origins"},
 	}
 }
 

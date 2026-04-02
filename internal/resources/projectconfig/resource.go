@@ -152,9 +152,11 @@ type ProjectConfigResourceModel struct {
 	SessionTokenizerTemplates types.Map `tfsdk:"session_tokenizer_templates"`
 
 	// Courier HTTP Delivery
-	CourierDeliveryStrategy  types.String `tfsdk:"courier_delivery_strategy"`
-	CourierHTTPRequestConfig types.Object `tfsdk:"courier_http_request_config"`
-	CourierChannels          types.List   `tfsdk:"courier_channels"`
+	CourierDeliveryStrategy          types.String `tfsdk:"courier_delivery_strategy"`
+	CourierHTTPRequestConfig         types.Object `tfsdk:"courier_http_request_config"`
+	CourierHTTPRequestConfigAuthType types.String `tfsdk:"courier_http_request_config_auth_type"`
+	CourierHTTPRequestConfigMethod   types.String `tfsdk:"courier_http_request_config_method"`
+	CourierChannels                  types.List   `tfsdk:"courier_channels"`
 
 	// --- Phase 2: Auto-discovered from OpenAPI spec ---
 
@@ -598,22 +600,12 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 		Optional:    true,
 		ElementType: types.StringType,
 	}
-	attrs["oauth2_allowed_top_level_claims"] = schema.ListAttribute{
-		Description: "List of allowed top-level claims in OAuth2 access tokens (e.g., 'amr', 'acr').",
-		Optional:    true,
-		ElementType: types.StringType,
-	}
 	attrs["default_return_url"] = schema.StringAttribute{
 		Description: "Default URL to redirect after flows.",
 		Optional:    true,
 	}
 	attrs["allowed_return_urls"] = schema.ListAttribute{
 		Description: "List of allowed return URLs.",
-		Optional:    true,
-		ElementType: types.StringType,
-	}
-	attrs["webauthn_rp_origins"] = schema.ListAttribute{
-		Description: "Allowed WebAuthn origins.",
 		Optional:    true,
 		ElementType: types.StringType,
 	}
@@ -919,17 +911,6 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 		})
 	}
 
-	// OAuth2 allowed top-level claims
-	if !plan.OAuth2AllowedTopLevelClaims.IsNull() && !plan.OAuth2AllowedTopLevelClaims.IsUnknown() {
-		var claims []string
-		plan.OAuth2AllowedTopLevelClaims.ElementsAs(ctx, &claims, false)
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/oauth2/config/oauth2/allowed_top_level_claims",
-			Value: claims,
-		})
-	}
-
 	// URLs with remove-on-empty semantics
 	if !plan.DefaultReturnURL.IsNull() && !plan.DefaultReturnURL.IsUnknown() {
 		if plan.DefaultReturnURL.ValueString() == "" {
@@ -960,17 +941,6 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 				Value: urls,
 			})
 		}
-	}
-
-	// WebAuthn RP origins
-	if !plan.WebAuthnRPOrigins.IsNull() && !plan.WebAuthnRPOrigins.IsUnknown() {
-		var origins []string
-		plan.WebAuthnRPOrigins.ElementsAs(ctx, &origins, false)
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/methods/webauthn/config/rp/origins",
-			Value: origins,
-		})
 	}
 
 	// SMTP connection URI (sensitive, write-only)
@@ -1281,24 +1251,6 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 			}
 		}
 
-		// WebAuthn RP Origins
-		if !state.WebAuthnRPOrigins.IsNull() {
-			if v := getNestedValue(identityConfig, "selfservice", "methods", "webauthn", "config", "rp", "origins"); v != nil {
-				if origins, ok := v.([]interface{}); ok && len(origins) > 0 {
-					strs := make([]string, 0, len(origins))
-					for _, o := range origins {
-						if s, ok := o.(string); ok {
-							strs = append(strs, s)
-						}
-					}
-					originsList, diags := types.ListValueFrom(ctx, types.StringType, strs)
-					if !diags.HasError() {
-						state.WebAuthnRPOrigins = originsList
-					}
-				}
-			}
-		}
-
 		// Session Tokenizer Templates
 		if !state.SessionTokenizerTemplates.IsNull() {
 			v := getNestedValue(identityConfig, "session", "whoami", "tokenizer", "templates")
@@ -1392,29 +1344,6 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 					listVal, diags := types.ListValue(types.ObjectType{AttrTypes: courierChannelAttrTypes}, channelObjects)
 					if !diags.HasError() {
 						state.CourierChannels = listVal
-					}
-				}
-			}
-		}
-	}
-
-	// OAuth2 custom reads
-	if project.Services.Oauth2 != nil {
-		oauth2Config := project.Services.Oauth2.Config
-
-		// OAuth2 allowed top-level claims (list type)
-		if !state.OAuth2AllowedTopLevelClaims.IsNull() {
-			if v := getNestedValue(oauth2Config, "oauth2", "allowed_top_level_claims"); v != nil {
-				if claims, ok := v.([]interface{}); ok && len(claims) > 0 {
-					strs := make([]string, 0, len(claims))
-					for _, c := range claims {
-						if s, ok := c.(string); ok {
-							strs = append(strs, s)
-						}
-					}
-					claimsList, diags := types.ListValueFrom(ctx, types.StringType, strs)
-					if !diags.HasError() {
-						state.OAuth2AllowedTopLevelClaims = claimsList
 					}
 				}
 			}
