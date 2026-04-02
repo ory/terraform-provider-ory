@@ -7,11 +7,10 @@ on:
         description: 'Create a PR with changes (if any)'
         type: boolean
         default: true
-  schedule:
-    # Run at 9:00 UTC daily — 1 hour after Renovate's first run (8:00 UTC),
-    # giving client-go version bumps time to merge before we check the spec.
-    # https://crontab.guru/#0_9_*_*_*
-    - cron: '0 9 * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'go.sum'
 
 permissions:
   contents: write
