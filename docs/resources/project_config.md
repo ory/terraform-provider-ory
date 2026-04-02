@@ -321,24 +321,11 @@ Omitting these attributes entirely (or setting them to `null`) leaves the existi
 
 ## Coverage
 
-This resource exposes **218 spec-mapped attributes** (plus 53 deprecated aliases and additional complex attributes like CORS, courier channels, and tokenizer templates), covering 100% of the configurable properties in the Ory project API:
-
-| Category | Examples |
-|----------|---------|
-| Authentication methods | password, code, OIDC, TOTP, passkey, WebAuthn, lookup secrets, SAML, CAPTCHA |
-| Password settings | min length, identifier similarity, max breaches, haveibeenpwned |
-| Session settings | cookie same site, lifespan, tokenizer templates, whoami AAL |
-| CORS | public and admin origins, enabled/disabled |
-| Flow configuration | login style, lifespans, return URLs per flow/method, registration hints |
-| OAuth2/Hydra | token lifespans, strategies, PKCE, claims, OIDC discovery, webfinger |
-| Courier | SMTP, HTTP delivery, email/SMS templates, channels |
-| Account Experience | logos, favicons, themes, locales, AX v2 |
-| Security | account enumeration mitigation, secrets, feature flags |
-| Keto | namespace configuration, pagination secrets |
+This resource covers all configurable properties in the Ory project API.
 
 ### Migrating Deprecated Attribute Names
 
-53 attributes have been renamed for consistency with the API spec. The old names still work but show deprecation warnings. A migration script is provided:
+Some attributes have been renamed for consistency with the API spec. The old names still work but show deprecation warnings. A [migration script](https://github.com/ory/terraform-provider-ory/blob/main/scripts/migrate-deprecated-attrs.sh) is provided:
 
 ```bash
 ./scripts/migrate-deprecated-attrs.sh .
