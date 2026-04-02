@@ -9,7 +9,7 @@ terraform-provider-ory
 .bin/
 
 # Codegen binary (produced by `go build` in the codegen directory)
-generate
+/generate
 
 # Test binary
 *.test
