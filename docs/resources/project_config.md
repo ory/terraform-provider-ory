@@ -579,8 +579,6 @@ terraform plan  # verify no changes
 - `selfservice_flows_verification_use` (String) Verification method to use: 'code' (one-time code) or 'link' (magic link).
 - `selfservice_methods_captcha_config_allowed_domains` (List of String) Domains allowed for CAPTCHA verification.
 - `selfservice_methods_captcha_config_byo` (Boolean) Use bring-your-own CAPTCHA widget instead of managed.
-- `selfservice_methods_captcha_config_cf_turnstile_byo_secret` (String, Sensitive) Cloudflare Turnstile BYO site secret (private).
-- `selfservice_methods_captcha_config_cf_turnstile_byo_sitekey` (String) Cloudflare Turnstile site key for BYO CAPTCHA.
 - `selfservice_methods_captcha_config_cf_turnstile_secret` (String, Sensitive) Cloudflare Turnstile managed site secret (private).
 - `selfservice_methods_captcha_config_cf_turnstile_sitekey` (String) Cloudflare Turnstile site key for managed CAPTCHA.
 - `selfservice_methods_captcha_config_legacy_inject_node` (Boolean) Inject CAPTCHA as a legacy UI node.

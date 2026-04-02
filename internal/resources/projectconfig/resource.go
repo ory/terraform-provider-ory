@@ -303,14 +303,12 @@ type ProjectConfigResourceModel struct {
 	EnableAXV2                            types.Bool   `tfsdk:"enable_ax_v2"`
 
 	// CAPTCHA
-	SelfserviceMethodsCaptchaConfigAllowedDomains        types.List   `tfsdk:"selfservice_methods_captcha_config_allowed_domains"`
-	SelfserviceMethodsCaptchaConfigBYO                   types.Bool   `tfsdk:"selfservice_methods_captcha_config_byo"`
-	SelfserviceMethodsCaptchaConfigCFTurnstileBYOSecret  types.String `tfsdk:"selfservice_methods_captcha_config_cf_turnstile_byo_secret"`
-	SelfserviceMethodsCaptchaConfigCFTurnstileBYOSitekey types.String `tfsdk:"selfservice_methods_captcha_config_cf_turnstile_byo_sitekey"`
-	SelfserviceMethodsCaptchaConfigCFTurnstileSecret     types.String `tfsdk:"selfservice_methods_captcha_config_cf_turnstile_secret"`
-	SelfserviceMethodsCaptchaConfigCFTurnstileSitekey    types.String `tfsdk:"selfservice_methods_captcha_config_cf_turnstile_sitekey"`
-	SelfserviceMethodsCaptchaConfigLegacyInjectNode      types.Bool   `tfsdk:"selfservice_methods_captcha_config_legacy_inject_node"`
-	SelfserviceMethodsCaptchaEnabled                     types.Bool   `tfsdk:"selfservice_methods_captcha_enabled"`
+	SelfserviceMethodsCaptchaConfigAllowedDomains     types.List   `tfsdk:"selfservice_methods_captcha_config_allowed_domains"`
+	SelfserviceMethodsCaptchaConfigBYO                types.Bool   `tfsdk:"selfservice_methods_captcha_config_byo"`
+	SelfserviceMethodsCaptchaConfigCFTurnstileSecret  types.String `tfsdk:"selfservice_methods_captcha_config_cf_turnstile_secret"`
+	SelfserviceMethodsCaptchaConfigCFTurnstileSitekey types.String `tfsdk:"selfservice_methods_captcha_config_cf_turnstile_sitekey"`
+	SelfserviceMethodsCaptchaConfigLegacyInjectNode   types.Bool   `tfsdk:"selfservice_methods_captcha_config_legacy_inject_node"`
+	SelfserviceMethodsCaptchaEnabled                  types.Bool   `tfsdk:"selfservice_methods_captcha_enabled"`
 
 	// Code max submissions
 	SelfserviceMethodsCodeConfigMaxSubmissions types.Int64 `tfsdk:"selfservice_methods_code_config_max_submissions"`

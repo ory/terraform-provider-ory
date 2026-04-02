@@ -1194,15 +1194,6 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Use bring-your-own CAPTCHA widget instead of managed.",
 			Optional:    true,
 		},
-		"selfservice_methods_captcha_config_cf_turnstile_byo_secret": schema.StringAttribute{
-			Description: "Cloudflare Turnstile BYO site secret (private).",
-			Optional:    true,
-			Sensitive:   true,
-		},
-		"selfservice_methods_captcha_config_cf_turnstile_byo_sitekey": schema.StringAttribute{
-			Description: "Cloudflare Turnstile site key for BYO CAPTCHA.",
-			Optional:    true,
-		},
 		"selfservice_methods_captcha_config_cf_turnstile_secret": schema.StringAttribute{
 			Description: "Cloudflare Turnstile managed site secret (private).",
 			Optional:    true,

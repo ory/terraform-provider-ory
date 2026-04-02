@@ -293,7 +293,7 @@ func TestGeneratedSchemaAttributes_Count(t *testing.T) {
 	attrs := simpleSchemaAttributes()
 	// 271 generated attributes: 218 primary + 53 deprecated aliases from mappings.yaml.
 	// Use exact count to detect accidental additions/removals.
-	const expected = 271
+	const expected = 269
 	if len(attrs) != expected {
 		t.Errorf("expected %d generated schema attributes, got %d", expected, len(attrs))
 	}
