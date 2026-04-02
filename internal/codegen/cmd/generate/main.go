@@ -405,24 +405,7 @@ func resolveFromSpec(m *Mappings, specProps map[string]SpecProperty) {
 			continue
 		}
 
-		if sp.GovernsPath == "" {
-			if a.PatchPath == "" {
-				log.Printf("WARNING: openapi_property %q has no 'governs' description and no explicit patch_path for attribute %q", a.OpenAPIProperty, a.Name)
-			}
-			// No governs path — keep explicit patch_path from YAML
-			continue
-		}
-
-		if a.PatchPath == "" {
-			// Derive patch_path from governs
-			a.PatchPath = sp.GovernsPath
-			fmt.Printf("  Derived patch_path for %q from spec: %s\n", a.Name, sp.GovernsPath)
-		} else if a.PatchPath != sp.GovernsPath {
-			// Both set but differ — warn (explicit YAML takes precedence)
-			log.Printf("WARNING: patch_path mismatch for %q: yaml=%s, governs=%s (using yaml value)", a.Name, a.PatchPath, sp.GovernsPath)
-		}
-
-		// Optionally enrich type from spec if not set
+		// Enrich type from spec if not set in YAML
 		if a.Type == "" && sp.Type != "" {
 			if tfType := openAPITypeToTFType(sp.Type); tfType != "" {
 				a.Type = tfType
@@ -430,14 +413,27 @@ func resolveFromSpec(m *Mappings, specProps map[string]SpecProperty) {
 			}
 		}
 
-		// Optionally enrich description from spec if not set
+		// Enrich description from spec if not set in YAML
 		if a.Description == "" && sp.Description != "" {
-			// Clean up the description: remove the "governs" sentence
 			desc := governsRegex.ReplaceAllString(sp.Description, "")
 			desc = strings.TrimSpace(desc)
 			if desc != "" {
 				a.Description = desc
 			}
+		}
+
+		if sp.GovernsPath == "" {
+			if a.PatchPath == "" {
+				log.Printf("WARNING: openapi_property %q has no 'governs' description and no explicit patch_path for attribute %q", a.OpenAPIProperty, a.Name)
+			}
+			continue
+		}
+
+		if a.PatchPath == "" {
+			a.PatchPath = sp.GovernsPath
+			fmt.Printf("  Derived patch_path for %q from spec: %s\n", a.Name, sp.GovernsPath)
+		} else if a.PatchPath != sp.GovernsPath {
+			log.Printf("WARNING: patch_path mismatch for %q: yaml=%s, governs=%s (using yaml value)", a.Name, a.PatchPath, sp.GovernsPath)
 		}
 	}
 }
@@ -1104,14 +1100,20 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				if v := getNestedValue({{ $svc }}Config, e.Keys...); v != nil {
 					if arr, ok := v.([]interface{}); ok {
 						strs := make([]string, 0, len(arr))
+						allStrings := true
 						for _, item := range arr {
 							if s, ok := item.(string); ok {
 								strs = append(strs, s)
+							} else {
+								allStrings = false
+								break
 							}
 						}
-						listVal, diags := types.ListValueFrom(ctx, types.StringType, strs)
-						if !diags.HasError() {
-							*target = listVal
+						if allStrings {
+							listVal, diags := types.ListValueFrom(ctx, types.StringType, strs)
+							if !diags.HasError() {
+								*target = listVal
+							}
 						}
 					}
 				}
@@ -1129,14 +1131,20 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				if v := getNestedValue({{ $svc }}Config, e.Keys...); v != nil {
 					if m, ok := v.(map[string]interface{}); ok {
 						strMap := make(map[string]attr.Value, len(m))
+						allStrings := true
 						for k, val := range m {
 							if s, ok := val.(string); ok {
 								strMap[k] = types.StringValue(s)
+							} else {
+								allStrings = false
+								break
 							}
 						}
-						mapVal, diags := types.MapValue(types.StringType, strMap)
-						if !diags.HasError() {
-							*target = mapVal
+						if allStrings {
+							mapVal, diags := types.MapValue(types.StringType, strMap)
+							if !diags.HasError() {
+								*target = mapVal
+							}
 						}
 					}
 				}

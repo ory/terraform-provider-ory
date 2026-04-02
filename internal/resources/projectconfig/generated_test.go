@@ -2,10 +2,10 @@ package projectconfig
 
 import (
 	"context"
-	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -278,10 +278,23 @@ func TestGeneratedSchemaAttributes_Count(t *testing.T) {
 func TestGeneratedSchemaAttributes_AllOptional(t *testing.T) {
 	attrs := simpleSchemaAttributes()
 	for name, attr := range attrs {
-		// Use reflection to check Optional field
-		v := reflect.ValueOf(attr)
-		optField := v.FieldByName("Optional")
-		if !optField.IsValid() || !optField.Bool() {
+		var optional bool
+		switch a := attr.(type) {
+		case schema.StringAttribute:
+			optional = a.Optional
+		case schema.BoolAttribute:
+			optional = a.Optional
+		case schema.Int64Attribute:
+			optional = a.Optional
+		case schema.ListAttribute:
+			optional = a.Optional
+		case schema.MapAttribute:
+			optional = a.Optional
+		default:
+			t.Errorf("attribute %q has unexpected type %T", name, attr)
+			continue
+		}
+		if !optional {
 			t.Errorf("attribute %q is not optional", name)
 		}
 	}

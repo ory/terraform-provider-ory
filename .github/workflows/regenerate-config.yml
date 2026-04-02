@@ -60,7 +60,10 @@ jobs:
 
           if grep -q "STRICT MODE" /tmp/strict-output.txt; then
             echo "found=true" >> "$GITHUB_OUTPUT"
-            COUNT=$(grep -oP '\d+ unmapped' /tmp/strict-output.txt | grep -oP '\d+')
+            COUNT=$(grep -oP '\d+ unmapped' /tmp/strict-output.txt | head -n1 | grep -oP '\d+' || true)
+            if [ -z "$COUNT" ]; then
+              COUNT=0
+            fi
             echo "count=${COUNT}" >> "$GITHUB_OUTPUT"
           fi
 
