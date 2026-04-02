@@ -408,6 +408,10 @@ func extractProvidersFromProject(project *ory.Project) []map[string]interface{} 
 // deepCopyValue recursively copies maps and slices so the caller gets a
 // fully independent value tree that is safe to mutate without affecting
 // the cached project state.
+//
+// The primary types from JSON decoding into interface{} are
+// map[string]interface{}, []interface{}, string, float64, bool, and nil.
+// Additional concrete container types are handled defensively.
 func deepCopyValue(v interface{}) interface{} {
 	switch val := v.(type) {
 	case map[string]interface{}:
@@ -420,6 +424,16 @@ func deepCopyValue(v interface{}) interface{} {
 		cp := make([]interface{}, len(val))
 		for i, elem := range val {
 			cp[i] = deepCopyValue(elem)
+		}
+		return cp
+	case []string:
+		cp := make([]string, len(val))
+		copy(cp, val)
+		return cp
+	case map[string]string:
+		cp := make(map[string]string, len(val))
+		for k, elem := range val {
+			cp[k] = elem
 		}
 		return cp
 	default:
