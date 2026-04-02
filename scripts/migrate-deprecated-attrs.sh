@@ -127,7 +127,7 @@ while IFS= read -r -d '' file; do
           $seen_open = 1 if $opens > 0;
           if ($seen_open && $depth <= 0) { $in_block = 0; $depth = 0; $seen_open = 0; }
         }
-        if ($in_block) { s/^(\s*)\Q'"${old}"'\E(\s*=)/${1}'"${new}"'${2}/; }
+        if ($in_block) { s/^(\s*)\Q'"${old}"'\E(\s*=)/$1'"${new}"'$2/; }
       ' "$file"
       echo "  $file: $old -> $new"
     fi

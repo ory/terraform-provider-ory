@@ -298,6 +298,9 @@ func main() {
 		if a.Type != typeString && a.Type != typeBool && a.Type != typeInt64 && a.Type != typeListString && a.Type != typeMapString {
 			log.Fatalf("attribute %q: unsupported type %q", a.Name, a.Type)
 		}
+		if a.Description == "" {
+			log.Fatalf("attribute %q: description is required (set it in mappings.yaml or ensure openapi_property points to a spec entry with a description)", a.Name)
+		}
 	}
 
 	// Group by service
