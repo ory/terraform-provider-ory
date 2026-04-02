@@ -6,6 +6,7 @@ package projectconfig
 
 import (
 	"context"
+	"math"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -139,7 +140,9 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 			}
 			if !target.IsNull() {
 				if v, ok := getNestedFloat(identityConfig, e.Keys...); ok {
-					*target = types.Int64Value(int64(v))
+					if v == math.Trunc(v) {
+						*target = types.Int64Value(int64(v))
+					}
 				}
 			}
 		}

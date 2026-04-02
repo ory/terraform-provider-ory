@@ -41,6 +41,7 @@ jobs:
       - name: Run codegen with spec validation
         id: generate
         run: |
+          set -o pipefail
           go run ./internal/codegen/cmd/generate/ \
             -mappings ./internal/codegen/mappings.yaml \
             -spec ./internal/codegen/openapi.yaml \

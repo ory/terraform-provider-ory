@@ -250,7 +250,8 @@ func main() {
 	strict := flag.Bool("strict", false, "fail if any spec properties are unmapped (use in CI to detect drift)")
 	flag.Parse()
 
-	data, err := os.ReadFile(*mappingsPath)
+	cleanMappingsPath := filepath.Clean(*mappingsPath)
+	data, err := os.ReadFile(cleanMappingsPath) //nolint:gosec // path from trusted CLI flag
 	if err != nil {
 		log.Fatalf("reading mappings: %v", err)
 	}
@@ -354,6 +355,8 @@ func main() {
 		"deprecatedSchemaAttr": buildDeprecatedSchemaAttr,
 	}
 
+	cleanOutDir := filepath.Clean(*outDir)
+
 	for _, gen := range []struct {
 		name string
 		tmpl string
@@ -374,16 +377,16 @@ func main() {
 
 		formatted, err := format.Source(buf.Bytes())
 		if err != nil {
-			_ = os.WriteFile(filepath.Join(*outDir, gen.name), buf.Bytes(), 0644) // #nosec G306 -- generated source files need standard read permissions
+			_ = os.WriteFile(filepath.Join(cleanOutDir, gen.name), buf.Bytes(), 0644) // #nosec G306 -- generated source files need standard read permissions
 			log.Fatalf("formatting %s: %v (unformatted file written)", gen.name, err)
 		}
 
-		if err := os.WriteFile(filepath.Join(*outDir, gen.name), formatted, 0644); err != nil { // #nosec G306 -- generated source files need standard read permissions
+		if err := os.WriteFile(filepath.Join(cleanOutDir, gen.name), formatted, 0644); err != nil { // #nosec G306 -- generated source files need standard read permissions
 			log.Fatalf("writing %s: %v", gen.name, err)
 		}
 	}
 
-	fmt.Printf("Generated %d attributes into %s\n", len(m.Attributes), *outDir)
+	fmt.Printf("Generated %d attributes into %s\n", len(m.Attributes), cleanOutDir)
 }
 
 // resolveFromSpec resolves patch paths from the OpenAPI spec for entries that
@@ -792,7 +795,7 @@ func buildSchemaAttr(a Attribute) string {
 			if msg == "" {
 				msg = "must match pattern"
 			}
-			validatorExprs = append(validatorExprs, fmt.Sprintf("stringvalidator.RegexMatches(\n\t\t\t\t\tregexp.MustCompile(`%s`),\n\t\t\t\t\t%q,\n\t\t\t\t)", a.Validators.Regex, msg))
+			validatorExprs = append(validatorExprs, fmt.Sprintf("stringvalidator.RegexMatches(\n\t\t\t\t\tregexp.MustCompile(%q),\n\t\t\t\t\t%q,\n\t\t\t\t)", a.Validators.Regex, msg))
 		}
 		if len(validatorExprs) > 0 {
 			fmt.Fprintf(&b, "\t\t\tValidators: []validator.String{\n")
@@ -987,6 +990,7 @@ package projectconfig
 
 import (
 	"context"
+	"math"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -1082,7 +1086,9 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 			}
 			if !target.IsNull() {
 				if v, ok := getNestedFloat({{ $svc }}Config, e.Keys...); ok {
-					*target = types.Int64Value(int64(v))
+					if v == math.Trunc(v) {
+						*target = types.Int64Value(int64(v))
+					}
 				}
 			}
 		}

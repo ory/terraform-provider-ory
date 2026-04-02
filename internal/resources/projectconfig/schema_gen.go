@@ -511,7 +511,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 			Validators: []validator.String{
 				stringvalidator.RegexMatches(
-					regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`),
+					regexp.MustCompile("^[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}$"),
 					"must be a valid email address",
 				),
 			},
