@@ -1,33 +1,34 @@
 # Project Config Attribute Mappings
 #
-# This file defines all simple (string, bool, int64) attributes for the
-# ory_project_config resource. The codegen tool reads this file and generates:
+# This file defines all simple (string, bool, int64, list_string, map_string)
+# attributes for the ory_project_config resource. The codegen tool reads this
+# file and generates:
 #   - schema_gen.go   (Terraform schema attributes)
 #   - patches_gen.go  (JSON Patch mapping tables)
 #   - read_gen.go     (API response -> state read mapping tables)
 #
 # Complex types (nested objects, lists of objects, CORS structs) are handled
-# in hand-written *_custom.go files and are NOT included here.
+# in resource.go and helpers.go and are NOT included here.
 #
-# To add a new simple config field:
-#   1. Add an entry below with name, type, patch_path, and description
-#   2. Run: make generate
-#   3. The new field will appear in schema, patches, and read logic automatically
+# Every entry uses openapi_property to link to the normalizedProjectRevision
+# property in the published OpenAPI spec. The codegen tool derives the JSON
+# Patch path automatically from the spec's "governs" description at generation
+# time. No explicit patch_path is needed.
 #
-# OpenAPI "governs" pattern support:
-#   If the OpenAPI spec has a "governs" description for a property, you can
-#   use openapi_property instead of patch_path. The codegen tool will derive
-#   the patch path automatically from the spec when run with --spec:
+# To add a new attribute:
+#   1. Add an entry below:
+#        - name: my_new_field
+#          go_field: MyNewField
+#          type: string
+#          openapi_property: kratos_my_new_field
+#          description: "What this field does."
+#   2. Add the Go struct field to ProjectConfigResourceModel in resource.go
+#   3. Run: make generate
 #
-#     - name: session_lifespan
-#       go_field: SessionLifespan
-#       type: string
-#       openapi_property: kratos_session_lifespan  # patch_path derived from spec
-#       description: "Session duration."
-#
-#   If both openapi_property and patch_path are set, patch_path takes precedence
-#   and a warning is shown if they don't match. This allows gradual migration
-#   from explicit paths to spec-derived paths.
+# For deprecated aliases (old terraform name -> new spec-derived name):
+#   Add deprecated_name and deprecated_go_field to the entry. Both names
+#   will work in terraform configs, but the old name shows a deprecation
+#   warning. See scripts/migrate-deprecated-attrs.sh for the migration tool.
 
 attributes:
   # ============================================================================
