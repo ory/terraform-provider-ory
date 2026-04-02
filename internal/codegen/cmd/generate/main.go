@@ -415,9 +415,7 @@ func resolveFromSpec(m *Mappings, specProps map[string]SpecProperty) {
 
 		// Enrich description from spec if not set in YAML
 		if a.Description == "" && sp.Description != "" {
-			desc := governsRegex.ReplaceAllString(sp.Description, "")
-			desc = strings.TrimSpace(desc)
-			if desc != "" {
+			if desc := cleanDescription(sp.Description); desc != "" {
 				a.Description = desc
 			}
 		}

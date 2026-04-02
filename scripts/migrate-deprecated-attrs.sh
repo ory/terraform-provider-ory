@@ -116,8 +116,17 @@ while IFS= read -r -d '' file; do
         cp "$file" "${file}.bak"
         MODIFIED=true
       fi
-      # Replace attribute name only in assignment position (not in comments/strings)
-      perl -pi -e "s/^([\\s]*)\\Q${old}\\E(\\s*=)/\${1}${new}\${2}/gm" "$file"
+      # Replace attribute name only inside resource "ory_project_config" blocks.
+      # Tracks brace depth to avoid renaming keys in unrelated blocks.
+      perl -pi -e '
+        BEGIN { $in_block = 0; $depth = 0; }
+        if (!$in_block && /resource\s+"ory_project_config"/) { $in_block = 1; $depth = 0; }
+        if ($in_block) {
+          $depth += (tr/{/{/) - (tr/}/}/);
+          if ($depth <= 0) { $in_block = 0; $depth = 0; }
+        }
+        if ($in_block) { s/^(\s*)\Q'"${old}"'\E(\s*=)/${1}'"${new}"'${2}/; }
+      ' "$file"
       echo "  $file: $old -> $new"
     fi
   done
