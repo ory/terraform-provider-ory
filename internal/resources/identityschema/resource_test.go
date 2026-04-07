@@ -3,12 +3,14 @@
 package identityschema_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 	"github.com/ory/terraform-provider-ory/internal/testutil"
@@ -130,6 +132,13 @@ func TestAccIdentitySchemaResource_setDefault(t *testing.T) {
 	suffix := time.Now().UnixNano()
 	schemaID := fmt.Sprintf("tf-test-default-%d", suffix)
 
+	// Reset the default schema to preset://username after the test so that
+	// cleanup of tf-test-* schemas doesn't leave the project with a
+	// dangling default_schema_id reference.
+	t.Cleanup(func() {
+		resetDefaultSchemaToPreset(t)
+	})
+
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.AccPreCheck(t)
@@ -157,4 +166,33 @@ func TestAccIdentitySchemaResource_setDefault(t *testing.T) {
 			},
 		},
 	})
+}
+
+// resetDefaultSchemaToPreset resets the project's default_schema_id back to
+// preset://username. This prevents cleanup of tf-test-* schemas from
+// leaving the project with a broken default reference.
+func resetDefaultSchemaToPreset(t *testing.T) {
+	t.Helper()
+
+	c, err := acctest.GetOryClient()
+	if err != nil {
+		t.Logf("Warning: could not create client for default schema reset: %v", err)
+		return
+	}
+
+	projectID := acctest.GetTestProjectID(t)
+	patches := []ory.JsonPatch{
+		{
+			Op:    "replace",
+			Path:  "/services/identity/config/identity/default_schema_id",
+			Value: "preset://username",
+		},
+	}
+
+	if _, err := c.PatchProject(context.Background(), projectID, patches); err != nil {
+		t.Logf("Warning: failed to reset default schema to preset://username: %v", err)
+		return
+	}
+
+	t.Log("Reset default_schema_id to preset://username")
 }
