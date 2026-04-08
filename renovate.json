@@ -11,23 +11,9 @@
   "semanticCommitScope": "deps",
   "packageRules": [
     {
-      "description": "Track Go toolchain version in go.mod",
-      "matchManagers": [
-        "gomod"
-      ],
-      "matchDepNames": [
-        "go"
-      ],
-      "semanticCommitType": "fix",
-      "semanticCommitScope": "deps"
-    },
-    {
       "description": "Group all Go module updates",
       "matchManagers": [
         "gomod"
-      ],
-      "matchDepNames": [
-        "!/^go$/"
       ],
       "groupName": "go modules"
     },
