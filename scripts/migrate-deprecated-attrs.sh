@@ -184,3 +184,42 @@ if [ "$FOUND_REMOVED" = true ]; then
 fi
 echo "Review the changes and run 'terraform plan' to verify."
 echo "Backups saved as *.tf.bak"
+
+# Check for deprecated cross-resource attributes (ory_social_provider -> ory_project_config)
+FOUND_CROSS=false
+while IFS= read -r -d '' file; do
+  if grep -qF "base_redirect_uri" "$file" 2>/dev/null; then
+    # Check if base_redirect_uri is inside an ory_social_provider block
+    if perl -ne '
+      BEGIN { $in=0; $d=0; $s=0; $found=0; }
+      if (!$in && /^\s*resource\s+"ory_social_provider"/ && !/^\s*#/) { $in=1; $d=0; $s=0; }
+      if ($in) {
+        my $o = () = /\{/g;
+        my $c = () = /\}/g;
+        $d += $o - $c;
+        $s = 1 if $o > 0;
+        if ($s && $d <= 0) { $in=0; $d=0; $s=0; }
+      }
+      if ($in && /^\s*base_redirect_uri\s*=/) { $found=1; }
+      END { exit($found ? 0 : 1); }
+    ' "$file" 2>/dev/null; then
+      if [ "$FOUND_CROSS" = false ]; then
+        echo ""
+        echo "WARNING: The following attributes should be moved to ory_project_config:"
+        FOUND_CROSS=true
+      fi
+      echo "  $file: base_redirect_uri on ory_social_provider -> selfservice_methods_oidc_config_base_redirect_uri on ory_project_config"
+    fi
+  fi
+done < <(find "$DIR" -type f -name '*.tf' -not -path '*/.terraform/*' -print0)
+
+if [ "$FOUND_CROSS" = true ]; then
+  echo ""
+  echo "  base_redirect_uri is a global OIDC setting, not per-provider."
+  echo "  Remove it from ory_social_provider and add to ory_project_config:"
+  echo ""
+  echo "    resource \"ory_project_config\" \"main\" {"
+  echo "      selfservice_methods_oidc_config_base_redirect_uri = \"https://your-domain.com\""
+  echo "      # ..."
+  echo "    }"
+fi
