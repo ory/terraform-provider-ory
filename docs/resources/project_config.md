@@ -53,9 +53,10 @@ resource "ory_project_config" "secure" {
   # Authentication Methods
   enable_password              = true
   enable_code                  = true
-  code_mfa_enabled             = true # Enable code as a second factor for MFA
-  enable_oidc                  = true # Required for social providers (Google, GitHub, etc.)
-  enable_oidc_auto_link_policy = true # Allow social providers with auto_link = true to link to existing identities
+  code_mfa_enabled             = true                      # Enable code as a second factor for MFA
+  enable_oidc                  = true                      # Required for social providers (Google, GitHub, etc.)
+  enable_oidc_auto_link_policy = true                      # Allow social providers with auto_link = true to link to existing identities
+  oidc_base_redirect_uri       = "https://iam.example.com" # Custom domain for OIDC callback URLs
   enable_passkey               = true
   enable_profile               = true # Allow users to update profile traits via settings flow
 
@@ -331,7 +332,7 @@ This resource exposes **75+ attributes** across these configuration categories:
 | Session settings | cookie same site, lifespan, whoami-required AAL |
 | CORS | public and admin origins, enabled/disabled |
 | Login flow | login style (unified, identifier_first) |
-| Authentication | passwordless, code, profile, OIDC (social sign-in), OIDC auto-link policy, TOTP, passkey, WebAuthn, lookup secrets |
+| Authentication | passwordless, code, profile, OIDC (social sign-in), OIDC auto-link policy, OIDC base redirect URI, TOTP, passkey, WebAuthn, lookup secrets |
 | Code method | lifespan, max submissions, missing credential fallback |
 | OAuth2/Hydra | token lifespans, access token strategy, PKCE, claims, scope strategy, consent/login URLs |
 | Settings flow | lifespan, privileged session max age, required AAL |
@@ -406,6 +407,7 @@ Some Ory project settings are not yet available through this resource. For setti
 - `oauth2_refresh_token_lifespan` (String) OAuth2 refresh token lifespan (e.g., '720h' for 30 days). Requires Hydra service.
 - `oauth2_scope_strategy` (String) OAuth2 scope matching strategy ('exact', 'wildcard').
 - `oauth2_session_encrypt_at_rest` (Boolean) Encrypt OAuth2 sessions at rest.
+- `oidc_base_redirect_uri` (String) Override the base redirect URI for OIDC callbacks (e.g., "https://iam.example.com"). When set, Ory constructs callback URLs using this base instead of the default project domain. This is useful when your project uses a custom domain for authentication flows. This is also configurable via the ory_social_provider resource's base_redirect_uri attribute.
 - `password_check_haveibeenpwned` (Boolean) Check passwords against HaveIBeenPwned.
 - `password_identifier_similarity` (Boolean) Check password similarity to identifier.
 - `password_max_breaches` (Number) Maximum allowed breaches in HaveIBeenPwned.

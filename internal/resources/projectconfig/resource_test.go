@@ -240,6 +240,36 @@ func TestAccProjectConfigResource_oidcAutoLinkPolicy(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_oidcBaseRedirectURI(t *testing.T) {
+	acctest.RequireSocialProviderTests(t)
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oidc_base_redirect_uri.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "enable_oidc", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oidc_base_redirect_uri", "https://iam.example.com"),
+				),
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oidc_base_redirect_uri_updated.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "oidc_base_redirect_uri", "https://auth.example.com"),
+				),
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oidc_base_redirect_uri_removed.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "oidc_base_redirect_uri", ""),
+				),
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_accountExperience(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },

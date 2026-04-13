@@ -93,15 +93,16 @@ type ProjectConfigResourceModel struct {
 	ErrorUIURL        types.String `tfsdk:"error_ui_url"`
 
 	// Auth methods
-	EnablePassword           types.Bool `tfsdk:"enable_password"`
-	EnableCode               types.Bool `tfsdk:"enable_code"`
-	CodeMFAEnabled           types.Bool `tfsdk:"code_mfa_enabled"`
-	EnableOIDC               types.Bool `tfsdk:"enable_oidc"`
-	EnableOIDCAutoLinkPolicy types.Bool `tfsdk:"enable_oidc_auto_link_policy"`
-	EnableTOTP               types.Bool `tfsdk:"enable_totp"`
-	EnableWebAuthn           types.Bool `tfsdk:"enable_webauthn"`
-	EnablePasskey            types.Bool `tfsdk:"enable_passkey"`
-	EnableLookupSecret       types.Bool `tfsdk:"enable_lookup_secret"`
+	EnablePassword           types.Bool   `tfsdk:"enable_password"`
+	EnableCode               types.Bool   `tfsdk:"enable_code"`
+	CodeMFAEnabled           types.Bool   `tfsdk:"code_mfa_enabled"`
+	EnableOIDC               types.Bool   `tfsdk:"enable_oidc"`
+	EnableOIDCAutoLinkPolicy types.Bool   `tfsdk:"enable_oidc_auto_link_policy"`
+	OIDCBaseRedirectURI      types.String `tfsdk:"oidc_base_redirect_uri"`
+	EnableTOTP               types.Bool   `tfsdk:"enable_totp"`
+	EnableWebAuthn           types.Bool   `tfsdk:"enable_webauthn"`
+	EnablePasskey            types.Bool   `tfsdk:"enable_passkey"`
+	EnableLookupSecret       types.Bool   `tfsdk:"enable_lookup_secret"`
 
 	// Password policy
 	PasswordMinLength            types.Int64 `tfsdk:"password_min_length"`
@@ -505,6 +506,13 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 			"enable_oidc_auto_link_policy": schema.BoolAttribute{
 				Description: "Enable the OIDC auto-link policy. When true, social sign-in providers with auto_link enabled (on ory_social_provider) can automatically link to existing identities that share the same identifier (e.g., email).",
 				Optional:    true,
+			},
+			"oidc_base_redirect_uri": schema.StringAttribute{
+				Description: "Override the base redirect URI for OIDC callbacks (e.g., \"https://iam.example.com\"). " +
+					"When set, Ory constructs callback URLs using this base instead of the default project domain. " +
+					"This is useful when your project uses a custom domain for authentication flows. " +
+					"This is also configurable via the ory_social_provider resource's base_redirect_uri attribute.",
+				Optional: true,
 			},
 			"enable_totp": schema.BoolAttribute{
 				Description: "Enable TOTP (Time-based One-Time Password).",
@@ -1085,6 +1093,22 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 				Op:    "replace",
 				Path:  m.path,
 				Value: m.field.ValueBool(),
+			})
+		}
+	}
+
+	// OIDC base redirect URI
+	if !plan.OIDCBaseRedirectURI.IsNull() && !plan.OIDCBaseRedirectURI.IsUnknown() {
+		if plan.OIDCBaseRedirectURI.ValueString() == "" {
+			patches = append(patches, ory.JsonPatch{
+				Op:   "remove",
+				Path: "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
+			})
+		} else {
+			patches = append(patches, ory.JsonPatch{
+				Op:    "add",
+				Path:  "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
+				Value: plan.OIDCBaseRedirectURI.ValueString(),
 			})
 		}
 	}
@@ -1721,6 +1745,19 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 				if v, ok := getNestedBool(identityConfig, keys...); ok {
 					*field = types.BoolValue(v)
 				}
+			}
+		}
+
+		// OIDC base redirect URI
+		if !state.OIDCBaseRedirectURI.IsNull() {
+			if state.OIDCBaseRedirectURI.ValueString() != "" {
+				if v, ok := getNestedString(identityConfig, "selfservice", "methods", "oidc", "config", "base_redirect_uri"); ok {
+					state.OIDCBaseRedirectURI = types.StringValue(v)
+				}
+			} else if v, ok := getNestedString(identityConfig, "selfservice", "methods", "oidc", "config", "base_redirect_uri"); ok && v != "" {
+				tflog.Warn(ctx, "API returned non-empty oidc base_redirect_uri after remove patch; preserving empty state value", map[string]interface{}{
+					"api_value": v,
+				})
 			}
 		}
 
