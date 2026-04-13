@@ -192,7 +192,7 @@ while IFS= read -r -d '' file; do
     # Check if base_redirect_uri is inside an ory_social_provider block
     if perl -ne '
       BEGIN { $in=0; $d=0; $s=0; $found=0; }
-      if (!$in && /^\s*resource\s+"ory_social_provider"/ && !/^\s*#/) { $in=1; $d=0; $s=0; }
+      if (!$in && /^\s*resource\s+"ory_social_provider"/ && !/^\s*#/ && !/^\s*\/\//) { $in=1; $d=0; $s=0; }
       if ($in) {
         my $o = () = /\{/g;
         my $c = () = /\}/g;
