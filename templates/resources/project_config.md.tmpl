@@ -96,14 +96,16 @@ Omitting these attributes entirely (or setting them to `null`) leaves the existi
 
 ## Coverage
 
-This resource covers all configurable properties in the Ory project API.
+This resource covers most simple (scalar and list) project configuration properties. Some settings are managed by dedicated resources (e.g., ory_social_provider, ory_identity_schema) or require custom handling.
 
 ### Migrating Deprecated Attribute Names
 
 Some attributes have been renamed for consistency with the API spec. The old names still work but show deprecation warnings. A [migration script](https://github.com/ory/terraform-provider-ory/blob/main/scripts/migrate-deprecated-attrs.sh) is provided:
 
 ```bash
-./scripts/migrate-deprecated-attrs.sh .
+curl -sSfL https://raw.githubusercontent.com/ory/terraform-provider-ory/main/scripts/migrate-deprecated-attrs.sh -o migrate.sh
+chmod +x migrate.sh
+./migrate.sh .
 terraform plan  # verify no changes
 ```
 

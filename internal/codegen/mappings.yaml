@@ -1515,6 +1515,7 @@ attributes:
     go_field: SelfserviceMethodsCodeConfigMaxSubmissions
     type: int64
     openapi_property: kratos_selfservice_methods_code_config_max_submissions
+    patch_path: /services/identity/config/selfservice/methods/code/config/max_submissions
     description: "Maximum number of code submission attempts before invalidation."
 
   - name: selfservice_methods_passkey_config_rp_origins

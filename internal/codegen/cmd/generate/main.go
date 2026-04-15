@@ -577,7 +577,6 @@ func discoverNewEntries(m Mappings, specProps map[string]SpecProperty) {
 		fmt.Printf("  - name: %s\n", tfName)
 		fmt.Printf("    go_field: %s\n", goField)
 		fmt.Printf("    type: %s\n", tfType)
-		fmt.Printf("    patch_path: %s\n", sp.GovernsPath)
 		fmt.Printf("    openapi_property: %s\n", sp.Name)
 		fmt.Printf("    description: %q\n", desc)
 		fmt.Println()
@@ -728,17 +727,18 @@ func cleanDescription(desc string) string {
 	// Normalize whitespace in one pass
 	cleaned = strings.Join(strings.Fields(cleaned), " ")
 
-	// Strip "Ory Kratos" / "Ory Hydra" / "Ory Keto" only at the start of a
-	// sentence (after "Configures the" prefix stripping) to avoid mangling
-	// product names that appear mid-sentence.
-	cleaned = strings.TrimPrefix(cleaned, "Ory Kratos ")
-	cleaned = strings.TrimPrefix(cleaned, "Ory Hydra ")
-	cleaned = strings.TrimPrefix(cleaned, "Ory Keto ")
-
-	// Strip "Configures the " / "Configures whether " prefixes for brevity
+	// Strip "Configures the " / "Configures whether " prefixes for brevity.
+	// Must happen before product-name stripping so "Configures the Ory Hydra ..."
+	// becomes "Ory Hydra ..." and then the product prefix can be removed.
 	cleaned = strings.TrimPrefix(cleaned, "Configures the ")
 	cleaned = strings.TrimPrefix(cleaned, "Configures whether ")
 	cleaned = strings.TrimPrefix(cleaned, "Configures ")
+
+	// Strip "Ory Kratos" / "Ory Hydra" / "Ory Keto" at the start to avoid
+	// vendor prefixes in generated docs.
+	cleaned = strings.TrimPrefix(cleaned, "Ory Kratos ")
+	cleaned = strings.TrimPrefix(cleaned, "Ory Hydra ")
+	cleaned = strings.TrimPrefix(cleaned, "Ory Keto ")
 
 	cleaned = strings.TrimSpace(cleaned)
 	cleaned = strings.TrimSuffix(cleaned, ".")
