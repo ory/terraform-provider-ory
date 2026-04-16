@@ -183,6 +183,9 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 			"base_redirect_uri": schema.StringAttribute{
 				Description: "Override the base redirect URI for OIDC callbacks (e.g., \"https://iam.example.com\"). When set, Ory constructs callback URLs using this base instead of the default project domain. This is a global OIDC config setting — if multiple social providers set different values, the last applied value wins.",
 				Optional:    true,
+				DeprecationMessage: "Use ory_project_config.selfservice_methods_oidc_config_base_redirect_uri instead. " +
+					"This attribute sets a global OIDC config value, not a per-provider setting, " +
+					"and is better managed at the project level.",
 			},
 		},
 	}

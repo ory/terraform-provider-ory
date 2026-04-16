@@ -89,6 +89,31 @@ clean: ## Remove build artifacts
 	echo "Installing go-licenses $${VERSION}..."; \
 	GOBIN=$(PWD)/.bin go install github.com/google/go-licenses@$${VERSION}
 
+.PHONY: generate
+generate: ## Generate code from mappings.yaml (auto-uses OpenAPI spec if present for governs-based validation)
+	@SPEC_FLAG=""; \
+	if [ -f ./internal/codegen/openapi.yaml ]; then \
+		SPEC_FLAG="-spec ./internal/codegen/openapi.yaml"; \
+		echo "Using OpenAPI spec for governs-based path validation..."; \
+	fi; \
+	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml $$SPEC_FLAG -out ./internal/resources/projectconfig/
+
+.PHONY: download-spec
+download-spec: ## Download OpenAPI spec from client-go version pinned in go.mod
+	@VERSION=$$(go list -m -f '{{.Version}}' github.com/ory/client-go); \
+	echo "Downloading OpenAPI spec from ory/client-go@$$VERSION..."; \
+	curl -sSfL "https://raw.githubusercontent.com/ory/client-go/$$VERSION/api/openapi.yaml" -o ./internal/codegen/openapi.yaml
+
+.PHONY: discover
+discover: download-spec ## Discover new unmapped properties from the OpenAPI spec and output YAML entries
+	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml -spec ./internal/codegen/openapi.yaml -discover
+
+.PHONY: check-coverage
+check-coverage: download-spec ## Check that all spec properties are mapped (fails if unmapped properties found)
+	@TMPDIR=$$(mktemp -d) && \
+	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml -spec ./internal/codegen/openapi.yaml -strict -out "$$TMPDIR" && \
+	rm -rf "$$TMPDIR"
+
 .PHONY: format
 format: .bin/tfplugindocs .bin/golangci-lint ## Format all code (Go, Terraform, modules, docs, lint fixes)
 	go fmt ./...

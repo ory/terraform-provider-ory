@@ -1,0 +1,7 @@
+resource "ory_project_config" "test" {
+  oauth2_grant_jwt_max_ttl = "720h0m0s"
+  oauth2_grant_jwt_jti_optional = true
+  oauth2_grant_jwt_iat_optional = true
+  oauth2_exclude_not_before_claim = true
+  oauth2_client_credentials_default_grant_allowed_scope = false
+}

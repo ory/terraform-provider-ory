@@ -1,0 +1,225 @@
+#!/usr/bin/env bash
+# migrate-deprecated-attrs.sh
+#
+# Migrates Terraform configuration files from deprecated ory_project_config
+# attribute names to the new spec-derived names.
+#
+# Usage:
+#   ./scripts/migrate-deprecated-attrs.sh [directory]
+#
+# If no directory is specified, searches the current directory recursively.
+# Creates a backup of each modified file as *.tf.bak.
+#
+# After running, review the changes and run:
+#   terraform plan
+# to verify no changes are detected.
+
+set -euo pipefail
+
+DIR="${1:-.}"
+
+# Removed attributes (no longer functional, safe to delete from configs):
+# - account_experience_favicon_url   (use account_experience_favicon_light / account_experience_favicon_dark)
+# - account_experience_logo_url      (use account_experience_logo_light / account_experience_logo_dark)
+# - account_experience_name          (removed from API)
+# - account_experience_stylesheet    (removed from API)
+# - oauth2_session_encrypt_at_rest   (removed from API)
+REMOVED=(
+  "account_experience_favicon_url"
+  "account_experience_logo_url"
+  "account_experience_name"
+  "account_experience_stylesheet"
+  "oauth2_session_encrypt_at_rest"
+)
+
+# Mapping of old attribute names to new names (compatible with Bash 3.2+)
+# Format: "old_name=new_name"
+RENAMES=(
+  # OAuth2 TTLs
+  "oauth2_access_token_lifespan=oauth2_ttl_access_token"
+  "oauth2_refresh_token_lifespan=oauth2_ttl_refresh_token"
+  "oauth2_auth_code_lifespan=oauth2_ttl_auth_code"
+  "oauth2_id_token_lifespan=oauth2_ttl_id_token"
+  "oauth2_login_consent_request_lifespan=oauth2_ttl_login_consent_request"
+
+  # OAuth2 strategies
+  "oauth2_access_token_strategy=oauth2_strategies_access_token"
+  "oauth2_jwt_scope_claim=oauth2_strategies_jwt_scope_claim"
+  "oauth2_scope_strategy=oauth2_strategies_scope"
+
+  # OAuth2 URLs
+  "oauth2_consent_url=oauth2_urls_consent"
+  "oauth2_login_url=oauth2_urls_login"
+  "oauth2_logout_url=oauth2_urls_logout"
+  "oauth2_error_url=oauth2_urls_error"
+  "oauth2_issuer_url=oauth2_urls_self_issuer"
+
+  # OAuth2 cookies
+  "oauth2_cookies_same_site_mode=oauth2_serve_cookies_same_site_mode"
+  "oauth2_cookies_same_site_legacy_workaround=oauth2_serve_cookies_same_site_legacy_workaround"
+
+  # UI URLs
+  "login_ui_url=selfservice_flows_login_ui_url"
+  "registration_ui_url=selfservice_flows_registration_ui_url"
+  "recovery_ui_url=selfservice_flows_recovery_ui_url"
+  "verification_ui_url=selfservice_flows_verification_ui_url"
+  "settings_ui_url=selfservice_flows_settings_ui_url"
+  "error_ui_url=selfservice_flows_error_ui_url"
+
+  # Auth method enables
+  "enable_password=selfservice_methods_password_enabled"
+  "enable_code=selfservice_methods_code_enabled"
+  "code_mfa_enabled=selfservice_methods_code_mfa_enabled"
+  "enable_oidc=selfservice_methods_oidc_enabled"
+  "enable_oidc_auto_link_policy=selfservice_methods_oidc_enable_auto_link_policy"
+  "enable_totp=selfservice_methods_totp_enabled"
+  "enable_webauthn=selfservice_methods_webauthn_enabled"
+  "enable_passkey=selfservice_methods_passkey_enabled"
+  "enable_lookup_secret=selfservice_methods_lookup_secret_enabled"
+  "enable_profile=selfservice_methods_profile_enabled"
+
+  # Code config
+  "code_lifespan=selfservice_methods_code_config_lifespan"
+  "code_missing_credential_fallback_enabled=selfservice_methods_code_config_missing_credential_fallback_enabled"
+
+  # Password config
+  "password_min_length=selfservice_methods_password_config_min_password_length"
+  "password_check_haveibeenpwned=selfservice_methods_password_config_haveibeenpwned_enabled"
+  "password_max_breaches=selfservice_methods_password_config_max_breaches"
+  "password_identifier_similarity=selfservice_methods_password_config_identifier_similarity_check_enabled"
+
+  # Flow enables/settings
+  "enable_recovery=selfservice_flows_recovery_enabled"
+  "enable_verification=selfservice_flows_verification_enabled"
+  "enable_registration=selfservice_flows_registration_enabled"
+  "login_style=selfservice_flows_login_style"
+  "settings_lifespan=selfservice_flows_settings_lifespan"
+  "settings_privileged_session_max_age=selfservice_flows_settings_privileged_session_max_age"
+  "required_aal=selfservice_flows_settings_required_aal"
+  "verification_use=selfservice_flows_verification_use"
+  "verification_lifespan=selfservice_flows_verification_lifespan"
+  "verification_notify_unknown_recipients=selfservice_flows_verification_notify_unknown_recipients"
+
+  # SMTP
+  "smtp_from_address=courier_smtp_from_address"
+  "smtp_from_name=courier_smtp_from_name"
+
+  # MFA / WebAuthn / TOTP
+  "totp_issuer=selfservice_methods_totp_config_issuer"
+  "webauthn_rp_display_name=selfservice_methods_webauthn_config_rp_display_name"
+  "webauthn_rp_id=selfservice_methods_webauthn_config_rp_id"
+  "webauthn_passwordless=selfservice_methods_webauthn_config_passwordless"
+)
+
+CHANGED=0
+
+while IFS= read -r -d '' file; do
+  MODIFIED=false
+  for entry in "${RENAMES[@]}"; do
+    old="${entry%%=*}"
+    new="${entry#*=}"
+    # Only match HCL attribute assignments: fixed-string pre-check + perl assignment match
+    if grep -qF "${old}" "$file" 2>/dev/null && perl -ne "exit 0 if /^\\s*\\Q${old}\\E\\s*=/; END { exit 1 }" "$file" 2>/dev/null; then
+      # Check if the new name already exists in the file to avoid duplicates
+      if perl -ne "exit 0 if /^\\s*\\Q${new}\\E\\s*=/; END { exit 1 }" "$file" 2>/dev/null; then
+        echo "  WARNING: $file: both '$old' and '$new' exist — skipping rename to avoid duplicate"
+        continue
+      fi
+      if [ "$MODIFIED" = false ]; then
+        if [ -e "${file}.bak" ]; then
+          echo "Error: Backup file '${file}.bak' already exists; refusing to overwrite." >&2
+          echo "Remove existing .bak files and re-run." >&2
+          exit 1
+        fi
+        cp "$file" "${file}.bak"
+        MODIFIED=true
+      fi
+      # Replace attribute name only inside resource "ory_project_config" blocks.
+      # Tracks brace depth; handles opening brace on same or next line.
+      perl -pi -e '
+        BEGIN { $in_block = 0; $depth = 0; $seen_open = 0; }
+        if (!$in_block && /^\s*resource\s+"ory_project_config"\b/ && !/^\s*#/ && !/^\s*\/\//) { $in_block = 1; $depth = 0; $seen_open = 0; }
+        if ($in_block) {
+          my $opens = () = /\{/g;
+          my $closes = () = /\}/g;
+          $depth += $opens - $closes;
+          $seen_open = 1 if $opens > 0;
+          if ($seen_open && $depth <= 0) { $in_block = 0; $depth = 0; $seen_open = 0; }
+        }
+        if ($in_block) { s/^(\s*)\Q'"${old}"'\E(\s*=)/$1'"${new}"'$2/; }
+      ' "$file"
+      echo "  $file: $old -> $new"
+    fi
+  done
+  if [ "$MODIFIED" = true ]; then
+    CHANGED=$((CHANGED + 1))
+  fi
+done < <(find "$DIR" -type f -name '*.tf' -not -path '*/.terraform/*' -print0)
+
+# Check for removed attributes
+FOUND_REMOVED=false
+while IFS= read -r -d '' file; do
+  for removed in "${REMOVED[@]}"; do
+    if grep -qF "$removed" "$file" 2>/dev/null && perl -ne "exit 0 if /^\\s*\\Q${removed}\\E\\s*=/; END { exit 1 }" "$file" 2>/dev/null; then
+      if [ "$FOUND_REMOVED" = false ]; then
+        echo ""
+        echo "WARNING: The following attributes have been removed and should be deleted:"
+        FOUND_REMOVED=true
+      fi
+      echo "  $file: $removed (no longer functional, remove this line)"
+    fi
+  done
+done < <(find "$DIR" -type f -name '*.tf' -not -path '*/.terraform/*' -print0)
+
+echo ""
+echo "Migration complete. $CHANGED file(s) updated."
+if [ "$FOUND_REMOVED" = true ]; then
+  echo ""
+  echo "Removed attributes replacements:"
+  echo "  account_experience_favicon_url -> account_experience_favicon_light / account_experience_favicon_dark"
+  echo "  account_experience_logo_url    -> account_experience_logo_light / account_experience_logo_dark"
+  echo "  account_experience_name        -> (removed, delete the line)"
+  echo "  account_experience_stylesheet  -> (removed, delete the line)"
+  echo "  oauth2_session_encrypt_at_rest -> (removed, delete the line)"
+fi
+echo "Review the changes and run 'terraform plan' to verify."
+echo "Backups saved as *.tf.bak"
+
+# Check for deprecated cross-resource attributes (ory_social_provider -> ory_project_config)
+FOUND_CROSS=false
+while IFS= read -r -d '' file; do
+  if grep -qF "base_redirect_uri" "$file" 2>/dev/null; then
+    # Check if base_redirect_uri is inside an ory_social_provider block
+    if perl -ne '
+      BEGIN { $in=0; $d=0; $s=0; $found=0; }
+      if (!$in && /^\s*resource\s+"ory_social_provider"/ && !/^\s*#/ && !/^\s*\/\//) { $in=1; $d=0; $s=0; }
+      if ($in) {
+        my $o = () = /\{/g;
+        my $c = () = /\}/g;
+        $d += $o - $c;
+        $s = 1 if $o > 0;
+        if ($s && $d <= 0) { $in=0; $d=0; $s=0; }
+      }
+      if ($in && /^\s*base_redirect_uri\s*=/) { $found=1; }
+      END { exit($found ? 0 : 1); }
+    ' "$file" 2>/dev/null; then
+      if [ "$FOUND_CROSS" = false ]; then
+        echo ""
+        echo "WARNING: The following attributes should be moved to ory_project_config:"
+        FOUND_CROSS=true
+      fi
+      echo "  $file: base_redirect_uri on ory_social_provider -> selfservice_methods_oidc_config_base_redirect_uri on ory_project_config"
+    fi
+  fi
+done < <(find "$DIR" -type f -name '*.tf' -not -path '*/.terraform/*' -print0)
+
+if [ "$FOUND_CROSS" = true ]; then
+  echo ""
+  echo "  base_redirect_uri is a global OIDC setting, not per-provider."
+  echo "  Remove it from ory_social_provider and add to ory_project_config:"
+  echo ""
+  echo "    resource \"ory_project_config\" \"main\" {"
+  echo "      selfservice_methods_oidc_config_base_redirect_uri = \"https://your-domain.com\""
+  echo "      # ..."
+  echo "    }"
+fi

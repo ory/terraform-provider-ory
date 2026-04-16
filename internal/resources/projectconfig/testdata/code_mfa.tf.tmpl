@@ -1,4 +1,4 @@
 resource "ory_project_config" "test" {
-  enable_code      = true
-  code_mfa_enabled = [[ .CodeMFAEnabled ]]
+  selfservice_methods_code_enabled     = true
+  selfservice_methods_code_mfa_enabled = [[ .CodeMFAEnabled ]]
 }

@@ -13,7 +13,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -70,7 +69,6 @@ type ProjectConfigResourceModel struct {
 	OAuth2MirrorTopLevelClaims            types.Bool   `tfsdk:"oauth2_mirror_top_level_claims"`
 	OAuth2PKCEEnforced                    types.Bool   `tfsdk:"oauth2_pkce_enforced"`
 	OAuth2PKCEEnforcedForPublicClients    types.Bool   `tfsdk:"oauth2_pkce_enforced_for_public_clients"`
-	OAuth2SessionEncryptAtRest            types.Bool   `tfsdk:"oauth2_session_encrypt_at_rest"`
 	OAuth2AccessTokenStrategy             types.String `tfsdk:"oauth2_access_token_strategy"`
 	OAuth2JWTScopeClaim                   types.String `tfsdk:"oauth2_jwt_scope_claim"`
 	OAuth2ScopeStrategy                   types.String `tfsdk:"oauth2_scope_strategy"`
@@ -148,24 +146,291 @@ type ProjectConfigResourceModel struct {
 	SessionWhoamiRequiredAAL types.String `tfsdk:"session_whoami_required_aal"`
 
 	// Account Experience (Branding)
-	AccountExperienceFaviconURL types.String `tfsdk:"account_experience_favicon_url"`
-	AccountExperienceLogoURL    types.String `tfsdk:"account_experience_logo_url"`
-	AccountExperienceName       types.String `tfsdk:"account_experience_name"`
-	AccountExperienceStylesheet types.String `tfsdk:"account_experience_stylesheet"`
-	AccountExperienceLocale     types.String `tfsdk:"account_experience_default_locale"`
+	AccountExperienceLocale types.String `tfsdk:"account_experience_default_locale"`
 
 	// Session Tokenizer Templates
 	SessionTokenizerTemplates types.Map `tfsdk:"session_tokenizer_templates"`
 
 	// Courier HTTP Delivery
-	CourierDeliveryStrategy  types.String `tfsdk:"courier_delivery_strategy"`
-	CourierHTTPRequestConfig types.Object `tfsdk:"courier_http_request_config"`
-	CourierChannels          types.List   `tfsdk:"courier_channels"`
+	CourierDeliveryStrategy          types.String `tfsdk:"courier_delivery_strategy"`
+	CourierHTTPRequestConfig         types.Object `tfsdk:"courier_http_request_config"`
+	CourierHTTPRequestConfigAuthType types.String `tfsdk:"courier_http_request_config_auth_type"`
+	CourierHTTPRequestConfigMethod   types.String `tfsdk:"courier_http_request_config_method"`
+	CourierChannels                  types.List   `tfsdk:"courier_channels"`
+
+	// --- Phase 2: Auto-discovered from OpenAPI spec ---
+
+	// OAuth2/Hydra additional
+	OAuth2ClientCredentialsDefaultGrantAllowedScope   types.Bool   `tfsdk:"oauth2_client_credentials_default_grant_allowed_scope"`
+	OAuth2ExcludeNotBeforeClaim                       types.Bool   `tfsdk:"oauth2_exclude_not_before_claim"`
+	OAuth2GrantJWTIATOptional                         types.Bool   `tfsdk:"oauth2_grant_jwt_iat_optional"`
+	OAuth2GrantJWTJTIOptional                         types.Bool   `tfsdk:"oauth2_grant_jwt_jti_optional"`
+	OAuth2GrantJWTMaxTTL                              types.String `tfsdk:"oauth2_grant_jwt_max_ttl"`
+	OAuth2GrantRefreshTokenRotationGracePeriod        types.String `tfsdk:"oauth2_grant_refresh_token_rotation_grace_period"`
+	OAuth2RefreshTokenHook                            types.String `tfsdk:"oauth2_refresh_token_hook"`
+	OAuth2TokenHook                                   types.String `tfsdk:"oauth2_token_hook"`
+	OIDCDynamicClientRegistrationEnabled              types.Bool   `tfsdk:"oidc_dynamic_client_registration_enabled"`
+	OIDCSubjectIdentifiersPairwiseSalt                types.String `tfsdk:"oidc_subject_identifiers_pairwise_salt"`
+	OAuth2UrlsPostLogoutRedirect                      types.String `tfsdk:"oauth2_urls_post_logout_redirect"`
+	OAuth2UrlsRegistration                            types.String `tfsdk:"oauth2_urls_registration"`
+	OAuth2WebfingerOIDCDiscoveryAuthURL               types.String `tfsdk:"oauth2_webfinger_oidc_discovery_auth_url"`
+	OAuth2WebfingerOIDCDiscoveryClientRegistrationURL types.String `tfsdk:"oauth2_webfinger_oidc_discovery_client_registration_url"`
+	OAuth2WebfingerOIDCDiscoveryJwksURL               types.String `tfsdk:"oauth2_webfinger_oidc_discovery_jwks_url"`
+	OAuth2WebfingerOIDCDiscoveryTokenURL              types.String `tfsdk:"oauth2_webfinger_oidc_discovery_token_url"`
+	OAuth2WebfingerOIDCDiscoveryUserinfoURL           types.String `tfsdk:"oauth2_webfinger_oidc_discovery_userinfo_url"`
+
+	// Identity cookies
+	CookiesSameSite types.String `tfsdk:"cookies_same_site"`
+
+	// Courier individual fields (flat access to HTTP config)
+	CourierHTTPRequestConfigAuthAPIKeyIn          types.String `tfsdk:"courier_http_request_config_auth_api_key_in"`
+	CourierHTTPRequestConfigAuthAPIKeyName        types.String `tfsdk:"courier_http_request_config_auth_api_key_name"`
+	CourierHTTPRequestConfigAuthAPIKeyValue       types.String `tfsdk:"courier_http_request_config_auth_api_key_value"`
+	CourierHTTPRequestConfigAuthBasicAuthPassword types.String `tfsdk:"courier_http_request_config_auth_basic_auth_password"`
+	CourierHTTPRequestConfigAuthBasicAuthUser     types.String `tfsdk:"courier_http_request_config_auth_basic_auth_user"`
+	CourierHTTPRequestConfigBody                  types.String `tfsdk:"courier_http_request_config_body"`
+	CourierHTTPRequestConfigURL                   types.String `tfsdk:"courier_http_request_config_url"`
+	// courier_smtp_connection_uri is handled by SMTPConnectionURI above (sensitive, write-only)
+	CourierSMTPLocalName types.String `tfsdk:"courier_smtp_local_name"`
+
+	// Courier email/SMS templates
+	CourierTemplatesLoginCodeValidEmailBodyHTML               types.String `tfsdk:"courier_templates_login_code_valid_email_body_html"`
+	CourierTemplatesLoginCodeValidEmailBodyPlaintext          types.String `tfsdk:"courier_templates_login_code_valid_email_body_plaintext"`
+	CourierTemplatesLoginCodeValidEmailSubject                types.String `tfsdk:"courier_templates_login_code_valid_email_subject"`
+	CourierTemplatesLoginCodeValidSMSBodyPlaintext            types.String `tfsdk:"courier_templates_login_code_valid_sms_body_plaintext"`
+	CourierTemplatesRecoveryCodeInvalidEmailBodyHTML          types.String `tfsdk:"courier_templates_recovery_code_invalid_email_body_html"`
+	CourierTemplatesRecoveryCodeInvalidEmailBodyPlaintext     types.String `tfsdk:"courier_templates_recovery_code_invalid_email_body_plaintext"`
+	CourierTemplatesRecoveryCodeInvalidEmailSubject           types.String `tfsdk:"courier_templates_recovery_code_invalid_email_subject"`
+	CourierTemplatesRecoveryCodeValidEmailBodyHTML            types.String `tfsdk:"courier_templates_recovery_code_valid_email_body_html"`
+	CourierTemplatesRecoveryCodeValidEmailBodyPlaintext       types.String `tfsdk:"courier_templates_recovery_code_valid_email_body_plaintext"`
+	CourierTemplatesRecoveryCodeValidEmailSubject             types.String `tfsdk:"courier_templates_recovery_code_valid_email_subject"`
+	CourierTemplatesRecoveryInvalidEmailBodyHTML              types.String `tfsdk:"courier_templates_recovery_invalid_email_body_html"`
+	CourierTemplatesRecoveryInvalidEmailBodyPlaintext         types.String `tfsdk:"courier_templates_recovery_invalid_email_body_plaintext"`
+	CourierTemplatesRecoveryInvalidEmailSubject               types.String `tfsdk:"courier_templates_recovery_invalid_email_subject"`
+	CourierTemplatesRecoveryValidEmailBodyHTML                types.String `tfsdk:"courier_templates_recovery_valid_email_body_html"`
+	CourierTemplatesRecoveryValidEmailBodyPlaintext           types.String `tfsdk:"courier_templates_recovery_valid_email_body_plaintext"`
+	CourierTemplatesRecoveryValidEmailSubject                 types.String `tfsdk:"courier_templates_recovery_valid_email_subject"`
+	CourierTemplatesRegistrationCodeValidEmailBodyHTML        types.String `tfsdk:"courier_templates_registration_code_valid_email_body_html"`
+	CourierTemplatesRegistrationCodeValidEmailBodyPlaintext   types.String `tfsdk:"courier_templates_registration_code_valid_email_body_plaintext"`
+	CourierTemplatesRegistrationCodeValidEmailSubject         types.String `tfsdk:"courier_templates_registration_code_valid_email_subject"`
+	CourierTemplatesRegistrationCodeValidSMSBodyPlaintext     types.String `tfsdk:"courier_templates_registration_code_valid_sms_body_plaintext"`
+	CourierTemplatesVerificationCodeInvalidEmailBodyHTML      types.String `tfsdk:"courier_templates_verification_code_invalid_email_body_html"`
+	CourierTemplatesVerificationCodeInvalidEmailBodyPlaintext types.String `tfsdk:"courier_templates_verification_code_invalid_email_body_plaintext"`
+	CourierTemplatesVerificationCodeInvalidEmailSubject       types.String `tfsdk:"courier_templates_verification_code_invalid_email_subject"`
+	CourierTemplatesVerificationCodeValidEmailBodyHTML        types.String `tfsdk:"courier_templates_verification_code_valid_email_body_html"`
+	CourierTemplatesVerificationCodeValidEmailBodyPlaintext   types.String `tfsdk:"courier_templates_verification_code_valid_email_body_plaintext"`
+	CourierTemplatesVerificationCodeValidEmailSubject         types.String `tfsdk:"courier_templates_verification_code_valid_email_subject"`
+	CourierTemplatesVerificationCodeValidSMSBodyPlaintext     types.String `tfsdk:"courier_templates_verification_code_valid_sms_body_plaintext"`
+	CourierTemplatesVerificationInvalidEmailBodyHTML          types.String `tfsdk:"courier_templates_verification_invalid_email_body_html"`
+	CourierTemplatesVerificationInvalidEmailBodyPlaintext     types.String `tfsdk:"courier_templates_verification_invalid_email_body_plaintext"`
+	CourierTemplatesVerificationInvalidEmailSubject           types.String `tfsdk:"courier_templates_verification_invalid_email_subject"`
+	CourierTemplatesVerificationValidEmailBodyHTML            types.String `tfsdk:"courier_templates_verification_valid_email_body_html"`
+	CourierTemplatesVerificationValidEmailBodyPlaintext       types.String `tfsdk:"courier_templates_verification_valid_email_body_plaintext"`
+	CourierTemplatesVerificationValidEmailSubject             types.String `tfsdk:"courier_templates_verification_valid_email_subject"`
+
+	// Feature flags
+	FeatureFlagsCacheableSessions                types.Bool   `tfsdk:"feature_flags_cacheable_sessions"`
+	FeatureFlagsCacheableSessionsMaxAge          types.String `tfsdk:"feature_flags_cacheable_sessions_max_age"`
+	FeatureFlagsChooseRecoveryAddress            types.Bool   `tfsdk:"feature_flags_choose_recovery_address"`
+	FeatureFlagsFasterSessionExtend              types.Bool   `tfsdk:"feature_flags_faster_session_extend"`
+	FeatureFlagsLegacyContinueWithVerificationUI types.Bool   `tfsdk:"feature_flags_legacy_continue_with_verification_ui"`
+	FeatureFlagsLegacyOIDCRegistrationNodeGroup  types.Bool   `tfsdk:"feature_flags_legacy_oidc_registration_node_group"`
+	FeatureFlagsLegacyRequireVerifiedLoginError  types.Bool   `tfsdk:"feature_flags_legacy_require_verified_login_error"`
+	FeatureFlagsUseContinueWithTransitions       types.Bool   `tfsdk:"feature_flags_use_continue_with_transitions"`
+
+	// OAuth2 provider URL
+	OAuth2ProviderURL types.String `tfsdk:"oauth2_provider_url"`
+
+	// Selfservice flow return URLs and additional settings
+	SelfserviceDefaultBrowserReturnURL                               types.String `tfsdk:"selfservice_default_browser_return_url"`
+	SelfserviceFlowsLoginAfterCodeDefaultBrowserReturnURL            types.String `tfsdk:"selfservice_flows_login_after_code_default_browser_return_url"`
+	SelfserviceFlowsLoginAfterDefaultBrowserReturnURL                types.String `tfsdk:"selfservice_flows_login_after_default_browser_return_url"`
+	SelfserviceFlowsLoginAfterLookupSecretDefaultBrowserReturnURL    types.String `tfsdk:"selfservice_flows_login_after_lookup_secret_default_browser_return_url"`
+	SelfserviceFlowsLoginAfterOIDCDefaultBrowserReturnURL            types.String `tfsdk:"selfservice_flows_login_after_oidc_default_browser_return_url"`
+	SelfserviceFlowsLoginAfterPasskeyDefaultBrowserReturnURL         types.String `tfsdk:"selfservice_flows_login_after_passkey_default_browser_return_url"`
+	SelfserviceFlowsLoginAfterPasswordDefaultBrowserReturnURL        types.String `tfsdk:"selfservice_flows_login_after_password_default_browser_return_url"`
+	SelfserviceFlowsLoginAfterTOTPDefaultBrowserReturnURL            types.String `tfsdk:"selfservice_flows_login_after_totp_default_browser_return_url"`
+	SelfserviceFlowsLoginAfterWebAuthnDefaultBrowserReturnURL        types.String `tfsdk:"selfservice_flows_login_after_webauthn_default_browser_return_url"`
+	SelfserviceFlowsLoginLifespan                                    types.String `tfsdk:"selfservice_flows_login_lifespan"`
+	SelfserviceFlowsLogoutAfterDefaultBrowserReturnURL               types.String `tfsdk:"selfservice_flows_logout_after_default_browser_return_url"`
+	SelfserviceFlowsRecoveryAfterDefaultBrowserReturnURL             types.String `tfsdk:"selfservice_flows_recovery_after_default_browser_return_url"`
+	SelfserviceFlowsRecoveryLifespan                                 types.String `tfsdk:"selfservice_flows_recovery_lifespan"`
+	SelfserviceFlowsRecoveryNotifyUnknownRecipients                  types.Bool   `tfsdk:"selfservice_flows_recovery_notify_unknown_recipients"`
+	SelfserviceFlowsRecoveryUse                                      types.String `tfsdk:"selfservice_flows_recovery_use"`
+	SelfserviceFlowsRegistrationAfterCodeDefaultBrowserReturnURL     types.String `tfsdk:"selfservice_flows_registration_after_code_default_browser_return_url"`
+	SelfserviceFlowsRegistrationAfterDefaultBrowserReturnURL         types.String `tfsdk:"selfservice_flows_registration_after_default_browser_return_url"`
+	SelfserviceFlowsRegistrationAfterOIDCDefaultBrowserReturnURL     types.String `tfsdk:"selfservice_flows_registration_after_oidc_default_browser_return_url"`
+	SelfserviceFlowsRegistrationAfterPasskeyDefaultBrowserReturnURL  types.String `tfsdk:"selfservice_flows_registration_after_passkey_default_browser_return_url"`
+	SelfserviceFlowsRegistrationAfterPasswordDefaultBrowserReturnURL types.String `tfsdk:"selfservice_flows_registration_after_password_default_browser_return_url"`
+	SelfserviceFlowsRegistrationAfterWebAuthnDefaultBrowserReturnURL types.String `tfsdk:"selfservice_flows_registration_after_webauthn_default_browser_return_url"`
+	SelfserviceFlowsRegistrationEnableLegacyOneStep                  types.Bool   `tfsdk:"selfservice_flows_registration_enable_legacy_one_step"`
+	SelfserviceFlowsRegistrationLifespan                             types.String `tfsdk:"selfservice_flows_registration_lifespan"`
+	SelfserviceFlowsRegistrationLoginHints                           types.Bool   `tfsdk:"selfservice_flows_registration_login_hints"`
+	SelfserviceFlowsSettingsAfterDefaultBrowserReturnURL             types.String `tfsdk:"selfservice_flows_settings_after_default_browser_return_url"`
+	SelfserviceFlowsSettingsAfterLookupSecretDefaultBrowserReturnURL types.String `tfsdk:"selfservice_flows_settings_after_lookup_secret_default_browser_return_url"`
+	SelfserviceFlowsSettingsAfterOIDCDefaultBrowserReturnURL         types.String `tfsdk:"selfservice_flows_settings_after_oidc_default_browser_return_url"`
+	SelfserviceFlowsSettingsAfterPasskeyDefaultBrowserReturnURL      types.String `tfsdk:"selfservice_flows_settings_after_passkey_default_browser_return_url"`
+	SelfserviceFlowsSettingsAfterPasswordDefaultBrowserReturnURL     types.String `tfsdk:"selfservice_flows_settings_after_password_default_browser_return_url"`
+	SelfserviceFlowsSettingsAfterProfileDefaultBrowserReturnURL      types.String `tfsdk:"selfservice_flows_settings_after_profile_default_browser_return_url"`
+	SelfserviceFlowsSettingsAfterTOTPDefaultBrowserReturnURL         types.String `tfsdk:"selfservice_flows_settings_after_totp_default_browser_return_url"`
+	SelfserviceFlowsSettingsAfterWebAuthnDefaultBrowserReturnURL     types.String `tfsdk:"selfservice_flows_settings_after_webauthn_default_browser_return_url"`
+	SelfserviceFlowsVerificationAfterDefaultBrowserReturnURL         types.String `tfsdk:"selfservice_flows_verification_after_default_browser_return_url"`
+	SelfserviceMethodsCodePasswordlessEnabled                        types.Bool   `tfsdk:"selfservice_methods_code_passwordless_enabled"`
+	SelfserviceMethodsCodePasswordlessLoginFallbackEnabled           types.Bool   `tfsdk:"selfservice_methods_code_passwordless_login_fallback_enabled"`
+	SelfserviceMethodsLinkConfigBaseURL                              types.String `tfsdk:"selfservice_methods_link_config_base_url"`
+	SelfserviceMethodsLinkConfigLifespan                             types.String `tfsdk:"selfservice_methods_link_config_lifespan"`
+	SelfserviceMethodsLinkEnabled                                    types.Bool   `tfsdk:"selfservice_methods_link_enabled"`
+	SelfserviceMethodsOIDCConfigBaseRedirectURI                      types.String `tfsdk:"selfservice_methods_oidc_config_base_redirect_uri"`
+	SelfserviceMethodsPasskeyConfigRPDisplayName                     types.String `tfsdk:"selfservice_methods_passkey_config_rp_display_name"`
+	SelfserviceMethodsPasskeyConfigRPID                              types.String `tfsdk:"selfservice_methods_passkey_config_rp_id"`
+	SelfserviceMethodsPasswordConfigIgnoreNetworkErrors              types.Bool   `tfsdk:"selfservice_methods_password_config_ignore_network_errors"`
+	SelfserviceMethodsSAMLEnabled                                    types.Bool   `tfsdk:"selfservice_methods_saml_enabled"`
+	SelfserviceMethodsWebAuthnConfigRPIcon                           types.String `tfsdk:"selfservice_methods_webauthn_config_rp_icon"`
+
+	// Account Experience v2
+	AccountExperienceEnabledLocales       types.List   `tfsdk:"account_experience_enabled_locales"`
+	AccountExperienceFaviconDark          types.String `tfsdk:"account_experience_favicon_dark"`
+	AccountExperienceFaviconLight         types.String `tfsdk:"account_experience_favicon_light"`
+	AccountExperienceLocaleBehavior       types.String `tfsdk:"account_experience_locale_behavior"`
+	AccountExperienceLogoDark             types.String `tfsdk:"account_experience_logo_dark"`
+	AccountExperienceLogoLight            types.String `tfsdk:"account_experience_logo_light"`
+	AccountExperienceThemeVariablesDark   types.String `tfsdk:"account_experience_theme_variables_dark"`
+	AccountExperienceThemeVariablesLight  types.String `tfsdk:"account_experience_theme_variables_light"`
+	DisableAccountExperienceWelcomeScreen types.Bool   `tfsdk:"disable_account_experience_welcome_screen"`
+	EnableAXV2                            types.Bool   `tfsdk:"enable_ax_v2"`
+
+	// CAPTCHA
+	SelfserviceMethodsCaptchaConfigAllowedDomains     types.List   `tfsdk:"selfservice_methods_captcha_config_allowed_domains"`
+	SelfserviceMethodsCaptchaConfigBYO                types.Bool   `tfsdk:"selfservice_methods_captcha_config_byo"`
+	SelfserviceMethodsCaptchaConfigCFTurnstileSecret  types.String `tfsdk:"selfservice_methods_captcha_config_cf_turnstile_secret"`
+	SelfserviceMethodsCaptchaConfigCFTurnstileSitekey types.String `tfsdk:"selfservice_methods_captcha_config_cf_turnstile_sitekey"`
+	SelfserviceMethodsCaptchaConfigLegacyInjectNode   types.Bool   `tfsdk:"selfservice_methods_captcha_config_legacy_inject_node"`
+	SelfserviceMethodsCaptchaEnabled                  types.Bool   `tfsdk:"selfservice_methods_captcha_enabled"`
+
+	// Code max submissions
+	SelfserviceMethodsCodeConfigMaxSubmissions types.Int64 `tfsdk:"selfservice_methods_code_config_max_submissions"`
+
+	// Passkey origins
+	SelfserviceMethodsPasskeyConfigRPOrigins types.List `tfsdk:"selfservice_methods_passkey_config_rp_origins"`
+
+	// OAuth2 provider
+	OAuth2ProviderHeaders          types.Map  `tfsdk:"oauth2_provider_headers"`
+	OAuth2ProviderOverrideReturnTo types.Bool `tfsdk:"oauth2_provider_override_return_to"`
+
+	// Identity secrets
+	IdentitySecretsCipher     types.List `tfsdk:"identity_secrets_cipher"`
+	IdentitySecretsCookie     types.List `tfsdk:"identity_secrets_cookie"`
+	IdentitySecretsDefault    types.List `tfsdk:"identity_secrets_default"`
+	IdentitySecretsPagination types.List `tfsdk:"identity_secrets_pagination"`
+
+	// OAuth2 secrets
+	OAuth2SecretsCookie     types.List `tfsdk:"oauth2_secrets_cookie"`
+	OAuth2SecretsPagination types.List `tfsdk:"oauth2_secrets_pagination"`
+	OAuth2SecretsSystem     types.List `tfsdk:"oauth2_secrets_system"`
+
+	// OAuth2 OIDC
+	OIDCDynamicClientRegistrationDefaultScope types.List `tfsdk:"oidc_dynamic_client_registration_default_scope"`
+	OIDCSubjectIdentifiersSupportedTypes      types.List `tfsdk:"oidc_subject_identifiers_supported_types"`
+
+	// OAuth2 webfinger
+	OAuth2WebfingerJWKSBroadcastKeys            types.List `tfsdk:"oauth2_webfinger_jwks_broadcast_keys"`
+	OAuth2WebfingerOIDCDiscoverySupportedClaims types.List `tfsdk:"oauth2_webfinger_oidc_discovery_supported_claims"`
+	OAuth2WebfingerOIDCDiscoverySupportedScope  types.List `tfsdk:"oauth2_webfinger_oidc_discovery_supported_scope"`
+
+	// Keto
+	KetoNamespaceConfiguration types.String `tfsdk:"keto_namespace_configuration"`
+	KetoSecretsPagination      types.List   `tfsdk:"keto_secrets_pagination"`
+
+	// Security
+	SecurityAccountEnumerationMitigate types.Bool `tfsdk:"security_account_enumeration_mitigate"`
+
+	// Preview
+	PreviewDefaultReadConsistencyLevel types.String `tfsdk:"preview_default_read_consistency_level"`
+
+	// Feature flags
+	FeatureFlagsPasswordProfileRegistrationNodeGroup types.Bool `tfsdk:"feature_flags_password_profile_registration_node_group"`
+
+	// --- Spec-derived aliases for deprecated attribute names ---
+	// These are the preferred names. The old names above still work but show deprecation warnings.
+
+	// OAuth2 TTLs
+	OAuth2TTLAccessToken         types.String `tfsdk:"oauth2_ttl_access_token"`
+	OAuth2TTLRefreshToken        types.String `tfsdk:"oauth2_ttl_refresh_token"`
+	OAuth2TTLAuthCode            types.String `tfsdk:"oauth2_ttl_auth_code"`
+	OAuth2TTLIDToken             types.String `tfsdk:"oauth2_ttl_id_token"`
+	OAuth2TTLLoginConsentRequest types.String `tfsdk:"oauth2_ttl_login_consent_request"`
+
+	// OAuth2 Strategies
+	OAuth2StrategiesAccessToken   types.String `tfsdk:"oauth2_strategies_access_token"`
+	OAuth2StrategiesJWTScopeClaim types.String `tfsdk:"oauth2_strategies_jwt_scope_claim"`
+	OAuth2StrategiesScope         types.String `tfsdk:"oauth2_strategies_scope"`
+
+	// OAuth2 URLs
+	OAuth2URLsConsent    types.String `tfsdk:"oauth2_urls_consent"`
+	OAuth2URLsLogin      types.String `tfsdk:"oauth2_urls_login"`
+	OAuth2URLsLogout     types.String `tfsdk:"oauth2_urls_logout"`
+	OAuth2URLsError      types.String `tfsdk:"oauth2_urls_error"`
+	OAuth2URLsSelfIssuer types.String `tfsdk:"oauth2_urls_self_issuer"`
+
+	// OAuth2 Cookies
+	OAuth2ServeCookiesSameSiteMode             types.String `tfsdk:"oauth2_serve_cookies_same_site_mode"`
+	OAuth2ServeCookiesSameSiteLegacyWorkaround types.Bool   `tfsdk:"oauth2_serve_cookies_same_site_legacy_workaround"`
+
+	// UI URLs
+	SelfserviceFlowsLoginUIURL        types.String `tfsdk:"selfservice_flows_login_ui_url"`
+	SelfserviceFlowsRegistrationUIURL types.String `tfsdk:"selfservice_flows_registration_ui_url"`
+	SelfserviceFlowsRecoveryUIURL     types.String `tfsdk:"selfservice_flows_recovery_ui_url"`
+	SelfserviceFlowsVerificationUIURL types.String `tfsdk:"selfservice_flows_verification_ui_url"`
+	SelfserviceFlowsSettingsUIURL     types.String `tfsdk:"selfservice_flows_settings_ui_url"`
+	SelfserviceFlowsErrorUIURL        types.String `tfsdk:"selfservice_flows_error_ui_url"`
+
+	// Auth method enables
+	SelfserviceMethodsPasswordEnabled          types.Bool `tfsdk:"selfservice_methods_password_enabled"`
+	SelfserviceMethodsCodeEnabled              types.Bool `tfsdk:"selfservice_methods_code_enabled"`
+	SelfserviceMethodsCodeMFAEnabled           types.Bool `tfsdk:"selfservice_methods_code_mfa_enabled"`
+	SelfserviceMethodsOIDCEnabled              types.Bool `tfsdk:"selfservice_methods_oidc_enabled"`
+	SelfserviceMethodsOIDCEnableAutoLinkPolicy types.Bool `tfsdk:"selfservice_methods_oidc_enable_auto_link_policy"`
+	SelfserviceMethodsTOTPEnabled              types.Bool `tfsdk:"selfservice_methods_totp_enabled"`
+	SelfserviceMethodsWebAuthnEnabled          types.Bool `tfsdk:"selfservice_methods_webauthn_enabled"`
+	SelfserviceMethodsPasskeyEnabled           types.Bool `tfsdk:"selfservice_methods_passkey_enabled"`
+	SelfserviceMethodsLookupSecretEnabled      types.Bool `tfsdk:"selfservice_methods_lookup_secret_enabled"`
+	SelfserviceMethodsProfileEnabled           types.Bool `tfsdk:"selfservice_methods_profile_enabled"`
+
+	// Code config
+	SelfserviceMethodsCodeConfigLifespan                         types.String `tfsdk:"selfservice_methods_code_config_lifespan"`
+	SelfserviceMethodsCodeConfigMissingCredentialFallbackEnabled types.Bool   `tfsdk:"selfservice_methods_code_config_missing_credential_fallback_enabled"`
+
+	// Password config
+	SelfserviceMethodsPasswordConfigMinPasswordLength                types.Int64 `tfsdk:"selfservice_methods_password_config_min_password_length"`
+	SelfserviceMethodsPasswordConfigHaveIBeenPwnedEnabled            types.Bool  `tfsdk:"selfservice_methods_password_config_haveibeenpwned_enabled"`
+	SelfserviceMethodsPasswordConfigMaxBreaches                      types.Int64 `tfsdk:"selfservice_methods_password_config_max_breaches"`
+	SelfserviceMethodsPasswordConfigIdentifierSimilarityCheckEnabled types.Bool  `tfsdk:"selfservice_methods_password_config_identifier_similarity_check_enabled"`
+
+	// Flow enables/settings
+	SelfserviceFlowsRecoveryEnabled                     types.Bool   `tfsdk:"selfservice_flows_recovery_enabled"`
+	SelfserviceFlowsVerificationEnabled                 types.Bool   `tfsdk:"selfservice_flows_verification_enabled"`
+	SelfserviceFlowsRegistrationEnabled                 types.Bool   `tfsdk:"selfservice_flows_registration_enabled"`
+	SelfserviceFlowsLoginStyle                          types.String `tfsdk:"selfservice_flows_login_style"`
+	SelfserviceFlowsSettingsLifespan                    types.String `tfsdk:"selfservice_flows_settings_lifespan"`
+	SelfserviceFlowsSettingsPrivilegedSessionMaxAge     types.String `tfsdk:"selfservice_flows_settings_privileged_session_max_age"`
+	SelfserviceFlowsSettingsRequiredAAL                 types.String `tfsdk:"selfservice_flows_settings_required_aal"`
+	SelfserviceFlowsVerificationUse                     types.String `tfsdk:"selfservice_flows_verification_use"`
+	SelfserviceFlowsVerificationLifespan                types.String `tfsdk:"selfservice_flows_verification_lifespan"`
+	SelfserviceFlowsVerificationNotifyUnknownRecipients types.Bool   `tfsdk:"selfservice_flows_verification_notify_unknown_recipients"`
+
+	// SMTP
+	CourierSMTPFromAddress types.String `tfsdk:"courier_smtp_from_address"`
+	CourierSMTPFromName    types.String `tfsdk:"courier_smtp_from_name"`
+
+	// MFA/WebAuthn/TOTP
+	SelfserviceMethodsTOTPConfigIssuer            types.String `tfsdk:"selfservice_methods_totp_config_issuer"`
+	SelfserviceMethodsWebAuthnConfigRPDisplayName types.String `tfsdk:"selfservice_methods_webauthn_config_rp_display_name"`
+	SelfserviceMethodsWebAuthnConfigRPID          types.String `tfsdk:"selfservice_methods_webauthn_config_rp_id"`
+	SelfserviceMethodsWebAuthnConfigPasswordless  types.Bool   `tfsdk:"selfservice_methods_webauthn_config_passwordless"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---
 
-// SessionTokenizerTemplateModel represents a single tokenizer template entry.
 type SessionTokenizerTemplateModel struct {
 	TTL             types.String `tfsdk:"ttl"`
 	JWKSURL         types.String `tfsdk:"jwks_url"`
@@ -173,8 +438,6 @@ type SessionTokenizerTemplateModel struct {
 	SubjectSource   types.String `tfsdk:"subject_source"`
 }
 
-// CourierHTTPAuthModel represents the auth block for HTTP request configs.
-// This is a flattened discriminated union: set type + the fields for that type.
 type CourierHTTPAuthModel struct {
 	Type     types.String `tfsdk:"type"`
 	User     types.String `tfsdk:"user"`
@@ -184,7 +447,6 @@ type CourierHTTPAuthModel struct {
 	In       types.String `tfsdk:"in"`
 }
 
-// CourierHTTPRequestConfigModel represents an HTTP request configuration.
 type CourierHTTPRequestConfigModel struct {
 	URL     types.String `tfsdk:"url"`
 	Method  types.String `tfsdk:"method"`
@@ -193,7 +455,6 @@ type CourierHTTPRequestConfigModel struct {
 	Auth    types.Object `tfsdk:"auth"`
 }
 
-// CourierChannelModel represents a single courier channel entry.
 type CourierChannelModel struct {
 	ID            types.String `tfsdk:"id"`
 	RequestConfig types.Object `tfsdk:"request_config"`
@@ -292,476 +553,149 @@ resource "ory_project_config" "main" {
 `
 
 func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description:         "Configures an Ory Network project's settings.",
-		MarkdownDescription: projectConfigMarkdownDescription,
-		Attributes: map[string]schema.Attribute{
-			"id": schema.StringAttribute{
-				Description: "Resource ID (same as project_id).",
-				Computed:    true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"project_id": schema.StringAttribute{
-				Description: "Project ID to configure. If not set, uses provider's project_id.",
-				Optional:    true,
-				Computed:    true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
+	// Start with generated simple attributes
+	attrs := simpleSchemaAttributes()
 
-			// Keto/Permissions Namespaces
-			"keto_namespaces": schema.ListAttribute{
-				Description: "List of Keto namespace names to configure for Ory Permissions. " +
-					"Namespaces define the types of resources in your permission model (e.g., 'documents', 'folders'). " +
-					"Each namespace name must be unique.",
-				Optional:    true,
-				ElementType: types.StringType,
-			},
+	// Add custom/complex attributes that can't be generated
+	attrs["id"] = schema.StringAttribute{
+		Description: "Resource ID (same as project_id).",
+		Computed:    true,
+		PlanModifiers: []planmodifier.String{
+			stringplanmodifier.UseStateForUnknown(),
+		},
+	}
+	attrs["project_id"] = schema.StringAttribute{
+		Description: "Project ID to configure. If not set, uses provider's project_id.",
+		Optional:    true,
+		Computed:    true,
+		PlanModifiers: []planmodifier.String{
+			stringplanmodifier.UseStateForUnknown(),
+			stringplanmodifier.RequiresReplace(),
+		},
+	}
+	// --- Hand-written attributes (not in mappings.yaml) ---
+	// These require custom logic that the codegen can't express:
+	//   CORS (4):                   project-level /cors_* paths (not /services/*/config/)
+	//   keto_namespaces:            transforms name list to [{name,id}] objects
+	//   default_return_url:         remove-on-empty (empty string sends "remove" patch)
+	//   allowed_return_urls:        remove-on-empty (empty list sends "remove" patch)
+	//   mfa_enforcement:            maps string to AAL enum
+	//   session_tokenizer_templates: nested object schema
+	//   courier_channels:           nested objects with sub-config
+	//   courier_http_request_config: nested object (url/method/headers/body/auth)
 
-			// CORS
-			"cors_enabled": schema.BoolAttribute{
-				Description: "Enable CORS for the public API.",
-				Optional:    true,
-				Computed:    true,
-				Default:     booldefault.StaticBool(false),
-			},
-			"cors_origins": schema.ListAttribute{
-				Description: "Allowed CORS origins.",
-				Optional:    true,
-				ElementType: types.StringType,
-			},
+	attrs["keto_namespaces"] = schema.ListAttribute{
+		Description: "List of Keto namespace names to configure for Ory Permissions. " +
+			"Namespaces define the types of resources in your permission model (e.g., 'documents', 'folders'). " +
+			"Each namespace name must be unique.",
+		Optional:    true,
+		ElementType: types.StringType,
+	}
+	attrs["cors_enabled"] = schema.BoolAttribute{
+		Description: "Enable CORS for the public API.",
+		Optional:    true,
+		Computed:    true,
+		Default:     booldefault.StaticBool(false),
+	}
+	attrs["cors_origins"] = schema.ListAttribute{
+		Description: "Allowed CORS origins.",
+		Optional:    true,
+		ElementType: types.StringType,
+	}
+	attrs["cors_admin_enabled"] = schema.BoolAttribute{
+		Description: "Enable CORS for the admin API.",
+		Optional:    true,
+	}
+	attrs["cors_admin_origins"] = schema.ListAttribute{
+		Description: "Allowed CORS origins for the admin API.",
+		Optional:    true,
+		ElementType: types.StringType,
+	}
+	attrs["default_return_url"] = schema.StringAttribute{
+		Description: "Default URL to redirect after flows.",
+		Optional:    true,
+	}
+	attrs["allowed_return_urls"] = schema.ListAttribute{
+		Description: "List of allowed return URLs.",
+		Optional:    true,
+		ElementType: types.StringType,
+	}
+	attrs["mfa_enforcement"] = schema.StringAttribute{
+		Description: "MFA enforcement level: 'none', 'optional', or 'required'.",
+		Optional:    true,
+	}
 
-			// CORS (Admin)
-			"cors_admin_enabled": schema.BoolAttribute{
-				Description: "Enable CORS for the admin API.",
-				Optional:    true,
-			},
-			"cors_admin_origins": schema.ListAttribute{
-				Description: "Allowed CORS origins for the admin API.",
-				Optional:    true,
-				ElementType: types.StringType,
-			},
-
-			// Session
-			"session_lifespan": schema.StringAttribute{
-				Description: "Session duration (e.g., '24h0m0s').",
-				Optional:    true,
-			},
-			"session_cookie_same_site": schema.StringAttribute{
-				Description: "SameSite cookie attribute (Lax, Strict, None).",
-				Optional:    true,
-			},
-			"session_cookie_persistent": schema.BoolAttribute{
-				Description: "Enable persistent session cookies (survive browser close).",
-				Optional:    true,
-			},
-
-			// OAuth2/Hydra
-			"oauth2_access_token_lifespan": schema.StringAttribute{
-				Description: "OAuth2 access token lifespan (e.g., '1h', '30m'). Requires Hydra service.",
-				Optional:    true,
-			},
-			"oauth2_refresh_token_lifespan": schema.StringAttribute{
-				Description: "OAuth2 refresh token lifespan (e.g., '720h' for 30 days). Requires Hydra service.",
-				Optional:    true,
-			},
-			"oauth2_auth_code_lifespan": schema.StringAttribute{
-				Description: "OAuth2 authorization code lifespan (e.g., '30m'). Requires Hydra service.",
-				Optional:    true,
-			},
-			"oauth2_id_token_lifespan": schema.StringAttribute{
-				Description: "OAuth2 ID token lifespan (e.g., '1h'). Requires Hydra service.",
-				Optional:    true,
-			},
-			"oauth2_login_consent_request_lifespan": schema.StringAttribute{
-				Description: "OAuth2 login/consent request lifespan (e.g., '30m'). Requires Hydra service.",
-				Optional:    true,
-			},
-			"oauth2_allowed_top_level_claims": schema.ListAttribute{
-				Description: "List of allowed top-level claims in OAuth2 access tokens (e.g., 'amr', 'acr').",
-				Optional:    true,
-				ElementType: types.StringType,
-			},
-			"oauth2_mirror_top_level_claims": schema.BoolAttribute{
-				Description: "Mirror top-level claims in OAuth2 ID tokens.",
-				Optional:    true,
-			},
-			"oauth2_pkce_enforced": schema.BoolAttribute{
-				Description: "Enforce PKCE for all OAuth2 clients.",
-				Optional:    true,
-			},
-			"oauth2_pkce_enforced_for_public_clients": schema.BoolAttribute{
-				Description: "Enforce PKCE for public OAuth2 clients only.",
-				Optional:    true,
-			},
-			"oauth2_session_encrypt_at_rest": schema.BoolAttribute{
-				Description: "Encrypt OAuth2 sessions at rest.",
-				Optional:    true,
-			},
-			"oauth2_access_token_strategy": schema.StringAttribute{
-				Description: "OAuth2 access token strategy ('jwt' or 'opaque').",
-				Optional:    true,
-				Validators:  []validator.String{stringvalidator.OneOf("jwt", "opaque")},
-			},
-			"oauth2_jwt_scope_claim": schema.StringAttribute{
-				Description: "How scopes are represented in JWT access tokens ('list', 'string', or 'both').",
-				Optional:    true,
-				Validators:  []validator.String{stringvalidator.OneOf("list", "string", "both")},
-			},
-			"oauth2_scope_strategy": schema.StringAttribute{
-				Description: "OAuth2 scope matching strategy ('exact', 'wildcard').",
-				Optional:    true,
-				Validators:  []validator.String{stringvalidator.OneOf("exact", "wildcard", "DEPRECATED_HIERARCHICAL_SCOPE_STRATEGY")},
-			},
-			"oauth2_consent_url": schema.StringAttribute{
-				Description: "OAuth2 consent endpoint URL.",
-				Optional:    true,
-			},
-			"oauth2_login_url": schema.StringAttribute{
-				Description: "OAuth2 login endpoint URL.",
-				Optional:    true,
-			},
-			"oauth2_logout_url": schema.StringAttribute{
-				Description: "OAuth2 logout endpoint URL.",
-				Optional:    true,
-			},
-			"oauth2_error_url": schema.StringAttribute{
-				Description: "OAuth2 error endpoint URL.",
-				Optional:    true,
-			},
-			"oauth2_issuer_url": schema.StringAttribute{
-				Description: "OAuth2 issuer URL. Overrides the default project URL used as the OAuth2/OIDC issuer.",
-				Optional:    true,
-			},
-			"oauth2_cookies_same_site_mode": schema.StringAttribute{
-				Description: "SameSite attribute for OAuth2 cookies ('Lax', 'Strict', 'None').",
-				Optional:    true,
-				Validators:  []validator.String{stringvalidator.OneOf("Lax", "Strict", "None")},
-			},
-			"oauth2_cookies_same_site_legacy_workaround": schema.BoolAttribute{
-				Description: "Enable the SameSite=None legacy workaround for OAuth2 cookies. " +
-					"When enabled, a fallback cookie without SameSite is set alongside the main cookie " +
-					"for clients that don't support SameSite=None.",
-				Optional: true,
-			},
-
-			// URLs
-			"default_return_url": schema.StringAttribute{
-				Description: "Default URL to redirect after flows.",
-				Optional:    true,
-			},
-			"allowed_return_urls": schema.ListAttribute{
-				Description: "List of allowed return URLs.",
-				Optional:    true,
-				ElementType: types.StringType,
-			},
-			"login_ui_url": schema.StringAttribute{
-				Description: "URL for the login UI.",
-				Optional:    true,
-			},
-			"registration_ui_url": schema.StringAttribute{
-				Description: "URL for the registration UI.",
-				Optional:    true,
-			},
-			"recovery_ui_url": schema.StringAttribute{
-				Description: "URL for the password recovery UI.",
-				Optional:    true,
-			},
-			"verification_ui_url": schema.StringAttribute{
-				Description: "URL for the verification UI.",
-				Optional:    true,
-			},
-			"settings_ui_url": schema.StringAttribute{
-				Description: "URL for the account settings UI.",
-				Optional:    true,
-			},
-			"error_ui_url": schema.StringAttribute{
-				Description: "URL for the error UI.",
-				Optional:    true,
-			},
-
-			// Auth methods
-			"enable_password": schema.BoolAttribute{
-				Description: "Enable password authentication.",
-				Optional:    true,
-			},
-			"enable_code": schema.BoolAttribute{
-				Description: "Enable code-based authentication.",
-				Optional:    true,
-			},
-			"code_mfa_enabled": schema.BoolAttribute{
-				Description: "Enable the code method as a second factor for MFA. " +
-					"When enabled, users can use one-time codes as a second authentication factor.",
-				Optional: true,
-			},
-			"enable_oidc": schema.BoolAttribute{
-				Description: "Enable OIDC (OpenID Connect) social sign-in. Must be enabled for social providers (e.g. Google, GitHub) to work.",
-				Optional:    true,
-			},
-			"enable_oidc_auto_link_policy": schema.BoolAttribute{
-				Description: "Enable the OIDC auto-link policy. When true, social sign-in providers with auto_link enabled (on ory_social_provider) can automatically link to existing identities that share the same identifier (e.g., email).",
-				Optional:    true,
-			},
-			"enable_totp": schema.BoolAttribute{
-				Description: "Enable TOTP (Time-based One-Time Password).",
-				Optional:    true,
-			},
-			"enable_webauthn": schema.BoolAttribute{
-				Description: "Enable WebAuthn (hardware keys).",
-				Optional:    true,
-			},
-			"enable_passkey": schema.BoolAttribute{
-				Description: "Enable Passkey authentication.",
-				Optional:    true,
-			},
-			"enable_lookup_secret": schema.BoolAttribute{
-				Description: "Enable backup/recovery codes.",
-				Optional:    true,
-			},
-			"enable_profile": schema.BoolAttribute{
-				Description: "Enable the profile authentication method. When enabled, users can update their identity traits (e.g., name, address) via the settings flow.",
-				Optional:    true,
-			},
-
-			// Code method config
-			"code_lifespan": schema.StringAttribute{
-				Description: "Lifespan of the code method's one-time codes (e.g., '15m0s'). Controls how long a code remains valid after being issued.",
-				Optional:    true,
-			},
-			"code_missing_credential_fallback_enabled": schema.BoolAttribute{
-				Description: "Enable missing credential fallback for the code method. When enabled, allows the code method to be used as a fallback when the primary credential is missing.",
-				Optional:    true,
-			},
-
-			// Password policy
-			"password_min_length": schema.Int64Attribute{
-				Description: "Minimum password length.",
-				Optional:    true,
-				Computed:    true,
-				Default:     int64default.StaticInt64(8),
-			},
-			"password_check_haveibeenpwned": schema.BoolAttribute{
-				Description: "Check passwords against HaveIBeenPwned.",
-				Optional:    true,
-			},
-			"password_max_breaches": schema.Int64Attribute{
-				Description: "Maximum allowed breaches in HaveIBeenPwned.",
-				Optional:    true,
-			},
-			"password_identifier_similarity": schema.BoolAttribute{
-				Description: "Check password similarity to identifier.",
-				Optional:    true,
-			},
-
-			// Flow settings
-			"enable_recovery": schema.BoolAttribute{
-				Description: "Enable password recovery flow.",
-				Optional:    true,
-			},
-			"enable_verification": schema.BoolAttribute{
-				Description: "Enable email verification flow.",
-				Optional:    true,
-			},
-			"enable_registration": schema.BoolAttribute{
-				Description: "Enable user registration.",
-				Optional:    true,
-			},
-			"login_style": schema.StringAttribute{
-				Description: "Login flow style: 'unified' (default) shows all auth methods on one screen, " +
-					"'identifier_first' collects the identifier before showing auth methods.",
-				Optional:   true,
-				Validators: []validator.String{stringvalidator.OneOf("unified", "identifier_first")},
-			},
-
-			// Settings flow
-			"settings_lifespan": schema.StringAttribute{
-				Description: "Lifespan of the settings flow (e.g., '30m0s'). Controls how long a settings flow session remains valid.",
-				Optional:    true,
-			},
-			"settings_privileged_session_max_age": schema.StringAttribute{
-				Description: "Maximum age of a privileged session for the settings flow (e.g., '15m0s'). " +
-					"After this duration, the user must re-authenticate to make privileged changes like password updates.",
-				Optional: true,
-			},
-
-			// Verification flow
-			"verification_use": schema.StringAttribute{
-				Description: "Verification method to use: 'code' (one-time code) or 'link' (magic link).",
-				Optional:    true,
-				Validators:  []validator.String{stringvalidator.OneOf("code", "link")},
-			},
-			"verification_lifespan": schema.StringAttribute{
-				Description: "Lifespan of the verification flow (e.g., '30m0s'). Controls how long a verification flow session remains valid.",
-				Optional:    true,
-			},
-			"verification_notify_unknown_recipients": schema.BoolAttribute{
-				Description: "When enabled, verification emails are sent even if the email address is not associated with any known identity.",
-				Optional:    true,
-			},
-
-			// SMTP Configuration
-			"smtp_connection_uri": schema.StringAttribute{
-				Description: "SMTP connection URI for sending emails.",
-				Optional:    true,
-				Sensitive:   true,
-			},
-			"smtp_from_address": schema.StringAttribute{
-				Description: "Email address to send from.",
-				Optional:    true,
-				Validators: []validator.String{
-					stringvalidator.RegexMatches(
-						regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`),
-						"must be a valid email address",
-					),
-				},
-			},
-			"smtp_from_name": schema.StringAttribute{
-				Description: "Name to display as sender.",
-				Optional:    true,
-			},
-			"smtp_headers": schema.MapAttribute{
-				Description: "Custom headers to include in emails.",
-				Optional:    true,
-				ElementType: types.StringType,
-			},
-
-			// MFA Policy
-			"mfa_enforcement": schema.StringAttribute{
-				Description: "MFA enforcement level: 'none', 'optional', or 'required'.",
-				Optional:    true,
-			},
-			"totp_issuer": schema.StringAttribute{
-				Description: "TOTP issuer name shown in authenticator apps.",
-				Optional:    true,
-			},
-			"webauthn_rp_display_name": schema.StringAttribute{
-				Description: "WebAuthn Relying Party display name.",
-				Optional:    true,
-			},
-			"webauthn_rp_id": schema.StringAttribute{
-				Description: "WebAuthn Relying Party ID (typically your domain).",
-				Optional:    true,
-			},
-			"webauthn_rp_origins": schema.ListAttribute{
-				Description: "Allowed WebAuthn origins.",
-				Optional:    true,
-				ElementType: types.StringType,
-			},
-			"webauthn_passwordless": schema.BoolAttribute{
-				Description: "Enable passwordless WebAuthn authentication.",
-				Optional:    true,
-			},
-			"required_aal": schema.StringAttribute{
-				Description: "Required Authenticator Assurance Level for the settings flow: 'aal1' or 'highest_available'.",
-				Optional:    true,
-				Validators:  []validator.String{stringvalidator.OneOf("aal1", "highest_available")},
-			},
-			"session_whoami_required_aal": schema.StringAttribute{
-				Description: "Required AAL for session whoami endpoint: 'aal1', 'aal2', or 'highest_available'.",
-				Optional:    true,
-			},
-
-			// Account Experience (Branding)
-			"account_experience_favicon_url": schema.StringAttribute{
-				Description: "URL for the favicon in the hosted login UI.",
-				Optional:    true,
-			},
-			"account_experience_logo_url": schema.StringAttribute{
-				Description: "URL for the logo in the hosted login UI.",
-				Optional:    true,
-			},
-			"account_experience_name": schema.StringAttribute{
-				Description: "Application name shown in the hosted login UI.",
-				Optional:    true,
-			},
-			"account_experience_stylesheet": schema.StringAttribute{
-				Description: "Custom CSS stylesheet for the hosted login UI.",
-				Optional:    true,
-			},
-			"account_experience_default_locale": schema.StringAttribute{
-				Description: "Default locale for the hosted login UI (e.g., 'en', 'de').",
-				Optional:    true,
-			},
-
-			// Session Tokenizer Templates
-			"session_tokenizer_templates": schema.MapNestedAttribute{
-				Description: "JWT tokenizer templates for the /sessions/whoami endpoint. " +
-					"Each key is a template name, and the value configures how JWTs are generated.",
-				Optional: true,
-				NestedObject: schema.NestedAttributeObject{
-					Attributes: map[string]schema.Attribute{
-						"ttl": schema.StringAttribute{
-							Description: "Token time-to-live duration (e.g., '1h', '30m'). Default: '1m'.",
-							Optional:    true,
-							Validators: []validator.String{
-								stringvalidator.RegexMatches(
-									regexp.MustCompile(`^[0-9]+(ns|us|ms|s|m|h)$`),
-									"must be a valid Go duration (e.g., '1h', '30m', '10s')",
-								),
-							},
-						},
-						"jwks_url": schema.StringAttribute{
-							Description: "JWKS URL for signing tokens. Must use base64:// scheme (e.g., 'base64://eyJrZXlzIjpbXX0=').",
-							Required:    true,
-							Sensitive:   true,
-							Validators: []validator.String{
-								stringvalidator.RegexMatches(
-									regexp.MustCompile(`^base64://`),
-									"must start with 'base64://'",
-								),
-							},
-						},
-						"claims_mapper_url": schema.StringAttribute{
-							Description: "Jsonnet claims mapper URL. Supports base64:// and https:// schemes.",
-							Optional:    true,
-						},
-						"subject_source": schema.StringAttribute{
-							Description: "Subject source for the JWT: 'id' (default) or 'external_id'.",
-							Optional:    true,
-							Validators: []validator.String{
-								stringvalidator.OneOf("id", "external_id"),
-							},
-						},
+	// Session Tokenizer Templates
+	attrs["session_tokenizer_templates"] = schema.MapNestedAttribute{
+		Description: "JWT tokenizer templates for the /sessions/whoami endpoint. " +
+			"Each key is a template name, and the value configures how JWTs are generated.",
+		Optional: true,
+		NestedObject: schema.NestedAttributeObject{
+			Attributes: map[string]schema.Attribute{
+				"ttl": schema.StringAttribute{
+					Description: "Token time-to-live duration (e.g., '1h', '30m'). Default: '1m'.",
+					Optional:    true,
+					Validators: []validator.String{
+						stringvalidator.RegexMatches(
+							regexp.MustCompile(`^[0-9]+(ns|us|ms|s|m|h)$`),
+							"must be a valid Go duration (e.g., '1h', '30m', '10s')",
+						),
 					},
 				},
-			},
-
-			// Courier HTTP Delivery
-			"courier_delivery_strategy": schema.StringAttribute{
-				Description: "Courier delivery strategy: 'smtp' (default) or 'http'.",
-				Optional:    true,
-				Validators: []validator.String{
-					stringvalidator.OneOf("smtp", "http"),
-				},
-			},
-			"courier_http_request_config": courierHTTPRequestConfigSchemaAttr(
-				"HTTP request configuration for courier message delivery (used when courier_delivery_strategy is 'http').",
-			),
-			"courier_channels": schema.ListNestedAttribute{
-				Description: "Per-channel courier delivery configurations (e.g., SMS via Twilio). " +
-					"Each channel overrides the default delivery for a specific message channel.",
-				Optional: true,
-				NestedObject: schema.NestedAttributeObject{
-					Attributes: map[string]schema.Attribute{
-						"id": schema.StringAttribute{
-							Description: "Channel identifier (e.g., 'sms').",
-							Required:    true,
-						},
-						"request_config": courierHTTPRequestConfigSchemaAttr(
-							"HTTP request configuration for this channel.",
+				"jwks_url": schema.StringAttribute{
+					Description: "JWKS URL for signing tokens. Must use base64:// scheme (e.g., 'base64://eyJrZXlzIjpbXX0=').",
+					Required:    true,
+					Sensitive:   true,
+					Validators: []validator.String{
+						stringvalidator.RegexMatches(
+							regexp.MustCompile(`^base64://`),
+							"must start with 'base64://'",
 						),
+					},
+				},
+				"claims_mapper_url": schema.StringAttribute{
+					Description: "Jsonnet claims mapper URL. Supports base64:// and https:// schemes.",
+					Optional:    true,
+				},
+				"subject_source": schema.StringAttribute{
+					Description: "Subject source for the JWT: 'id' (default) or 'external_id'.",
+					Optional:    true,
+					Validators: []validator.String{
+						stringvalidator.OneOf("id", "external_id"),
 					},
 				},
 			},
 		},
 	}
+
+	// Courier HTTP Delivery
+	attrs["courier_http_request_config"] = courierHTTPRequestConfigSchemaAttr(
+		"HTTP request configuration for courier message delivery (used when courier_delivery_strategy is 'http').",
+	)
+	attrs["courier_channels"] = schema.ListNestedAttribute{
+		Description: "Per-channel courier delivery configurations (e.g., SMS via Twilio). " +
+			"Each channel overrides the default delivery for a specific message channel.",
+		Optional: true,
+		NestedObject: schema.NestedAttributeObject{
+			Attributes: map[string]schema.Attribute{
+				"id": schema.StringAttribute{
+					Description: "Channel identifier (e.g., 'sms').",
+					Required:    true,
+				},
+				"request_config": courierHTTPRequestConfigSchemaAttr(
+					"HTTP request configuration for this channel.",
+				),
+			},
+		},
+	}
+
+	resp.Schema = schema.Schema{
+		Description:         "Configures an Ory Network project's settings.",
+		MarkdownDescription: projectConfigMarkdownDescription,
+		Attributes:          attrs,
+	}
 }
 
-// courierHTTPAuthSchemaAttrs returns the schema attributes for the courier HTTP auth block.
 func courierHTTPAuthSchemaAttrs() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
 		"type": schema.StringAttribute{
@@ -799,7 +733,6 @@ func courierHTTPAuthSchemaAttrs() map[string]schema.Attribute {
 	}
 }
 
-// courierHTTPRequestConfigSchemaAttr returns a SingleNestedAttribute for HTTP request config.
 func courierHTTPRequestConfigSchemaAttr(description string) schema.SingleNestedAttribute {
 	return schema.SingleNestedAttribute{
 		Description: description,
@@ -847,19 +780,95 @@ func (r *ProjectConfigResource) Configure(ctx context.Context, req resource.Conf
 	r.client = oryClient
 }
 
+// =============================================================================
+// buildPatches — uses generated tables for simple attrs + custom logic
+// =============================================================================
+
 func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectConfigResourceModel) []ory.JsonPatch {
 	var patches []ory.JsonPatch
+
+	// --- Generated simple attribute patches ---
+	for _, e := range simpleStringPatchEntries(plan) {
+		field := e.Field
+		if (field.IsNull() || field.IsUnknown()) && e.Deprecated != nil {
+			field = e.Deprecated
+		}
+		if !field.IsNull() && !field.IsUnknown() {
+			patches = append(patches, ory.JsonPatch{
+				Op:    "replace",
+				Path:  e.Path,
+				Value: field.ValueString(),
+			})
+		}
+	}
+	for _, e := range simpleBoolPatchEntries(plan) {
+		field := e.Field
+		if (field.IsNull() || field.IsUnknown()) && e.Deprecated != nil {
+			field = e.Deprecated
+		}
+		if !field.IsNull() && !field.IsUnknown() {
+			patches = append(patches, ory.JsonPatch{
+				Op:    "replace",
+				Path:  e.Path,
+				Value: field.ValueBool(),
+			})
+		}
+	}
+	for _, e := range simpleInt64PatchEntries(plan) {
+		field := e.Field
+		if (field.IsNull() || field.IsUnknown()) && e.Deprecated != nil {
+			field = e.Deprecated
+		}
+		if !field.IsNull() && !field.IsUnknown() {
+			patches = append(patches, ory.JsonPatch{
+				Op:    "replace",
+				Path:  e.Path,
+				Value: field.ValueInt64(),
+			})
+		}
+	}
+	for _, e := range simpleListStringPatchEntries(plan) {
+		field := e.Field
+		if (field.IsNull() || field.IsUnknown()) && e.Deprecated != nil {
+			field = e.Deprecated
+		}
+		if !field.IsNull() && !field.IsUnknown() {
+			var vals []string
+			field.ElementsAs(ctx, &vals, false)
+			patches = append(patches, ory.JsonPatch{
+				Op:    "replace",
+				Path:  e.Path,
+				Value: vals,
+			})
+		}
+	}
+	for _, e := range simpleMapStringPatchEntries(plan) {
+		field := e.Field
+		if (field.IsNull() || field.IsUnknown()) && e.Deprecated != nil {
+			field = e.Deprecated
+		}
+		if !field.IsNull() && !field.IsUnknown() {
+			var vals map[string]string
+			field.ElementsAs(ctx, &vals, false)
+			patches = append(patches, ory.JsonPatch{
+				Op:    "replace",
+				Path:  e.Path,
+				Value: vals,
+			})
+		}
+	}
+
+	// --- Custom patches for complex types ---
 
 	// Keto/Permissions Namespaces
 	if !plan.KetoNamespaces.IsNull() && !plan.KetoNamespaces.IsUnknown() {
 		var namespaceNames []string
 		plan.KetoNamespaces.ElementsAs(ctx, &namespaceNames, false)
-		// Convert to the format expected by Ory API: [{name: "...", id: N}, ...]
 		namespaces := make([]map[string]interface{}, len(namespaceNames))
 		for i, name := range namespaceNames {
 			namespaces[i] = map[string]interface{}{
 				"name": name,
-				"id":   i + 1, // IDs are 1-indexed
+				"id":   i + 1,
 			}
 		}
 		patches = append(patches, ory.JsonPatch{
@@ -886,8 +895,6 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 			Value: origins,
 		})
 	}
-
-	// Admin CORS
 	if !plan.CorsAdminEnabled.IsNull() && !plan.CorsAdminEnabled.IsUnknown() {
 		patches = append(patches, ory.JsonPatch{
 			Op:    "replace",
@@ -905,113 +912,7 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 		})
 	}
 
-	// Session
-	if !plan.SessionLifespan.IsNull() && !plan.SessionLifespan.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/session/lifespan",
-			Value: plan.SessionLifespan.ValueString(),
-		})
-	}
-	if !plan.SessionCookieSameSite.IsNull() && !plan.SessionCookieSameSite.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/session/cookie/same_site",
-			Value: plan.SessionCookieSameSite.ValueString(),
-		})
-	}
-	if !plan.SessionCookiePersistent.IsNull() && !plan.SessionCookiePersistent.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/session/cookie/persistent",
-			Value: plan.SessionCookiePersistent.ValueBool(),
-		})
-	}
-
-	// OAuth2/Hydra token lifespans
-	if !plan.OAuth2AccessTokenLifespan.IsNull() && !plan.OAuth2AccessTokenLifespan.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/oauth2/config/ttl/access_token",
-			Value: plan.OAuth2AccessTokenLifespan.ValueString(),
-		})
-	}
-	if !plan.OAuth2RefreshTokenLifespan.IsNull() && !plan.OAuth2RefreshTokenLifespan.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/oauth2/config/ttl/refresh_token",
-			Value: plan.OAuth2RefreshTokenLifespan.ValueString(),
-		})
-	}
-
-	// OAuth2/Hydra additional TTLs
-	oauth2TTLMappings := map[*types.String]string{
-		&plan.OAuth2AuthCodeLifespan:            "/services/oauth2/config/ttl/auth_code",
-		&plan.OAuth2IDTokenLifespan:             "/services/oauth2/config/ttl/id_token",
-		&plan.OAuth2LoginConsentRequestLifespan: "/services/oauth2/config/ttl/login_consent_request",
-	}
-	for field, path := range oauth2TTLMappings {
-		if !field.IsNull() && !field.IsUnknown() {
-			patches = append(patches, ory.JsonPatch{
-				Op:    "replace",
-				Path:  path,
-				Value: field.ValueString(),
-			})
-		}
-	}
-
-	// OAuth2/Hydra claims
-	if !plan.OAuth2AllowedTopLevelClaims.IsNull() && !plan.OAuth2AllowedTopLevelClaims.IsUnknown() {
-		var claims []string
-		plan.OAuth2AllowedTopLevelClaims.ElementsAs(ctx, &claims, false)
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/oauth2/config/oauth2/allowed_top_level_claims",
-			Value: claims,
-		})
-	}
-
-	// OAuth2/Hydra boolean settings
-	oauth2BoolMappings := map[*types.Bool]string{
-		&plan.OAuth2MirrorTopLevelClaims:            "/services/oauth2/config/oauth2/mirror_top_level_claims",
-		&plan.OAuth2PKCEEnforced:                    "/services/oauth2/config/oauth2/pkce/enforced",
-		&plan.OAuth2PKCEEnforcedForPublicClients:    "/services/oauth2/config/oauth2/pkce/enforced_for_public_clients",
-		&plan.OAuth2SessionEncryptAtRest:            "/services/oauth2/config/oauth2/session/encrypt_at_rest",
-		&plan.OAuth2CookiesSameSiteLegacyWorkaround: "/services/oauth2/config/serve/cookies/same_site_legacy_workaround",
-	}
-	for field, path := range oauth2BoolMappings {
-		if !field.IsNull() && !field.IsUnknown() {
-			patches = append(patches, ory.JsonPatch{
-				Op:    "replace",
-				Path:  path,
-				Value: field.ValueBool(),
-			})
-		}
-	}
-
-	// OAuth2/Hydra strategies, URLs, and cookie settings
-	oauth2StringMappings := map[*types.String]string{
-		&plan.OAuth2AccessTokenStrategy: "/services/oauth2/config/strategies/access_token",
-		&plan.OAuth2JWTScopeClaim:       "/services/oauth2/config/strategies/jwt/scope_claim",
-		&plan.OAuth2ScopeStrategy:       "/services/oauth2/config/strategies/scope",
-		&plan.OAuth2ConsentURL:          "/services/oauth2/config/urls/consent",
-		&plan.OAuth2LoginURL:            "/services/oauth2/config/urls/login",
-		&plan.OAuth2LogoutURL:           "/services/oauth2/config/urls/logout",
-		&plan.OAuth2ErrorURL:            "/services/oauth2/config/urls/error",
-		&plan.OAuth2IssuerURL:           "/services/oauth2/config/urls/self/issuer",
-		&plan.OAuth2CookiesSameSiteMode: "/services/oauth2/config/serve/cookies/same_site_mode",
-	}
-	for field, path := range oauth2StringMappings {
-		if !field.IsNull() && !field.IsUnknown() {
-			patches = append(patches, ory.JsonPatch{
-				Op:    "replace",
-				Path:  path,
-				Value: field.ValueString(),
-			})
-		}
-	}
-
-	// URLs
+	// URLs with remove-on-empty semantics
 	if !plan.DefaultReturnURL.IsNull() && !plan.DefaultReturnURL.IsUnknown() {
 		if plan.DefaultReturnURL.ValueString() == "" {
 			patches = append(patches, ory.JsonPatch{
@@ -1043,198 +944,8 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 		}
 	}
 
-	urlMappings := map[*types.String]string{
-		&plan.LoginUIURL:        "/services/identity/config/selfservice/flows/login/ui_url",
-		&plan.RegistrationUIURL: "/services/identity/config/selfservice/flows/registration/ui_url",
-		&plan.RecoveryUIURL:     "/services/identity/config/selfservice/flows/recovery/ui_url",
-		&plan.VerificationUIURL: "/services/identity/config/selfservice/flows/verification/ui_url",
-		&plan.SettingsUIURL:     "/services/identity/config/selfservice/flows/settings/ui_url",
-		&plan.ErrorUIURL:        "/services/identity/config/selfservice/flows/error/ui_url",
-	}
-	for field, path := range urlMappings {
-		if !field.IsNull() && !field.IsUnknown() {
-			patches = append(patches, ory.JsonPatch{
-				Op:    "replace",
-				Path:  path,
-				Value: field.ValueString(),
-			})
-		}
-	}
-
-	// Auth methods — ordered slice to guarantee deterministic patch ordering
-	// (e.g. enable_oidc is patched before enable_oidc_auto_link_policy).
-	type boolPatchMapping struct {
-		field *types.Bool
-		path  string
-	}
-	methodMappings := []boolPatchMapping{
-		{&plan.EnablePassword, "/services/identity/config/selfservice/methods/password/enabled"},
-		{&plan.EnableCode, "/services/identity/config/selfservice/methods/code/enabled"},
-		{&plan.CodeMFAEnabled, "/services/identity/config/selfservice/methods/code/mfa_enabled"},
-		{&plan.EnableOIDC, "/services/identity/config/selfservice/methods/oidc/enabled"},
-		{&plan.EnableOIDCAutoLinkPolicy, "/services/identity/config/selfservice/methods/oidc/enable_auto_link_policy"},
-		{&plan.EnableTOTP, "/services/identity/config/selfservice/methods/totp/enabled"},
-		{&plan.EnableWebAuthn, "/services/identity/config/selfservice/methods/webauthn/enabled"},
-		{&plan.EnablePasskey, "/services/identity/config/selfservice/methods/passkey/enabled"},
-		{&plan.EnableLookupSecret, "/services/identity/config/selfservice/methods/lookup_secret/enabled"},
-		{&plan.EnableProfile, "/services/identity/config/selfservice/methods/profile/enabled"},
-	}
-	for _, m := range methodMappings {
-		if !m.field.IsNull() && !m.field.IsUnknown() {
-			patches = append(patches, ory.JsonPatch{
-				Op:    "replace",
-				Path:  m.path,
-				Value: m.field.ValueBool(),
-			})
-		}
-	}
-
-	// Password policy
-	if !plan.PasswordMinLength.IsNull() && !plan.PasswordMinLength.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/methods/password/config/min_password_length",
-			Value: plan.PasswordMinLength.ValueInt64(),
-		})
-	}
-	if !plan.PasswordCheckHaveIBeenPwned.IsNull() && !plan.PasswordCheckHaveIBeenPwned.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/methods/password/config/haveibeenpwned_enabled",
-			Value: plan.PasswordCheckHaveIBeenPwned.ValueBool(),
-		})
-	}
-	if !plan.PasswordMaxBreaches.IsNull() && !plan.PasswordMaxBreaches.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/methods/password/config/max_breaches",
-			Value: plan.PasswordMaxBreaches.ValueInt64(),
-		})
-	}
-	if !plan.PasswordIdentifierSimilarity.IsNull() && !plan.PasswordIdentifierSimilarity.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/methods/password/config/identifier_similarity_check_enabled",
-			Value: plan.PasswordIdentifierSimilarity.ValueBool(),
-		})
-	}
-
-	// Code method config
-	if !plan.CodeLifespan.IsNull() && !plan.CodeLifespan.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/methods/code/config/lifespan",
-			Value: plan.CodeLifespan.ValueString(),
-		})
-	}
-	if !plan.CodeMissingCredentialFallbackEnabled.IsNull() && !plan.CodeMissingCredentialFallbackEnabled.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/methods/code/config/missing_credential_fallback_enabled",
-			Value: plan.CodeMissingCredentialFallbackEnabled.ValueBool(),
-		})
-	}
-
-	// Flow settings
-	flowMappings := map[*types.Bool]string{
-		&plan.EnableRecovery:     "/services/identity/config/selfservice/flows/recovery/enabled",
-		&plan.EnableVerification: "/services/identity/config/selfservice/flows/verification/enabled",
-		&plan.EnableRegistration: "/services/identity/config/selfservice/flows/registration/enabled",
-	}
-	for field, path := range flowMappings {
-		if !field.IsNull() && !field.IsUnknown() {
-			patches = append(patches, ory.JsonPatch{
-				Op:    "replace",
-				Path:  path,
-				Value: field.ValueBool(),
-			})
-		}
-	}
-
-	// Login style
-	if !plan.LoginStyle.IsNull() && !plan.LoginStyle.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/flows/login/style",
-			Value: plan.LoginStyle.ValueString(),
-		})
-	}
-
-	// Settings flow
-	if !plan.SettingsLifespan.IsNull() && !plan.SettingsLifespan.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/flows/settings/lifespan",
-			Value: plan.SettingsLifespan.ValueString(),
-		})
-	}
-	if !plan.SettingsPrivilegedSessionMaxAge.IsNull() && !plan.SettingsPrivilegedSessionMaxAge.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/flows/settings/privileged_session_max_age",
-			Value: plan.SettingsPrivilegedSessionMaxAge.ValueString(),
-		})
-	}
-
-	// Verification flow
-	if !plan.VerificationUse.IsNull() && !plan.VerificationUse.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/flows/verification/use",
-			Value: plan.VerificationUse.ValueString(),
-		})
-	}
-	if !plan.VerificationLifespan.IsNull() && !plan.VerificationLifespan.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/flows/verification/lifespan",
-			Value: plan.VerificationLifespan.ValueString(),
-		})
-	}
-	if !plan.VerificationNotifyUnknownRecipients.IsNull() && !plan.VerificationNotifyUnknownRecipients.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/flows/verification/notify_unknown_recipients",
-			Value: plan.VerificationNotifyUnknownRecipients.ValueBool(),
-		})
-	}
-
-	// SMTP Configuration
-	if !plan.SMTPConnectionURI.IsNull() && !plan.SMTPConnectionURI.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/courier/smtp/connection_uri",
-			Value: plan.SMTPConnectionURI.ValueString(),
-		})
-	}
-	if !plan.SMTPFromAddress.IsNull() && !plan.SMTPFromAddress.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/courier/smtp/from_address",
-			Value: plan.SMTPFromAddress.ValueString(),
-		})
-	}
-	if !plan.SMTPFromName.IsNull() && !plan.SMTPFromName.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/courier/smtp/from_name",
-			Value: plan.SMTPFromName.ValueString(),
-		})
-	}
-	if !plan.SMTPHeaders.IsNull() && !plan.SMTPHeaders.IsUnknown() {
-		var headers map[string]string
-		plan.SMTPHeaders.ElementsAs(ctx, &headers, false)
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/courier/smtp/headers",
-			Value: headers,
-		})
-	}
-
-	// MFA Policy
+	// MFA enforcement (special mapping)
 	if !plan.MFAEnforcement.IsNull() && !plan.MFAEnforcement.IsUnknown() {
-		// MFA enforcement is typically handled through required_aal
-		// "none" = aal1, "required" = aal2
 		enforcement := plan.MFAEnforcement.ValueString()
 		if enforcement == "required" {
 			patches = append(patches, ory.JsonPatch{
@@ -1243,94 +954,6 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 				Value: "aal2",
 			})
 		}
-	}
-	if !plan.TOTPIssuer.IsNull() && !plan.TOTPIssuer.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/methods/totp/config/issuer",
-			Value: plan.TOTPIssuer.ValueString(),
-		})
-	}
-	if !plan.WebAuthnRPDisplayName.IsNull() && !plan.WebAuthnRPDisplayName.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/methods/webauthn/config/rp/display_name",
-			Value: plan.WebAuthnRPDisplayName.ValueString(),
-		})
-	}
-	if !plan.WebAuthnRPID.IsNull() && !plan.WebAuthnRPID.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/methods/webauthn/config/rp/id",
-			Value: plan.WebAuthnRPID.ValueString(),
-		})
-	}
-	if !plan.WebAuthnRPOrigins.IsNull() && !plan.WebAuthnRPOrigins.IsUnknown() {
-		var origins []string
-		plan.WebAuthnRPOrigins.ElementsAs(ctx, &origins, false)
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/methods/webauthn/config/rp/origins",
-			Value: origins,
-		})
-	}
-	if !plan.WebAuthnPasswordless.IsNull() && !plan.WebAuthnPasswordless.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/methods/webauthn/config/passwordless",
-			Value: plan.WebAuthnPasswordless.ValueBool(),
-		})
-	}
-	if !plan.RequiredAAL.IsNull() && !plan.RequiredAAL.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/selfservice/flows/settings/required_aal",
-			Value: plan.RequiredAAL.ValueString(),
-		})
-	}
-	if !plan.SessionWhoamiRequiredAAL.IsNull() && !plan.SessionWhoamiRequiredAAL.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/session/whoami/required_aal",
-			Value: plan.SessionWhoamiRequiredAAL.ValueString(),
-		})
-	}
-
-	// Account Experience (Branding)
-	if !plan.AccountExperienceFaviconURL.IsNull() && !plan.AccountExperienceFaviconURL.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/account_experience/config/favicon_url",
-			Value: plan.AccountExperienceFaviconURL.ValueString(),
-		})
-	}
-	if !plan.AccountExperienceLogoURL.IsNull() && !plan.AccountExperienceLogoURL.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/account_experience/config/logo_url",
-			Value: plan.AccountExperienceLogoURL.ValueString(),
-		})
-	}
-	if !plan.AccountExperienceName.IsNull() && !plan.AccountExperienceName.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/account_experience/config/name",
-			Value: plan.AccountExperienceName.ValueString(),
-		})
-	}
-	if !plan.AccountExperienceStylesheet.IsNull() && !plan.AccountExperienceStylesheet.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/account_experience/config/stylesheet",
-			Value: plan.AccountExperienceStylesheet.ValueString(),
-		})
-	}
-	if !plan.AccountExperienceLocale.IsNull() && !plan.AccountExperienceLocale.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/account_experience/config/default_locale",
-			Value: plan.AccountExperienceLocale.ValueString(),
-		})
 	}
 
 	// Session Tokenizer Templates
@@ -1358,15 +981,6 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 			Op:    "add",
 			Path:  "/services/identity/config/session/whoami/tokenizer/templates",
 			Value: templatesMap,
-		})
-	}
-
-	// Courier Delivery Strategy
-	if !plan.CourierDeliveryStrategy.IsNull() && !plan.CourierDeliveryStrategy.IsUnknown() {
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  "/services/identity/config/courier/delivery_strategy",
-			Value: plan.CourierDeliveryStrategy.ValueString(),
 		})
 	}
 
@@ -1407,7 +1021,6 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 	return patches
 }
 
-// buildHTTPRequestConfigMap converts a CourierHTTPRequestConfigModel to a map for JSON Patch.
 func buildHTTPRequestConfigMap(ctx context.Context, cfg *CourierHTTPRequestConfigModel) map[string]interface{} {
 	result := map[string]interface{}{
 		"url":    cfg.URL.ValueString(),
@@ -1429,8 +1042,6 @@ func buildHTTPRequestConfigMap(ctx context.Context, cfg *CourierHTTPRequestConfi
 	return result
 }
 
-// buildAuthConfigMap converts a flattened CourierHTTPAuthModel to the nested API format:
-// {"type": "...", "config": {...}}
 func buildAuthConfigMap(auth *CourierHTTPAuthModel) map[string]interface{} {
 	authType := auth.Type.ValueString()
 	config := map[string]interface{}{}
@@ -1459,6 +1070,10 @@ func buildAuthConfigMap(auth *CourierHTTPAuthModel) map[string]interface{} {
 	}
 }
 
+// =============================================================================
+// CRUD operations
+// =============================================================================
+
 func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan ProjectConfigResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -1473,7 +1088,6 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 
 	patches := r.buildPatches(ctx, &plan)
 
-	// Debug: Log the patches being built (only at Debug level to avoid exposing sensitive paths)
 	tflog.Debug(ctx, "Building project config patches", map[string]interface{}{
 		"project_id":  projectID,
 		"patch_count": len(patches),
@@ -1527,56 +1141,17 @@ func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadReque
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-// getNestedValue safely traverses nested maps to extract a value.
-func getNestedValue(config map[string]interface{}, keys ...string) interface{} {
-	current := interface{}(config)
-	for _, key := range keys {
-		m, ok := current.(map[string]interface{})
-		if !ok {
-			return nil
-		}
-		current, ok = m[key]
-		if !ok {
-			return nil
-		}
-	}
-	return current
-}
+// =============================================================================
+// readProjectConfig — uses generated tables + custom read logic
+// =============================================================================
 
-// getNestedString extracts a string from nested maps, returning ("", false) if not found.
-func getNestedString(config map[string]interface{}, keys ...string) (string, bool) {
-	v := getNestedValue(config, keys...)
-	if v == nil {
-		return "", false
-	}
-	s, ok := v.(string)
-	return s, ok
-}
-
-// getNestedBool extracts a bool from nested maps, returning (false, false) if not found.
-func getNestedBool(config map[string]interface{}, keys ...string) (bool, bool) {
-	v := getNestedValue(config, keys...)
-	if v == nil {
-		return false, false
-	}
-	b, ok := v.(bool)
-	return b, ok
-}
-
-// getNestedFloat extracts a number from nested maps (JSON numbers are float64).
-func getNestedFloat(config map[string]interface{}, keys ...string) (float64, bool) {
-	v := getNestedValue(config, keys...)
-	if v == nil {
-		return 0, false
-	}
-	f, ok := v.(float64)
-	return f, ok
-}
-
-// readProjectConfig reads the project configuration from the API response into the Terraform state.
-// Only updates attributes that are already set in state (non-null) to avoid importing defaults.
 func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *ory.Project, state *ProjectConfigResourceModel) {
-	// CORS (Public)
+	// --- Generated simple attribute reads ---
+	readSimpleFields(ctx, project, state)
+
+	// --- Custom reads for complex types ---
+
+	// CORS (Public) — uses project struct, not config map
 	if project.CorsPublic != nil {
 		if !state.CorsEnabled.IsNull() {
 			if project.CorsPublic.Enabled != nil {
@@ -1610,31 +1185,12 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 		}
 	}
 
-	// Identity service config
+	// Identity service custom reads
 	if project.Services.Identity != nil {
 		identityConfig := project.Services.Identity.Config
 
-		// Session
-		if !state.SessionLifespan.IsNull() {
-			if v, ok := getNestedString(identityConfig, "session", "lifespan"); ok {
-				state.SessionLifespan = types.StringValue(v)
-			}
-		}
-		if !state.SessionCookieSameSite.IsNull() {
-			if v, ok := getNestedString(identityConfig, "session", "cookie", "same_site"); ok {
-				state.SessionCookieSameSite = types.StringValue(v)
-			}
-		}
-		if !state.SessionCookiePersistent.IsNull() {
-			if v, ok := getNestedBool(identityConfig, "session", "cookie", "persistent"); ok {
-				state.SessionCookiePersistent = types.BoolValue(v)
-			}
-		}
-
-		// URLs
+		// URLs with special behavior
 		if !state.DefaultReturnURL.IsNull() {
-			// If the user explicitly set an empty string, preserve it in state
-			// even if the API returns server-generated defaults.
 			if state.DefaultReturnURL.ValueString() != "" {
 				if v, ok := getNestedString(identityConfig, "selfservice", "default_browser_return_url"); ok {
 					state.DefaultReturnURL = types.StringValue(v)
@@ -1646,8 +1202,6 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 			}
 		}
 		if !state.AllowedReturnURLs.IsNull() {
-			// If the user explicitly set an empty list, preserve it in state
-			// even if the API returns server-generated defaults.
 			if len(state.AllowedReturnURLs.Elements()) == 0 {
 				if v := getNestedValue(identityConfig, "selfservice", "allowed_return_urls"); v != nil {
 					if apiURLs, ok := v.([]interface{}); ok && len(apiURLs) > 0 {
@@ -1658,27 +1212,20 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 				}
 			} else if v := getNestedValue(identityConfig, "selfservice", "allowed_return_urls"); v != nil {
 				if apiURLs, ok := v.([]interface{}); ok && len(apiURLs) > 0 {
-					// Build a set of API URLs for lookup
 					apiSet := make(map[string]struct{}, len(apiURLs))
 					for _, u := range apiURLs {
 						if s, ok := u.(string); ok {
 							apiSet[s] = struct{}{}
 						}
 					}
-
-					// Keep only the user-configured URLs that still exist in the API response.
-					// The Ory API appends server-generated defaults (e.g., /ui/logout, project URLs)
-					// to the list, which would cause a perpetual diff if included in state.
 					var stateURLs []string
 					state.AllowedReturnURLs.ElementsAs(ctx, &stateURLs, false)
-
 					filtered := make([]string, 0, len(stateURLs))
 					for _, u := range stateURLs {
 						if _, exists := apiSet[u]; exists {
 							filtered = append(filtered, u)
 						}
 					}
-
 					urlsList, diags := types.ListValueFrom(ctx, types.StringType, filtered)
 					if !diags.HasError() {
 						state.AllowedReturnURLs = urlsList
@@ -1687,198 +1234,13 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 			}
 		}
 
-		urlReadMappings := map[*types.String][]string{
-			&state.LoginUIURL:        {"selfservice", "flows", "login", "ui_url"},
-			&state.RegistrationUIURL: {"selfservice", "flows", "registration", "ui_url"},
-			&state.RecoveryUIURL:     {"selfservice", "flows", "recovery", "ui_url"},
-			&state.VerificationUIURL: {"selfservice", "flows", "verification", "ui_url"},
-			&state.SettingsUIURL:     {"selfservice", "flows", "settings", "ui_url"},
-			&state.ErrorUIURL:        {"selfservice", "flows", "error", "ui_url"},
-		}
-		for field, keys := range urlReadMappings {
-			if !field.IsNull() {
-				if v, ok := getNestedString(identityConfig, keys...); ok {
-					*field = types.StringValue(v)
-				}
-			}
-		}
-
-		// Auth methods
-		methodReadMappings := map[*types.Bool][]string{
-			&state.EnablePassword:           {"selfservice", "methods", "password", "enabled"},
-			&state.EnableCode:               {"selfservice", "methods", "code", "enabled"},
-			&state.CodeMFAEnabled:           {"selfservice", "methods", "code", "mfa_enabled"},
-			&state.EnableOIDC:               {"selfservice", "methods", "oidc", "enabled"},
-			&state.EnableOIDCAutoLinkPolicy: {"selfservice", "methods", "oidc", "enable_auto_link_policy"},
-			&state.EnableTOTP:               {"selfservice", "methods", "totp", "enabled"},
-			&state.EnableWebAuthn:           {"selfservice", "methods", "webauthn", "enabled"},
-			&state.EnablePasskey:            {"selfservice", "methods", "passkey", "enabled"},
-			&state.EnableLookupSecret:       {"selfservice", "methods", "lookup_secret", "enabled"},
-			&state.EnableProfile:            {"selfservice", "methods", "profile", "enabled"},
-		}
-		for field, keys := range methodReadMappings {
-			if !field.IsNull() {
-				if v, ok := getNestedBool(identityConfig, keys...); ok {
-					*field = types.BoolValue(v)
-				}
-			}
-		}
-
-		// Password policy
-		if !state.PasswordMinLength.IsNull() {
-			if v, ok := getNestedFloat(identityConfig, "selfservice", "methods", "password", "config", "min_password_length"); ok {
-				state.PasswordMinLength = types.Int64Value(int64(v))
-			}
-		}
-		if !state.PasswordCheckHaveIBeenPwned.IsNull() {
-			if v, ok := getNestedBool(identityConfig, "selfservice", "methods", "password", "config", "haveibeenpwned_enabled"); ok {
-				state.PasswordCheckHaveIBeenPwned = types.BoolValue(v)
-			}
-		}
-		if !state.PasswordMaxBreaches.IsNull() {
-			if v, ok := getNestedFloat(identityConfig, "selfservice", "methods", "password", "config", "max_breaches"); ok {
-				state.PasswordMaxBreaches = types.Int64Value(int64(v))
-			}
-		}
-		if !state.PasswordIdentifierSimilarity.IsNull() {
-			if v, ok := getNestedBool(identityConfig, "selfservice", "methods", "password", "config", "identifier_similarity_check_enabled"); ok {
-				state.PasswordIdentifierSimilarity = types.BoolValue(v)
-			}
-		}
-
-		// Code method config
-		if !state.CodeLifespan.IsNull() {
-			if v, ok := getNestedString(identityConfig, "selfservice", "methods", "code", "config", "lifespan"); ok {
-				state.CodeLifespan = types.StringValue(v)
-			}
-		}
-		if !state.CodeMissingCredentialFallbackEnabled.IsNull() {
-			if v, ok := getNestedBool(identityConfig, "selfservice", "methods", "code", "config", "missing_credential_fallback_enabled"); ok {
-				state.CodeMissingCredentialFallbackEnabled = types.BoolValue(v)
-			}
-		}
-
-		// Flow settings
-		flowReadMappings := map[*types.Bool][]string{
-			&state.EnableRecovery:     {"selfservice", "flows", "recovery", "enabled"},
-			&state.EnableVerification: {"selfservice", "flows", "verification", "enabled"},
-			&state.EnableRegistration: {"selfservice", "flows", "registration", "enabled"},
-		}
-		for field, keys := range flowReadMappings {
-			if !field.IsNull() {
-				if v, ok := getNestedBool(identityConfig, keys...); ok {
-					*field = types.BoolValue(v)
-				}
-			}
-		}
-
-		// Login style
-		if !state.LoginStyle.IsNull() {
-			if v, ok := getNestedString(identityConfig, "selfservice", "flows", "login", "style"); ok {
-				state.LoginStyle = types.StringValue(v)
-			}
-		}
-
-		// Settings flow
-		if !state.SettingsLifespan.IsNull() {
-			if v, ok := getNestedString(identityConfig, "selfservice", "flows", "settings", "lifespan"); ok {
-				state.SettingsLifespan = types.StringValue(v)
-			}
-		}
-		if !state.SettingsPrivilegedSessionMaxAge.IsNull() {
-			if v, ok := getNestedString(identityConfig, "selfservice", "flows", "settings", "privileged_session_max_age"); ok {
-				state.SettingsPrivilegedSessionMaxAge = types.StringValue(v)
-			}
-		}
-
-		// Verification flow
-		if !state.VerificationUse.IsNull() {
-			if v, ok := getNestedString(identityConfig, "selfservice", "flows", "verification", "use"); ok {
-				state.VerificationUse = types.StringValue(v)
-			}
-		}
-		if !state.VerificationLifespan.IsNull() {
-			if v, ok := getNestedString(identityConfig, "selfservice", "flows", "verification", "lifespan"); ok {
-				state.VerificationLifespan = types.StringValue(v)
-			}
-		}
-		if !state.VerificationNotifyUnknownRecipients.IsNull() {
-			if v, ok := getNestedBool(identityConfig, "selfservice", "flows", "verification", "notify_unknown_recipients"); ok {
-				state.VerificationNotifyUnknownRecipients = types.BoolValue(v)
-			}
-		}
-
-		// SMTP (skip smtp_connection_uri — it's sensitive and may not be returned)
-		if !state.SMTPFromAddress.IsNull() {
-			if v, ok := getNestedString(identityConfig, "courier", "smtp", "from_address"); ok {
-				state.SMTPFromAddress = types.StringValue(v)
-			}
-		}
-		if !state.SMTPFromName.IsNull() {
-			if v, ok := getNestedString(identityConfig, "courier", "smtp", "from_name"); ok {
-				state.SMTPFromName = types.StringValue(v)
-			}
-		}
-
-		// MFA / WebAuthn
-		if !state.TOTPIssuer.IsNull() {
-			if v, ok := getNestedString(identityConfig, "selfservice", "methods", "totp", "config", "issuer"); ok {
-				state.TOTPIssuer = types.StringValue(v)
-			}
-		}
-		if !state.WebAuthnRPDisplayName.IsNull() {
-			if v, ok := getNestedString(identityConfig, "selfservice", "methods", "webauthn", "config", "rp", "display_name"); ok {
-				state.WebAuthnRPDisplayName = types.StringValue(v)
-			}
-		}
-		if !state.WebAuthnRPID.IsNull() {
-			if v, ok := getNestedString(identityConfig, "selfservice", "methods", "webauthn", "config", "rp", "id"); ok {
-				state.WebAuthnRPID = types.StringValue(v)
-			}
-		}
-		if !state.WebAuthnRPOrigins.IsNull() {
-			if v := getNestedValue(identityConfig, "selfservice", "methods", "webauthn", "config", "rp", "origins"); v != nil {
-				if origins, ok := v.([]interface{}); ok && len(origins) > 0 {
-					strs := make([]string, 0, len(origins))
-					for _, o := range origins {
-						if s, ok := o.(string); ok {
-							strs = append(strs, s)
-						}
-					}
-					originsList, diags := types.ListValueFrom(ctx, types.StringType, strs)
-					if !diags.HasError() {
-						state.WebAuthnRPOrigins = originsList
-					}
-				}
-			}
-		}
-		if !state.WebAuthnPasswordless.IsNull() {
-			if v, ok := getNestedBool(identityConfig, "selfservice", "methods", "webauthn", "config", "passwordless"); ok {
-				state.WebAuthnPasswordless = types.BoolValue(v)
-			}
-		}
-		if !state.RequiredAAL.IsNull() {
-			if v, ok := getNestedString(identityConfig, "selfservice", "flows", "settings", "required_aal"); ok {
-				state.RequiredAAL = types.StringValue(v)
-			}
-		}
-		if !state.SessionWhoamiRequiredAAL.IsNull() {
-			if v, ok := getNestedString(identityConfig, "session", "whoami", "required_aal"); ok {
-				state.SessionWhoamiRequiredAAL = types.StringValue(v)
-			}
-		}
-
 		// Session Tokenizer Templates
 		if !state.SessionTokenizerTemplates.IsNull() {
 			v := getNestedValue(identityConfig, "session", "whoami", "tokenizer", "templates")
 			templatesRaw, rawOK := v.(map[string]interface{})
 			if v == nil || !rawOK {
-				// Templates path absent remotely — clear state so Terraform
-				// reports drift as "add" rather than "change".
 				state.SessionTokenizerTemplates = types.MapNull(types.ObjectType{AttrTypes: tokenizerTemplateAttrTypes})
 			} else if len(templatesRaw) == 0 {
-				// Templates path exists but is empty — set empty map (not null)
-				// to avoid a perpetual diff when the user configures `= {}`.
 				emptyMap, diags := types.MapValue(types.ObjectType{AttrTypes: tokenizerTemplateAttrTypes}, map[string]attr.Value{})
 				if !diags.HasError() {
 					state.SessionTokenizerTemplates = emptyMap
@@ -1897,16 +1259,13 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 						"subject_source":    types.StringNull(),
 					}
 					if s, ok := tmplMap["ttl"].(string); ok && s != "" {
-						// API normalizes durations (e.g. "1h" → "1h0m0s"), preserve state value
 						attrs["ttl"] = preserveTokenizerField(state, name, "ttl", s)
 					}
 					if _, ok := tmplMap["jwks_url"].(string); ok {
-						// jwks_url is sensitive — preserve state value to avoid diff
 						attrs["jwks_url"] = preserveTokenizerField(state, name, "jwks_url", "")
 					}
 					if s, ok := tmplMap["claims_mapper_url"].(string); ok && s != "" {
 						if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") {
-							// API may return GCS URL instead of base64 — preserve state value
 							attrs["claims_mapper_url"] = preserveTokenizerField(state, name, "claims_mapper_url", s)
 						} else {
 							attrs["claims_mapper_url"] = types.StringValue(s)
@@ -1924,13 +1283,6 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 				if !diags.HasError() {
 					state.SessionTokenizerTemplates = mapVal
 				}
-			}
-		}
-
-		// Courier Delivery Strategy
-		if !state.CourierDeliveryStrategy.IsNull() {
-			if v, ok := getNestedString(identityConfig, "courier", "delivery_strategy"); ok {
-				state.CourierDeliveryStrategy = types.StringValue(v)
 			}
 		}
 
@@ -1964,7 +1316,6 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 							attrs["id"] = types.StringValue(id)
 						}
 						if rc, ok := chMap["request_config"].(map[string]interface{}); ok {
-							// Find matching state channel to preserve sensitive fields
 							stateRC := findChannelRequestConfig(state.CourierChannels, attrs["id"])
 							attrs["request_config"] = readHTTPRequestConfigObject(ctx, rc, stateRC)
 						}
@@ -1977,90 +1328,6 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 					if !diags.HasError() {
 						state.CourierChannels = listVal
 					}
-				}
-			}
-		}
-	}
-
-	// OAuth2 service config
-	if project.Services.Oauth2 != nil {
-		oauth2Config := project.Services.Oauth2.Config
-
-		if !state.OAuth2AccessTokenLifespan.IsNull() {
-			if v, ok := getNestedString(oauth2Config, "ttl", "access_token"); ok {
-				state.OAuth2AccessTokenLifespan = types.StringValue(v)
-			}
-		}
-		if !state.OAuth2RefreshTokenLifespan.IsNull() {
-			if v, ok := getNestedString(oauth2Config, "ttl", "refresh_token"); ok {
-				state.OAuth2RefreshTokenLifespan = types.StringValue(v)
-			}
-		}
-
-		// Additional TTLs
-		oauth2TTLReadMappings := map[*types.String][]string{
-			&state.OAuth2AuthCodeLifespan:            {"ttl", "auth_code"},
-			&state.OAuth2IDTokenLifespan:             {"ttl", "id_token"},
-			&state.OAuth2LoginConsentRequestLifespan: {"ttl", "login_consent_request"},
-		}
-		for field, keys := range oauth2TTLReadMappings {
-			if !field.IsNull() {
-				if v, ok := getNestedString(oauth2Config, keys...); ok {
-					*field = types.StringValue(v)
-				}
-			}
-		}
-
-		// Claims
-		if !state.OAuth2AllowedTopLevelClaims.IsNull() {
-			if v := getNestedValue(oauth2Config, "oauth2", "allowed_top_level_claims"); v != nil {
-				if claims, ok := v.([]interface{}); ok && len(claims) > 0 {
-					strs := make([]string, 0, len(claims))
-					for _, c := range claims {
-						if s, ok := c.(string); ok {
-							strs = append(strs, s)
-						}
-					}
-					claimsList, diags := types.ListValueFrom(ctx, types.StringType, strs)
-					if !diags.HasError() {
-						state.OAuth2AllowedTopLevelClaims = claimsList
-					}
-				}
-			}
-		}
-
-		// Boolean settings
-		oauth2BoolReadMappings := map[*types.Bool][]string{
-			&state.OAuth2MirrorTopLevelClaims:            {"oauth2", "mirror_top_level_claims"},
-			&state.OAuth2PKCEEnforced:                    {"oauth2", "pkce", "enforced"},
-			&state.OAuth2PKCEEnforcedForPublicClients:    {"oauth2", "pkce", "enforced_for_public_clients"},
-			&state.OAuth2SessionEncryptAtRest:            {"oauth2", "session", "encrypt_at_rest"},
-			&state.OAuth2CookiesSameSiteLegacyWorkaround: {"serve", "cookies", "same_site_legacy_workaround"},
-		}
-		for field, keys := range oauth2BoolReadMappings {
-			if !field.IsNull() {
-				if v, ok := getNestedBool(oauth2Config, keys...); ok {
-					*field = types.BoolValue(v)
-				}
-			}
-		}
-
-		// Strategies, URLs, and cookie settings
-		oauth2StringReadMappings := map[*types.String][]string{
-			&state.OAuth2AccessTokenStrategy: {"strategies", "access_token"},
-			&state.OAuth2JWTScopeClaim:       {"strategies", "jwt", "scope_claim"},
-			&state.OAuth2ScopeStrategy:       {"strategies", "scope"},
-			&state.OAuth2ConsentURL:          {"urls", "consent"},
-			&state.OAuth2LoginURL:            {"urls", "login"},
-			&state.OAuth2LogoutURL:           {"urls", "logout"},
-			&state.OAuth2ErrorURL:            {"urls", "error"},
-			&state.OAuth2IssuerURL:           {"urls", "self", "issuer"},
-			&state.OAuth2CookiesSameSiteMode: {"serve", "cookies", "same_site_mode"},
-		}
-		for field, keys := range oauth2StringReadMappings {
-			if !field.IsNull() {
-				if v, ok := getNestedString(oauth2Config, keys...); ok {
-					*field = types.StringValue(v)
 				}
 			}
 		}
@@ -2088,32 +1355,12 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 			}
 		}
 	}
-
-	// Account Experience config
-	if project.Services.AccountExperience != nil {
-		aeConfig := project.Services.AccountExperience.Config
-
-		aeStringMappings := map[*types.String]string{
-			&state.AccountExperienceFaviconURL: "favicon_url",
-			&state.AccountExperienceLogoURL:    "logo_url",
-			&state.AccountExperienceName:       "name",
-			&state.AccountExperienceStylesheet: "stylesheet",
-			&state.AccountExperienceLocale:     "default_locale",
-		}
-		for field, key := range aeStringMappings {
-			if !field.IsNull() {
-				if v, ok := getNestedString(aeConfig, key); ok && v != "" {
-					*field = types.StringValue(v)
-				}
-			}
-		}
-	}
 }
 
-// preserveTokenizerField returns the value of a field from the existing state for a given template name.
-// Used for sensitive fields (jwks_url), fields where the API normalizes values (ttl),
-// and fields where the API returns GCS URLs instead of base64 (claims_mapper_url).
-// If no state value exists, falls back to the provided API value (or StringNull if empty).
+// =============================================================================
+// Helper functions for complex type reading
+// =============================================================================
+
 func preserveTokenizerField(state *ProjectConfigResourceModel, templateName, fieldName, apiValue string) basetypes.StringValue {
 	if state.SessionTokenizerTemplates.IsNull() || state.SessionTokenizerTemplates.IsUnknown() {
 		if apiValue != "" {
@@ -2138,8 +1385,6 @@ func preserveTokenizerField(state *ProjectConfigResourceModel, templateName, fie
 	return types.StringNull()
 }
 
-// readHTTPRequestConfigObject reads an HTTP request config from the API response map
-// into a types.Object. Preserves sensitive auth fields from the existing state object.
 func readHTTPRequestConfigObject(_ context.Context, raw map[string]interface{}, stateObj basetypes.ObjectValue) basetypes.ObjectValue {
 	attrs := map[string]attr.Value{
 		"url":     types.StringNull(),
@@ -2157,7 +1402,6 @@ func readHTTPRequestConfigObject(_ context.Context, raw map[string]interface{}, 
 	}
 	if s, ok := raw["body"].(string); ok && s != "" {
 		if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") {
-			// API may return GCS URL instead of base64 content — preserve state value
 			attrs["body"] = getStateRequestConfigField(stateObj, "body")
 		} else {
 			attrs["body"] = types.StringValue(s)
@@ -2186,8 +1430,6 @@ func readHTTPRequestConfigObject(_ context.Context, raw map[string]interface{}, 
 	return objVal
 }
 
-// readAuthObject reads an auth config from the API response (nested {"type","config":{...}} format)
-// and returns a flat types.Object. Preserves sensitive fields (password, value) from state.
 func readAuthObject(raw map[string]interface{}, parentStateObj basetypes.ObjectValue) basetypes.ObjectValue {
 	attrs := map[string]attr.Value{
 		"type":     types.StringNull(),
@@ -2214,7 +1456,6 @@ func readAuthObject(raw map[string]interface{}, parentStateObj basetypes.ObjectV
 		if s, ok := config["user"].(string); ok {
 			attrs["user"] = types.StringValue(s)
 		}
-		// password is sensitive — preserve from state
 		attrs["password"] = getStateAuthField(parentStateObj, "password")
 	case "api_key":
 		if s, ok := config["name"].(string); ok {
@@ -2223,7 +1464,6 @@ func readAuthObject(raw map[string]interface{}, parentStateObj basetypes.ObjectV
 		if s, ok := config["in"].(string); ok {
 			attrs["in"] = types.StringValue(s)
 		}
-		// value is sensitive — preserve from state
 		attrs["value"] = getStateAuthField(parentStateObj, "value")
 	}
 
@@ -2234,7 +1474,6 @@ func readAuthObject(raw map[string]interface{}, parentStateObj basetypes.ObjectV
 	return objVal
 }
 
-// getStateRequestConfigField extracts a field from the existing state's request_config object.
 func getStateRequestConfigField(stateObj basetypes.ObjectValue, field string) basetypes.StringValue {
 	if stateObj.IsNull() || stateObj.IsUnknown() {
 		return types.StringNull()
@@ -2248,7 +1487,6 @@ func getStateRequestConfigField(stateObj basetypes.ObjectValue, field string) ba
 	return types.StringNull()
 }
 
-// getStateAuthField extracts a sensitive auth field from the existing state's request_config.auth object.
 func getStateAuthField(parentStateObj basetypes.ObjectValue, field string) basetypes.StringValue {
 	if parentStateObj.IsNull() || parentStateObj.IsUnknown() {
 		return types.StringNull()
@@ -2271,7 +1509,6 @@ func getStateAuthField(parentStateObj basetypes.ObjectValue, field string) baset
 	return types.StringNull()
 }
 
-// findChannelRequestConfig finds the request_config object for a channel by ID from the state's courier_channels list.
 func findChannelRequestConfig(stateChannels basetypes.ListValue, channelID attr.Value) basetypes.ObjectValue {
 	if stateChannels.IsNull() || stateChannels.IsUnknown() {
 		return types.ObjectNull(courierHTTPRequestConfigAttrTypes)
@@ -2329,11 +1566,9 @@ func (r *ProjectConfigResource) Delete(ctx context.Context, req resource.DeleteR
 func (r *ProjectConfigResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	projectID := req.ID
 
-	// Set both id and project_id from the import ID
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), projectID)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), projectID)...)
 
-	// Add a warning to help users understand how import works for this resource
 	resp.Diagnostics.AddWarning(
 		"Project Config Import - Read Your Existing Config",
 		"The project config has been imported with project_id: "+projectID+".\n\n"+

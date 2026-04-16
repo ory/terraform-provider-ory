@@ -1,4 +1,4 @@
 resource "ory_project_config" "test" {
-  enable_totp  = true
-  totp_issuer  = "TerraformTest"
+  selfservice_methods_totp_enabled       = true
+  selfservice_methods_totp_config_issuer = "TerraformTest"
 }

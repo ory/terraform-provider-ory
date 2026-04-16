@@ -10,6 +10,30 @@ A Terraform provider for managing [Ory Network](https://www.ory.sh/) resources u
 
 > **Note**: This provider is for **Ory Network** (the managed SaaS offering) only. It does not support self-hosted Ory deployments.
 
+## Migrating Deprecated `ory_project_config` Attributes
+
+Many attributes in the `ory_project_config` resource have been renamed to follow the OpenAPI spec naming convention. The old names still work but will show deprecation warnings in Terraform output and will be removed in a future major version. Run `./scripts/migrate-deprecated-attrs.sh` to see the full list of renames.
+
+**Examples of renamed attributes:**
+
+| Old Name | New Name |
+|----------|----------|
+| `enable_password` | `selfservice_methods_password_enabled` |
+| `login_ui_url` | `selfservice_flows_login_ui_url` |
+| `oauth2_access_token_lifespan` | `oauth2_ttl_access_token` |
+| `password_min_length` | `selfservice_methods_password_config_min_password_length` |
+| `smtp_from_address` | `courier_smtp_from_address` |
+
+To migrate your `.tf` files automatically, run the provided migration script:
+
+```bash
+./scripts/migrate-deprecated-attrs.sh /path/to/your/terraform/configs
+```
+
+The script creates `.bak` backups of each modified file. After migrating, run `terraform plan` to verify no changes are detected.
+
+For the full list of renamed attributes, see the [project_config resource docs](docs/resources/project_config.md).
+
 ## Requirements
 
 - [Terraform](https://www.terraform.io/downloads) >= 1.0
