@@ -256,6 +256,8 @@ func main() {
 	outDir := flag.String("out", ".", "output directory for generated files")
 	specPath := flag.String("spec", "", "path to OpenAPI spec (JSON or YAML) for governs-based path derivation and validation")
 	discover := flag.Bool("discover", false, "output YAML entries for unmapped spec properties (requires --spec)")
+	discoverApply := flag.Bool("discover-apply", false, "append YAML entries to mappings file and Go struct fields to resource.go for unmapped spec properties (requires --spec)")
+	resourceFile := flag.String("resource-file", "", "path to resource.go for -discover-apply struct field insertion (default: <out>/resource.go)")
 	strict := flag.Bool("strict", false, "fail if any spec properties are unmapped (use in CI to detect drift)")
 	flag.Parse()
 
@@ -288,13 +290,26 @@ func main() {
 			return
 		}
 
+		if *discoverApply {
+			resourcePath := *resourceFile
+			if resourcePath == "" {
+				resourcePath = filepath.Join(*outDir, "resource.go")
+			}
+			count, err := applyDiscoveredEntries(m, specProps, cleanMappingsPath, resourcePath)
+			if err != nil {
+				log.Fatalf("discover-apply: %v", err)
+			}
+			fmt.Printf("discover-apply: %d new attributes appended\n", count)
+			return
+		}
+
 		// Report unmapped spec properties (candidates for new entries)
 		unmappedCount := reportUnmapped(m, specProps)
 		if *strict && unmappedCount > 0 {
 			log.Fatalf("STRICT MODE: %d unmapped spec properties found. Run 'make discover' to generate YAML entries.", unmappedCount)
 		}
-	} else if *discover {
-		log.Fatal("--discover requires --spec")
+	} else if *discover || *discoverApply {
+		log.Fatal("--discover / --discover-apply requires --spec")
 	} else if *strict {
 		log.Fatal("--strict requires --spec")
 	}
@@ -604,6 +619,144 @@ func discoverNewEntries(m Mappings, specProps map[string]SpecProperty) {
 		fmt.Println(f)
 	}
 	fmt.Printf("\n// Total: %d new attributes\n", len(unmapped))
+}
+
+// collectUnmappedProperties returns the spec properties that have a governs path
+// and a supported type but are not yet present in mappings. Shared by
+// discoverNewEntries and applyDiscoveredEntries so both produce the same set.
+func collectUnmappedProperties(m Mappings, specProps map[string]SpecProperty) []SpecProperty {
+	mapped := make(map[string]bool)
+	mappedPaths := make(map[string]bool)
+	for _, a := range m.Attributes {
+		if a.OpenAPIProperty != "" {
+			mapped[a.OpenAPIProperty] = true
+		}
+		if a.PatchPath != "" {
+			mappedPaths[a.PatchPath] = true
+		}
+	}
+	excluded := excludedProperties()
+
+	var unmapped []SpecProperty
+	for _, sp := range specProps {
+		if excluded[sp.Name] || mapped[sp.Name] {
+			continue
+		}
+		if sp.GovernsPath != "" && mappedPaths[sp.GovernsPath] {
+			continue
+		}
+		if sp.GovernsPath != "" && discoverTypeToTFType(sp.Type, sp.ItemType, sp.AdditionalPropertiesType) != "" {
+			unmapped = append(unmapped, sp)
+		}
+	}
+	sortSpecProperties(unmapped)
+	return unmapped
+}
+
+// applyDiscoveredEntries appends YAML entries for unmapped properties to
+// mappingsPath and inserts matching Go struct fields into resourcePath's
+// ProjectConfigResourceModel struct. Returns the number of entries added.
+func applyDiscoveredEntries(m Mappings, specProps map[string]SpecProperty, mappingsPath, resourcePath string) (int, error) {
+	unmapped := collectUnmappedProperties(m, specProps)
+	if len(unmapped) == 0 {
+		return 0, nil
+	}
+
+	var yamlBuf strings.Builder
+	yamlBuf.WriteString("\n  # --- Auto-discovered entries (review names/descriptions before merging) ---\n")
+	goFields := make([]string, 0, len(unmapped))
+	for _, sp := range unmapped {
+		tfName := deriveTerraformName(sp.Name)
+		goField := toGoFieldName(tfName)
+		tfType := discoverTypeToTFType(sp.Type, sp.ItemType, sp.AdditionalPropertiesType)
+		desc := cleanDescription(sp.Description)
+
+		fmt.Fprintf(&yamlBuf, "  - name: %s\n", tfName)
+		fmt.Fprintf(&yamlBuf, "    go_field: %s\n", goField)
+		fmt.Fprintf(&yamlBuf, "    type: %s\n", tfType)
+		fmt.Fprintf(&yamlBuf, "    openapi_property: %s\n", sp.Name)
+		fmt.Fprintf(&yamlBuf, "    description: %q\n", desc)
+		yamlBuf.WriteString("\n")
+
+		goType := "types.String"
+		switch tfType {
+		case typeBool:
+			goType = "types.Bool"
+		case typeInt64:
+			goType = "types.Int64"
+		case typeListString:
+			goType = "types.List"
+		case typeMapString:
+			goType = "types.Map"
+		}
+		goFields = append(goFields, fmt.Sprintf("\t%s %s `tfsdk:\"%s\"`", goField, goType, tfName))
+	}
+
+	if err := appendToMappingsFile(mappingsPath, yamlBuf.String()); err != nil {
+		return 0, fmt.Errorf("appending to mappings: %w", err)
+	}
+	if err := insertStructFields(resourcePath, "ProjectConfigResourceModel", goFields); err != nil {
+		return 0, fmt.Errorf("inserting struct fields: %w", err)
+	}
+	return len(unmapped), nil
+}
+
+// appendToMappingsFile appends text to the mappings file, ensuring the file
+// ends with a single newline before the appended content.
+func appendToMappingsFile(path, content string) error {
+	cleanPath := filepath.Clean(path)
+	data, err := os.ReadFile(cleanPath) //nolint:gosec // path from trusted CLI flag
+	if err != nil {
+		return err
+	}
+	// Ensure the existing file ends with exactly one newline before our block.
+	trimmed := strings.TrimRight(string(data), "\n") + "\n"
+	// #nosec G703 -- path from trusted CLI flag, not user input
+	return os.WriteFile(cleanPath, []byte(trimmed+content), 0o600)
+}
+
+// insertStructFields inserts the given field lines immediately before the
+// closing brace of the named top-level struct. The struct is expected to be
+// declared at column 0 with `type <name> struct {` and closed with a `}` at
+// column 0.
+func insertStructFields(path, structName string, fields []string) error {
+	cleanPath := filepath.Clean(path)
+	data, err := os.ReadFile(cleanPath) //nolint:gosec // path from trusted CLI flag
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(data), "\n")
+
+	startPrefix := fmt.Sprintf("type %s struct {", structName)
+	startIdx := -1
+	for i, line := range lines {
+		if strings.HasPrefix(line, startPrefix) {
+			startIdx = i
+			break
+		}
+	}
+	if startIdx < 0 {
+		return fmt.Errorf("struct %q not found in %s", structName, path)
+	}
+	closeIdx := -1
+	for i := startIdx + 1; i < len(lines); i++ {
+		if lines[i] == "}" {
+			closeIdx = i
+			break
+		}
+	}
+	if closeIdx < 0 {
+		return fmt.Errorf("closing brace of struct %q not found in %s", structName, path)
+	}
+
+	insertion := append([]string{"", "\t// Auto-discovered (review naming before release)"}, fields...)
+	newLines := make([]string, 0, len(lines)+len(insertion))
+	newLines = append(newLines, lines[:closeIdx]...)
+	newLines = append(newLines, insertion...)
+	newLines = append(newLines, lines[closeIdx:]...)
+
+	// #nosec G703 -- path from trusted CLI flag, not user input
+	return os.WriteFile(cleanPath, []byte(strings.Join(newLines, "\n")), 0o600)
 }
 
 // sortSpecProperties sorts spec properties by name for deterministic output.

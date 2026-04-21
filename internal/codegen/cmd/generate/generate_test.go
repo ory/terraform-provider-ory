@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestGovernsToPatchPath(t *testing.T) {
 	tests := []struct {
@@ -77,5 +82,92 @@ func TestDeriveTerraformName(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("deriveTerraformName(%q): got %q, want %q", tt.openapi, got, tt.want)
 		}
+	}
+}
+
+func TestAppendToMappingsFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mappings.yaml")
+	original := "attributes:\n  - name: foo\n    go_field: Foo\n    type: bool\n"
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := appendToMappingsFile(path, "\n  - name: bar\n    go_field: Bar\n"); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	got, err := os.ReadFile(path) //nolint:gosec // test file
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	want := "attributes:\n  - name: foo\n    go_field: Foo\n    type: bool\n\n  - name: bar\n    go_field: Bar\n"
+	if string(got) != want {
+		t.Errorf("unexpected content:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+func TestAppendToMappingsFileHandlesMissingTrailingNewline(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mappings.yaml")
+	if err := os.WriteFile(path, []byte("attributes:\n  - name: foo"), 0o600); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := appendToMappingsFile(path, "\n  - name: bar\n"); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	got, err := os.ReadFile(path) //nolint:gosec // test file
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.HasPrefix(string(got), "attributes:\n  - name: foo\n\n") {
+		t.Errorf("expected single-newline separator, got %q", got)
+	}
+}
+
+func TestInsertStructFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "resource.go")
+	src := `package foo
+
+type ProjectConfigResourceModel struct {
+	ID types.String ` + "`tfsdk:\"id\"`" + `
+}
+
+func other() {}
+`
+	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	fields := []string{
+		"\tNewField1 types.Bool `tfsdk:\"new_field_1\"`",
+		"\tNewField2 types.String `tfsdk:\"new_field_2\"`",
+	}
+	if err := insertStructFields(path, "ProjectConfigResourceModel", fields); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	got, err := os.ReadFile(path) //nolint:gosec // test file
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	content := string(got)
+	if !strings.Contains(content, "\tID types.String `tfsdk:\"id\"`\n") {
+		t.Errorf("original field missing: %s", content)
+	}
+	if !strings.Contains(content, "NewField1 types.Bool") || !strings.Contains(content, "NewField2 types.String") {
+		t.Errorf("inserted fields missing: %s", content)
+	}
+	if !strings.Contains(content, "\n}\n\nfunc other()") {
+		t.Errorf("closing brace or trailing content broken: %s", content)
+	}
+}
+
+func TestInsertStructFieldsErrorsOnMissingStruct(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "resource.go")
+	if err := os.WriteFile(path, []byte("package foo\n"), 0o600); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	err := insertStructFields(path, "ProjectConfigResourceModel", []string{"\tX types.Bool"})
+	if err == nil {
+		t.Fatal("expected error for missing struct, got nil")
 	}
 }
