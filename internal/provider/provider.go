@@ -33,6 +33,7 @@ import (
 	"github.com/ory/terraform-provider-ory/internal/resources/projectapikey"
 	"github.com/ory/terraform-provider-ory/internal/resources/projectconfig"
 	"github.com/ory/terraform-provider-ory/internal/resources/relationship"
+	"github.com/ory/terraform-provider-ory/internal/resources/samlprovider"
 	"github.com/ory/terraform-provider-ory/internal/resources/socialprovider"
 	"github.com/ory/terraform-provider-ory/internal/resources/trustedjwtissuer"
 	"github.com/ory/terraform-provider-ory/internal/resources/workspace"
@@ -149,7 +150,7 @@ export TF_VAR_ory_project_key="ory_pat_..."
 |----------|---------------------|
 | ` + "`ory_project`" + `, ` + "`ory_workspace`" + ` | ` + "`workspace_api_key`" + `, ` + "`workspace_id`" + ` |
 | ` + "`ory_organization`" + ` | ` + "`workspace_api_key`" + `, ` + "`project_id`" + ` |
-| ` + "`ory_project_config`" + `, ` + "`ory_action`" + `, ` + "`ory_social_provider`" + `, ` + "`ory_email_template`" + ` | ` + "`workspace_api_key`" + `, ` + "`project_id`" + ` |
+| ` + "`ory_project_config`" + `, ` + "`ory_action`" + `, ` + "`ory_social_provider`" + `, ` + "`ory_saml_provider`" + `, ` + "`ory_email_template`" + ` | ` + "`workspace_api_key`" + `, ` + "`project_id`" + ` |
 | ` + "`ory_identity`" + `, ` + "`ory_oauth2_client`" + `, ` + "`ory_relationship`" + ` | ` + "`project_api_key`" + `, ` + "`project_slug`" + ` |
 
 ## Import Requirements
@@ -235,7 +236,7 @@ Or via environment variables:
   export ORY_PROJECT_API_KEY="ory_pat_..."
 
 Which API key do you need?
-  - Workspace API Key (ory_wak_...): For ory_project, ory_workspace, ory_organization, ory_project_config, ory_action
+  - Workspace API Key (ory_wak_...): For ory_project, ory_workspace, ory_organization, ory_project_config, ory_action, ory_social_provider, ory_saml_provider, ory_email_template
   - Project API Key (ory_pat_...): For ory_identity, ory_oauth2_client, ory_relationship
 
 For more information: https://www.ory.sh/docs/guides/api-keys`,
@@ -287,6 +288,7 @@ func (p *OryProvider) Resources(ctx context.Context) []func() resource.Resource 
 		action.NewResource,
 		identityschema.NewResource,
 		socialprovider.NewResource,
+		samlprovider.NewResource,
 		emailtemplate.NewResource,
 		projectapikey.NewResource,
 		jwk.NewResource,
