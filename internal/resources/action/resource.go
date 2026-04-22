@@ -3,8 +3,10 @@ package action
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -39,6 +41,19 @@ var (
 	_ resource.ResourceWithImportState    = &ActionResource{}
 	_ resource.ResourceWithValidateConfig = &ActionResource{}
 )
+
+// projectMutexes serializes Create, Update, and Delete operations per project.
+// The Ory API stores action hooks as arrays nested in the project config. Every
+// mutation is a read-modify-write (read hooks → append/replace/remove → PatchProject).
+// Without serialization, concurrent operations read the same stale hooks array
+// and the last write wins, silently dropping the other hooks.
+// See: https://github.com/ory/terraform-provider-ory/issues/189
+var projectMutexes sync.Map // map[projectID]*sync.Mutex
+
+func projectMutex(projectID string) *sync.Mutex {
+	v, _ := projectMutexes.LoadOrStore(projectID, &sync.Mutex{})
+	return v.(*sync.Mutex)
+}
 
 func NewResource() resource.Resource {
 	return &ActionResource{}
@@ -485,61 +500,34 @@ func (r *ActionResource) buildHookValue(plan *ActionResourceModel) map[string]in
 	}
 }
 
+// copyHooks returns a deep copy of the hooks slice via a JSON round-trip so
+// callers cannot accidentally mutate the cached project state shared with
+// other resources in the same Terraform run.
+func copyHooks(hooks []map[string]interface{}) []map[string]interface{} {
+	b, err := json.Marshal(hooks)
+	if err != nil {
+		return hooks
+	}
+	var cp []map[string]interface{}
+	if err := json.Unmarshal(b, &cp); err != nil {
+		return hooks
+	}
+	return cp
+}
+
 func (r *ActionResource) getHooks(ctx context.Context, projectID, flow, timing, authMethod string) ([]map[string]interface{}, error) {
+	// Prefer cached project state from a previous PatchProject call in this
+	// Terraform run. This avoids reading stale data from the eventually-consistent
+	// GetProject API, which is critical when the mutex serializes back-to-back
+	// mutations — the second operation must see the first operation's result.
+	if cached := r.client.GetCachedProject(projectID); cached != nil {
+		return copyHooks(r.getHooksFromProject(cached, flow, timing, authMethod)), nil
+	}
 	project, err := r.client.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get project %s: %w", projectID, err)
 	}
-
-	if project.Services.Identity == nil {
-		return []map[string]interface{}{}, nil
-	}
-
-	configMap := project.Services.Identity.Config
-	if configMap == nil {
-		return []map[string]interface{}{}, nil
-	}
-
-	selfservice, ok := configMap["selfservice"].(map[string]interface{})
-	if !ok {
-		return []map[string]interface{}{}, nil
-	}
-
-	flows, ok := selfservice["flows"].(map[string]interface{})
-	if !ok {
-		return []map[string]interface{}{}, nil
-	}
-
-	flowConfig, ok := flows[flow].(map[string]interface{})
-	if !ok {
-		return []map[string]interface{}{}, nil
-	}
-
-	timingConfig, ok := flowConfig[timing].(map[string]interface{})
-	if !ok {
-		return []map[string]interface{}{}, nil
-	}
-
-	// For 'after' timing, hooks are nested under the auth method
-	// For 'before' timing, hooks are directly under timing
-	var hooks []interface{}
-	if timing == timingAfter {
-		authMethodConfig, ok := timingConfig[authMethod].(map[string]interface{})
-		if !ok {
-			return []map[string]interface{}{}, nil
-		}
-		hooks, _ = authMethodConfig["hooks"].([]interface{})
-	} else {
-		hooks, _ = timingConfig["hooks"].([]interface{})
-	}
-
-	result := make([]map[string]interface{}, 0, len(hooks))
-	for _, h := range hooks {
-		if hm, ok := h.(map[string]interface{}); ok {
-			result = append(result, hm)
-		}
-	}
-	return result, nil
+	return r.getHooksFromProject(project, flow, timing, authMethod), nil
 }
 
 func (r *ActionResource) findHookIndex(hooks []map[string]interface{}, url, method string) int {
@@ -634,6 +622,11 @@ func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest,
 	authMethod := plan.AuthMethod.ValueString()
 	url := plan.URL.ValueString()
 	httpMethod := plan.HTTPMethod.ValueString()
+
+	// Serialize mutations to prevent concurrent read-modify-write races.
+	mu := projectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
 
 	// Check if hook already exists
 	hooks, err := r.getHooks(ctx, projectID, flow, timing, authMethod)
@@ -911,6 +904,11 @@ func (r *ActionResource) Update(ctx context.Context, req resource.UpdateRequest,
 	url := state.URL.ValueString() // Use old URL to find
 	httpMethod := state.HTTPMethod.ValueString()
 
+	// Serialize mutations to prevent concurrent read-modify-write races.
+	mu := projectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
+
 	hooks, err := r.getHooks(ctx, projectID, flow, timing, authMethod)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Getting Hooks", err.Error())
@@ -968,6 +966,11 @@ func (r *ActionResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	authMethod := state.AuthMethod.ValueString()
 	url := state.URL.ValueString()
 	httpMethod := state.HTTPMethod.ValueString()
+
+	// Serialize mutations to prevent concurrent read-modify-write races.
+	mu := projectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
 
 	hooks, err := r.getHooks(ctx, projectID, flow, timing, authMethod)
 	if err != nil {
