@@ -166,7 +166,7 @@ func (r *SAMLProviderResource) buildProviderConfig(plan *SAMLProviderResourceMod
 		"raw_idp_metadata_xml": plan.RawIDPMetadataXML.ValueString(),
 	}
 
-	if !plan.Label.IsNull() && !plan.Label.IsUnknown() {
+	if !plan.Label.IsNull() && !plan.Label.IsUnknown() && plan.Label.ValueString() != "" {
 		config["label"] = plan.Label.ValueString()
 	}
 	if !plan.MapperURL.IsNull() && !plan.MapperURL.IsUnknown() && plan.MapperURL.ValueString() != "" {
@@ -303,9 +303,12 @@ func (r *SAMLProviderResource) Create(ctx context.Context, req resource.CreateRe
 			Value: providerConfig,
 		})
 	case len(providers) == 0:
-		// Initialize the full SAML method configuration when adding the first provider
+		// Initialize the full SAML method configuration when adding the first provider.
+		// Using `add` (not `replace`) mirrors ory_social_provider's first-provider flow
+		// so the JSON Patch semantics are identical whether or not the saml method stub
+		// already exists in the project config.
 		patches = append(patches, ory.JsonPatch{
-			Op:   "replace",
+			Op:   "add",
 			Path: "/services/identity/config/selfservice/methods/saml",
 			Value: map[string]interface{}{
 				"enabled": true,
@@ -324,7 +327,7 @@ func (r *SAMLProviderResource) Create(ctx context.Context, req resource.CreateRe
 
 	result, err := r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
-		resp.Diagnostics.AddError("Error Creating SAML Provider", err.Error())
+		resp.Diagnostics.AddError("Error Creating SAML Provider", apiErrorDetail(err))
 		return
 	}
 
@@ -431,14 +434,15 @@ func (r *SAMLProviderResource) Read(ctx context.Context, req resource.ReadReques
 	}
 
 	// raw_idp_metadata_xml also gets transformed to a GCS URL on read.
-	// Only refresh state from the API when the user supplied a URL; otherwise
-	// (user supplied base64://) keep their original value to avoid spurious diffs.
-	if !state.RawIDPMetadataXML.IsNull() && !state.RawIDPMetadataXML.IsUnknown() {
-		userValue := state.RawIDPMetadataXML.ValueString()
-		if !strings.HasPrefix(userValue, "base64://") {
-			if xml, ok := provider["raw_idp_metadata_xml"].(string); ok && xml != "" {
-				state.RawIDPMetadataXML = types.StringValue(xml)
-			}
+	// When the user supplied base64://..., keep their original value to avoid
+	// spurious diffs. When the state is null/unknown (e.g., during import) or
+	// was originally a URL, refresh from the API so a required attribute is
+	// always populated.
+	userSuppliedBase64 := !state.RawIDPMetadataXML.IsNull() && !state.RawIDPMetadataXML.IsUnknown() &&
+		strings.HasPrefix(state.RawIDPMetadataXML.ValueString(), "base64://")
+	if !userSuppliedBase64 {
+		if xml, ok := provider["raw_idp_metadata_xml"].(string); ok && xml != "" {
+			state.RawIDPMetadataXML = types.StringValue(xml)
 		}
 	}
 
@@ -505,7 +509,7 @@ func (r *SAMLProviderResource) Update(ctx context.Context, req resource.UpdateRe
 
 	_, err = r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
-		resp.Diagnostics.AddError("Error Updating SAML Provider", err.Error())
+		resp.Diagnostics.AddError("Error Updating SAML Provider", apiErrorDetail(err))
 		return
 	}
 
@@ -567,7 +571,7 @@ func (r *SAMLProviderResource) Delete(ctx context.Context, req resource.DeleteRe
 
 	_, err = r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
-		resp.Diagnostics.AddError("Error Deleting SAML Provider", err.Error())
+		resp.Diagnostics.AddError("Error Deleting SAML Provider", apiErrorDetail(err))
 		return
 	}
 }
