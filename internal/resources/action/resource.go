@@ -646,7 +646,7 @@ func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest,
 
 	// Append the new hook to existing hooks and replace the entire array
 	// This handles the case where the hooks array might not exist
-	newHooks := make([]interface{}, 0, len(hooks)+1)
+	newHooks := make([]interface{}, 0, len(hooks))
 	for _, h := range hooks {
 		newHooks = append(newHooks, h)
 	}
