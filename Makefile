@@ -156,6 +156,10 @@ test: ## Run unit tests (no API calls)
 test-short: ## Run unit tests in short mode
 	go test -v -short ./...
 
+.PHONY: test-migrate-script
+test-migrate-script: ## Run integration tests for scripts/migrate-deprecated-attrs.sh
+	./scripts/migrate-deprecated-attrs_test.sh
+
 # Source .env file if it exists (for local acceptance tests).
 # Copy .env.example to .env and fill in your credentials.
 ifneq (,$(wildcard .env))
