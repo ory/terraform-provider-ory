@@ -107,3 +107,39 @@ func TestValidateConfig_Valid(t *testing.T) {
 		t.Fatalf("unexpected validation error: %v", resp.Diagnostics)
 	}
 }
+
+func TestValidateConfig_EmptyOptionalFields(t *testing.T) {
+	cases := map[string]SAMLProviderResourceModel{
+		"label": {
+			ProviderID:        types.StringValue("saml"),
+			RawIDPMetadataXML: types.StringValue("base64://abc"),
+			Label:             types.StringValue(""),
+		},
+		"organization_id": {
+			ProviderID:        types.StringValue("saml"),
+			RawIDPMetadataXML: types.StringValue("base64://abc"),
+			OrganizationID:    types.StringValue(""),
+		},
+		"audience_override_base_url": {
+			ProviderID:              types.StringValue("saml"),
+			RawIDPMetadataXML:       types.StringValue("base64://abc"),
+			AudienceOverrideBaseURL: types.StringValue(""),
+		},
+		"proxy_saml_audience_override": {
+			ProviderID:                types.StringValue("saml"),
+			RawIDPMetadataXML:         types.StringValue("base64://abc"),
+			ProxySAMLAudienceOverride: types.StringValue(""),
+		},
+	}
+	for name, model := range cases {
+		t.Run(name, func(t *testing.T) {
+			req := buildTestConfig(t, model)
+			r := &SAMLProviderResource{}
+			var resp resource.ValidateConfigResponse
+			r.ValidateConfig(context.Background(), req, &resp)
+			if !resp.Diagnostics.HasError() {
+				t.Fatalf("expected validation error for empty %s, got none", name)
+			}
+		})
+	}
+}

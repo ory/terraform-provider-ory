@@ -147,12 +147,26 @@ func (r *SAMLProviderResource) ValidateConfig(ctx context.Context, req resource.
 		return
 	}
 
-	if !config.ProviderID.IsNull() && !config.ProviderID.IsUnknown() && config.ProviderID.ValueString() == "" {
-		resp.Diagnostics.AddAttributeError(path.Root("provider_id"), "Invalid Attribute Value", "provider_id must not be an empty string.")
+	// Reject empty strings so the plan doesn't silently diverge. Read collapses
+	// empty API responses to null, but Create/Update would otherwise send "" for
+	// required fields and drop it for optional ones — the resulting drift would
+	// never converge across applies.
+	rejectEmpty := func(attr string, v types.String) {
+		if !v.IsNull() && !v.IsUnknown() && v.ValueString() == "" {
+			resp.Diagnostics.AddAttributeError(
+				path.Root(attr),
+				"Invalid Attribute Value",
+				fmt.Sprintf("%s must not be an empty string.", attr),
+			)
+		}
 	}
-	if !config.RawIDPMetadataXML.IsNull() && !config.RawIDPMetadataXML.IsUnknown() && config.RawIDPMetadataXML.ValueString() == "" {
-		resp.Diagnostics.AddAttributeError(path.Root("raw_idp_metadata_xml"), "Invalid Attribute Value", "raw_idp_metadata_xml must not be an empty string.")
-	}
+
+	rejectEmpty("provider_id", config.ProviderID)
+	rejectEmpty("raw_idp_metadata_xml", config.RawIDPMetadataXML)
+	rejectEmpty("label", config.Label)
+	rejectEmpty("organization_id", config.OrganizationID)
+	rejectEmpty("audience_override_base_url", config.AudienceOverrideBaseURL)
+	rejectEmpty("proxy_saml_audience_override", config.ProxySAMLAudienceOverride)
 }
 
 // defaultMapperURL returns the default Jsonnet mapper. Ory's SAML backend
