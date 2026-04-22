@@ -1,0 +1,31 @@
+resource "ory_action" "parallel_a" {
+  flow        = "registration"
+  timing      = "after"
+  auth_method = "password"
+  url         = "[[ .WebhookURL ]]/parallel-a"
+  method      = "POST"
+}
+
+resource "ory_action" "parallel_b" {
+  flow        = "registration"
+  timing      = "after"
+  auth_method = "password"
+  url         = "[[ .WebhookURL ]]/parallel-b"
+  method      = "POST"
+}
+
+resource "ory_action" "parallel_c" {
+  flow        = "registration"
+  timing      = "after"
+  auth_method = "password"
+  url         = "[[ .WebhookURL ]]/parallel-c"
+  method      = "POST"
+}
+
+resource "ory_action" "parallel_d" {
+  flow        = "registration"
+  timing      = "after"
+  auth_method = "password"
+  url         = "[[ .WebhookURL ]]/parallel-d"
+  method      = "POST"
+}
