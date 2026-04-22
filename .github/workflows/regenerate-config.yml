@@ -29,6 +29,11 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Set up Terraform CLI (required by make format)
+        uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4
+        with:
+          terraform_wrapper: false
+
       - name: Download OpenAPI spec (pinned to go.mod version)
         run: make download-spec
 
@@ -94,13 +99,22 @@ jobs:
               -mappings ./internal/codegen/mappings.yaml \
               -spec ./internal/codegen/openapi.yaml \
               -out ./internal/resources/projectconfig/
-            gofmt -s -w ./internal/codegen/cmd/generate/ ./internal/resources/projectconfig/
           fi
 
-      - name: Check for generated file changes
-        id: diff
+      - name: Check for codegen changes (pre-format)
+        id: codegen_diff
         run: |
           git diff --exit-code --quiet internal/codegen/mappings.yaml internal/resources/projectconfig/ \
+            || echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Run make format (regenerate docs, gofmt, lint --fix)
+        if: steps.codegen_diff.outputs.changed == 'true'
+        run: make format
+
+      - name: Check for any file changes (post-format)
+        id: diff
+        run: |
+          git diff --exit-code --quiet \
             || echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Build and test
