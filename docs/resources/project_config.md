@@ -463,6 +463,7 @@ terraform plan  # verify no changes
 - `oauth2_mirror_top_level_claims` (Boolean) Mirror top-level claims in OAuth2 ID tokens.
 - `oauth2_pkce_enforced` (Boolean) Enforce PKCE for all OAuth2 clients.
 - `oauth2_pkce_enforced_for_public_clients` (Boolean) Enforce PKCE for public OAuth2 clients only.
+- `oauth2_preserve_ext_claims` (Boolean) Set to true to keep custom claims that are not promoted to the top level in the 'ext' claim. Only applies when mirror_top_level_claims is false.
 - `oauth2_provider_headers` (Map of String) Custom HTTP headers for the OAuth2 provider integration.
 - `oauth2_provider_override_return_to` (Boolean) Allow the OAuth2 provider to automatically set the return_to parameter.
 - `oauth2_provider_url` (String) OAuth2 provider integration URL.

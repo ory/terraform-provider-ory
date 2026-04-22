@@ -1234,5 +1234,9 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 			Sensitive:   true,
 		},
+		"oauth2_preserve_ext_claims": schema.BoolAttribute{
+			Description: "Set to true to keep custom claims that are not promoted to the top level in the 'ext' claim. Only applies when mirror_top_level_claims is false.",
+			Optional:    true,
+		},
 	}
 }
