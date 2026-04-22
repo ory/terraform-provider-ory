@@ -104,8 +104,9 @@ jobs:
       - name: Check for codegen changes (pre-format)
         id: codegen_diff
         run: |
-          git diff --exit-code --quiet internal/codegen/mappings.yaml internal/resources/projectconfig/ \
-            || echo "changed=true" >> "$GITHUB_OUTPUT"
+          if [ -n "$(git status --porcelain --untracked-files=all -- internal/codegen/mappings.yaml internal/resources/projectconfig/)" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Run make format (regenerate docs, gofmt, lint --fix)
         if: steps.codegen_diff.outputs.changed == 'true'
@@ -114,8 +115,9 @@ jobs:
       - name: Check for any file changes (post-format)
         id: diff
         run: |
-          git diff --exit-code --quiet \
-            || echo "changed=true" >> "$GITHUB_OUTPUT"
+          if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build and test
         if: steps.diff.outputs.changed == 'true'
