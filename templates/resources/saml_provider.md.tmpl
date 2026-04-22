@@ -35,6 +35,8 @@ The `raw_idp_metadata_xml` attribute accepts the IDP's SAML 2.0 metadata XML. Or
 - **`base64://<base64-encoded XML>`** — for inline metadata (typical when the IDP exports a static XML file).
 - **`https://...`** or **`http://...`** — for metadata hosted by the IDP (some providers expose a metadata URL).
 
+-> **Security:** Prefer `https://` in production. Plain `http://` is accepted by the API but leaves the metadata (and therefore the signing certificate trust root) vulnerable to tampering — use it only in controlled development or test environments.
+
 The metadata must include at least one signing `<KeyDescriptor>` and one `<SingleSignOnService>` binding, or Ory will reject the configuration with a validation error.
 
 ~> **Note:** The API transforms inline metadata to a hosted GCS URL on read. The provider preserves the original `base64://` value in state when you configured it that way, so Terraform won't show spurious drift.

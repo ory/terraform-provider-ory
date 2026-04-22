@@ -394,7 +394,10 @@ func (r *SAMLProviderResource) Read(ctx context.Context, req resource.ReadReques
 			if attempt < helpers.ReadRetryMaxAttempts-1 {
 				select {
 				case <-ctx.Done():
-					resp.State.RemoveResource(ctx)
+					resp.Diagnostics.AddError(
+						"Error Reading SAML Provider",
+						fmt.Sprintf("read canceled while retrying project %s: %v", projectID, ctx.Err()),
+					)
 					return
 				case <-time.After(time.Duration(1<<attempt) * time.Second):
 				}
@@ -416,10 +419,14 @@ func (r *SAMLProviderResource) Read(ctx context.Context, req resource.ReadReques
 	}
 
 	// The API transforms base64:// mapper URLs into hosted GCS URLs on read.
-	// Only update state if the user explicitly configured it — mirrors social_provider.
+	// When the user supplied base64://..., preserve their original value to avoid
+	// spurious drift — only refresh state when the user originally configured a URL.
 	if !state.MapperURL.IsNull() && !state.MapperURL.IsUnknown() {
-		if mapper, ok := provider["mapper_url"].(string); ok && mapper != "" {
-			state.MapperURL = types.StringValue(mapper)
+		userValue := state.MapperURL.ValueString()
+		if !strings.HasPrefix(userValue, "base64://") {
+			if mapper, ok := provider["mapper_url"].(string); ok && mapper != "" {
+				state.MapperURL = types.StringValue(mapper)
+			}
 		}
 	}
 
