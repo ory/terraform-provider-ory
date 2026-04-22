@@ -506,6 +506,7 @@ func (r *ActionResource) buildHookValue(plan *ActionResourceModel) map[string]in
 func copyHooks(hooks []map[string]interface{}) []map[string]interface{} {
 	b, err := json.Marshal(hooks)
 	if err != nil {
+		// Should never happen — the data was decoded from JSON.
 		return hooks
 	}
 	var cp []map[string]interface{}
