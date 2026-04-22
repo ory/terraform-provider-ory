@@ -1564,3 +1564,11 @@ attributes:
     description: "SMTP connection URI for sending emails (e.g., smtps://user:pass@host:port)."
     sensitive: true
     skip_empty_read: true
+
+  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  - name: oauth2_preserve_ext_claims
+    go_field: OAuth2PreserveExtClaims
+    type: bool
+    openapi_property: hydra_oauth2_preserve_ext_claims
+    description: "Set to true to keep custom claims that are not promoted to the top level in the 'ext' claim. Only applies when mirror_top_level_claims is false."
+

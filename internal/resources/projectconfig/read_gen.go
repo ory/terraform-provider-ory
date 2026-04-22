@@ -563,6 +563,7 @@ func oauth2BoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry {
 		{&state.OAuth2GrantJWTIATOptional, nil, []string{"oauth2", "grant", "jwt", "iat_optional"}},
 		{&state.OAuth2GrantJWTJTIOptional, nil, []string{"oauth2", "grant", "jwt", "jti_optional"}},
 		{&state.OIDCDynamicClientRegistrationEnabled, nil, []string{"oidc", "dynamic_client_registration", "enabled"}},
+		{&state.OAuth2PreserveExtClaims, nil, []string{"oauth2", "preserve_ext_claims"}},
 	}
 }
 
