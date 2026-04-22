@@ -427,6 +427,9 @@ type ProjectConfigResourceModel struct {
 	SelfserviceMethodsWebAuthnConfigRPDisplayName types.String `tfsdk:"selfservice_methods_webauthn_config_rp_display_name"`
 	SelfserviceMethodsWebAuthnConfigRPID          types.String `tfsdk:"selfservice_methods_webauthn_config_rp_id"`
 	SelfserviceMethodsWebAuthnConfigPasswordless  types.Bool   `tfsdk:"selfservice_methods_webauthn_config_passwordless"`
+
+	// Auto-discovered (review naming before release)
+	OAuth2PreserveExtClaims types.Bool `tfsdk:"oauth2_preserve_ext_claims"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---
