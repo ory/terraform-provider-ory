@@ -176,6 +176,12 @@ jobs:
         if: steps.diff.outputs.changed == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.create_pr == 'true')
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
         with:
+          # Use ORY_BOT_PAT so the resulting PR triggers downstream workflows
+          # (lint, unit tests, acceptance tests, security). PRs created with the
+          # default GITHUB_TOKEN do not trigger workflows that listen on the
+          # `pull_request` event. See:
+          # https://github.com/peter-evans/create-pull-request/blob/main/docs/concepts-guidelines.md#triggering-further-workflow-runs
+          token: ${{ secrets.ORY_BOT_PAT }}
           commit-message: ${{ steps.pr_meta.outputs.title }}
           title: ${{ steps.pr_meta.outputs.title }}
           body-path: /tmp/pr-body.md
