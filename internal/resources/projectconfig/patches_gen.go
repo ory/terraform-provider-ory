@@ -247,6 +247,8 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 		{&plan.SelfserviceMethodsCaptchaConfigLegacyInjectNode, nil, "/services/identity/config/selfservice/methods/captcha/config/legacy_inject_node"},
 		{&plan.SelfserviceMethodsCaptchaEnabled, nil, "/services/identity/config/selfservice/methods/captcha/enabled"},
 		{&plan.OAuth2PreserveExtClaims, nil, "/services/oauth2/config/oauth2/preserve_ext_claims"},
+		{&plan.AccountExperienceHideOryBranding, nil, "/services/account_experience/config/hide_ory_branding"},
+		{&plan.AccountExperienceHideRegistrationLink, nil, "/services/account_experience/config/hide_registration_link"},
 	}
 }
 

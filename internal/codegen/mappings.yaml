@@ -1572,3 +1572,16 @@ attributes:
     openapi_property: hydra_oauth2_preserve_ext_claims
     description: "Set to true to keep custom claims that are not promoted to the top level in the 'ext' claim. Only applies when mirror_top_level_claims is false."
 
+  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  - name: account_experience_hide_ory_branding
+    go_field: AccountExperienceHideOryBranding
+    type: bool
+    openapi_property: account_experience_hide_ory_branding
+    description: "Whether to hide the Ory branding badge on the account experience."
+
+  - name: account_experience_hide_registration_link
+    go_field: AccountExperienceHideRegistrationLink
+    type: bool
+    openapi_property: account_experience_hide_registration_link
+    description: "Whether to hide the registration link on the account experience login card."
+

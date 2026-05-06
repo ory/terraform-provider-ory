@@ -343,6 +343,8 @@ terraform plan  # verify no changes
 - `account_experience_enabled_locales` (List of String) Enabled locales for the hosted login UI.
 - `account_experience_favicon_dark` (String) URL for the dark theme favicon in the hosted login UI.
 - `account_experience_favicon_light` (String) URL for the light theme favicon in the hosted login UI.
+- `account_experience_hide_ory_branding` (Boolean) Whether to hide the Ory branding badge on the account experience.
+- `account_experience_hide_registration_link` (Boolean) Whether to hide the registration link on the account experience login card.
 - `account_experience_locale_behavior` (String) Locale behavior: 'respect_accept_language' or 'force_default'.
 - `account_experience_logo_dark` (String) URL for the dark theme logo in the hosted login UI.
 - `account_experience_logo_light` (String) URL for the light theme logo in the hosted login UI.
