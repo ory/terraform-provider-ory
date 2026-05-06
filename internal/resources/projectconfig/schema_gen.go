@@ -1238,5 +1238,13 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Set to true to keep custom claims that are not promoted to the top level in the 'ext' claim. Only applies when mirror_top_level_claims is false.",
 			Optional:    true,
 		},
+		"account_experience_hide_ory_branding": schema.BoolAttribute{
+			Description: "Whether to hide the Ory branding badge on the account experience.",
+			Optional:    true,
+		},
+		"account_experience_hide_registration_link": schema.BoolAttribute{
+			Description: "Whether to hide the registration link on the account experience login card.",
+			Optional:    true,
+		},
 	}
 }

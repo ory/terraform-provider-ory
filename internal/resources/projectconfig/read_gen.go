@@ -327,6 +327,8 @@ func account_experienceBoolReadEntries(state *ProjectConfigResourceModel) []Bool
 	return []BoolReadEntry{
 		{&state.DisableAccountExperienceWelcomeScreen, nil, []string{"disable_welcome_screen"}},
 		{&state.EnableAXV2, nil, []string{"enable_ax_v2"}},
+		{&state.AccountExperienceHideOryBranding, nil, []string{"hide_ory_branding"}},
+		{&state.AccountExperienceHideRegistrationLink, nil, []string{"hide_registration_link"}},
 	}
 }
 
