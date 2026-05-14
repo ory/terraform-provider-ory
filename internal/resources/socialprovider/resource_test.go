@@ -254,6 +254,65 @@ func TestAccSocialProviderResource_labelAndAccountLinkingMode(t *testing.T) {
 	})
 }
 
+// TestAccSocialProviderResource_additionalIDTokenAudiences verifies that the
+// additional_id_token_audiences attribute is set, read, updated, and removed
+// correctly. Regression test for https://github.com/ory/terraform-provider-ory/issues/211.
+func TestAccSocialProviderResource_additionalIDTokenAudiences(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with two audiences
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_audiences.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-google-audiences"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "additional_id_token_audiences.#", "2"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "additional_id_token_audiences.0", "https://other.example.com"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "additional_id_token_audiences.1", "another-audience"),
+				),
+			},
+			// Verify no perpetual diff
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_audiences.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Update audiences (shrink to one entry, change value)
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_audiences_updated.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "additional_id_token_audiences.#", "1"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "additional_id_token_audiences.0", "https://updated.example.com"),
+				),
+			},
+			// Remove audiences from config — should clear them server-side
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_audiences_removed.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "additional_id_token_audiences"),
+				),
+			},
+			// Verify no diff after removal
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_audiences_removed.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// ImportState
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           "test-google-audiences",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+		},
+	})
+}
+
 func TestAccSocialProviderResource_apple(t *testing.T) {
 	tmplData := struct{ PrivateKey string }{PrivateKey: generateTestPrivateKey(t)}
 

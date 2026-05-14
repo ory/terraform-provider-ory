@@ -328,6 +328,7 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 ### Optional
 
 - `account_linking_mode` (String) Controls how accounts are linked when a user signs in with this provider and a matching identity already exists. "automatic" links without user interaction; "confirm_with_existing_credential" requires the user to verify ownership of the existing account first.
+- `additional_id_token_audiences` (List of String) Additional audiences allowed in the ID Token. Only relevant in OIDC flows that submit an ID Token directly instead of using the callback from the OIDC provider (e.g., native mobile apps signing in with Google or Apple where the app and the OIDC client are registered with different audiences).
 - `apple_private_key` (String, Sensitive) Apple private key in PEM format (contents of the .p8 file). Required when provider_type is "apple" and client_secret is not set. Ory uses this to generate the JWT client secret automatically.
 - `apple_private_key_id` (String) Apple private key ID from the Apple Developer portal (e.g., "UX56C66723"). Required when provider_type is "apple" and client_secret is not set.
 - `apple_team_id` (String) Apple Developer Team ID (e.g., "KP76DQS54M"). Required when provider_type is "apple" and client_secret is not set.
