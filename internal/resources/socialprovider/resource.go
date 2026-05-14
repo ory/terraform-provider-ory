@@ -362,16 +362,23 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 		config["account_linking_mode"] = plan.AccountLinkingMode.ValueString()
 	}
 
-	// AAL2 elevation lists — send only when the user configured them.
+	// AAL2 elevation lists — send only when the user configured a non-empty
+	// list. Empty lists are skipped to match Read, which collapses missing and
+	// empty arrays to null; sending [] would otherwise produce a perpetual diff
+	// for users who explicitly write `aal2_acr_values = []`.
 	if !plan.Aal2AcrValues.IsNull() && !plan.Aal2AcrValues.IsUnknown() {
 		var values []string
 		plan.Aal2AcrValues.ElementsAs(ctx, &values, false)
-		config["aal2_acr_values"] = values
+		if len(values) > 0 {
+			config["aal2_acr_values"] = values
+		}
 	}
 	if !plan.Aal2AmrValues.IsNull() && !plan.Aal2AmrValues.IsUnknown() {
 		var values []string
 		plan.Aal2AmrValues.ElementsAs(ctx, &values, false)
-		config["aal2_amr_values"] = values
+		if len(values) > 0 {
+			config["aal2_amr_values"] = values
+		}
 	}
 
 	// Apple-specific fields — skip empty strings to avoid sending blank credentials
