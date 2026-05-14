@@ -340,6 +340,24 @@ type OryClient struct {
 	// This avoids redundant API calls when multiple CRUD operations resolve the
 	// same project_id within a single Terraform run.
 	cachedSlugs sync.Map
+
+	// patchProjectMus holds a per-project mutex. The Ory API merges patches
+	// against the project's current revision, so concurrent PATCHes against
+	// the same project can lose writes (e.g. two parallel `remove` ops where
+	// one resource's deletion is silently dropped). Serializing patches per
+	// project — different projects still run in parallel — eliminates that
+	// race without changing the SDK call sites. See issue #213.
+	patchProjectMus sync.Map // map[string]*sync.Mutex
+}
+
+// patchProjectMutex returns the (lazily allocated) mutex for serializing
+// PatchProject calls for a given project ID.
+func (c *OryClient) patchProjectMutex(projectID string) *sync.Mutex {
+	if v, ok := c.patchProjectMus.Load(projectID); ok {
+		return v.(*sync.Mutex)
+	}
+	actual, _ := c.patchProjectMus.LoadOrStore(projectID, &sync.Mutex{})
+	return actual.(*sync.Mutex)
 }
 
 // NewOryClient creates a new Ory API client.
@@ -623,10 +641,16 @@ func (c *OryClient) DeleteProject(ctx context.Context, projectID string) error {
 
 // PatchProject applies JSON Patch operations to a project.
 // The response is automatically cached to avoid stale GetProject reads.
+// Calls against the same project_id are serialized because the API merges
+// patches against the current project revision and concurrent requests can
+// silently drop writes from a stale revision.
 func (c *OryClient) PatchProject(ctx context.Context, projectID string, patches []ory.JsonPatch) (*ory.SuccessfulProjectUpdate, error) {
 	if err := c.requireConsoleClient("patching project"); err != nil {
 		return nil, err
 	}
+	mu := c.patchProjectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
 	result, httpResp, err := c.consoleClient.ProjectAPI.PatchProject(ctx, projectID).
 		JsonPatch(patches).
 		Execute()
