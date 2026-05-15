@@ -41,6 +41,8 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 		"account_linking_mode":          tfStringValue(model.AccountLinkingMode),
 		"base_redirect_uri":             tfStringValue(model.BaseRedirectURI),
 		"additional_id_token_audiences": tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
+		"aal2_acr_values":               tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
+		"aal2_amr_values":               tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
 	}
 
 	objType := tftypes.Object{
@@ -65,6 +67,8 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 			"account_linking_mode":          tftypes.String,
 			"base_redirect_uri":             tftypes.String,
 			"additional_id_token_audiences": tftypes.List{ElementType: tftypes.String},
+			"aal2_acr_values":               tftypes.List{ElementType: tftypes.String},
+			"aal2_amr_values":               tftypes.List{ElementType: tftypes.String},
 		},
 	}
 

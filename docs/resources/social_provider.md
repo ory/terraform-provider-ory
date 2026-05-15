@@ -119,6 +119,27 @@ resource "ory_social_provider" "apple" {
   scope                = ["email", "name"]
 }
 
+# Enterprise SSO that elevates the Ory session to AAL2 when the upstream
+# provider asserts MFA via the `acr` or `amr` claims (works with Auth0, Okta,
+# Keycloak, PingFederate, Entra ID v1, and other OIDC providers).
+resource "ory_social_provider" "enterprise_sso" {
+  provider_id   = "enterprise-sso"
+  provider_type = "generic"
+  client_id     = var.sso_client_id
+  client_secret = var.sso_client_secret
+  issuer_url    = "https://sso.example.com"
+  scope         = ["openid", "profile", "email"]
+
+  # Mark the Ory session as AAL2 when the ID token's `acr` claim matches any of these.
+  aal2_acr_values = [
+    "urn:mace:incommon:iap:silver",
+    "https://refeds.org/profile/mfa",
+  ]
+
+  # Mark the Ory session as AAL2 when any of these values appear in the `amr` array (per RFC 8176).
+  aal2_amr_values = ["mfa", "otp", "hwk"]
+}
+
 # Generic OIDC Provider with custom claims mapping
 resource "ory_social_provider" "corporate_sso" {
   provider_id   = "corporate-sso"
@@ -279,6 +300,29 @@ resource "ory_social_provider" "google" {
 
 ~> **Security:** Auto-linking trusts that the social provider has verified the user's email. Only enable this for providers you trust to verify email addresses.
 
+## Upstream MFA (AAL2 Elevation)
+
+When an upstream OpenID Connect provider performs multi-factor authentication, the resulting Ory session can be marked as AAL2 (Authentication Assurance Level 2) so the user is not prompted for a second factor again. Use `aal2_acr_values` and/or `aal2_amr_values` to opt in:
+
+- **`aal2_acr_values`** — A list of `acr` claim values. If the ID token returned by the upstream provider contains an `acr` claim matching any value in the list, Ory marks the session as AAL2. Works with providers that return the `acr` claim (Auth0, Okta, Keycloak, PingFederate, Entra ID v1, generic enterprise IdPs).
+- **`aal2_amr_values`** — A list of `amr` values (per [RFC 8176](https://datatracker.ietf.org/doc/html/rfc8176), for example `mfa`, `otp`, `hwk`, `fpt`). If the upstream `amr` array contains any value in the list, Ory marks the session as AAL2.
+
+Both attributes are optional and can be used together. Leave them unset to always issue AAL1 sessions through the provider.
+
+```hcl
+resource "ory_social_provider" "enterprise_sso" {
+  provider_id   = "enterprise-sso"
+  provider_type = "generic"
+  client_id     = var.sso_client_id
+  client_secret = var.sso_client_secret
+  issuer_url    = "https://sso.example.com"
+  scope         = ["openid", "profile", "email"]
+
+  aal2_acr_values = ["urn:mace:incommon:iap:silver", "https://refeds.org/profile/mfa"]
+  aal2_amr_values = ["mfa", "otp", "hwk"]
+}
+```
+
 ## Base Redirect URI
 
 The `base_redirect_uri` attribute overrides the base URL Ory uses when constructing OIDC callback URLs. Use this when your project is accessible under a custom domain and you want callbacks to go to that domain rather than the default Ory project URL.
@@ -327,6 +371,8 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 
 ### Optional
 
+- `aal2_acr_values` (List of String) Upstream OpenID Connect `acr` claim values that elevate the resulting Ory session to AAL2. If the ID token returned by the upstream provider contains an `acr` claim matching any of these values, the user is not prompted for a second factor. Leave unset to always issue AAL1 sessions through this provider. Works with providers that return the `acr` claim (Auth0, Okta, Keycloak, PingFederate, Entra ID v1, generic enterprise IdPs).
+- `aal2_amr_values` (List of String) Upstream OpenID Connect `amr` values (per RFC 8176, for example `mfa`, `otp`, `hwk`) that mark the session AAL2 when they appear in the upstream `amr` array. Leave unset to ignore the `amr` claim.
 - `account_linking_mode` (String) Controls how accounts are linked when a user signs in with this provider and a matching identity already exists. "automatic" links without user interaction; "confirm_with_existing_credential" requires the user to verify ownership of the existing account first.
 - `additional_id_token_audiences` (List of String) Additional audiences allowed in the ID Token. Only relevant in OIDC flows that submit an ID Token directly instead of using the callback from the OIDC provider (e.g., native mobile apps signing in with Google or Apple where the app and the OIDC client are registered with different audiences).
 - `apple_private_key` (String, Sensitive) Apple private key in PEM format (contents of the .p8 file). Required when provider_type is "apple" and client_secret is not set. Ory uses this to generate the JWT client secret automatically.
