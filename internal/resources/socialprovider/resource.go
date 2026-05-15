@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -56,25 +57,28 @@ type SocialProviderResource struct {
 }
 
 type SocialProviderResourceModel struct {
-	ID                 types.String `tfsdk:"id"`
-	ProjectID          types.String `tfsdk:"project_id"`
-	ProviderID         types.String `tfsdk:"provider_id"`
-	ProviderType       types.String `tfsdk:"provider_type"`
-	ClientID           types.String `tfsdk:"client_id"`
-	ClientSecret       types.String `tfsdk:"client_secret"`
-	IssuerURL          types.String `tfsdk:"issuer_url"`
-	Scope              types.List   `tfsdk:"scope"`
-	MapperURL          types.String `tfsdk:"mapper_url"`
-	AuthURL            types.String `tfsdk:"auth_url"`
-	TokenURL           types.String `tfsdk:"token_url"`
-	Tenant             types.String `tfsdk:"tenant"`
-	AppleTeamID        types.String `tfsdk:"apple_team_id"`
-	ApplePrivateKeyID  types.String `tfsdk:"apple_private_key_id"`
-	ApplePrivateKey    types.String `tfsdk:"apple_private_key"`
-	AutoLink           types.Bool   `tfsdk:"auto_link"`
-	Label              types.String `tfsdk:"label"`
-	AccountLinkingMode types.String `tfsdk:"account_linking_mode"`
-	BaseRedirectURI    types.String `tfsdk:"base_redirect_uri"`
+	ID                         types.String `tfsdk:"id"`
+	ProjectID                  types.String `tfsdk:"project_id"`
+	ProviderID                 types.String `tfsdk:"provider_id"`
+	ProviderType               types.String `tfsdk:"provider_type"`
+	ClientID                   types.String `tfsdk:"client_id"`
+	ClientSecret               types.String `tfsdk:"client_secret"`
+	IssuerURL                  types.String `tfsdk:"issuer_url"`
+	Scope                      types.List   `tfsdk:"scope"`
+	MapperURL                  types.String `tfsdk:"mapper_url"`
+	AuthURL                    types.String `tfsdk:"auth_url"`
+	TokenURL                   types.String `tfsdk:"token_url"`
+	Tenant                     types.String `tfsdk:"tenant"`
+	AppleTeamID                types.String `tfsdk:"apple_team_id"`
+	ApplePrivateKeyID          types.String `tfsdk:"apple_private_key_id"`
+	ApplePrivateKey            types.String `tfsdk:"apple_private_key"`
+	AutoLink                   types.Bool   `tfsdk:"auto_link"`
+	Label                      types.String `tfsdk:"label"`
+	AccountLinkingMode         types.String `tfsdk:"account_linking_mode"`
+	BaseRedirectURI            types.String `tfsdk:"base_redirect_uri"`
+	AdditionalIDTokenAudiences types.List   `tfsdk:"additional_id_token_audiences"`
+	Aal2AcrValues              types.List   `tfsdk:"aal2_acr_values"`
+	Aal2AmrValues              types.List   `tfsdk:"aal2_amr_values"`
 }
 
 func (r *SocialProviderResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -186,6 +190,21 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				DeprecationMessage: "Use ory_project_config.selfservice_methods_oidc_config_base_redirect_uri instead. " +
 					"This attribute sets a global OIDC config value, not a per-provider setting, " +
 					"and is better managed at the project level.",
+			},
+			"additional_id_token_audiences": schema.ListAttribute{
+				Description: "Additional audiences allowed in the ID Token. Only relevant in OIDC flows that submit an ID Token directly instead of using the callback from the OIDC provider (e.g., native mobile apps signing in with Google or Apple where the app and the OIDC client are registered with different audiences).",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"aal2_acr_values": schema.ListAttribute{
+				Description: "Upstream OpenID Connect `acr` claim values that elevate the resulting Ory session to AAL2. If the ID token returned by the upstream provider contains an `acr` claim matching any of these values, the user is not prompted for a second factor. Leave unset to always issue AAL1 sessions through this provider. Works with providers that return the `acr` claim (Auth0, Okta, Keycloak, PingFederate, Entra ID v1, generic enterprise IdPs).",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"aal2_amr_values": schema.ListAttribute{
+				Description: "Upstream OpenID Connect `amr` values (per RFC 8176, for example `mfa`, `otp`, `hwk`) that mark the session AAL2 when they appear in the upstream `amr` array. Leave unset to ignore the `amr` claim.",
+				Optional:    true,
+				ElementType: types.StringType,
 			},
 		},
 	}
@@ -349,6 +368,31 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 		config["account_linking_mode"] = plan.AccountLinkingMode.ValueString()
 	}
 
+	if !plan.AdditionalIDTokenAudiences.IsNull() && !plan.AdditionalIDTokenAudiences.IsUnknown() {
+		var audiences []string
+		plan.AdditionalIDTokenAudiences.ElementsAs(ctx, &audiences, false)
+		config["additional_id_token_audiences"] = audiences
+	}
+
+	// AAL2 elevation lists — send only when the user configured a non-empty
+	// list. Empty lists are skipped to match Read, which collapses missing and
+	// empty arrays to null; sending [] would otherwise produce a perpetual diff
+	// for users who explicitly write `aal2_acr_values = []`.
+	if !plan.Aal2AcrValues.IsNull() && !plan.Aal2AcrValues.IsUnknown() {
+		var values []string
+		plan.Aal2AcrValues.ElementsAs(ctx, &values, false)
+		if len(values) > 0 {
+			config["aal2_acr_values"] = values
+		}
+	}
+	if !plan.Aal2AmrValues.IsNull() && !plan.Aal2AmrValues.IsUnknown() {
+		var values []string
+		plan.Aal2AmrValues.ElementsAs(ctx, &values, false)
+		if len(values) > 0 {
+			config["aal2_amr_values"] = values
+		}
+	}
+
 	// Apple-specific fields — skip empty strings to avoid sending blank credentials
 	if !plan.AppleTeamID.IsNull() && !plan.AppleTeamID.IsUnknown() && plan.AppleTeamID.ValueString() != "" {
 		config["apple_team_id"] = plan.AppleTeamID.ValueString()
@@ -361,6 +405,29 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 	}
 
 	return config
+}
+
+// readStringList converts a JSON-decoded string array from the API into a
+// types.List, returning null when the API omits the field or returns an empty
+// array. Empty/null are treated identically so removing all entries from
+// Terraform config matches the API's "missing" state on the next read.
+func readStringList(ctx context.Context, diagnostics *diag.Diagnostics, raw interface{}) types.List {
+	values, ok := raw.([]interface{})
+	if !ok || len(values) == 0 {
+		return types.ListNull(types.StringType)
+	}
+	strs := make([]string, 0, len(values))
+	for _, v := range values {
+		if s, ok := v.(string); ok {
+			strs = append(strs, s)
+		}
+	}
+	list, d := types.ListValueFrom(ctx, types.StringType, strs)
+	diagnostics.Append(d...)
+	if d.HasError() {
+		return types.ListNull(types.StringType)
+	}
+	return list
 }
 
 // extractOIDCConfigFromProject navigates to the OIDC method config map.
@@ -685,6 +752,13 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 	} else {
 		state.AccountLinkingMode = types.StringNull()
 	}
+
+	// Read additional_id_token_audiences from API (returned on read)
+	state.AdditionalIDTokenAudiences = readStringList(ctx, &resp.Diagnostics, provider["additional_id_token_audiences"])
+
+	// Read AAL2 elevation lists, clearing state when the API omits them.
+	state.Aal2AcrValues = readStringList(ctx, &resp.Diagnostics, provider["aal2_acr_values"])
+	state.Aal2AmrValues = readStringList(ctx, &resp.Diagnostics, provider["aal2_amr_values"])
 
 	// Read Apple-specific fields, clearing stale state when not returned by the API
 	if teamID, ok := provider["apple_team_id"].(string); ok && teamID != "" {

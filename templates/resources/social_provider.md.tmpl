@@ -113,6 +113,29 @@ resource "ory_social_provider" "google" {
 
 ~> **Security:** Auto-linking trusts that the social provider has verified the user's email. Only enable this for providers you trust to verify email addresses.
 
+## Upstream MFA (AAL2 Elevation)
+
+When an upstream OpenID Connect provider performs multi-factor authentication, the resulting Ory session can be marked as AAL2 (Authentication Assurance Level 2) so the user is not prompted for a second factor again. Use `aal2_acr_values` and/or `aal2_amr_values` to opt in:
+
+- **`aal2_acr_values`** — A list of `acr` claim values. If the ID token returned by the upstream provider contains an `acr` claim matching any value in the list, Ory marks the session as AAL2. Works with providers that return the `acr` claim (Auth0, Okta, Keycloak, PingFederate, Entra ID v1, generic enterprise IdPs).
+- **`aal2_amr_values`** — A list of `amr` values (per [RFC 8176](https://datatracker.ietf.org/doc/html/rfc8176), for example `mfa`, `otp`, `hwk`, `fpt`). If the upstream `amr` array contains any value in the list, Ory marks the session as AAL2.
+
+Both attributes are optional and can be used together. Leave them unset to always issue AAL1 sessions through the provider.
+
+```hcl
+resource "ory_social_provider" "enterprise_sso" {
+  provider_id   = "enterprise-sso"
+  provider_type = "generic"
+  client_id     = var.sso_client_id
+  client_secret = var.sso_client_secret
+  issuer_url    = "https://sso.example.com"
+  scope         = ["openid", "profile", "email"]
+
+  aal2_acr_values = ["urn:mace:incommon:iap:silver", "https://refeds.org/profile/mfa"]
+  aal2_amr_values = ["mfa", "otp", "hwk"]
+}
+```
+
 ## Base Redirect URI
 
 The `base_redirect_uri` attribute overrides the base URL Ory uses when constructing OIDC callback URLs. Use this when your project is accessible under a custom domain and you want callbacks to go to that domain rather than the default Ory project URL.
