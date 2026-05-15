@@ -20,14 +20,14 @@ func TestHashFromURL(t *testing.T) {
 		ok   bool
 	}{
 		{
-			name: "gcs-staging-txt",
-			in:   "https://storage.googleapis.com/bac-gcs-staging/" + hash128 + ".txt",
+			name: "txt-filename",
+			in:   "https://storage.example.com/templates/" + hash128 + ".txt",
 			want: hash128,
 			ok:   true,
 		},
 		{
-			name: "gcs-prod-html",
-			in:   "https://storage.googleapis.com/bac-gcs/" + hash128 + ".html",
+			name: "html-filename",
+			in:   "https://storage.example.com/templates/" + hash128 + ".html",
 			want: hash128,
 			ok:   true,
 		},
@@ -44,17 +44,17 @@ func TestHashFromURL(t *testing.T) {
 		},
 		{
 			name: "url-without-hash-filename",
-			in:   "https://storage.googleapis.com/bac-gcs/some-other-file.txt",
+			in:   "https://storage.example.com/templates/some-other-file.txt",
 			ok:   false,
 		},
 		{
 			name: "short-hash",
-			in:   "https://storage.googleapis.com/bac-gcs/" + hash128[:64] + ".txt",
+			in:   "https://storage.example.com/templates/" + hash128[:64] + ".txt",
 			ok:   false,
 		},
 		{
 			name: "non-hex-character",
-			in:   "https://storage.googleapis.com/bac-gcs/" + "zz" + hash128[2:] + ".txt",
+			in:   "https://storage.example.com/templates/" + "zz" + hash128[2:] + ".txt",
 			ok:   false,
 		},
 	}
@@ -78,7 +78,7 @@ func TestUrlHashMatchesContent(t *testing.T) {
 	content := "Hello {{ .Code }}"
 	sum := sha512.Sum512([]byte(content))
 	hexHash := hex.EncodeToString(sum[:])
-	url := "https://storage.googleapis.com/bac-gcs-staging/" + hexHash + ".txt"
+	url := "https://storage.example.com/templates/" + hexHash + ".txt"
 
 	if !urlHashMatchesContent(url, content) {
 		t.Fatal("expected matching hash for known content")
@@ -99,7 +99,7 @@ func TestIsHTTPSURL(t *testing.T) {
 		want bool
 	}{
 		{"https://example.com/x", true},
-		{"https://storage.googleapis.com/bac-gcs/aaa.txt", true},
+		{"https://storage.example.com/templates/aaa.txt", true},
 		{"http://example.com/x", false},  // plain http rejected to keep SSRF surface small
 		{"ftp://example.com/x", false},   // arbitrary schemes never fetched
 		{"file:///etc/passwd", false},    // explicitly rejected
@@ -121,10 +121,10 @@ func TestResolveStoredTemplate(t *testing.T) {
 
 	content := "Hello there"
 	sum := sha512.Sum512([]byte(content))
-	matchingURL := "https://storage.googleapis.com/bac-gcs-staging/" + hex.EncodeToString(sum[:]) + ".txt"
+	matchingURL := "https://storage.example.com/templates/" + hex.EncodeToString(sum[:]) + ".txt"
 
 	otherSum := sha512.Sum512([]byte("OTHER VALUE"))
-	driftedURL := "https://storage.googleapis.com/bac-gcs-staging/" + hex.EncodeToString(otherSum[:]) + ".txt"
+	driftedURL := "https://storage.example.com/templates/" + hex.EncodeToString(otherSum[:]) + ".txt"
 
 	t.Run("returns decoded base64 literal", func(t *testing.T) {
 		got := resolveStoredTemplate(context.Background(), "base64://SGVsbG8=", "previous")
