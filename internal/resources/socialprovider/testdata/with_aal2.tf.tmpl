@@ -4,6 +4,6 @@ resource "ory_social_provider" "test" {
   client_id       = "test-client-id.apps.googleusercontent.com"
   client_secret   = "test-client-secret"
   scope           = ["email", "profile"]
-  aal2_acr_values = ["urn:mace:incommon:iap:silver", "https://refeds.org/profile/mfa"]
+  aal2_acr_values = ["urn:test:acr:silver", "urn:test:acr:mfa"]
   aal2_amr_values = ["mfa", "otp", "hwk"]
 }
