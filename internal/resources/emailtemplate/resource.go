@@ -2,9 +2,13 @@ package emailtemplate
 
 import (
 	"context"
+	"crypto/sha512"
 	"encoding/base64"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/url"
+	pathpkg "path"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -15,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-ory/internal/client"
@@ -245,10 +250,102 @@ func decodeTemplate(content string) string {
 	return content
 }
 
-// isURL checks whether the given string is a URL (has a scheme and host).
-func isURL(s string) bool {
+// isHTTPSURL reports whether `s` parses as an https:// URL with a host.
+// We deliberately only accept https — http (and other schemes like ftp,
+// file, gopher, base64) must never be passed to the network fetcher, both
+// to keep SSRF surface area minimal and to match how the Ory backoffice
+// returns template content URLs.
+func isHTTPSURL(s string) bool {
 	u, err := url.Parse(s)
-	return err == nil && u.Scheme != "" && u.Host != ""
+	return err == nil && u.Scheme == "https" && u.Host != ""
+}
+
+// urlContentFetcher fetches template content from a URL returned by the API.
+// It is a package-level variable so tests can stub it out. The default
+// implementation delegates to client.FetchSafeHTTPS which rejects non-HTTPS
+// schemes, refuses private/loopback hosts (with DNS-rebind protection at
+// connect time), limits redirects, and caps the response body at 1 MiB.
+var urlContentFetcher = func(ctx context.Context, rawURL string) (string, error) {
+	body, err := client.FetchSafeHTTPS(ctx, "email template", rawURL)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+// urlHashMatchesContent reports whether the SHA-512 hex hash embedded in the
+// URL's filename matches the SHA-512 of the supplied content. The Ory backoffice
+// stores template values at storage URLs whose filename is the lowercase hex
+// SHA-512 of the raw content plus a known extension (.txt/.html). When the
+// hashes match we know the API value equals `content` without an extra fetch.
+func urlHashMatchesContent(rawURL, content string) bool {
+	hash, ok := hashFromURL(rawURL)
+	if !ok {
+		return false
+	}
+	sum := sha512.Sum512([]byte(content))
+	return strings.EqualFold(hash, hex.EncodeToString(sum[:]))
+}
+
+// hashFromURL extracts the hex hash portion from a storage URL filename.
+// Returns ("", false) if the URL is not in the expected shape.
+func hashFromURL(rawURL string) (string, bool) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", false
+	}
+	base := pathpkg.Base(u.Path)
+	ext := pathpkg.Ext(base)
+	hash := strings.TrimSuffix(base, ext)
+	if len(hash) != 128 {
+		return "", false
+	}
+	for _, c := range hash {
+		switch {
+		case c >= '0' && c <= '9':
+		case c >= 'a' && c <= 'f':
+		case c >= 'A' && c <= 'F':
+		default:
+			return "", false
+		}
+	}
+	return hash, true
+}
+
+// resolveStoredTemplate returns the canonical decoded template value for a
+// field returned by the API. Behavior:
+//   - If the API returned an empty value, return "" so an out-of-band reset
+//     (Console clearing the field) overwrites stale state instead of silently
+//     hiding the drift.
+//   - If the API returned a literal value (e.g. `base64://...` or plain text),
+//     decode and return it.
+//   - If the API returned an HTTPS storage URL and its hash matches the
+//     current state value, return the state value unchanged (no drift).
+//   - Otherwise the content has drifted: fetch the URL safely and return the
+//     body. On fetch failure we degrade gracefully back to the previous state
+//     value so a transient network error doesn't crash the read.
+func resolveStoredTemplate(ctx context.Context, apiValue, stateValue string) string {
+	if apiValue == "" {
+		return ""
+	}
+	// `base64://...` parses as a URL (scheme + opaque host) but it is a literal
+	// payload, not a fetchable resource. Decode it directly.
+	if strings.HasPrefix(apiValue, "base64://") {
+		return decodeTemplate(apiValue)
+	}
+	if !isHTTPSURL(apiValue) {
+		return apiValue
+	}
+	if stateValue != "" && urlHashMatchesContent(apiValue, stateValue) {
+		return stateValue
+	}
+	fetched, err := urlContentFetcher(ctx, apiValue)
+	if err != nil {
+		tflog.Warn(ctx, "Falling back to previous email template state value: fetch failed",
+			map[string]interface{}{"url": apiValue, "error": err.Error()})
+		return stateValue
+	}
+	return fetched
 }
 
 func (r *EmailTemplateResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -263,11 +360,22 @@ func (r *EmailTemplateResource) Read(ctx context.Context, req resource.ReadReque
 		return
 	}
 
-	// Get project to read template config
-	project, err := r.client.GetProject(ctx, projectID)
-	if err != nil {
-		resp.Diagnostics.AddError("Error Reading Email Template", err.Error())
-		return
+	// Prefer the cached project from the last PatchProject response. The
+	// Ory API has eventual consistency: GetProject called right after a patch
+	// can return a stale revision (with the URL of the pre-patch content),
+	// and the URL fetch would then write the wrong template body back into
+	// state. The cache is only populated after our own writes, so falling
+	// back to GetProject still picks up real drift made via the Console.
+	var project *ory.Project
+	if cached := r.client.GetCachedProject(projectID); cached != nil {
+		project = cached
+	} else {
+		var err error
+		project, err = r.client.GetProject(ctx, projectID)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Reading Email Template", err.Error())
+			return
+		}
 	}
 
 	if project.Services.Identity == nil || project.Services.Identity.Config == nil {
@@ -310,27 +418,26 @@ func (r *EmailTemplateResource) Read(ctx context.Context, req resource.ReadReque
 		return
 	}
 
-	// Read subject if present
-	if subject, ok := email["subject"].(string); ok && subject != "" {
-		// Skip URL references (e.g., GCS URLs on staging) - preserve user's config value
-		if !isURL(subject) {
-			state.Subject = types.StringValue(decodeTemplate(subject))
-		}
-	}
+	// Read subject. The API returns either the literal value or a storage URL
+	// whose filename is sha512(content); resolveStoredTemplate compares hashes
+	// to detect drift without an extra fetch when the value is unchanged.
+	//
+	// We capture the previous state values, then overwrite them unconditionally
+	// — a missing or empty API field must clear state (Console reset is a real
+	// drift case), and the hash-match fast-path inside resolveStoredTemplate
+	// uses the captured previous value when the API returned a URL.
+	prevSubject := state.Subject.ValueString()
+	prevHTML := state.BodyHTML.ValueString()
+	prevPlaintext := state.BodyPlaintext.ValueString()
 
-	// Read body
-	if body, ok := email["body"].(map[string]interface{}); ok {
-		if html, ok := body["html"].(string); ok && html != "" {
-			if !isURL(html) {
-				state.BodyHTML = types.StringValue(decodeTemplate(html))
-			}
-		}
-		if plaintext, ok := body["plaintext"].(string); ok && plaintext != "" {
-			if !isURL(plaintext) {
-				state.BodyPlaintext = types.StringValue(decodeTemplate(plaintext))
-			}
-		}
-	}
+	apiSubject, _ := email["subject"].(string)
+	state.Subject = types.StringValue(resolveStoredTemplate(ctx, apiSubject, prevSubject))
+
+	body, _ := email["body"].(map[string]interface{})
+	apiHTML, _ := body["html"].(string)
+	apiPlaintext, _ := body["plaintext"].(string)
+	state.BodyHTML = types.StringValue(resolveStoredTemplate(ctx, apiHTML, prevHTML))
+	state.BodyPlaintext = types.StringValue(resolveStoredTemplate(ctx, apiPlaintext, prevPlaintext))
 
 	state.ProjectID = types.StringValue(projectID)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
@@ -354,9 +461,12 @@ func (r *EmailTemplateResource) Update(ctx context.Context, req resource.UpdateR
 	htmlEncoded := encodeTemplate(plan.BodyHTML.ValueString())
 	plaintextEncoded := encodeTemplate(plan.BodyPlaintext.ValueString())
 
+	// `add` acts as upsert for object members per RFC 6902, so it succeeds
+	// whether the path already exists (drift recovery) or not (first apply
+	// after the template was reset via Console).
 	patches := []ory.JsonPatch{
 		{
-			Op:   "replace",
+			Op:   "add",
 			Path: basePath + "/body",
 			Value: map[string]string{
 				"html":      htmlEncoded,
@@ -367,7 +477,7 @@ func (r *EmailTemplateResource) Update(ctx context.Context, req resource.UpdateR
 
 	if !plan.Subject.IsNull() && !plan.Subject.IsUnknown() {
 		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
+			Op:    "add",
 			Path:  basePath + "/subject",
 			Value: encodeTemplate(plan.Subject.ValueString()),
 		})
@@ -396,14 +506,51 @@ func (r *EmailTemplateResource) Delete(ctx context.Context, req resource.DeleteR
 	templatePath := r.templatePath(state.TemplateType.ValueString())
 	basePath := fmt.Sprintf("/services/identity/config/courier/templates/%s", templatePath)
 
-	// Try to remove the template (resets to Ory defaults)
 	patches := []ory.JsonPatch{{
 		Op:   "remove",
 		Path: basePath,
 	}}
 
-	// Ignore errors - the path might not exist
-	_, _ = r.client.PatchProject(ctx, projectID, patches)
+	if _, err := r.client.PatchProject(ctx, projectID, patches); err != nil {
+		// A 404-ish "path does not exist" is fine — the template is already
+		// gone (e.g. never had subject/body customized). Anything else
+		// (including a 409/revision conflict) must surface so the user is not
+		// left thinking the resource was cleaned up when it wasn't.
+		//
+		// The Ory SDK's GenericOpenAPIError.Error() only contains the HTTP
+		// status, so the "does not exist" detail lives in .Body(). Inspect
+		// both before deciding to tolerate the error.
+		if !isPathAlreadyGoneError(err) {
+			resp.Diagnostics.AddError("Error Deleting Email Template", err.Error())
+			return
+		}
+		tflog.Debug(ctx, "Email template path already absent during delete",
+			map[string]interface{}{"path": basePath, "error": err.Error()})
+	}
+}
+
+// isPathAlreadyGoneError reports whether a PatchProject error indicates the
+// target path is already absent (404, or a JSON body that mentions the path
+// does not exist / pointer reference not found). Anything else — auth,
+// validation, conflict — should bubble up to the user.
+func isPathAlreadyGoneError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr *ory.GenericOpenAPIError
+	if errors.As(err, &apiErr) {
+		body := strings.ToLower(string(apiErr.Body()))
+		if strings.Contains(body, "does not exist") ||
+			strings.Contains(body, "not found") ||
+			strings.Contains(body, "no such path") ||
+			strings.Contains(body, "unable to find a value") {
+			return true
+		}
+	}
+	// Fall back to the error string; both `Error()` on the SDK error and any
+	// wrapper produced by retryWithBackoff include the HTTP status.
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "404") || strings.Contains(msg, "does not exist")
 }
 
 func (r *EmailTemplateResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

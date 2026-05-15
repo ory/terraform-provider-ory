@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -812,6 +814,98 @@ func TestProviderUserAgent(t *testing.T) {
 		got := receiveWithTimeout(t, uaChan)
 		if got != expectedUserAgent {
 			t.Errorf("Expected User-Agent %q, but got %q", expectedUserAgent, got)
+		}
+	})
+}
+
+// TestPatchProject_SerialisedPerProject verifies the per-project mutex that
+// guards PatchProject. Without it, concurrent patches against the same
+// project can lose writes because the API merges patches against a snapshot
+// of the project revision (see issue #213, where two parallel email-template
+// deletes left one template behind). Patches against *different* projects
+// must still run in parallel so multi-project Terraform runs aren't slowed
+// to a serial trickle.
+func TestPatchProject_SerialisedPerProject(t *testing.T) {
+	t.Run("same project serialized", func(t *testing.T) {
+		var inFlight, maxConcurrent int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			cur := atomic.AddInt32(&inFlight, 1)
+			for {
+				old := atomic.LoadInt32(&maxConcurrent)
+				if cur <= old || atomic.CompareAndSwapInt32(&maxConcurrent, old, cur) {
+					break
+				}
+			}
+			time.Sleep(40 * time.Millisecond)
+			atomic.AddInt32(&inFlight, -1)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"project":{"id":"p","slug":"s"}}`))
+		}))
+		defer srv.Close()
+
+		client, err := NewOryClient(OryClientConfig{
+			WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+			ConsoleAPIURL:   srv.URL,
+		})
+		if err != nil {
+			t.Fatalf("client: %v", err)
+		}
+
+		var wg sync.WaitGroup
+		for i := 0; i < 5; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, _ = client.PatchProject(context.Background(), "same-project", nil)
+			}()
+		}
+		wg.Wait()
+
+		if got := atomic.LoadInt32(&maxConcurrent); got != 1 {
+			t.Fatalf("expected max 1 concurrent patch per project, got %d", got)
+		}
+	})
+
+	t.Run("different projects run in parallel", func(t *testing.T) {
+		var inFlight, maxConcurrent int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			cur := atomic.AddInt32(&inFlight, 1)
+			for {
+				old := atomic.LoadInt32(&maxConcurrent)
+				if cur <= old || atomic.CompareAndSwapInt32(&maxConcurrent, old, cur) {
+					break
+				}
+			}
+			time.Sleep(40 * time.Millisecond)
+			atomic.AddInt32(&inFlight, -1)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"project":{"id":"p","slug":"s"}}`))
+		}))
+		defer srv.Close()
+
+		client, err := NewOryClient(OryClientConfig{
+			WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+			ConsoleAPIURL:   srv.URL,
+		})
+		if err != nil {
+			t.Fatalf("client: %v", err)
+		}
+
+		var wg sync.WaitGroup
+		for i := 0; i < 5; i++ {
+			i := i
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, _ = client.PatchProject(context.Background(), fmt.Sprintf("project-%d", i), nil)
+			}()
+		}
+		wg.Wait()
+
+		if got := atomic.LoadInt32(&maxConcurrent); got < 2 {
+			t.Fatalf("expected concurrent patches across different projects, got max %d", got)
 		}
 	})
 }

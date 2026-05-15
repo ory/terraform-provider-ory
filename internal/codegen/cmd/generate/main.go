@@ -869,6 +869,44 @@ func excludedProperties() map[string]bool {
 		"kratos_courier_smtp_connection_uri":                    true, // → smtp_connection_uri (custom, sensitive)
 		"account_experience_default_locale":                     true, // → account_experience_default_locale (in mappings)
 		"kratos_oauth2_provider_headers":                        true, // → oauth2_provider_headers (in mappings)
+
+		// Courier templates — managed by the dedicated `ory_email_template`
+		// resource. They are not viable as simple-string codegen entries
+		// because writes require `base64://` encoding and reads return a
+		// storage URL whose filename is sha512(content). See issue #213.
+		"kratos_courier_templates_login_code_valid_email_body_html":               true,
+		"kratos_courier_templates_login_code_valid_email_body_plaintext":          true,
+		"kratos_courier_templates_login_code_valid_email_subject":                 true,
+		"kratos_courier_templates_login_code_valid_sms_body_plaintext":            true,
+		"kratos_courier_templates_recovery_code_invalid_email_body_html":          true,
+		"kratos_courier_templates_recovery_code_invalid_email_body_plaintext":     true,
+		"kratos_courier_templates_recovery_code_invalid_email_subject":            true,
+		"kratos_courier_templates_recovery_code_valid_email_body_html":            true,
+		"kratos_courier_templates_recovery_code_valid_email_body_plaintext":       true,
+		"kratos_courier_templates_recovery_code_valid_email_subject":              true,
+		"kratos_courier_templates_recovery_invalid_email_body_html":               true,
+		"kratos_courier_templates_recovery_invalid_email_body_plaintext":          true,
+		"kratos_courier_templates_recovery_invalid_email_subject":                 true,
+		"kratos_courier_templates_recovery_valid_email_body_html":                 true,
+		"kratos_courier_templates_recovery_valid_email_body_plaintext":            true,
+		"kratos_courier_templates_recovery_valid_email_subject":                   true,
+		"kratos_courier_templates_registration_code_valid_email_body_html":        true,
+		"kratos_courier_templates_registration_code_valid_email_body_plaintext":   true,
+		"kratos_courier_templates_registration_code_valid_email_subject":          true,
+		"kratos_courier_templates_registration_code_valid_sms_body_plaintext":     true,
+		"kratos_courier_templates_verification_code_invalid_email_body_html":      true,
+		"kratos_courier_templates_verification_code_invalid_email_body_plaintext": true,
+		"kratos_courier_templates_verification_code_invalid_email_subject":        true,
+		"kratos_courier_templates_verification_code_valid_email_body_html":        true,
+		"kratos_courier_templates_verification_code_valid_email_body_plaintext":   true,
+		"kratos_courier_templates_verification_code_valid_email_subject":          true,
+		"kratos_courier_templates_verification_code_valid_sms_body_plaintext":     true,
+		"kratos_courier_templates_verification_invalid_email_body_html":           true,
+		"kratos_courier_templates_verification_invalid_email_body_plaintext":      true,
+		"kratos_courier_templates_verification_invalid_email_subject":             true,
+		"kratos_courier_templates_verification_valid_email_body_html":             true,
+		"kratos_courier_templates_verification_valid_email_body_plaintext":        true,
+		"kratos_courier_templates_verification_valid_email_subject":               true,
 	}
 }
 

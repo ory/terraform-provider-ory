@@ -193,40 +193,9 @@ type ProjectConfigResourceModel struct {
 	// courier_smtp_connection_uri is handled by SMTPConnectionURI above (sensitive, write-only)
 	CourierSMTPLocalName types.String `tfsdk:"courier_smtp_local_name"`
 
-	// Courier email/SMS templates
-	CourierTemplatesLoginCodeValidEmailBodyHTML               types.String `tfsdk:"courier_templates_login_code_valid_email_body_html"`
-	CourierTemplatesLoginCodeValidEmailBodyPlaintext          types.String `tfsdk:"courier_templates_login_code_valid_email_body_plaintext"`
-	CourierTemplatesLoginCodeValidEmailSubject                types.String `tfsdk:"courier_templates_login_code_valid_email_subject"`
-	CourierTemplatesLoginCodeValidSMSBodyPlaintext            types.String `tfsdk:"courier_templates_login_code_valid_sms_body_plaintext"`
-	CourierTemplatesRecoveryCodeInvalidEmailBodyHTML          types.String `tfsdk:"courier_templates_recovery_code_invalid_email_body_html"`
-	CourierTemplatesRecoveryCodeInvalidEmailBodyPlaintext     types.String `tfsdk:"courier_templates_recovery_code_invalid_email_body_plaintext"`
-	CourierTemplatesRecoveryCodeInvalidEmailSubject           types.String `tfsdk:"courier_templates_recovery_code_invalid_email_subject"`
-	CourierTemplatesRecoveryCodeValidEmailBodyHTML            types.String `tfsdk:"courier_templates_recovery_code_valid_email_body_html"`
-	CourierTemplatesRecoveryCodeValidEmailBodyPlaintext       types.String `tfsdk:"courier_templates_recovery_code_valid_email_body_plaintext"`
-	CourierTemplatesRecoveryCodeValidEmailSubject             types.String `tfsdk:"courier_templates_recovery_code_valid_email_subject"`
-	CourierTemplatesRecoveryInvalidEmailBodyHTML              types.String `tfsdk:"courier_templates_recovery_invalid_email_body_html"`
-	CourierTemplatesRecoveryInvalidEmailBodyPlaintext         types.String `tfsdk:"courier_templates_recovery_invalid_email_body_plaintext"`
-	CourierTemplatesRecoveryInvalidEmailSubject               types.String `tfsdk:"courier_templates_recovery_invalid_email_subject"`
-	CourierTemplatesRecoveryValidEmailBodyHTML                types.String `tfsdk:"courier_templates_recovery_valid_email_body_html"`
-	CourierTemplatesRecoveryValidEmailBodyPlaintext           types.String `tfsdk:"courier_templates_recovery_valid_email_body_plaintext"`
-	CourierTemplatesRecoveryValidEmailSubject                 types.String `tfsdk:"courier_templates_recovery_valid_email_subject"`
-	CourierTemplatesRegistrationCodeValidEmailBodyHTML        types.String `tfsdk:"courier_templates_registration_code_valid_email_body_html"`
-	CourierTemplatesRegistrationCodeValidEmailBodyPlaintext   types.String `tfsdk:"courier_templates_registration_code_valid_email_body_plaintext"`
-	CourierTemplatesRegistrationCodeValidEmailSubject         types.String `tfsdk:"courier_templates_registration_code_valid_email_subject"`
-	CourierTemplatesRegistrationCodeValidSMSBodyPlaintext     types.String `tfsdk:"courier_templates_registration_code_valid_sms_body_plaintext"`
-	CourierTemplatesVerificationCodeInvalidEmailBodyHTML      types.String `tfsdk:"courier_templates_verification_code_invalid_email_body_html"`
-	CourierTemplatesVerificationCodeInvalidEmailBodyPlaintext types.String `tfsdk:"courier_templates_verification_code_invalid_email_body_plaintext"`
-	CourierTemplatesVerificationCodeInvalidEmailSubject       types.String `tfsdk:"courier_templates_verification_code_invalid_email_subject"`
-	CourierTemplatesVerificationCodeValidEmailBodyHTML        types.String `tfsdk:"courier_templates_verification_code_valid_email_body_html"`
-	CourierTemplatesVerificationCodeValidEmailBodyPlaintext   types.String `tfsdk:"courier_templates_verification_code_valid_email_body_plaintext"`
-	CourierTemplatesVerificationCodeValidEmailSubject         types.String `tfsdk:"courier_templates_verification_code_valid_email_subject"`
-	CourierTemplatesVerificationCodeValidSMSBodyPlaintext     types.String `tfsdk:"courier_templates_verification_code_valid_sms_body_plaintext"`
-	CourierTemplatesVerificationInvalidEmailBodyHTML          types.String `tfsdk:"courier_templates_verification_invalid_email_body_html"`
-	CourierTemplatesVerificationInvalidEmailBodyPlaintext     types.String `tfsdk:"courier_templates_verification_invalid_email_body_plaintext"`
-	CourierTemplatesVerificationInvalidEmailSubject           types.String `tfsdk:"courier_templates_verification_invalid_email_subject"`
-	CourierTemplatesVerificationValidEmailBodyHTML            types.String `tfsdk:"courier_templates_verification_valid_email_body_html"`
-	CourierTemplatesVerificationValidEmailBodyPlaintext       types.String `tfsdk:"courier_templates_verification_valid_email_body_plaintext"`
-	CourierTemplatesVerificationValidEmailSubject             types.String `tfsdk:"courier_templates_verification_valid_email_subject"`
+	// Courier email/SMS templates: intentionally NOT exposed here.
+	// Manage them with the dedicated `ory_email_template` resource, which
+	// handles the required base64:// encoding and storage-URL drift detection.
 
 	// Feature flags
 	FeatureFlagsCacheableSessions                types.Bool   `tfsdk:"feature_flags_cacheable_sessions"`
