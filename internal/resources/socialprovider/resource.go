@@ -56,25 +56,26 @@ type SocialProviderResource struct {
 }
 
 type SocialProviderResourceModel struct {
-	ID                 types.String `tfsdk:"id"`
-	ProjectID          types.String `tfsdk:"project_id"`
-	ProviderID         types.String `tfsdk:"provider_id"`
-	ProviderType       types.String `tfsdk:"provider_type"`
-	ClientID           types.String `tfsdk:"client_id"`
-	ClientSecret       types.String `tfsdk:"client_secret"`
-	IssuerURL          types.String `tfsdk:"issuer_url"`
-	Scope              types.List   `tfsdk:"scope"`
-	MapperURL          types.String `tfsdk:"mapper_url"`
-	AuthURL            types.String `tfsdk:"auth_url"`
-	TokenURL           types.String `tfsdk:"token_url"`
-	Tenant             types.String `tfsdk:"tenant"`
-	AppleTeamID        types.String `tfsdk:"apple_team_id"`
-	ApplePrivateKeyID  types.String `tfsdk:"apple_private_key_id"`
-	ApplePrivateKey    types.String `tfsdk:"apple_private_key"`
-	AutoLink           types.Bool   `tfsdk:"auto_link"`
-	Label              types.String `tfsdk:"label"`
-	AccountLinkingMode types.String `tfsdk:"account_linking_mode"`
-	BaseRedirectURI    types.String `tfsdk:"base_redirect_uri"`
+	ID                         types.String `tfsdk:"id"`
+	ProjectID                  types.String `tfsdk:"project_id"`
+	ProviderID                 types.String `tfsdk:"provider_id"`
+	ProviderType               types.String `tfsdk:"provider_type"`
+	ClientID                   types.String `tfsdk:"client_id"`
+	ClientSecret               types.String `tfsdk:"client_secret"`
+	IssuerURL                  types.String `tfsdk:"issuer_url"`
+	Scope                      types.List   `tfsdk:"scope"`
+	MapperURL                  types.String `tfsdk:"mapper_url"`
+	AuthURL                    types.String `tfsdk:"auth_url"`
+	TokenURL                   types.String `tfsdk:"token_url"`
+	Tenant                     types.String `tfsdk:"tenant"`
+	AppleTeamID                types.String `tfsdk:"apple_team_id"`
+	ApplePrivateKeyID          types.String `tfsdk:"apple_private_key_id"`
+	ApplePrivateKey            types.String `tfsdk:"apple_private_key"`
+	AutoLink                   types.Bool   `tfsdk:"auto_link"`
+	Label                      types.String `tfsdk:"label"`
+	AccountLinkingMode         types.String `tfsdk:"account_linking_mode"`
+	BaseRedirectURI            types.String `tfsdk:"base_redirect_uri"`
+	AdditionalIDTokenAudiences types.List   `tfsdk:"additional_id_token_audiences"`
 }
 
 func (r *SocialProviderResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -186,6 +187,11 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				DeprecationMessage: "Use ory_project_config.selfservice_methods_oidc_config_base_redirect_uri instead. " +
 					"This attribute sets a global OIDC config value, not a per-provider setting, " +
 					"and is better managed at the project level.",
+			},
+			"additional_id_token_audiences": schema.ListAttribute{
+				Description: "Additional audiences allowed in the ID Token. Only relevant in OIDC flows that submit an ID Token directly instead of using the callback from the OIDC provider (e.g., native mobile apps signing in with Google or Apple where the app and the OIDC client are registered with different audiences).",
+				Optional:    true,
+				ElementType: types.StringType,
 			},
 		},
 	}
@@ -347,6 +353,12 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 	}
 	if !plan.AccountLinkingMode.IsNull() && !plan.AccountLinkingMode.IsUnknown() {
 		config["account_linking_mode"] = plan.AccountLinkingMode.ValueString()
+	}
+
+	if !plan.AdditionalIDTokenAudiences.IsNull() && !plan.AdditionalIDTokenAudiences.IsUnknown() {
+		var audiences []string
+		plan.AdditionalIDTokenAudiences.ElementsAs(ctx, &audiences, false)
+		config["additional_id_token_audiences"] = audiences
 	}
 
 	// Apple-specific fields — skip empty strings to avoid sending blank credentials
@@ -684,6 +696,23 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		state.AccountLinkingMode = types.StringValue(mode)
 	} else {
 		state.AccountLinkingMode = types.StringNull()
+	}
+
+	// Read additional_id_token_audiences from API (returned on read)
+	if audiences, ok := provider["additional_id_token_audiences"].([]interface{}); ok && len(audiences) > 0 {
+		audienceStrings := make([]string, 0, len(audiences))
+		for _, a := range audiences {
+			if str, ok := a.(string); ok {
+				audienceStrings = append(audienceStrings, str)
+			}
+		}
+		audienceList, diags := types.ListValueFrom(ctx, types.StringType, audienceStrings)
+		resp.Diagnostics.Append(diags...)
+		if !resp.Diagnostics.HasError() {
+			state.AdditionalIDTokenAudiences = audienceList
+		}
+	} else {
+		state.AdditionalIDTokenAudiences = types.ListNull(types.StringType)
 	}
 
 	// Read Apple-specific fields, clearing stale state when not returned by the API
