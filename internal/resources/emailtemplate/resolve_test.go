@@ -5,8 +5,6 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
@@ -93,6 +91,31 @@ func TestUrlHashMatchesContent(t *testing.T) {
 	}
 }
 
+func TestIsHTTPSURL(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"https://example.com/x", true},
+		{"https://storage.googleapis.com/bac-gcs/aaa.txt", true},
+		{"http://example.com/x", false},  // plain http rejected to keep SSRF surface small
+		{"ftp://example.com/x", false},   // arbitrary schemes never fetched
+		{"file:///etc/passwd", false},    // explicitly rejected
+		{"base64://SGVsbG8=", false},     // base64 literal, callers decode separately
+		{"Hello world", false},           // plain text
+		{"https:///path-no-host", false}, // scheme-only, no host
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			if got := isHTTPSURL(tc.in); got != tc.want {
+				t.Fatalf("isHTTPSURL(%q) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestResolveStoredTemplate(t *testing.T) {
 	t.Parallel()
 
@@ -103,10 +126,33 @@ func TestResolveStoredTemplate(t *testing.T) {
 	otherSum := sha512.Sum512([]byte("OTHER VALUE"))
 	driftedURL := "https://storage.googleapis.com/bac-gcs-staging/" + hex.EncodeToString(otherSum[:]) + ".txt"
 
-	t.Run("returns decoded literal", func(t *testing.T) {
+	t.Run("returns decoded base64 literal", func(t *testing.T) {
 		got := resolveStoredTemplate(context.Background(), "base64://SGVsbG8=", "previous")
 		if got != "Hello" {
 			t.Fatalf("got %q want %q", got, "Hello")
+		}
+	})
+
+	t.Run("returns plain literal as-is", func(t *testing.T) {
+		got := resolveStoredTemplate(context.Background(), "literal value", "previous")
+		if got != "literal value" {
+			t.Fatalf("got %q want %q", got, "literal value")
+		}
+	})
+
+	t.Run("non-https URL is treated as literal not fetched", func(t *testing.T) {
+		// http://, ftp://, file:// must never trigger the network fetcher;
+		// `isHTTPSURL` returns false so we surface the raw value.
+		origFetcher := urlContentFetcher
+		urlContentFetcher = func(_ context.Context, _ string) (string, error) {
+			t.Fatal("fetcher must not be called for non-HTTPS schemes")
+			return "", nil
+		}
+		defer func() { urlContentFetcher = origFetcher }()
+
+		got := resolveStoredTemplate(context.Background(), "http://example.com/foo", "previous")
+		if got != "http://example.com/foo" {
+			t.Fatalf("got %q want literal http URL", got)
 		}
 	})
 
@@ -129,13 +175,10 @@ func TestResolveStoredTemplate(t *testing.T) {
 	})
 
 	t.Run("hash mismatch fetches and returns body", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = w.Write([]byte("OTHER VALUE"))
-		}))
-		defer srv.Close()
-
 		origFetcher := urlContentFetcher
-		urlContentFetcher = func(_ context.Context, _ string) (string, error) {
+		var fetchedURL string
+		urlContentFetcher = func(_ context.Context, u string) (string, error) {
+			fetchedURL = u
 			return "OTHER VALUE", nil
 		}
 		defer func() { urlContentFetcher = origFetcher }()
@@ -143,6 +186,9 @@ func TestResolveStoredTemplate(t *testing.T) {
 		got := resolveStoredTemplate(context.Background(), driftedURL, content)
 		if got != "OTHER VALUE" {
 			t.Fatalf("got %q want %q", got, "OTHER VALUE")
+		}
+		if fetchedURL != driftedURL {
+			t.Fatalf("fetcher called with %q, want %q", fetchedURL, driftedURL)
 		}
 	})
 
@@ -159,10 +205,10 @@ func TestResolveStoredTemplate(t *testing.T) {
 		}
 	})
 
-	t.Run("empty api value preserves state", func(t *testing.T) {
+	t.Run("empty api value clears state", func(t *testing.T) {
 		got := resolveStoredTemplate(context.Background(), "", "state value")
-		if got != "state value" {
-			t.Fatalf("got %q want state value", got)
+		if got != "" {
+			t.Fatalf("got %q want empty (Console reset must surface as drift)", got)
 		}
 	})
 }

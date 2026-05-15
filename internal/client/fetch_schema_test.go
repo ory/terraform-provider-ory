@@ -255,3 +255,53 @@ func TestIsPrivateAddr(t *testing.T) {
 		})
 	}
 }
+
+// TestFetchSafeHTTPS covers the exported helper used by resources that need
+// to fetch URLs returned by the Ory API (e.g. email template storage URLs).
+// The defensive plumbing — non-HTTPS rejection, private-host pre-flight,
+// safeDialContext, redirect checks, 1 MiB cap — is shared with
+// fetchSchemaFromURL, so we only sanity-check the new surface here.
+func TestFetchSafeHTTPS(t *testing.T) {
+	t.Run("rejects non-HTTPS scheme", func(t *testing.T) {
+		_, err := FetchSafeHTTPS(context.Background(), "email template", "http://example.com/x.txt")
+		if err == nil {
+			t.Fatal("expected error for http:// URL")
+		}
+	})
+
+	t.Run("rejects private host", func(t *testing.T) {
+		_, err := FetchSafeHTTPS(context.Background(), "email template", "https://127.0.0.1/x.txt")
+		if err == nil {
+			t.Fatal("expected error for loopback host")
+		}
+	})
+
+	t.Run("returns body and caps at MaxBytes", func(t *testing.T) {
+		// Serve 2 MiB; expect FetchSafeHTTPS to truncate at FetchSafeHTTPSMaxBytes.
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			payload := make([]byte, 2*FetchSafeHTTPSMaxBytes)
+			for i := range payload {
+				payload[i] = 'a'
+			}
+			_, _ = w.Write(payload)
+		}))
+		defer srv.Close()
+
+		origClient := schemaFetchClient
+		origChecker := hostChecker
+		schemaFetchClient = srv.Client()
+		hostChecker = func(context.Context, string) (bool, error) { return false, nil }
+		defer func() {
+			schemaFetchClient = origClient
+			hostChecker = origChecker
+		}()
+
+		body, err := FetchSafeHTTPS(context.Background(), "email template", srv.URL+"/big.txt")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if int64(len(body)) != FetchSafeHTTPSMaxBytes {
+			t.Fatalf("expected body capped at %d bytes, got %d", FetchSafeHTTPSMaxBytes, len(body))
+		}
+	})
+}
