@@ -313,6 +313,62 @@ func TestAccSocialProviderResource_additionalIDTokenAudiences(t *testing.T) {
 	})
 }
 
+// TestAccSocialProviderResource_pkce verifies that the pkce attribute is set,
+// read, updated, and removed correctly. PKCE accepts "auto", "force", or
+// "never"; this test exercises the round-trip for "force" → "never" → unset.
+func TestAccSocialProviderResource_pkce(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with pkce = "force"
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_pkce.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-google-pkce"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "pkce", "force"),
+				),
+			},
+			// Verify no perpetual diff
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_pkce.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Update pkce to "never"
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_pkce_updated.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "pkce", "never"),
+				),
+			},
+			// Remove pkce from config — should clear it server-side
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_pkce_removed.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "pkce"),
+				),
+			},
+			// Verify no diff after removal
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_pkce_removed.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// ImportState
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           "test-google-pkce",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+		},
+	})
+}
+
 // TestAccSocialProviderResource_aal2Values exercises aal2_acr_values and
 // aal2_amr_values across create, update (changed list contents), removal, and
 // import. Values are opaque strings stored on the provider config — the API
