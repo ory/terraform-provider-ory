@@ -15,6 +15,9 @@ resource "ory_project_config" "test" {
   oauth2_pkce_enforced                    = false
   oauth2_pkce_enforced_for_public_clients = false
 
+  # Refresh token rotation
+  oauth2_grant_refresh_token_rotation_grace_reuse_count = 3
+
   # Claims
   oauth2_allowed_top_level_claims = ["amr", "acr"]
   oauth2_mirror_top_level_claims  = false

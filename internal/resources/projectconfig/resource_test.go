@@ -4,6 +4,7 @@ package projectconfig_test
 
 import (
 	"context"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -62,6 +63,7 @@ func TestAccProjectConfigResource_hydraConfig(t *testing.T) {
 					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_strategies_scope", "wildcard"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_pkce_enforced", "false"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_pkce_enforced_for_public_clients", "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_grant_refresh_token_rotation_grace_reuse_count", "3"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_allowed_top_level_claims.#", "2"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_mirror_top_level_claims", "false"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_urls_login", "https://example.com/login"),
@@ -642,6 +644,76 @@ func TestAccProjectConfigResource_recoveryFlow(t *testing.T) {
 					"cors_enabled",
 					"selfservice_methods_password_config_min_password_length",
 					"smtp_connection_uri",
+				},
+			},
+		},
+	})
+}
+
+func TestAccProjectConfigResource_oauth2TokenPrefix(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Reject invalid prefix at plan time (no `%s` substitution).
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_token_prefix.tf.tmpl", map[string]string{
+					"Prefix": "acme_",
+				}),
+				ExpectError: regexp.MustCompile(`(?s)must be empty or a fmt\.Sprintf template`),
+			},
+			// Reject invalid prefix at plan time (contains hyphen).
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_token_prefix.tf.tmpl", map[string]string{
+					"Prefix": "a-b_%s_",
+				}),
+				ExpectError: regexp.MustCompile(`(?s)must be empty or a fmt\.Sprintf template`),
+			},
+			// Create with a valid prefix.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_token_prefix.tf.tmpl", map[string]string{
+					"Prefix": "acme_%s_",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_prefix", "acme_%s_"),
+				),
+			},
+			// Update to a different valid prefix.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_token_prefix.tf.tmpl", map[string]string{
+					"Prefix": "tfprov_%s_",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_prefix", "tfprov_%s_"),
+				),
+			},
+			// Plan-only: no diff after apply.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_token_prefix.tf.tmpl", map[string]string{
+					"Prefix": "tfprov_%s_",
+				}),
+				PlanOnly: true,
+			},
+			// Reset to the default by sending an empty prefix.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_token_prefix.tf.tmpl", map[string]string{
+					"Prefix": "",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_prefix", ""),
+				),
+			},
+			// Import verifies the resource ID round-trips. Per-attribute values
+			// aren't refreshed until the next apply (project_config is a
+			// singleton view over the project), so we ignore them on import.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"oauth2_token_prefix",
+					"cors_enabled",
 				},
 			},
 		},

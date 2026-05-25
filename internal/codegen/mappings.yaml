@@ -172,6 +172,20 @@ attributes:
     deprecated_name: oauth2_scope_strategy
     deprecated_go_field: OAuth2ScopeStrategy
 
+  - name: oauth2_token_prefix
+    go_field: OAuth2TokenPrefix
+    type: string
+    openapi_property: hydra_oauth2_token_prefix
+    description: >-
+      Per-project Access Token, Refresh Token, and Authorization Code prefix template.
+      Must be a `fmt.Sprintf` template with exactly one `%s` substitution that is replaced at issuance time with the token kind
+      (`at` for access token, `rt` for refresh token, `ac` for authorization code). For example, `acme_%s_` yields `acme_at_…`, `acme_rt_…`, and `acme_ac_…`.
+      The rendered prefix may contain only ASCII letters, digits, and underscores. Leave empty to keep the default `ory_%s_` prefix.
+      This is an Enterprise feature.
+    validators:
+      regex: '^$|^[A-Za-z0-9_]*%s[A-Za-z0-9_]*$'
+      regex_message: "must be empty or a fmt.Sprintf template with exactly one '%s' substitution containing only ASCII letters, digits, and underscores (e.g. 'acme_%s_')"
+
   - name: oauth2_urls_consent
     go_field: OAuth2URLsConsent
     type: string
@@ -625,6 +639,12 @@ attributes:
     type: string
     openapi_property: hydra_oauth2_grant_refresh_token_rotation_grace_period
     description: "Grace period for refresh token rotation (e.g. '5s'). Set to '0s' to disable."
+
+  - name: oauth2_grant_refresh_token_rotation_grace_reuse_count
+    go_field: OAuth2GrantRefreshTokenRotationGraceReuseCount
+    type: int64
+    openapi_property: hydra_oauth2_grant_refresh_token_rotation_grace_reuse_count
+    description: "Maximum number of times a refresh token can be reused within the rotation grace period. Set to `0` to disable the reuse limit."
 
   - name: oauth2_refresh_token_hook
     go_field: OAuth2RefreshTokenHook
@@ -1394,17 +1414,4 @@ attributes:
     type: bool
     openapi_property: account_experience_hide_registration_link
     description: "Whether to hide the registration link on the account experience login card."
-
-  # --- Auto-discovered entries (review names/descriptions before merging) ---
-  - name: oauth2_grant_refresh_token_rotation_grace_reuse_count
-    go_field: OAuth2GrantRefreshTokenRotationGraceReuseCount
-    type: int64
-    openapi_property: hydra_oauth2_grant_refresh_token_rotation_grace_reuse_count
-    description: "OAuth2 Grant Refresh Token Rotation Grace Reuse Count. The maximum number of times a refresh token can be reused within the grace period. If set to `null` or `0`, the limit is disabled."
-
-  - name: oauth2_token_prefix
-    go_field: OAuth2TokenPrefix
-    type: string
-    openapi_property: hydra_oauth2_token_prefix
-    description: "Sets a per-project Access Token, Refresh Token, and Authorization Code prefix"
 

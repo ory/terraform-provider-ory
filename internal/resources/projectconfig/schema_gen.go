@@ -154,6 +154,16 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:           true,
 			DeprecationMessage: "Use oauth2_strategies_scope instead. This attribute will be removed in a future major version.",
 		},
+		"oauth2_token_prefix": schema.StringAttribute{
+			Description: "Per-project Access Token, Refresh Token, and Authorization Code prefix template. Must be a `fmt.Sprintf` template with exactly one `%s` substitution that is replaced at issuance time with the token kind (`at` for access token, `rt` for refresh token, `ac` for authorization code). For example, `acme_%s_` yields `acme_at_…`, `acme_rt_…`, and `acme_ac_…`. The rendered prefix may contain only ASCII letters, digits, and underscores. Leave empty to keep the default `ory_%s_` prefix. This is an Enterprise feature.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.RegexMatches(
+					regexp.MustCompile("^$|^[A-Za-z0-9_]*%s[A-Za-z0-9_]*$"),
+					"must be empty or a fmt.Sprintf template with exactly one '%s' substitution containing only ASCII letters, digits, and underscores (e.g. 'acme_%s_')",
+				),
+			},
+		},
 		"oauth2_urls_consent": schema.StringAttribute{
 			Description: "OAuth2 consent endpoint URL.",
 			Optional:    true,
@@ -601,6 +611,10 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 		},
 		"oauth2_grant_refresh_token_rotation_grace_period": schema.StringAttribute{
 			Description: "Grace period for refresh token rotation (e.g. '5s'). Set to '0s' to disable.",
+			Optional:    true,
+		},
+		"oauth2_grant_refresh_token_rotation_grace_reuse_count": schema.Int64Attribute{
+			Description: "Maximum number of times a refresh token can be reused within the rotation grace period. Set to `0` to disable the reuse limit.",
 			Optional:    true,
 		},
 		"oauth2_refresh_token_hook": schema.StringAttribute{
@@ -1112,14 +1126,6 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 		},
 		"account_experience_hide_registration_link": schema.BoolAttribute{
 			Description: "Whether to hide the registration link on the account experience login card.",
-			Optional:    true,
-		},
-		"oauth2_grant_refresh_token_rotation_grace_reuse_count": schema.Int64Attribute{
-			Description: "OAuth2 Grant Refresh Token Rotation Grace Reuse Count. The maximum number of times a refresh token can be reused within the grace period. If set to `null` or `0`, the limit is disabled.",
-			Optional:    true,
-		},
-		"oauth2_token_prefix": schema.StringAttribute{
-			Description: "Sets a per-project Access Token, Refresh Token, and Authorization Code prefix",
 			Optional:    true,
 		},
 	}

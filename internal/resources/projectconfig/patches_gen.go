@@ -57,6 +57,7 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.OAuth2StrategiesAccessToken, &plan.OAuth2AccessTokenStrategy, "/services/oauth2/config/strategies/access_token"},
 		{&plan.OAuth2StrategiesJWTScopeClaim, &plan.OAuth2JWTScopeClaim, "/services/oauth2/config/strategies/jwt/scope_claim"},
 		{&plan.OAuth2StrategiesScope, &plan.OAuth2ScopeStrategy, "/services/oauth2/config/strategies/scope"},
+		{&plan.OAuth2TokenPrefix, nil, "/services/oauth2/config/oauth2/token_prefix"},
 		{&plan.OAuth2URLsConsent, &plan.OAuth2ConsentURL, "/services/oauth2/config/urls/consent"},
 		{&plan.OAuth2URLsLogin, &plan.OAuth2LoginURL, "/services/oauth2/config/urls/login"},
 		{&plan.OAuth2URLsLogout, &plan.OAuth2LogoutURL, "/services/oauth2/config/urls/logout"},
@@ -156,7 +157,6 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.CourierHTTPRequestConfigAuthType, nil, "/services/identity/config/courier/http/request_config/auth/type"},
 		{&plan.CourierHTTPRequestConfigMethod, nil, "/services/identity/config/courier/http/request_config/method"},
 		{&plan.SMTPConnectionURI, nil, "/services/identity/config/courier/smtp/connection_uri"},
-		{&plan.OAuth2TokenPrefix, nil, "/services/oauth2/config/oauth2/token_prefix"},
 	}
 }
 
@@ -225,8 +225,8 @@ func simpleInt64PatchEntries(plan *ProjectConfigResourceModel) []Int64PatchEntry
 	return []Int64PatchEntry{
 		{&plan.SelfserviceMethodsPasswordConfigMinPasswordLength, &plan.PasswordMinLength, "/services/identity/config/selfservice/methods/password/config/min_password_length"},
 		{&plan.SelfserviceMethodsPasswordConfigMaxBreaches, &plan.PasswordMaxBreaches, "/services/identity/config/selfservice/methods/password/config/max_breaches"},
-		{&plan.SelfserviceMethodsCodeConfigMaxSubmissions, nil, "/services/identity/config/selfservice/methods/code/max_submissions"},
 		{&plan.OAuth2GrantRefreshTokenRotationGraceReuseCount, nil, "/services/oauth2/config/oauth2/grant/refresh_token/rotation_grace_reuse_count"},
+		{&plan.SelfserviceMethodsCodeConfigMaxSubmissions, nil, "/services/identity/config/selfservice/methods/code/max_submissions"},
 	}
 }
 

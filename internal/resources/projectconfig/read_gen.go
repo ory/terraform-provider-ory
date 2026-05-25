@@ -513,6 +513,7 @@ func oauth2StringReadEntries(state *ProjectConfigResourceModel) []StringReadEntr
 		{&state.OAuth2StrategiesAccessToken, &state.OAuth2AccessTokenStrategy, []string{"strategies", "access_token"}, false},
 		{&state.OAuth2StrategiesJWTScopeClaim, &state.OAuth2JWTScopeClaim, []string{"strategies", "jwt", "scope_claim"}, false},
 		{&state.OAuth2StrategiesScope, &state.OAuth2ScopeStrategy, []string{"strategies", "scope"}, false},
+		{&state.OAuth2TokenPrefix, nil, []string{"oauth2", "token_prefix"}, false},
 		{&state.OAuth2URLsConsent, &state.OAuth2ConsentURL, []string{"urls", "consent"}, false},
 		{&state.OAuth2URLsLogin, &state.OAuth2LoginURL, []string{"urls", "login"}, false},
 		{&state.OAuth2URLsLogout, &state.OAuth2LogoutURL, []string{"urls", "logout"}, false},
@@ -531,7 +532,6 @@ func oauth2StringReadEntries(state *ProjectConfigResourceModel) []StringReadEntr
 		{&state.OAuth2WebfingerOIDCDiscoveryJwksURL, nil, []string{"webfinger", "oidc_discovery", "jwks_url"}, false},
 		{&state.OAuth2WebfingerOIDCDiscoveryTokenURL, nil, []string{"webfinger", "oidc_discovery", "token_url"}, false},
 		{&state.OAuth2WebfingerOIDCDiscoveryUserinfoURL, nil, []string{"webfinger", "oidc_discovery", "userinfo_url"}, false},
-		{&state.OAuth2TokenPrefix, nil, []string{"oauth2", "token_prefix"}, false},
 	}
 }
 

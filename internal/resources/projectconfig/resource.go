@@ -167,8 +167,10 @@ type ProjectConfigResourceModel struct {
 	OAuth2GrantJWTJTIOptional                         types.Bool   `tfsdk:"oauth2_grant_jwt_jti_optional"`
 	OAuth2GrantJWTMaxTTL                              types.String `tfsdk:"oauth2_grant_jwt_max_ttl"`
 	OAuth2GrantRefreshTokenRotationGracePeriod        types.String `tfsdk:"oauth2_grant_refresh_token_rotation_grace_period"`
+	OAuth2GrantRefreshTokenRotationGraceReuseCount    types.Int64  `tfsdk:"oauth2_grant_refresh_token_rotation_grace_reuse_count"`
 	OAuth2RefreshTokenHook                            types.String `tfsdk:"oauth2_refresh_token_hook"`
 	OAuth2TokenHook                                   types.String `tfsdk:"oauth2_token_hook"`
+	OAuth2TokenPrefix                                 types.String `tfsdk:"oauth2_token_prefix"`
 	OIDCDynamicClientRegistrationEnabled              types.Bool   `tfsdk:"oidc_dynamic_client_registration_enabled"`
 	OIDCSubjectIdentifiersPairwiseSalt                types.String `tfsdk:"oidc_subject_identifiers_pairwise_salt"`
 	OAuth2UrlsPostLogoutRedirect                      types.String `tfsdk:"oauth2_urls_post_logout_redirect"`
@@ -403,10 +405,6 @@ type ProjectConfigResourceModel struct {
 	// Auto-discovered (review naming before release)
 	AccountExperienceHideOryBranding      types.Bool `tfsdk:"account_experience_hide_ory_branding"`
 	AccountExperienceHideRegistrationLink types.Bool `tfsdk:"account_experience_hide_registration_link"`
-
-	// Auto-discovered (review naming before release)
-	OAuth2GrantRefreshTokenRotationGraceReuseCount types.Int64  `tfsdk:"oauth2_grant_refresh_token_rotation_grace_reuse_count"`
-	OAuth2TokenPrefix                              types.String `tfsdk:"oauth2_token_prefix"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---
