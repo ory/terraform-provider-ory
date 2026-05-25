@@ -423,6 +423,7 @@ terraform plan  # verify no changes
 - `oauth2_grant_jwt_jti_optional` (Boolean) Make the `jti` claim optional in JWT assertion grants (RFC 7523).
 - `oauth2_grant_jwt_max_ttl` (String) Maximum TTL for JWT assertions in grant flows (e.g. '720h').
 - `oauth2_grant_refresh_token_rotation_grace_period` (String) Grace period for refresh token rotation (e.g. '5s'). Set to '0s' to disable.
+- `oauth2_grant_refresh_token_rotation_grace_reuse_count` (Number) OAuth2 Grant Refresh Token Rotation Grace Reuse Count. The maximum number of times a refresh token can be reused within the grace period. If set to `null` or `0`, the limit is disabled.
 - `oauth2_id_token_lifespan` (String, Deprecated) OAuth2 ID token lifespan (e.g., '1h'). Requires Hydra service.
 - `oauth2_issuer_url` (String, Deprecated) OAuth2 issuer URL. Overrides the default project URL used as the OAuth2/OIDC issuer.
 - `oauth2_jwt_scope_claim` (String, Deprecated) How scopes are represented in JWT access tokens ('list', 'string', or 'both').
@@ -448,6 +449,7 @@ terraform plan  # verify no changes
 - `oauth2_strategies_jwt_scope_claim` (String) How scopes are represented in JWT access tokens ('list', 'string', or 'both').
 - `oauth2_strategies_scope` (String) OAuth2 scope matching strategy ('exact', 'wildcard').
 - `oauth2_token_hook` (String) Webhook URL called during token issuance for all grant types to customize claims.
+- `oauth2_token_prefix` (String) Sets a per-project Access Token, Refresh Token, and Authorization Code prefix
 - `oauth2_ttl_access_token` (String) OAuth2 access token lifespan (e.g., '1h', '30m'). Requires Hydra service.
 - `oauth2_ttl_auth_code` (String) OAuth2 authorization code lifespan (e.g., '30m'). Requires Hydra service.
 - `oauth2_ttl_id_token` (String) OAuth2 ID token lifespan (e.g., '1h'). Requires Hydra service.

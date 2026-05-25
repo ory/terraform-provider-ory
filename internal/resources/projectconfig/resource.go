@@ -403,6 +403,10 @@ type ProjectConfigResourceModel struct {
 	// Auto-discovered (review naming before release)
 	AccountExperienceHideOryBranding      types.Bool `tfsdk:"account_experience_hide_ory_branding"`
 	AccountExperienceHideRegistrationLink types.Bool `tfsdk:"account_experience_hide_registration_link"`
+
+	// Auto-discovered (review naming before release)
+	OAuth2GrantRefreshTokenRotationGraceReuseCount types.Int64  `tfsdk:"oauth2_grant_refresh_token_rotation_grace_reuse_count"`
+	OAuth2TokenPrefix                              types.String `tfsdk:"oauth2_token_prefix"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---

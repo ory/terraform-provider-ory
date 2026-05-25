@@ -235,6 +235,19 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				}
 			}
 		}
+		for _, e := range oauth2Int64ReadEntries(state) {
+			target := e.Field
+			if target.IsNull() && e.Deprecated != nil && !e.Deprecated.IsNull() {
+				target = e.Deprecated
+			}
+			if !target.IsNull() {
+				if v, ok := getNestedFloat(oauth2Config, e.Keys...); ok {
+					if v == math.Trunc(v) {
+						*target = types.Int64Value(int64(v))
+					}
+				}
+			}
+		}
 		for _, e := range oauth2ListStringReadEntries(state) {
 			target := e.Field
 			if target.IsNull() && e.Deprecated != nil && !e.Deprecated.IsNull() {
@@ -507,7 +520,7 @@ func oauth2StringReadEntries(state *ProjectConfigResourceModel) []StringReadEntr
 		{&state.OAuth2URLsSelfIssuer, &state.OAuth2IssuerURL, []string{"urls", "self", "issuer"}, false},
 		{&state.OAuth2ServeCookiesSameSiteMode, &state.OAuth2CookiesSameSiteMode, []string{"serve", "cookies", "same_site_mode"}, false},
 		{&state.OAuth2GrantJWTMaxTTL, nil, []string{"oauth2", "grant", "jwt", "max_ttl"}, false},
-		{&state.OAuth2GrantRefreshTokenRotationGracePeriod, nil, []string{"oauth2", "grant", "refresh_token_rotation_grace_period"}, false},
+		{&state.OAuth2GrantRefreshTokenRotationGracePeriod, nil, []string{"oauth2", "grant", "refresh_token", "rotation_grace_period"}, false},
 		{&state.OAuth2RefreshTokenHook, nil, []string{"oauth2", "refresh_token_hook"}, false},
 		{&state.OAuth2TokenHook, nil, []string{"oauth2", "token_hook", "url"}, false},
 		{&state.OIDCSubjectIdentifiersPairwiseSalt, nil, []string{"oidc", "subject_identifiers", "pairwise_salt"}, false},
@@ -518,6 +531,7 @@ func oauth2StringReadEntries(state *ProjectConfigResourceModel) []StringReadEntr
 		{&state.OAuth2WebfingerOIDCDiscoveryJwksURL, nil, []string{"webfinger", "oidc_discovery", "jwks_url"}, false},
 		{&state.OAuth2WebfingerOIDCDiscoveryTokenURL, nil, []string{"webfinger", "oidc_discovery", "token_url"}, false},
 		{&state.OAuth2WebfingerOIDCDiscoveryUserinfoURL, nil, []string{"webfinger", "oidc_discovery", "userinfo_url"}, false},
+		{&state.OAuth2TokenPrefix, nil, []string{"oauth2", "token_prefix"}, false},
 	}
 }
 
@@ -533,6 +547,12 @@ func oauth2BoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry {
 		{&state.OAuth2GrantJWTJTIOptional, nil, []string{"oauth2", "grant", "jwt", "jti_optional"}},
 		{&state.OIDCDynamicClientRegistrationEnabled, nil, []string{"oidc", "dynamic_client_registration", "enabled"}},
 		{&state.OAuth2PreserveExtClaims, nil, []string{"oauth2", "preserve_ext_claims"}},
+	}
+}
+
+func oauth2Int64ReadEntries(state *ProjectConfigResourceModel) []Int64ReadEntry {
+	return []Int64ReadEntry{
+		{&state.OAuth2GrantRefreshTokenRotationGraceReuseCount, nil, []string{"oauth2", "grant", "refresh_token", "rotation_grace_reuse_count"}},
 	}
 }
 

@@ -1114,5 +1114,13 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Whether to hide the registration link on the account experience login card.",
 			Optional:    true,
 		},
+		"oauth2_grant_refresh_token_rotation_grace_reuse_count": schema.Int64Attribute{
+			Description: "OAuth2 Grant Refresh Token Rotation Grace Reuse Count. The maximum number of times a refresh token can be reused within the grace period. If set to `null` or `0`, the limit is disabled.",
+			Optional:    true,
+		},
+		"oauth2_token_prefix": schema.StringAttribute{
+			Description: "Sets a per-project Access Token, Refresh Token, and Authorization Code prefix",
+			Optional:    true,
+		},
 	}
 }
