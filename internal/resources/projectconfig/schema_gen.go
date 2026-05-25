@@ -1098,7 +1098,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			ElementType: types.StringType,
 		},
 		"smtp_connection_uri": schema.StringAttribute{
-			Description: "SMTP connection URI for sending emails (e.g., smtps://user:pass@host:port).",
+			Description: "SMTP connection URI for sending emails. The URI scheme selects the security mode: `smtp://` uses STARTTLS (recommended for port 587), `smtps://` uses implicit TLS (recommended for port 465). Append `?disable_starttls=true` for cleartext or `?skip_ssl_verify=true` to skip certificate verification (development only). See the SMTP Security Modes section in the resource documentation for the full list.",
 			Optional:    true,
 			Sensitive:   true,
 		},

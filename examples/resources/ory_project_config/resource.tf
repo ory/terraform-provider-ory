@@ -132,8 +132,17 @@ resource "ory_project_config" "self_hosted_ui" {
   selfservice_flows_verification_enabled = true
 }
 
-# SMTP configuration for custom email delivery
+# SMTP configuration for custom email delivery.
+#
+# The URI scheme selects the security mode:
+#   smtp://  -> STARTTLS (typical for port 587)
+#   smtps:// -> Implicit TLS (typical for port 465)
+#
+# Append ?disable_starttls=true for cleartext (local dev only) or
+# ?skip_ssl_verify=true to skip certificate verification.
+# See the "SMTP Security Modes" section of the resource docs for details.
 resource "ory_project_config" "with_smtp" {
+  # STARTTLS on port 587 (recommended for most providers)
   smtp_connection_uri       = var.smtp_connection_uri
   courier_smtp_from_address = "noreply@example.com"
   courier_smtp_from_name    = "MyApp"
@@ -145,9 +154,13 @@ resource "ory_project_config" "with_smtp" {
 }
 
 variable "smtp_connection_uri" {
-  type        = string
-  sensitive   = true
-  description = "SMTP connection URI (e.g., smtps://user:pass@smtp.example.com:465)"
+  type      = string
+  sensitive = true
+  # Examples:
+  #   STARTTLS:      smtp://user:pass@smtp.example.com:587
+  #   Implicit TLS:  smtps://user:pass@smtp.example.com:465
+  #   Cleartext:     smtp://user:pass@localhost:1025/?disable_starttls=true
+  description = "SMTP connection URI. Scheme selects the security mode (smtp:// = STARTTLS, smtps:// = implicit TLS)."
 }
 
 # Native-only flows: explicitly clear browser return URLs

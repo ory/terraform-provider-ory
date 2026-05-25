@@ -74,6 +74,25 @@ This resource supports CORS configuration for both public and admin endpoints:
 - **Public CORS** (`cors_enabled`, `cors_origins`) — Controls CORS for public-facing endpoints (login, registration, etc.)
 - **Admin CORS** (`cors_admin_enabled`, `cors_admin_origins`) — Controls CORS for admin API endpoints
 
+## SMTP Security Modes
+
+The `smtp_connection_uri` attribute selects the SMTP security mode through the URI scheme and query parameters. The Ory API stores the SMTP configuration as a single URI, so there is no separate security-mode attribute — the scheme and query string fully describe the connection.
+
+| Security mode | URI format | Typical port | When to use |
+|---------------|------------|--------------|-------------|
+| STARTTLS (recommended) | `smtp://user:pass@host:port/` | 587 | Most modern SMTP relays (SendGrid, Mailgun, SES SMTP, Postfix submission) |
+| STARTTLS, skip certificate verification | `smtp://user:pass@host:port/?skip_ssl_verify=true` | 587 | Development or self-signed certs only |
+| Cleartext (no encryption) | `smtp://user:pass@host:port/?disable_starttls=true` | 25, 1025 | Local development with [MailHog](https://github.com/mailhog/MailHog), [MailCatcher](https://mailcatcher.me), or similar |
+| Implicit TLS | `smtps://user:pass@host:port/` | 465 | Legacy SMTPS endpoints that negotiate TLS before any plaintext |
+| Implicit TLS, skip certificate verification | `smtps://user:pass@host:port/?skip_ssl_verify=true` | 465 | Development or self-signed certs only |
+| Implicit TLS with server-name override | `smtps://user:pass@host:port/?server_name=mail.example.com` | 465 | When the SMTP host's certificate is issued for a different hostname (non-wildcard certs) |
+
+~> **Common mistake:** Using `smtps://...:587` forces implicit TLS on a port that expects STARTTLS, which causes most providers to reject the connection or return TLS handshake errors. Use `smtp://...:587` for STARTTLS on port 587.
+
+-> **Credential encoding:** Usernames and passwords must be URI-encoded if they contain special characters (e.g., `@`, `:`, `/`, `?`, `#`). Use [`urlencode`](https://developer.hashicorp.com/terraform/language/functions/urlencode) in Terraform to encode them safely.
+
+For more detail, see the [Ory Kratos SMTP documentation](https://www.ory.com/docs/kratos/emails-sms/sending-emails-smtp).
+
 ## Clearing Return URLs
 
 To explicitly clear `default_return_url` and `allowed_return_urls` (e.g., for native-only flows with no browser redirects), set them to empty values:
