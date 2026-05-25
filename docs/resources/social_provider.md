@@ -323,6 +323,27 @@ resource "ory_social_provider" "enterprise_sso" {
 }
 ```
 
+## PKCE
+
+The `pkce` attribute controls whether the OAuth2 authorization code flow uses [Proof Key for Code Exchange (RFC 7636)](https://datatracker.ietf.org/doc/html/rfc7636) when redirecting users to the upstream provider:
+
+| Value | Description |
+|-------|-------------|
+| `auto` (default) | Enable PKCE only when the upstream provider advertises support via OIDC discovery. |
+| `force` | Always send the PKCE challenge. Use only with providers known to support it — providers that do not understand PKCE may reject the authorization request. |
+| `never` | Disable PKCE for this provider. |
+
+```hcl
+resource "ory_social_provider" "google" {
+  provider_id   = "google"
+  provider_type = "google"
+  client_id     = var.google_client_id
+  client_secret = var.google_client_secret
+  scope         = ["email", "profile"]
+  pkce          = "force"
+}
+```
+
 ## Base Redirect URI
 
 The `base_redirect_uri` attribute overrides the base URL Ory uses when constructing OIDC callback URLs. Use this when your project is accessible under a custom domain and you want callbacks to go to that domain rather than the default Ory project URL.
@@ -385,6 +406,7 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 - `issuer_url` (String) OIDC issuer URL (required for generic providers).
 - `label` (String) Human-readable label for the provider, displayed on the login button (e.g., "Sign in with Corporate SSO").
 - `mapper_url` (String) Jsonnet mapper URL for claims mapping. Can be a URL or base64-encoded Jsonnet (base64://...). If not set, a default mapper that extracts email from claims will be used.
+- `pkce` (String) PKCE (Proof Key for Code Exchange) behavior for the OAuth2 authorization code flow. "auto" (default) enables PKCE when the upstream provider advertises support via OIDC discovery; "force" always sends PKCE (use only with providers known to support it); "never" disables PKCE.
 - `project_id` (String) Project ID. If not set, uses provider's project_id.
 - `scope` (List of String) OAuth2 scopes to request.
 - `tenant` (String) Tenant ID (for Microsoft/Azure providers).

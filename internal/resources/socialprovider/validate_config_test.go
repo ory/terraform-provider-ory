@@ -43,6 +43,7 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 		"additional_id_token_audiences": tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
 		"aal2_acr_values":               tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
 		"aal2_amr_values":               tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
+		"pkce":                          tfStringValue(model.Pkce),
 	}
 
 	objType := tftypes.Object{
@@ -69,6 +70,7 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 			"additional_id_token_audiences": tftypes.List{ElementType: tftypes.String},
 			"aal2_acr_values":               tftypes.List{ElementType: tftypes.String},
 			"aal2_amr_values":               tftypes.List{ElementType: tftypes.String},
+			"pkce":                          tftypes.String,
 		},
 	}
 
