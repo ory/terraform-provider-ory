@@ -84,7 +84,7 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.CourierDeliveryStrategy, nil, "/services/identity/config/courier/delivery_strategy"},
 		{&plan.AccountExperienceLocale, nil, "/services/account_experience/config/default_locale"},
 		{&plan.OAuth2GrantJWTMaxTTL, nil, "/services/oauth2/config/oauth2/grant/jwt/max_ttl"},
-		{&plan.OAuth2GrantRefreshTokenRotationGracePeriod, nil, "/services/oauth2/config/oauth2/grant/refresh_token_rotation_grace_period"},
+		{&plan.OAuth2GrantRefreshTokenRotationGracePeriod, nil, "/services/oauth2/config/oauth2/grant/refresh_token/rotation_grace_period"},
 		{&plan.OAuth2RefreshTokenHook, nil, "/services/oauth2/config/oauth2/refresh_token_hook"},
 		{&plan.OAuth2TokenHook, nil, "/services/oauth2/config/oauth2/token_hook/url"},
 		{&plan.OIDCSubjectIdentifiersPairwiseSalt, nil, "/services/oauth2/config/oidc/subject_identifiers/pairwise_salt"},
@@ -156,6 +156,7 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.CourierHTTPRequestConfigAuthType, nil, "/services/identity/config/courier/http/request_config/auth/type"},
 		{&plan.CourierHTTPRequestConfigMethod, nil, "/services/identity/config/courier/http/request_config/method"},
 		{&plan.SMTPConnectionURI, nil, "/services/identity/config/courier/smtp/connection_uri"},
+		{&plan.OAuth2TokenPrefix, nil, "/services/oauth2/config/oauth2/token_prefix"},
 	}
 }
 
@@ -225,6 +226,7 @@ func simpleInt64PatchEntries(plan *ProjectConfigResourceModel) []Int64PatchEntry
 		{&plan.SelfserviceMethodsPasswordConfigMinPasswordLength, &plan.PasswordMinLength, "/services/identity/config/selfservice/methods/password/config/min_password_length"},
 		{&plan.SelfserviceMethodsPasswordConfigMaxBreaches, &plan.PasswordMaxBreaches, "/services/identity/config/selfservice/methods/password/config/max_breaches"},
 		{&plan.SelfserviceMethodsCodeConfigMaxSubmissions, nil, "/services/identity/config/selfservice/methods/code/max_submissions"},
+		{&plan.OAuth2GrantRefreshTokenRotationGraceReuseCount, nil, "/services/oauth2/config/oauth2/grant/refresh_token/rotation_grace_reuse_count"},
 	}
 }
 
