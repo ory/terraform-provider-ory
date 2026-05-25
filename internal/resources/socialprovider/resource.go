@@ -79,6 +79,7 @@ type SocialProviderResourceModel struct {
 	AdditionalIDTokenAudiences types.List   `tfsdk:"additional_id_token_audiences"`
 	Aal2AcrValues              types.List   `tfsdk:"aal2_acr_values"`
 	Aal2AmrValues              types.List   `tfsdk:"aal2_amr_values"`
+	Pkce                       types.String `tfsdk:"pkce"`
 }
 
 func (r *SocialProviderResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -205,6 +206,13 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				Description: "Upstream OpenID Connect `amr` values (per RFC 8176, for example `mfa`, `otp`, `hwk`) that mark the session AAL2 when they appear in the upstream `amr` array. Leave unset to ignore the `amr` claim.",
 				Optional:    true,
 				ElementType: types.StringType,
+			},
+			"pkce": schema.StringAttribute{
+				Description: "PKCE (Proof Key for Code Exchange) behavior for the OAuth2 authorization code flow. \"auto\" (default) enables PKCE when the upstream provider advertises support via OIDC discovery; \"force\" always sends PKCE (use only with providers known to support it); \"never\" disables PKCE.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("auto", "force", "never"),
+				},
 			},
 		},
 	}
@@ -391,6 +399,10 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 		if len(values) > 0 {
 			config["aal2_amr_values"] = values
 		}
+	}
+
+	if !plan.Pkce.IsNull() && !plan.Pkce.IsUnknown() {
+		config["pkce"] = plan.Pkce.ValueString()
 	}
 
 	// Apple-specific fields — skip empty strings to avoid sending blank credentials
@@ -759,6 +771,12 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 	// Read AAL2 elevation lists, clearing state when the API omits them.
 	state.Aal2AcrValues = readStringList(ctx, &resp.Diagnostics, provider["aal2_acr_values"])
 	state.Aal2AmrValues = readStringList(ctx, &resp.Diagnostics, provider["aal2_amr_values"])
+
+	if pkce, ok := provider["pkce"].(string); ok && pkce != "" {
+		state.Pkce = types.StringValue(pkce)
+	} else {
+		state.Pkce = types.StringNull()
+	}
 
 	// Read Apple-specific fields, clearing stale state when not returned by the API
 	if teamID, ok := provider["apple_team_id"].(string); ok && teamID != "" {
