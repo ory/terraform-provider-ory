@@ -315,7 +315,9 @@ func TestAccSocialProviderResource_additionalIDTokenAudiences(t *testing.T) {
 
 // TestAccSocialProviderResource_pkce verifies that the pkce attribute is set,
 // read, updated, and removed correctly. PKCE accepts "auto", "force", or
-// "never"; this test exercises the round-trip for "force" → "never" → unset.
+// "never"; this test exercises the round-trip for "force" → "auto" → "never"
+// → unset, including the explicit "auto" value (which the API also uses as
+// its default when the attribute is absent).
 func TestAccSocialProviderResource_pkce(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -336,6 +338,19 @@ func TestAccSocialProviderResource_pkce(t *testing.T) {
 			// Verify no perpetual diff
 			{
 				Config:   acctest.LoadTestConfig(t, "testdata/with_pkce.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Update pkce to "auto" — explicit default; catches drift if the API
+			// normalizes "auto" to absence.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_pkce_auto.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "pkce", "auto"),
+				),
+			},
+			// Verify no perpetual diff on "auto"
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_pkce_auto.tf.tmpl", nil),
 				PlanOnly: true,
 			},
 			// Update pkce to "never"
