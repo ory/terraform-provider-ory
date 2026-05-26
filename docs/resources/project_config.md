@@ -155,8 +155,17 @@ resource "ory_project_config" "self_hosted_ui" {
   selfservice_flows_verification_enabled = true
 }
 
-# SMTP configuration for custom email delivery
+# SMTP configuration for custom email delivery.
+#
+# The URI scheme selects the security mode:
+#   smtp://  -> STARTTLS (typical for port 587)
+#   smtps:// -> Implicit TLS (typical for port 465)
+#
+# Append ?disable_starttls=true for cleartext (local dev only) or
+# ?skip_ssl_verify=true to skip certificate verification.
+# See the "SMTP Security Modes" section of the resource docs for details.
 resource "ory_project_config" "with_smtp" {
+  # STARTTLS on port 587 (recommended for most providers)
   smtp_connection_uri       = var.smtp_connection_uri
   courier_smtp_from_address = "noreply@example.com"
   courier_smtp_from_name    = "MyApp"
@@ -168,9 +177,13 @@ resource "ory_project_config" "with_smtp" {
 }
 
 variable "smtp_connection_uri" {
-  type        = string
-  sensitive   = true
-  description = "SMTP connection URI (e.g., smtps://user:pass@smtp.example.com:465)"
+  type      = string
+  sensitive = true
+  # Examples:
+  #   STARTTLS:      smtp://user:pass@smtp.example.com:587
+  #   Implicit TLS:  smtps://user:pass@smtp.example.com:465
+  #   Cleartext:     smtp://user:pass@localhost:1025/?disable_starttls=true
+  description = "SMTP connection URI. Scheme selects the security mode (smtp:// = STARTTLS, smtps:// = implicit TLS)."
 }
 
 # Native-only flows: explicitly clear browser return URLs
@@ -298,6 +311,25 @@ This resource supports CORS configuration for both public and admin endpoints:
 
 - **Public CORS** (`cors_enabled`, `cors_origins`) — Controls CORS for public-facing endpoints (login, registration, etc.)
 - **Admin CORS** (`cors_admin_enabled`, `cors_admin_origins`) — Controls CORS for admin API endpoints
+
+## SMTP Security Modes
+
+The `smtp_connection_uri` attribute selects the SMTP security mode through the URI scheme and query parameters. The Ory API stores the SMTP configuration as a single URI, so there is no separate security-mode attribute — the scheme and query string fully describe the connection.
+
+| Security mode | URI format | Typical port | When to use |
+|---------------|------------|--------------|-------------|
+| STARTTLS (recommended) | `smtp://user:pass@host:port/` | 587 | Most modern SMTP relays (SendGrid, Mailgun, SES SMTP, Postfix submission) |
+| STARTTLS, skip certificate verification | `smtp://user:pass@host:port/?skip_ssl_verify=true` | 587 | Development or self-signed certs only |
+| Cleartext (no encryption) | `smtp://user:pass@host:port/?disable_starttls=true` | 25, 1025 | Local development with [MailHog](https://github.com/mailhog/MailHog), [MailCatcher](https://mailcatcher.me), or similar |
+| Implicit TLS | `smtps://user:pass@host:port/` | 465 | Legacy SMTPS endpoints that negotiate TLS before any plaintext |
+| Implicit TLS, skip certificate verification | `smtps://user:pass@host:port/?skip_ssl_verify=true` | 465 | Development or self-signed certs only |
+| Implicit TLS with server-name override | `smtps://user:pass@host:port/?server_name=mail.example.com` | 465 | When the SMTP host's certificate is issued for a different hostname (non-wildcard certs) |
+
+~> **Common mistake:** Using `smtps://...:587` forces implicit TLS on a port that expects STARTTLS, which causes most providers to reject the connection or return TLS handshake errors. Use `smtp://...:587` for STARTTLS on port 587.
+
+-> **Credential encoding:** Usernames and passwords must be URI-encoded if they contain special characters (e.g., `@`, `:`, `/`, `?`, `#`). Use [`urlencode`](https://developer.hashicorp.com/terraform/language/functions/urlencode) in Terraform to encode them safely.
+
+For more detail, see the [Ory Kratos SMTP documentation](https://www.ory.com/docs/kratos/emails-sms/sending-emails-smtp).
 
 ## Clearing Return URLs
 
@@ -580,7 +612,7 @@ terraform plan  # verify no changes
 - `settings_lifespan` (String, Deprecated) Lifespan of the settings flow (e.g., '30m0s'). Controls how long a settings flow session remains valid.
 - `settings_privileged_session_max_age` (String, Deprecated) Maximum age of a privileged session for the settings flow (e.g., '15m0s'). After this duration, the user must re-authenticate to make privileged changes like password updates.
 - `settings_ui_url` (String, Deprecated) URL for the account settings UI.
-- `smtp_connection_uri` (String, Sensitive) SMTP connection URI for sending emails (e.g., smtps://user:pass@host:port).
+- `smtp_connection_uri` (String, Sensitive) SMTP connection URI for sending emails. The URI scheme selects the security mode: `smtp://` uses STARTTLS (recommended for port 587), `smtps://` uses implicit TLS (recommended for port 465). Append `?disable_starttls=true` for cleartext or `?skip_ssl_verify=true` to skip certificate verification (development only). See the SMTP Security Modes section in the resource documentation for the full list.
 - `smtp_from_address` (String, Deprecated) Email address to send from.
 - `smtp_from_name` (String, Deprecated) Name to display as sender.
 - `smtp_headers` (Map of String) Custom SMTP headers for outbound emails.
