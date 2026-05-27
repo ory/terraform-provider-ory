@@ -407,6 +407,13 @@ type ProjectConfigResourceModel struct {
 	// Auto-discovered (review naming before release)
 	OAuth2GrantRefreshTokenRotationGraceReuseCount types.Int64  `tfsdk:"oauth2_grant_refresh_token_rotation_grace_reuse_count"`
 	OAuth2TokenPrefix                              types.String `tfsdk:"oauth2_token_prefix"`
+
+	// show_verification_ui hooks (custom: not in OpenAPI spec)
+	// Each toggles the show_verification_ui hook within a specific flow's hooks array,
+	// preserving any other hooks already configured.
+	SelfserviceFlowsRegistrationAfterPasswordHookShowVerificationUI types.Bool `tfsdk:"selfservice_flows_registration_after_password_hook_show_verification_ui"`
+	SelfserviceFlowsRegistrationAfterOIDCHookShowVerificationUI     types.Bool `tfsdk:"selfservice_flows_registration_after_oidc_hook_show_verification_ui"`
+	SelfserviceFlowsSettingsAfterProfileHookShowVerificationUI      types.Bool `tfsdk:"selfservice_flows_settings_after_profile_hook_show_verification_ui"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---
@@ -646,6 +653,29 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 				},
 			},
 		},
+	}
+
+	// show_verification_ui hooks: toggle the show_verification_ui hook in
+	// flow-specific hook arrays. The Ory API stores these as a list of
+	// {"hook": "..."} objects, so the provider performs a read-modify-write
+	// to preserve any other hooks (for example, `session` or `organization`).
+	attrs["selfservice_flows_registration_after_password_hook_show_verification_ui"] = schema.BoolAttribute{
+		Description: "Enable the `show_verification_ui` hook after a successful password registration. " +
+			"When true, users are redirected to the verification UI after registering with email + password. " +
+			"Existing hooks at this path (e.g., `session`, `organization`) are preserved.",
+		Optional: true,
+	}
+	attrs["selfservice_flows_registration_after_oidc_hook_show_verification_ui"] = schema.BoolAttribute{
+		Description: "Enable the `show_verification_ui` hook after a successful OIDC (social) registration. " +
+			"When true, users are redirected to the verification UI after registering via a social provider. " +
+			"Existing hooks at this path (e.g., `session`, `organization`) are preserved.",
+		Optional: true,
+	}
+	attrs["selfservice_flows_settings_after_profile_hook_show_verification_ui"] = schema.BoolAttribute{
+		Description: "Enable the `show_verification_ui` hook after a successful profile settings update. " +
+			"When true, users are redirected to the verification UI after updating their profile (e.g., changing their email). " +
+			"Existing hooks at this path (e.g., `organization`) are preserved.",
+		Optional: true,
 	}
 
 	// Courier HTTP Delivery
@@ -1001,6 +1031,122 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 	return patches
 }
 
+// showVerificationUIHookEntry describes one show_verification_ui hook attribute
+// and the identity-config path whose hooks array it controls.
+type showVerificationUIHookEntry struct {
+	Field    types.Bool
+	PathKeys []string // path under /services/identity/config, ending at the parent of "hooks"
+}
+
+func showVerificationUIHookEntries(plan *ProjectConfigResourceModel) []showVerificationUIHookEntry {
+	return []showVerificationUIHookEntry{
+		{
+			Field:    plan.SelfserviceFlowsRegistrationAfterPasswordHookShowVerificationUI,
+			PathKeys: []string{"selfservice", "flows", "registration", "after", "password"},
+		},
+		{
+			Field:    plan.SelfserviceFlowsRegistrationAfterOIDCHookShowVerificationUI,
+			PathKeys: []string{"selfservice", "flows", "registration", "after", "oidc"},
+		},
+		{
+			Field:    plan.SelfserviceFlowsSettingsAfterProfileHookShowVerificationUI,
+			PathKeys: []string{"selfservice", "flows", "settings", "after", "profile"},
+		},
+	}
+}
+
+// buildShowVerificationUIHookPatches reconciles the show_verification_ui hook
+// for each configured flow by merging the desired state with whatever hooks
+// already exist on the project (for example `session` or `organization`).
+//
+// When currentProject is nil, no merge target is available and the function
+// returns an empty patch list.
+func buildShowVerificationUIHookPatches(plan *ProjectConfigResourceModel, currentProject *ory.Project) []ory.JsonPatch {
+	var patches []ory.JsonPatch
+	if currentProject == nil || currentProject.Services.Identity == nil {
+		return patches
+	}
+	identityConfig := currentProject.Services.Identity.Config
+	for _, e := range showVerificationUIHookEntries(plan) {
+		if e.Field.IsNull() || e.Field.IsUnknown() {
+			continue
+		}
+		desired := e.Field.ValueBool()
+		existingHooks := readHookList(identityConfig, e.PathKeys)
+		newHooks := setHookPresent(existingHooks, "show_verification_ui", desired)
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/" + strings.Join(e.PathKeys, "/") + "/hooks",
+			Value: newHooks,
+		})
+	}
+	return patches
+}
+
+// readHookList extracts the hooks list at the given path from the identity
+// config map, returning an empty slice when the path or array is missing.
+func readHookList(identityConfig map[string]interface{}, pathKeys []string) []map[string]interface{} {
+	keys := append([]string{}, pathKeys...)
+	keys = append(keys, "hooks")
+	raw := getNestedValue(identityConfig, keys...)
+	arr, ok := raw.([]interface{})
+	if !ok {
+		return nil
+	}
+	hooks := make([]map[string]interface{}, 0, len(arr))
+	for _, item := range arr {
+		if m, ok := item.(map[string]interface{}); ok {
+			hooks = append(hooks, m)
+		}
+	}
+	return hooks
+}
+
+// setHookPresent returns a copy of hooks with the given hook name either
+// prepended (if present == true and missing) or removed (if present == false).
+// Other hook entries are preserved in their original order.
+func setHookPresent(hooks []map[string]interface{}, hookName string, present bool) []map[string]interface{} {
+	filtered := make([]map[string]interface{}, 0, len(hooks)+1)
+	alreadyPresent := false
+	for _, h := range hooks {
+		name, _ := h["hook"].(string)
+		if name == hookName {
+			alreadyPresent = true
+			if !present {
+				continue
+			}
+		}
+		filtered = append(filtered, h)
+	}
+	if present && !alreadyPresent {
+		filtered = append([]map[string]interface{}{{"hook": hookName}}, filtered...)
+	}
+	return filtered
+}
+
+// hookListContains reports whether the hooks list at the given path includes
+// the named hook.
+func hookListContains(identityConfig map[string]interface{}, pathKeys []string, hookName string) bool {
+	for _, h := range readHookList(identityConfig, pathKeys) {
+		if name, _ := h["hook"].(string); name == hookName {
+			return true
+		}
+	}
+	return false
+}
+
+// needsHookPrefetch reports whether any of the show_verification_ui hook
+// attributes are set in the plan, in which case the caller must fetch the
+// current project state before building patches.
+func needsHookPrefetch(plan *ProjectConfigResourceModel) bool {
+	for _, e := range showVerificationUIHookEntries(plan) {
+		if !e.Field.IsNull() && !e.Field.IsUnknown() {
+			return true
+		}
+	}
+	return false
+}
+
 func buildHTTPRequestConfigMap(ctx context.Context, cfg *CourierHTTPRequestConfigModel) map[string]interface{} {
 	result := map[string]interface{}{
 		"url":    cfg.URL.ValueString(),
@@ -1067,6 +1213,15 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 	}
 
 	patches := r.buildPatches(ctx, &plan)
+
+	if needsHookPrefetch(&plan) {
+		currentProject, err := r.client.GetProject(ctx, projectID)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Reading Project Config For Hook Merge", err.Error())
+			return
+		}
+		patches = append(patches, buildShowVerificationUIHookPatches(&plan, currentProject)...)
+	}
 
 	tflog.Debug(ctx, "Building project config patches", map[string]interface{}{
 		"project_id":  projectID,
@@ -1311,6 +1466,24 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 				}
 			}
 		}
+
+		// show_verification_ui hook reads: refresh state only when the
+		// attribute was already set, so untracked flows don't appear in
+		// `terraform plan` output.
+		for _, e := range showVerificationUIHookEntries(state) {
+			if e.Field.IsNull() {
+				continue
+			}
+			present := hookListContains(identityConfig, e.PathKeys, "show_verification_ui")
+			switch {
+			case e.PathKeys[len(e.PathKeys)-1] == "password":
+				state.SelfserviceFlowsRegistrationAfterPasswordHookShowVerificationUI = types.BoolValue(present)
+			case e.PathKeys[len(e.PathKeys)-1] == "oidc":
+				state.SelfserviceFlowsRegistrationAfterOIDCHookShowVerificationUI = types.BoolValue(present)
+			case e.PathKeys[len(e.PathKeys)-1] == "profile":
+				state.SelfserviceFlowsSettingsAfterProfileHookShowVerificationUI = types.BoolValue(present)
+			}
+		}
 	}
 
 	// Permission/Keto service config
@@ -1525,6 +1698,16 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 	}
 
 	patches := r.buildPatches(ctx, &plan)
+
+	if needsHookPrefetch(&plan) {
+		currentProject, err := r.client.GetProject(ctx, projectID)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Reading Project Config For Hook Merge", err.Error())
+			return
+		}
+		patches = append(patches, buildShowVerificationUIHookPatches(&plan, currentProject)...)
+	}
+
 	if len(patches) > 0 {
 		_, err := r.client.PatchProject(ctx, projectID, patches)
 		if err != nil {

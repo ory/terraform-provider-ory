@@ -235,3 +235,18 @@ variable "sms_api_key" {
   sensitive   = true
   description = "API key for SMS delivery service"
 }
+
+# Show the verification UI after registration and profile updates.
+# Each attribute toggles the `show_verification_ui` hook for one flow while
+# preserving any other hooks (e.g. `session`, `organization`) already set on
+# the project.
+resource "ory_project_config" "show_verification_ui" {
+  selfservice_flows_verification_enabled = true
+
+  # After password registration, redirect users to the verification UI.
+  selfservice_flows_registration_after_password_hook_show_verification_ui = true
+  # Same for social (OIDC) registration.
+  selfservice_flows_registration_after_oidc_hook_show_verification_ui = true
+  # When users change their email in profile settings, force re-verification.
+  selfservice_flows_settings_after_profile_hook_show_verification_ui = true
+}
