@@ -648,6 +648,66 @@ func TestAccProjectConfigResource_recoveryFlow(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_showVerificationUIHooks(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Enable all three show_verification_ui hooks.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/show_verification_ui_hooks.tf.tmpl", map[string]string{
+					"Password": "true",
+					"OIDC":     "true",
+					"Profile":  "true",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_registration_after_password_hook_show_verification_ui", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_registration_after_oidc_hook_show_verification_ui", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_after_profile_hook_show_verification_ui", "true"),
+				),
+			},
+			// Disable the password and profile hooks, keep oidc enabled.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/show_verification_ui_hooks.tf.tmpl", map[string]string{
+					"Password": "false",
+					"OIDC":     "true",
+					"Profile":  "false",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_registration_after_password_hook_show_verification_ui", "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_registration_after_oidc_hook_show_verification_ui", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_after_profile_hook_show_verification_ui", "false"),
+				),
+			},
+			// Re-apply the same config to confirm no perpetual diff.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/show_verification_ui_hooks.tf.tmpl", map[string]string{
+					"Password": "false",
+					"OIDC":     "true",
+					"Profile":  "false",
+				}),
+				PlanOnly: true,
+			},
+			// Import then verify state.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"selfservice_flows_registration_after_password_hook_show_verification_ui",
+					"selfservice_flows_registration_after_oidc_hook_show_verification_ui",
+					"selfservice_flows_settings_after_profile_hook_show_verification_ui",
+					"selfservice_flows_verification_enabled",
+					"cors_enabled",
+					"selfservice_methods_password_config_min_password_length",
+					"smtp_connection_uri",
+				},
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_oauth2Advanced(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },

@@ -476,3 +476,219 @@ func TestBuildPatches_NullVerificationNotifyUnknownRecipients(t *testing.T) {
 		t.Error("expected no patch for null verification_notify_unknown_recipients")
 	}
 }
+
+// projectWithIdentityConfig wraps an identity config map in the *ory.Project
+// shape that buildShowVerificationUIHookPatches expects.
+func projectWithIdentityConfig(identityConfig map[string]interface{}) *ory.Project {
+	return &ory.Project{
+		Services: ory.ProjectServices{
+			Identity: &ory.ProjectServiceIdentity{
+				Config: identityConfig,
+			},
+		},
+	}
+}
+
+func TestBuildShowVerificationUIHookPatches_AddPreservesOtherHooks(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		SelfserviceFlowsRegistrationAfterPasswordHookShowVerificationUI: types.BoolValue(true),
+	}
+	current := projectWithIdentityConfig(map[string]interface{}{
+		"selfservice": map[string]interface{}{
+			"flows": map[string]interface{}{
+				"registration": map[string]interface{}{
+					"after": map[string]interface{}{
+						"password": map[string]interface{}{
+							"hooks": []interface{}{
+								map[string]interface{}{"hook": "organization"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	patches := buildShowVerificationUIHookPatches(plan, current)
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d", len(patches))
+	}
+	p := patches[0]
+	if p.Op != "replace" {
+		t.Errorf("expected op 'replace', got %q", p.Op)
+	}
+	if p.Path != "/services/identity/config/selfservice/flows/registration/after/password/hooks" {
+		t.Errorf("unexpected patch path: %s", p.Path)
+	}
+	hooks, ok := p.Value.([]map[string]interface{})
+	if !ok {
+		t.Fatalf("expected []map[string]interface{} value, got %T", p.Value)
+	}
+	if len(hooks) != 2 {
+		t.Fatalf("expected 2 hooks (show_verification_ui + organization), got %d", len(hooks))
+	}
+	if hooks[0]["hook"] != "show_verification_ui" {
+		t.Errorf("expected show_verification_ui first, got %v", hooks[0]["hook"])
+	}
+	if hooks[1]["hook"] != "organization" {
+		t.Errorf("expected organization preserved, got %v", hooks[1]["hook"])
+	}
+}
+
+func TestBuildShowVerificationUIHookPatches_RemoveKeepsOthers(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		SelfserviceFlowsSettingsAfterProfileHookShowVerificationUI: types.BoolValue(false),
+	}
+	current := projectWithIdentityConfig(map[string]interface{}{
+		"selfservice": map[string]interface{}{
+			"flows": map[string]interface{}{
+				"settings": map[string]interface{}{
+					"after": map[string]interface{}{
+						"profile": map[string]interface{}{
+							"hooks": []interface{}{
+								map[string]interface{}{"hook": "show_verification_ui"},
+								map[string]interface{}{"hook": "organization"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	patches := buildShowVerificationUIHookPatches(plan, current)
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d", len(patches))
+	}
+	hooks, ok := patches[0].Value.([]map[string]interface{})
+	if !ok {
+		t.Fatalf("expected []map[string]interface{} value, got %T", patches[0].Value)
+	}
+	if len(hooks) != 1 {
+		t.Fatalf("expected 1 remaining hook, got %d", len(hooks))
+	}
+	if hooks[0]["hook"] != "organization" {
+		t.Errorf("expected organization to remain, got %v", hooks[0]["hook"])
+	}
+}
+
+func TestBuildShowVerificationUIHookPatches_AddIdempotent(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		SelfserviceFlowsRegistrationAfterOIDCHookShowVerificationUI: types.BoolValue(true),
+	}
+	current := projectWithIdentityConfig(map[string]interface{}{
+		"selfservice": map[string]interface{}{
+			"flows": map[string]interface{}{
+				"registration": map[string]interface{}{
+					"after": map[string]interface{}{
+						"oidc": map[string]interface{}{
+							"hooks": []interface{}{
+								map[string]interface{}{"hook": "show_verification_ui"},
+								map[string]interface{}{"hook": "session"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	patches := buildShowVerificationUIHookPatches(plan, current)
+	hooks, _ := patches[0].Value.([]map[string]interface{})
+	if len(hooks) != 2 {
+		t.Fatalf("expected 2 hooks (no duplicate), got %d: %v", len(hooks), hooks)
+	}
+	seen := map[string]int{}
+	for _, h := range hooks {
+		if name, ok := h["hook"].(string); ok {
+			seen[name]++
+		}
+	}
+	if seen["show_verification_ui"] != 1 {
+		t.Errorf("expected exactly one show_verification_ui, got %d", seen["show_verification_ui"])
+	}
+	if seen["session"] != 1 {
+		t.Errorf("expected session preserved, got %d", seen["session"])
+	}
+}
+
+func TestBuildShowVerificationUIHookPatches_NullSkipped(t *testing.T) {
+	plan := &ProjectConfigResourceModel{}
+	current := projectWithIdentityConfig(map[string]interface{}{})
+
+	patches := buildShowVerificationUIHookPatches(plan, current)
+	if len(patches) != 0 {
+		t.Errorf("expected no patches when all hook attrs are null, got %d", len(patches))
+	}
+}
+
+func TestBuildShowVerificationUIHookPatches_NilCurrentProject(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		SelfserviceFlowsRegistrationAfterPasswordHookShowVerificationUI: types.BoolValue(true),
+	}
+	patches := buildShowVerificationUIHookPatches(plan, nil)
+	if len(patches) != 0 {
+		t.Errorf("expected no patches when currentProject is nil, got %d", len(patches))
+	}
+}
+
+func TestBuildShowVerificationUIHookPatches_MissingHooksPathIsEmptyArray(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		SelfserviceFlowsRegistrationAfterPasswordHookShowVerificationUI: types.BoolValue(true),
+	}
+	current := projectWithIdentityConfig(map[string]interface{}{})
+
+	patches := buildShowVerificationUIHookPatches(plan, current)
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch even with empty config, got %d", len(patches))
+	}
+	hooks, ok := patches[0].Value.([]map[string]interface{})
+	if !ok || len(hooks) != 1 {
+		t.Fatalf("expected single show_verification_ui hook, got %v", patches[0].Value)
+	}
+	if hooks[0]["hook"] != "show_verification_ui" {
+		t.Errorf("expected show_verification_ui hook, got %v", hooks[0])
+	}
+}
+
+func TestNeedsHookPrefetch(t *testing.T) {
+	cases := []struct {
+		name string
+		plan ProjectConfigResourceModel
+		want bool
+	}{
+		{
+			name: "all null",
+			plan: ProjectConfigResourceModel{},
+			want: false,
+		},
+		{
+			name: "password set",
+			plan: ProjectConfigResourceModel{
+				SelfserviceFlowsRegistrationAfterPasswordHookShowVerificationUI: types.BoolValue(true),
+			},
+			want: true,
+		},
+		{
+			name: "oidc set false",
+			plan: ProjectConfigResourceModel{
+				SelfserviceFlowsRegistrationAfterOIDCHookShowVerificationUI: types.BoolValue(false),
+			},
+			want: true,
+		},
+		{
+			name: "profile set",
+			plan: ProjectConfigResourceModel{
+				SelfserviceFlowsSettingsAfterProfileHookShowVerificationUI: types.BoolValue(true),
+			},
+			want: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := needsHookPrefetch(&tc.plan); got != tc.want {
+				t.Errorf("needsHookPrefetch() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

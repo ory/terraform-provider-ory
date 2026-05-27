@@ -93,6 +93,18 @@ The `smtp_connection_uri` attribute selects the SMTP security mode through the U
 
 For more detail, see the [Ory Kratos SMTP documentation](https://www.ory.com/docs/kratos/emails-sms/sending-emails-smtp).
 
+## Verification After Registration / Settings
+
+Three boolean attributes toggle the [`show_verification_ui`](https://www.ory.com/docs/kratos/self-service/flows/user-registration) post-flow hook for each authentication method:
+
+- `selfservice_flows_registration_after_password_hook_show_verification_ui`
+- `selfservice_flows_registration_after_oidc_hook_show_verification_ui`
+- `selfservice_flows_settings_after_profile_hook_show_verification_ui`
+
+When `true`, the provider adds the `show_verification_ui` hook to the corresponding flow; when `false`, it removes only that hook. Other hooks at the same path (for example `session` or `organization`) are preserved by reading the current hook list before each apply.
+
+To require a verified address before a user can log in (the "Require verified address for login" toggle in the Ory Console), set `feature_flags_legacy_require_verified_login_error = true`. When that flag is `false`, an unverified user is shown the `show_verification_ui` continuation step instead of receiving a form error.
+
 ## Clearing Return URLs
 
 To explicitly clear `default_return_url` and `allowed_return_urls` (e.g., for native-only flows with no browser redirects), set them to empty values:

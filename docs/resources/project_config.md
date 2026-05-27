@@ -258,6 +258,21 @@ variable "sms_api_key" {
   sensitive   = true
   description = "API key for SMS delivery service"
 }
+
+# Show the verification UI after registration and profile updates.
+# Each attribute toggles the `show_verification_ui` hook for one flow while
+# preserving any other hooks (e.g. `session`, `organization`) already set on
+# the project.
+resource "ory_project_config" "show_verification_ui" {
+  selfservice_flows_verification_enabled = true
+
+  # After password registration, redirect users to the verification UI.
+  selfservice_flows_registration_after_password_hook_show_verification_ui = true
+  # Same for social (OIDC) registration.
+  selfservice_flows_registration_after_oidc_hook_show_verification_ui = true
+  # When users change their email in profile settings, force re-verification.
+  selfservice_flows_settings_after_profile_hook_show_verification_ui = true
+}
 ```
 
 ## Duration Format
@@ -330,6 +345,18 @@ The `smtp_connection_uri` attribute selects the SMTP security mode through the U
 -> **Credential encoding:** Usernames and passwords must be URI-encoded if they contain special characters (e.g., `@`, `:`, `/`, `?`, `#`). Use [`urlencode`](https://developer.hashicorp.com/terraform/language/functions/urlencode) in Terraform to encode them safely.
 
 For more detail, see the [Ory Kratos SMTP documentation](https://www.ory.com/docs/kratos/emails-sms/sending-emails-smtp).
+
+## Verification After Registration / Settings
+
+Three boolean attributes toggle the [`show_verification_ui`](https://www.ory.com/docs/kratos/self-service/flows/user-registration) post-flow hook for each authentication method:
+
+- `selfservice_flows_registration_after_password_hook_show_verification_ui`
+- `selfservice_flows_registration_after_oidc_hook_show_verification_ui`
+- `selfservice_flows_settings_after_profile_hook_show_verification_ui`
+
+When `true`, the provider adds the `show_verification_ui` hook to the corresponding flow; when `false`, it removes only that hook. Other hooks at the same path (for example `session` or `organization`) are preserved by reading the current hook list before each apply.
+
+To require a verified address before a user can log in (the "Require verified address for login" toggle in the Ory Console), set `feature_flags_legacy_require_verified_login_error = true`. When that flag is `false`, an unverified user is shown the `show_verification_ui` continuation step instead of receiving a form error.
 
 ## Clearing Return URLs
 
@@ -539,8 +566,10 @@ terraform plan  # verify no changes
 - `selfservice_flows_registration_after_code_default_browser_return_url` (String) Return URL after registration via code method.
 - `selfservice_flows_registration_after_default_browser_return_url` (String) Default return URL after registration.
 - `selfservice_flows_registration_after_oidc_default_browser_return_url` (String) Return URL after registration via OIDC.
+- `selfservice_flows_registration_after_oidc_hook_show_verification_ui` (Boolean) Enable the `show_verification_ui` hook after a successful OIDC (social) registration. When true, users are redirected to the verification UI after registering via a social provider. Existing hooks at this path (e.g., `session`, `organization`) are preserved.
 - `selfservice_flows_registration_after_passkey_default_browser_return_url` (String) Return URL after registration via passkey.
 - `selfservice_flows_registration_after_password_default_browser_return_url` (String) Return URL after registration via password.
+- `selfservice_flows_registration_after_password_hook_show_verification_ui` (Boolean) Enable the `show_verification_ui` hook after a successful password registration. When true, users are redirected to the verification UI after registering with email + password. Existing hooks at this path (e.g., `session`, `organization`) are preserved.
 - `selfservice_flows_registration_after_webauthn_default_browser_return_url` (String) Return URL after registration via WebAuthn.
 - `selfservice_flows_registration_enable_legacy_one_step` (Boolean) Revert to legacy one-step registration instead of the two-step flow.
 - `selfservice_flows_registration_enabled` (Boolean) Enable user registration.
@@ -553,6 +582,7 @@ terraform plan  # verify no changes
 - `selfservice_flows_settings_after_passkey_default_browser_return_url` (String) Return URL after updating passkey in settings.
 - `selfservice_flows_settings_after_password_default_browser_return_url` (String) Return URL after updating password in settings.
 - `selfservice_flows_settings_after_profile_default_browser_return_url` (String) Return URL after updating profile in settings.
+- `selfservice_flows_settings_after_profile_hook_show_verification_ui` (Boolean) Enable the `show_verification_ui` hook after a successful profile settings update. When true, users are redirected to the verification UI after updating their profile (e.g., changing their email). Existing hooks at this path (e.g., `organization`) are preserved.
 - `selfservice_flows_settings_after_totp_default_browser_return_url` (String) Return URL after updating TOTP in settings.
 - `selfservice_flows_settings_after_webauthn_default_browser_return_url` (String) Return URL after updating WebAuthn in settings.
 - `selfservice_flows_settings_lifespan` (String) Lifespan of the settings flow (e.g., '30m0s'). Controls how long a settings flow session remains valid.
