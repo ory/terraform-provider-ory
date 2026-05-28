@@ -169,6 +169,7 @@ type ProjectConfigResourceModel struct {
 	OAuth2GrantRefreshTokenRotationGracePeriod        types.String `tfsdk:"oauth2_grant_refresh_token_rotation_grace_period"`
 	OAuth2RefreshTokenHook                            types.String `tfsdk:"oauth2_refresh_token_hook"`
 	OAuth2TokenHook                                   types.String `tfsdk:"oauth2_token_hook"`
+	OAuth2TokenHookAuth                               types.Object `tfsdk:"oauth2_token_hook_auth"`
 	OIDCDynamicClientRegistrationEnabled              types.Bool   `tfsdk:"oidc_dynamic_client_registration_enabled"`
 	OIDCSubjectIdentifiersPairwiseSalt                types.String `tfsdk:"oidc_subject_identifiers_pairwise_salt"`
 	OAuth2UrlsPostLogoutRedirect                      types.String `tfsdk:"oauth2_urls_post_logout_redirect"`
@@ -447,6 +448,13 @@ type CourierChannelModel struct {
 	RequestConfig types.Object `tfsdk:"request_config"`
 }
 
+type OAuth2TokenHookAuthModel struct {
+	Type  types.String `tfsdk:"type"`
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
+	In    types.String `tfsdk:"in"`
+}
+
 // Shared attr.Type maps for constructing types.Object / types.Map / types.List values.
 var (
 	tokenizerTemplateAttrTypes = map[string]attr.Type{
@@ -476,6 +484,13 @@ var (
 	courierChannelAttrTypes = map[string]attr.Type{
 		"id":             types.StringType,
 		"request_config": types.ObjectType{AttrTypes: courierHTTPRequestConfigAttrTypes},
+	}
+
+	oauth2TokenHookAuthAttrTypes = map[string]attr.Type{
+		"type":  types.StringType,
+		"name":  types.StringType,
+		"value": types.StringType,
+		"in":    types.StringType,
 	}
 )
 
@@ -676,6 +691,41 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 			"When true, users are redirected to the verification UI after updating their profile (e.g., changing their email). " +
 			"Existing hooks at this path (e.g., `organization`) are preserved.",
 		Optional: true,
+	}
+
+	// OAuth2 Token Hook Authentication
+	// The Ory API stores oauth2.token_hook as an object {url, auth} where auth
+	// describes how Ory authenticates with the configured webhook. Currently
+	// the API only supports api_key authentication (header or cookie).
+	attrs["oauth2_token_hook_auth"] = schema.SingleNestedAttribute{
+		Description: "Authentication configuration for the OAuth2 token hook (see `oauth2_token_hook`). " +
+			"Currently only `api_key` authentication is supported.",
+		Optional: true,
+		Attributes: map[string]schema.Attribute{
+			"type": schema.StringAttribute{
+				Description: "Authentication type. Currently only `api_key` is supported.",
+				Required:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("api_key"),
+				},
+			},
+			"name": schema.StringAttribute{
+				Description: "Header or cookie name carrying the API key (e.g. `X-Api-Key`).",
+				Required:    true,
+			},
+			"value": schema.StringAttribute{
+				Description: "API key value sent to the token hook.",
+				Required:    true,
+				Sensitive:   true,
+			},
+			"in": schema.StringAttribute{
+				Description: "Where to send the API key: `header` or `cookie`.",
+				Required:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("header", "cookie"),
+				},
+			},
+		},
 	}
 
 	// Courier HTTP Delivery
@@ -994,6 +1044,18 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 		})
 	}
 
+	// OAuth2 Token Hook Auth — replaces /oauth2/token_hook/auth with the
+	// nested {type, config: {...}} structure expected by the API.
+	if !plan.OAuth2TokenHookAuth.IsNull() && !plan.OAuth2TokenHookAuth.IsUnknown() {
+		var auth OAuth2TokenHookAuthModel
+		plan.OAuth2TokenHookAuth.As(ctx, &auth, basetypes.ObjectAsOptions{})
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/oauth2/config/oauth2/token_hook/auth",
+			Value: buildOAuth2TokenHookAuthMap(&auth),
+		})
+	}
+
 	// Courier HTTP Request Config
 	if !plan.CourierHTTPRequestConfig.IsNull() && !plan.CourierHTTPRequestConfig.IsUnknown() {
 		var reqConfig CourierHTTPRequestConfigModel
@@ -1166,6 +1228,39 @@ func buildHTTPRequestConfigMap(ctx context.Context, cfg *CourierHTTPRequestConfi
 		result["auth"] = buildAuthConfigMap(&auth)
 	}
 	return result
+}
+
+// removeURLOnlyTokenHookPatch drops any `replace /oauth2/token_hook/url` patch
+// from the slice. Used when the caller is about to issue a higher-level patch
+// against the parent `/oauth2/token_hook` path — keeping the sub-path patch
+// would either be redundant or trigger schema validation against the partially
+// rewritten object.
+func removeURLOnlyTokenHookPatch(patches []ory.JsonPatch) []ory.JsonPatch {
+	filtered := patches[:0]
+	for _, p := range patches {
+		if p.Path == "/services/oauth2/config/oauth2/token_hook/url" {
+			continue
+		}
+		filtered = append(filtered, p)
+	}
+	return filtered
+}
+
+func buildOAuth2TokenHookAuthMap(auth *OAuth2TokenHookAuthModel) map[string]interface{} {
+	config := map[string]interface{}{}
+	if !auth.Name.IsNull() && !auth.Name.IsUnknown() {
+		config["name"] = auth.Name.ValueString()
+	}
+	if !auth.Value.IsNull() && !auth.Value.IsUnknown() {
+		config["value"] = auth.Value.ValueString()
+	}
+	if !auth.In.IsNull() && !auth.In.IsUnknown() {
+		config["in"] = auth.In.ValueString()
+	}
+	return map[string]interface{}{
+		"type":   auth.Type.ValueString(),
+		"config": config,
+	}
 }
 
 func buildAuthConfigMap(auth *CourierHTTPAuthModel) map[string]interface{} {
@@ -1486,6 +1581,19 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 		}
 	}
 
+	// OAuth2 Token Hook Auth — read back from oauth2.token_hook.auth. The
+	// `value` field is sensitive and the API never returns it, so we preserve
+	// whatever the user has in state to keep ImportStateVerify and refresh
+	// cycles drift-free.
+	if project.Services.Oauth2 != nil && !state.OAuth2TokenHookAuth.IsNull() && !state.OAuth2TokenHookAuth.IsUnknown() {
+		oauth2Config := project.Services.Oauth2.Config
+		if v := getNestedValue(oauth2Config, "oauth2", "token_hook", "auth"); v != nil {
+			if authRaw, ok := v.(map[string]interface{}); ok {
+				state.OAuth2TokenHookAuth = readOAuth2TokenHookAuthObject(authRaw, state.OAuth2TokenHookAuth)
+			}
+		}
+	}
+
 	// Permission/Keto service config
 	if project.Services.Permission != nil && !state.KetoNamespaces.IsNull() {
 		permConfig := project.Services.Permission.Config
@@ -1581,6 +1689,52 @@ func readHTTPRequestConfigObject(_ context.Context, raw map[string]interface{}, 
 		return types.ObjectNull(courierHTTPRequestConfigAttrTypes)
 	}
 	return objVal
+}
+
+func readOAuth2TokenHookAuthObject(raw map[string]interface{}, stateObj basetypes.ObjectValue) basetypes.ObjectValue {
+	attrs := map[string]attr.Value{
+		"type":  types.StringNull(),
+		"name":  types.StringNull(),
+		"value": types.StringNull(),
+		"in":    types.StringNull(),
+	}
+
+	authType, _ := raw["type"].(string)
+	if authType == "" {
+		return types.ObjectNull(oauth2TokenHookAuthAttrTypes)
+	}
+	attrs["type"] = types.StringValue(authType)
+
+	config, _ := raw["config"].(map[string]interface{})
+	if config == nil {
+		config = map[string]interface{}{}
+	}
+	if s, ok := config["name"].(string); ok {
+		attrs["name"] = types.StringValue(s)
+	}
+	if s, ok := config["in"].(string); ok {
+		attrs["in"] = types.StringValue(s)
+	}
+	attrs["value"] = getOAuth2TokenHookAuthStateField(stateObj, "value")
+
+	objVal, diags := types.ObjectValue(oauth2TokenHookAuthAttrTypes, attrs)
+	if diags.HasError() {
+		return types.ObjectNull(oauth2TokenHookAuthAttrTypes)
+	}
+	return objVal
+}
+
+func getOAuth2TokenHookAuthStateField(stateObj basetypes.ObjectValue, field string) basetypes.StringValue {
+	if stateObj.IsNull() || stateObj.IsUnknown() {
+		return types.StringNull()
+	}
+	attrs := stateObj.Attributes()
+	if v, ok := attrs[field]; ok {
+		if s, ok := v.(types.String); ok && !s.IsNull() {
+			return s
+		}
+	}
+	return types.StringNull()
 }
 
 func readAuthObject(raw map[string]interface{}, parentStateObj basetypes.ObjectValue) basetypes.ObjectValue {
@@ -1692,12 +1846,39 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 		return
 	}
 
+	var state ProjectConfigResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	projectID := helpers.ResolveProjectID(plan.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	patches := r.buildPatches(ctx, &plan)
+
+	// Clear `oauth2.token_hook.auth` when the user transitions from set in
+	// state to null in the plan. The API requires `token_hook` to be either a
+	// URL string or a full `{url, auth}` object — a bare `{url}` object fails
+	// schema validation — so the cleanest way to drop the auth is to replace
+	// the entire `token_hook` with the URL string and let the API normalize.
+	if !state.OAuth2TokenHookAuth.IsNull() && plan.OAuth2TokenHookAuth.IsNull() {
+		patches = removeURLOnlyTokenHookPatch(patches)
+		if !plan.OAuth2TokenHook.IsNull() && !plan.OAuth2TokenHook.IsUnknown() {
+			patches = append(patches, ory.JsonPatch{
+				Op:    "replace",
+				Path:  "/services/oauth2/config/oauth2/token_hook",
+				Value: plan.OAuth2TokenHook.ValueString(),
+			})
+		} else {
+			patches = append(patches, ory.JsonPatch{
+				Op:   "remove",
+				Path: "/services/oauth2/config/oauth2/token_hook",
+			})
+		}
+	}
 
 	if needsHookPrefetch(&plan) {
 		currentProject, err := r.client.GetProject(ctx, projectID)

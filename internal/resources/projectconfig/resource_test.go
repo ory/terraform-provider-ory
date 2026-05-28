@@ -548,6 +548,58 @@ func TestAccProjectConfigResource_settingsAndVerification(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_oauth2TokenHookAuth(t *testing.T) {
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_token_hook_auth.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook", "https://example.com/token-hook"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook_auth.type", "api_key"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook_auth.name", "X-Api-Key"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook_auth.value", "test-token-hook-api-key"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook_auth.in", "header"),
+				),
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_token_hook_auth_updated.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook", "https://example.com/token-hook-v2"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook_auth.name", "ory-token-hook-auth"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook_auth.value", "updated-cookie-value"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook_auth.in", "cookie"),
+				),
+			},
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"oauth2_token_hook",
+					"oauth2_token_hook_auth",
+					"smtp_connection_uri",
+					"cors_enabled",
+					"selfservice_methods_password_config_min_password_length",
+				},
+			},
+			// Drop auth but keep URL: the provider must collapse the URL
+			// patch with a full `token_hook` replace so the API doesn't reject
+			// the remove (the schema requires either a URL string or a
+			// `{url, auth}` object — never `{url}` alone).
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_token_hook_no_auth.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook", "https://example.com/token-hook-no-auth"),
+					resource.TestCheckNoResourceAttr("ory_project_config.test", "oauth2_token_hook_auth"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_courierHTTP(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },

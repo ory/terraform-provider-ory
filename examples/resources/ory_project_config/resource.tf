@@ -236,6 +236,24 @@ variable "sms_api_key" {
   description = "API key for SMS delivery service"
 }
 
+# OAuth2 token hook with API key authentication
+resource "ory_project_config" "with_token_hook" {
+  oauth2_token_hook = "https://example.com/token-hook"
+
+  oauth2_token_hook_auth = {
+    type  = "api_key"
+    name  = "X-Api-Key"
+    value = var.token_hook_api_key
+    in    = "header"
+  }
+}
+
+variable "token_hook_api_key" {
+  type        = string
+  sensitive   = true
+  description = "API key sent to the OAuth2 token hook endpoint."
+}
+
 # Show the verification UI after registration and profile updates.
 # Each attribute toggles the `show_verification_ui` hook for one flow while
 # preserving any other hooks (e.g. `session`, `organization`) already set on

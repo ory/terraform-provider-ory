@@ -1,0 +1,10 @@
+resource "ory_project_config" "test" {
+  oauth2_token_hook = "https://example.com/token-hook"
+
+  oauth2_token_hook_auth = {
+    type  = "api_key"
+    name  = "X-Api-Key"
+    value = "test-token-hook-api-key"
+    in    = "header"
+  }
+}

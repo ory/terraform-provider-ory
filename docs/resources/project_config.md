@@ -259,6 +259,24 @@ variable "sms_api_key" {
   description = "API key for SMS delivery service"
 }
 
+# OAuth2 token hook with API key authentication
+resource "ory_project_config" "with_token_hook" {
+  oauth2_token_hook = "https://example.com/token-hook"
+
+  oauth2_token_hook_auth = {
+    type  = "api_key"
+    name  = "X-Api-Key"
+    value = var.token_hook_api_key
+    in    = "header"
+  }
+}
+
+variable "token_hook_api_key" {
+  type        = string
+  sensitive   = true
+  description = "API key sent to the OAuth2 token hook endpoint."
+}
+
 # Show the verification UI after registration and profile updates.
 # Each attribute toggles the `show_verification_ui` hook for one flow while
 # preserving any other hooks (e.g. `session`, `organization`) already set on
@@ -508,6 +526,7 @@ terraform plan  # verify no changes
 - `oauth2_strategies_jwt_scope_claim` (String) How scopes are represented in JWT access tokens ('list', 'string', or 'both').
 - `oauth2_strategies_scope` (String) OAuth2 scope matching strategy ('exact', 'wildcard').
 - `oauth2_token_hook` (String) Webhook URL called during token issuance for all grant types to customize claims.
+- `oauth2_token_hook_auth` (Attributes) Authentication configuration for the OAuth2 token hook (see `oauth2_token_hook`). Currently only `api_key` authentication is supported. (see [below for nested schema](#nestedatt--oauth2_token_hook_auth))
 - `oauth2_token_prefix` (String) Sets a per-project Access Token, Refresh Token, and Authorization Code prefix
 - `oauth2_ttl_access_token` (String) OAuth2 access token lifespan (e.g., '1h', '30m'). Requires Hydra service.
 - `oauth2_ttl_auth_code` (String) OAuth2 authorization code lifespan (e.g., '30m'). Requires Hydra service.
@@ -732,6 +751,17 @@ Optional:
 - `user` (String) Username for basic_auth.
 - `value` (String, Sensitive) API key value for api_key auth.
 
+
+
+<a id="nestedatt--oauth2_token_hook_auth"></a>
+### Nested Schema for `oauth2_token_hook_auth`
+
+Required:
+
+- `in` (String) Where to send the API key: `header` or `cookie`.
+- `name` (String) Header or cookie name carrying the API key (e.g. `X-Api-Key`).
+- `type` (String) Authentication type. Currently only `api_key` is supported.
+- `value` (String, Sensitive) API key value sent to the token hook.
 
 
 <a id="nestedatt--session_tokenizer_templates"></a>

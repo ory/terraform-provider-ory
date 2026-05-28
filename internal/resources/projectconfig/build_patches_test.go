@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
 )
@@ -157,6 +158,101 @@ func TestBuildPatches_OAuth2CookiesSameSiteLegacyWorkaround(t *testing.T) {
 	}
 	if p.Value != true {
 		t.Errorf("expected value true, got %v", p.Value)
+	}
+}
+
+func TestBuildPatches_OAuth2TokenHookAuth_APIKeyHeader(t *testing.T) {
+	r := &ProjectConfigResource{}
+	auth, _ := types.ObjectValue(oauth2TokenHookAuthAttrTypes, map[string]attr.Value{
+		"type":  types.StringValue("api_key"),
+		"name":  types.StringValue("X-Api-Key"),
+		"value": types.StringValue("secret-value"),
+		"in":    types.StringValue("header"),
+	})
+	plan := &ProjectConfigResourceModel{
+		OAuth2TokenHookAuth: auth,
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/oauth2/config/oauth2/token_hook/auth")
+	if p == nil {
+		t.Fatal("expected a patch for oauth2_token_hook_auth, got none")
+	}
+	if p.Op != "replace" {
+		t.Errorf("expected op 'replace', got %q", p.Op)
+	}
+	got, ok := p.Value.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected map value, got %T", p.Value)
+	}
+	if got["type"] != "api_key" {
+		t.Errorf("expected type=api_key, got %v", got["type"])
+	}
+	cfg, ok := got["config"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected config map, got %T", got["config"])
+	}
+	if cfg["name"] != "X-Api-Key" {
+		t.Errorf("expected name=X-Api-Key, got %v", cfg["name"])
+	}
+	if cfg["value"] != "secret-value" {
+		t.Errorf("expected value=secret-value, got %v", cfg["value"])
+	}
+	if cfg["in"] != "header" {
+		t.Errorf("expected in=header, got %v", cfg["in"])
+	}
+}
+
+func TestBuildPatches_OAuth2TokenHookAuth_APIKeyCookie(t *testing.T) {
+	r := &ProjectConfigResource{}
+	auth, _ := types.ObjectValue(oauth2TokenHookAuthAttrTypes, map[string]attr.Value{
+		"type":  types.StringValue("api_key"),
+		"name":  types.StringValue("session_cookie"),
+		"value": types.StringValue("cookie-value"),
+		"in":    types.StringValue("cookie"),
+	})
+	plan := &ProjectConfigResourceModel{
+		OAuth2TokenHookAuth: auth,
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/oauth2/config/oauth2/token_hook/auth")
+	if p == nil {
+		t.Fatal("expected a patch for oauth2_token_hook_auth, got none")
+	}
+	cfg := p.Value.(map[string]interface{})["config"].(map[string]interface{})
+	if cfg["in"] != "cookie" {
+		t.Errorf("expected in=cookie, got %v", cfg["in"])
+	}
+}
+
+func TestRemoveURLOnlyTokenHookPatch(t *testing.T) {
+	input := []ory.JsonPatch{
+		{Op: "replace", Path: "/services/oauth2/config/oauth2/token_hook/url", Value: "https://example.com"},
+		{Op: "replace", Path: "/services/oauth2/config/oauth2/token_hook/auth", Value: map[string]interface{}{}},
+		{Op: "replace", Path: "/services/oauth2/config/urls/self/issuer", Value: "https://auth.example.com"},
+	}
+	got := removeURLOnlyTokenHookPatch(input)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 patches after filter, got %d: %v", len(got), got)
+	}
+	for _, p := range got {
+		if p.Path == "/services/oauth2/config/oauth2/token_hook/url" {
+			t.Errorf("expected token_hook/url patch to be removed, but found: %v", p)
+		}
+	}
+}
+
+func TestBuildPatches_NullOAuth2TokenHookAuth(t *testing.T) {
+	r := &ProjectConfigResource{}
+	plan := &ProjectConfigResourceModel{
+		OAuth2TokenHookAuth: types.ObjectNull(oauth2TokenHookAuthAttrTypes),
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/oauth2/config/oauth2/token_hook/auth")
+	if p != nil {
+		t.Error("expected no patch for null oauth2_token_hook_auth")
 	}
 }
 
