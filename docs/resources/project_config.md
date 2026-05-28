@@ -273,6 +273,15 @@ resource "ory_project_config" "show_verification_ui" {
   # When users change their email in profile settings, force re-verification.
   selfservice_flows_settings_after_profile_hook_show_verification_ui = true
 }
+
+# Automatically sign users in after they register with email + password.
+# OIDC, WebAuthn and Passkey flows already issue a session on registration,
+# so this toggle only affects the password flow — it mirrors the Ory Console
+# "Enable sign in after registration" toggle. Existing hooks at the same path
+# (e.g. `organization`) are preserved.
+resource "ory_project_config" "sign_in_after_registration" {
+  selfservice_flows_registration_after_password_hook_session = true
+}
 ```
 
 ## Duration Format
@@ -569,6 +578,7 @@ terraform plan  # verify no changes
 - `selfservice_flows_registration_after_oidc_hook_show_verification_ui` (Boolean) Enable the `show_verification_ui` hook after a successful OIDC (social) registration. When true, users are redirected to the verification UI after registering via a social provider. Existing hooks at this path (e.g., `session`, `organization`) are preserved.
 - `selfservice_flows_registration_after_passkey_default_browser_return_url` (String) Return URL after registration via passkey.
 - `selfservice_flows_registration_after_password_default_browser_return_url` (String) Return URL after registration via password.
+- `selfservice_flows_registration_after_password_hook_session` (Boolean) Enable the `session` hook after a successful password registration, automatically signing the user in. Mirrors the Ory Console "Enable sign in after registration" toggle. Existing hooks at this path (e.g., `organization`) are preserved.
 - `selfservice_flows_registration_after_password_hook_show_verification_ui` (Boolean) Enable the `show_verification_ui` hook after a successful password registration. When true, users are redirected to the verification UI after registering with email + password. Existing hooks at this path (e.g., `session`, `organization`) are preserved.
 - `selfservice_flows_registration_after_webauthn_default_browser_return_url` (String) Return URL after registration via WebAuthn.
 - `selfservice_flows_registration_enable_legacy_one_step` (Boolean) Revert to legacy one-step registration instead of the two-step flow.

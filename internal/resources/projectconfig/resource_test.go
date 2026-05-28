@@ -646,6 +646,53 @@ func TestAccProjectConfigResource_recoveryFlow(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_sessionHookOnPasswordRegistration(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Enable the session hook on the password registration flow.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/session_hook.tf.tmpl", map[string]string{
+					"Session": "true",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_registration_after_password_hook_session", "true"),
+				),
+			},
+			// Disable it.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/session_hook.tf.tmpl", map[string]string{
+					"Session": "false",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_registration_after_password_hook_session", "false"),
+				),
+			},
+			// Re-apply the same config to confirm no perpetual diff.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/session_hook.tf.tmpl", map[string]string{
+					"Session": "false",
+				}),
+				PlanOnly: true,
+			},
+			// Import then verify state.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"selfservice_flows_registration_after_password_hook_session",
+					"cors_enabled",
+					"selfservice_methods_password_config_min_password_length",
+					"smtp_connection_uri",
+				},
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_showVerificationUIHooks(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },

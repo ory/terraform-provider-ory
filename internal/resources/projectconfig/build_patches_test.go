@@ -368,7 +368,7 @@ func TestBuildPatches_NullVerificationNotifyUnknownRecipients(t *testing.T) {
 }
 
 // projectWithIdentityConfig wraps an identity config map in the *ory.Project
-// shape that buildShowVerificationUIHookPatches expects.
+// shape that buildHookPatches expects.
 func projectWithIdentityConfig(identityConfig map[string]interface{}) *ory.Project {
 	return &ory.Project{
 		Services: ory.ProjectServices{
@@ -399,7 +399,7 @@ func TestBuildShowVerificationUIHookPatches_AddPreservesOtherHooks(t *testing.T)
 		},
 	})
 
-	patches := buildShowVerificationUIHookPatches(plan, current)
+	patches := buildHookPatches(plan, current)
 	require.Len(t, patches, 1)
 	p := patches[0]
 	assert.Equal(t, "replace", p.Op)
@@ -432,7 +432,7 @@ func TestBuildShowVerificationUIHookPatches_RemoveKeepsOthers(t *testing.T) {
 		},
 	})
 
-	patches := buildShowVerificationUIHookPatches(plan, current)
+	patches := buildHookPatches(plan, current)
 	require.Len(t, patches, 1)
 	hooks, ok := patches[0].Value.([]map[string]interface{})
 	require.True(t, ok, "expected []map[string]interface{} value, got %T", patches[0].Value)
@@ -461,7 +461,7 @@ func TestBuildShowVerificationUIHookPatches_AddIdempotent(t *testing.T) {
 		},
 	})
 
-	patches := buildShowVerificationUIHookPatches(plan, current)
+	patches := buildHookPatches(plan, current)
 	hooks, _ := patches[0].Value.([]map[string]interface{})
 	require.Len(t, hooks, 2, "expected 2 hooks (no duplicate): %v", hooks)
 	seen := map[string]int{}
@@ -478,7 +478,7 @@ func TestBuildShowVerificationUIHookPatches_NullSkipped(t *testing.T) {
 	plan := &ProjectConfigResourceModel{}
 	current := projectWithIdentityConfig(map[string]interface{}{})
 
-	patches := buildShowVerificationUIHookPatches(plan, current)
+	patches := buildHookPatches(plan, current)
 	assert.Empty(t, patches, "expected no patches when all hook attrs are null")
 }
 
@@ -486,7 +486,7 @@ func TestBuildShowVerificationUIHookPatches_NilCurrentProject(t *testing.T) {
 	plan := &ProjectConfigResourceModel{
 		SelfserviceFlowsRegistrationAfterPasswordHookShowVerificationUI: types.BoolValue(true),
 	}
-	patches := buildShowVerificationUIHookPatches(plan, nil)
+	patches := buildHookPatches(plan, nil)
 	assert.Empty(t, patches, "expected no patches when currentProject is nil")
 }
 
@@ -496,7 +496,7 @@ func TestBuildShowVerificationUIHookPatches_MissingHooksPathIsEmptyArray(t *test
 	}
 	current := projectWithIdentityConfig(map[string]interface{}{})
 
-	patches := buildShowVerificationUIHookPatches(plan, current)
+	patches := buildHookPatches(plan, current)
 	require.Len(t, patches, 1, "expected 1 patch even with empty config")
 	hooks, ok := patches[0].Value.([]map[string]interface{})
 	require.True(t, ok, "expected []map[string]interface{} value, got %T", patches[0].Value)
@@ -536,10 +536,114 @@ func TestNeedsHookPrefetch(t *testing.T) {
 			},
 			want: true,
 		},
+		{
+			name: "password session hook set",
+			plan: ProjectConfigResourceModel{
+				SelfserviceFlowsRegistrationAfterPasswordHookSession: types.BoolValue(true),
+			},
+			want: true,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.want, needsHookPrefetch(&tc.plan))
 		})
 	}
+}
+
+func TestBuildHookPatches_SessionAddPreservesOtherHooks(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		SelfserviceFlowsRegistrationAfterPasswordHookSession: types.BoolValue(true),
+	}
+	current := projectWithIdentityConfig(map[string]interface{}{
+		"selfservice": map[string]interface{}{
+			"flows": map[string]interface{}{
+				"registration": map[string]interface{}{
+					"after": map[string]interface{}{
+						"password": map[string]interface{}{
+							"hooks": []interface{}{
+								map[string]interface{}{"hook": "organization"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	patches := buildHookPatches(plan, current)
+	require.Len(t, patches, 1)
+	p := patches[0]
+	assert.Equal(t, "/services/identity/config/selfservice/flows/registration/after/password/hooks", p.Path)
+	hooks, ok := p.Value.([]map[string]interface{})
+	require.True(t, ok, "expected []map[string]interface{} value, got %T", p.Value)
+	require.Len(t, hooks, 2, "expected 2 hooks (session + organization)")
+	assert.Equal(t, "session", hooks[0]["hook"], "expected session first")
+	assert.Equal(t, "organization", hooks[1]["hook"], "expected organization preserved")
+}
+
+func TestBuildHookPatches_SessionRemoveKeepsOthers(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		SelfserviceFlowsRegistrationAfterPasswordHookSession: types.BoolValue(false),
+	}
+	current := projectWithIdentityConfig(map[string]interface{}{
+		"selfservice": map[string]interface{}{
+			"flows": map[string]interface{}{
+				"registration": map[string]interface{}{
+					"after": map[string]interface{}{
+						"password": map[string]interface{}{
+							"hooks": []interface{}{
+								map[string]interface{}{"hook": "session"},
+								map[string]interface{}{"hook": "organization"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	patches := buildHookPatches(plan, current)
+	require.Len(t, patches, 1)
+	hooks, _ := patches[0].Value.([]map[string]interface{})
+	require.Len(t, hooks, 1, "expected 1 remaining hook")
+	assert.Equal(t, "organization", hooks[0]["hook"], "expected organization to remain")
+}
+
+// When two hook attributes (show_verification_ui and session) target the same
+// hooks array, buildHookPatches emits a single patch that reflects both
+// toggles instead of clobbering one with the other.
+func TestBuildHookPatches_MultipleHooksAtSamePathMerged(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		SelfserviceFlowsRegistrationAfterPasswordHookShowVerificationUI: types.BoolValue(true),
+		SelfserviceFlowsRegistrationAfterPasswordHookSession:            types.BoolValue(true),
+	}
+	current := projectWithIdentityConfig(map[string]interface{}{
+		"selfservice": map[string]interface{}{
+			"flows": map[string]interface{}{
+				"registration": map[string]interface{}{
+					"after": map[string]interface{}{
+						"password": map[string]interface{}{
+							"hooks": []interface{}{
+								map[string]interface{}{"hook": "organization"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	patches := buildHookPatches(plan, current)
+	require.Len(t, patches, 1, "expected exactly 1 merged patch for the password hooks path")
+	hooks, _ := patches[0].Value.([]map[string]interface{})
+	seen := map[string]int{}
+	for _, h := range hooks {
+		if name, ok := h["hook"].(string); ok {
+			seen[name]++
+		}
+	}
+	assert.Equal(t, 1, seen["show_verification_ui"], "expected show_verification_ui to be present once")
+	assert.Equal(t, 1, seen["session"], "expected session to be present once")
+	assert.Equal(t, 1, seen["organization"], "expected organization to be preserved")
 }
