@@ -6,6 +6,8 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func findPatch(patches []ory.JsonPatch, path string) *ory.JsonPatch {
@@ -325,15 +327,9 @@ func TestBuildPatches_SessionEarliestPossibleExtend(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/session/earliest_possible_extend")
-	if p == nil {
-		t.Fatal("expected a patch for session_earliest_possible_extend, got none")
-	}
-	if p.Op != "replace" {
-		t.Errorf("expected op 'replace', got %q", p.Op)
-	}
-	if p.Value != "24h" {
-		t.Errorf("expected value '24h', got %v", p.Value)
-	}
+	require.NotNil(t, p, "expected a patch for session_earliest_possible_extend")
+	assert.Equal(t, "replace", p.Op)
+	assert.Equal(t, "24h", p.Value)
 }
 
 func TestBuildPatches_NullSessionEarliestPossibleExtend(t *testing.T) {
@@ -344,9 +340,7 @@ func TestBuildPatches_NullSessionEarliestPossibleExtend(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/session/earliest_possible_extend")
-	if p != nil {
-		t.Error("expected no patch for null session_earliest_possible_extend")
-	}
+	assert.Nil(t, p, "expected no patch for null session_earliest_possible_extend")
 }
 
 func TestBuildPatches_SettingsLifespan(t *testing.T) {
