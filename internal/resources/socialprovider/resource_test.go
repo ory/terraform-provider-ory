@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 )
@@ -81,13 +82,9 @@ func TestAccSocialProviderResource_basic(t *testing.T) {
 func generateTestPrivateKey(t *testing.T) string {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("failed to generate test private key: %v", err)
-	}
+	require.NoError(t, err, "failed to generate test private key")
 	der, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		t.Fatalf("failed to marshal test private key: %v", err)
-	}
+	require.NoError(t, err, "failed to marshal test private key")
 	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
 }
 

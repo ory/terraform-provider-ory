@@ -7,6 +7,8 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ory/terraform-provider-ory/internal/testutil"
 )
@@ -14,9 +16,7 @@ import (
 func TestProvider(t *testing.T) {
 	// Verify the provider can be instantiated
 	p := New("test")()
-	if p == nil {
-		t.Fatal("provider should not be nil")
-	}
+	require.NotNil(t, p, "provider should not be nil")
 }
 
 func TestProviderMetadata(t *testing.T) {
@@ -27,12 +27,8 @@ func TestProviderMetadata(t *testing.T) {
 
 	p.Metadata(context.Background(), req, resp)
 
-	if resp.TypeName != "ory" {
-		t.Errorf("expected TypeName 'ory', got '%s'", resp.TypeName)
-	}
-	if resp.Version != "1.0.0" {
-		t.Errorf("expected Version '1.0.0', got '%s'", resp.Version)
-	}
+	assert.Equal(t, "ory", resp.TypeName)
+	assert.Equal(t, "1.0.0", resp.Version)
 }
 
 func TestResolveString(t *testing.T) {
@@ -80,10 +76,7 @@ func TestResolveString(t *testing.T) {
 				defer func() { _ = os.Unsetenv(tt.envVar) }()
 			}
 
-			result := resolveString(tt.tfValue, tt.envVar)
-			if result != tt.expected {
-				t.Errorf("expected '%s', got '%s'", tt.expected, result)
-			}
+			assert.Equal(t, tt.expected, resolveString(tt.tfValue, tt.envVar))
 		})
 	}
 }
@@ -146,10 +139,7 @@ func TestResolveStringDefault(t *testing.T) {
 				defer func() { _ = os.Unsetenv(tt.envVar) }()
 			}
 
-			result := resolveStringDefault(tt.tfValue, tt.envVar, tt.defaultValue)
-			if result != tt.expected {
-				t.Errorf("expected '%s', got '%s'", tt.expected, result)
-			}
+			assert.Equal(t, tt.expected, resolveStringDefault(tt.tfValue, tt.envVar, tt.defaultValue))
 		})
 	}
 }
@@ -168,12 +158,8 @@ func TestProviderModelAttributes(t *testing.T) {
 	}
 
 	// Verify values can be retrieved
-	if model.ConsoleAPIURL.ValueString() != testutil.ExampleConsoleAPIURL {
-		t.Error("ConsoleAPIURL not set correctly")
-	}
-	if model.ProjectAPIURL.ValueString() != testutil.ExampleProjectAPIURL {
-		t.Error("ProjectAPIURL not set correctly")
-	}
+	assert.Equal(t, testutil.ExampleConsoleAPIURL, model.ConsoleAPIURL.ValueString())
+	assert.Equal(t, testutil.ExampleProjectAPIURL, model.ProjectAPIURL.ValueString())
 }
 
 func TestBuildUserAgent(t *testing.T) {
@@ -207,10 +193,7 @@ func TestBuildUserAgent(t *testing.T) {
 				t.Setenv("TF_APPEND_USER_AGENT", "")
 			}
 
-			got := buildUserAgent(tt.tfVersion, tt.providerVersion)
-			if got != tt.expected {
-				t.Errorf("expected %q, got %q", tt.expected, got)
-			}
+			assert.Equal(t, tt.expected, buildUserAgent(tt.tfVersion, tt.providerVersion))
 		})
 	}
 }

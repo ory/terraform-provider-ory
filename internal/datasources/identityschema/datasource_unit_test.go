@@ -1,6 +1,10 @@
 package identityschema
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestIsEmptySchemaBody(t *testing.T) {
 	tests := []struct {
@@ -16,9 +20,7 @@ func TestIsEmptySchemaBody(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isEmptySchemaBody(tt.input); got != tt.want {
-				t.Errorf("isEmptySchemaBody(%q) = %v, want %v", string(tt.input), got, tt.want)
-			}
+			assert.Equal(t, tt.want, isEmptySchemaBody(tt.input), "isEmptySchemaBody(%q)", string(tt.input))
 		})
 	}
 }

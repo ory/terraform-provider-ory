@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	ory "github.com/ory/client-go"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 	"github.com/ory/terraform-provider-ory/internal/testutil"
@@ -393,9 +394,7 @@ func clearTokenizerTemplatesOutOfBand(t *testing.T) func() {
 	t.Helper()
 	return func() {
 		c, err := acctest.GetOryClient()
-		if err != nil {
-			t.Fatalf("Failed to create Ory client: %v", err)
-		}
+		require.NoError(t, err, "Failed to create Ory client")
 		projectID := acctest.GetTestProjectID(t)
 		patches := []ory.JsonPatch{
 			{
@@ -404,9 +403,8 @@ func clearTokenizerTemplatesOutOfBand(t *testing.T) func() {
 				Value: map[string]interface{}{},
 			},
 		}
-		if _, err := c.PatchProject(context.Background(), projectID, patches); err != nil {
-			t.Fatalf("Failed to clear tokenizer templates out-of-band: %v", err)
-		}
+		_, err = c.PatchProject(context.Background(), projectID, patches)
+		require.NoError(t, err, "Failed to clear tokenizer templates out-of-band")
 		t.Log("Cleared tokenizer templates out-of-band to simulate drift")
 	}
 }
