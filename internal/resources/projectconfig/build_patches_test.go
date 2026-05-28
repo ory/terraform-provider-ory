@@ -572,26 +572,14 @@ func TestBuildHookPatches_SessionAddPreservesOtherHooks(t *testing.T) {
 	})
 
 	patches := buildHookPatches(plan, current)
-	if len(patches) != 1 {
-		t.Fatalf("expected 1 patch, got %d", len(patches))
-	}
+	require.Len(t, patches, 1)
 	p := patches[0]
-	if p.Path != "/services/identity/config/selfservice/flows/registration/after/password/hooks" {
-		t.Errorf("unexpected patch path: %s", p.Path)
-	}
+	assert.Equal(t, "/services/identity/config/selfservice/flows/registration/after/password/hooks", p.Path)
 	hooks, ok := p.Value.([]map[string]interface{})
-	if !ok {
-		t.Fatalf("expected []map[string]interface{} value, got %T", p.Value)
-	}
-	if len(hooks) != 2 {
-		t.Fatalf("expected 2 hooks (session + organization), got %d: %v", len(hooks), hooks)
-	}
-	if hooks[0]["hook"] != "session" {
-		t.Errorf("expected session first, got %v", hooks[0]["hook"])
-	}
-	if hooks[1]["hook"] != "organization" {
-		t.Errorf("expected organization preserved, got %v", hooks[1]["hook"])
-	}
+	require.True(t, ok, "expected []map[string]interface{} value, got %T", p.Value)
+	require.Len(t, hooks, 2, "expected 2 hooks (session + organization)")
+	assert.Equal(t, "session", hooks[0]["hook"], "expected session first")
+	assert.Equal(t, "organization", hooks[1]["hook"], "expected organization preserved")
 }
 
 func TestBuildHookPatches_SessionRemoveKeepsOthers(t *testing.T) {
@@ -616,16 +604,10 @@ func TestBuildHookPatches_SessionRemoveKeepsOthers(t *testing.T) {
 	})
 
 	patches := buildHookPatches(plan, current)
-	if len(patches) != 1 {
-		t.Fatalf("expected 1 patch, got %d", len(patches))
-	}
+	require.Len(t, patches, 1)
 	hooks, _ := patches[0].Value.([]map[string]interface{})
-	if len(hooks) != 1 {
-		t.Fatalf("expected 1 remaining hook, got %d", len(hooks))
-	}
-	if hooks[0]["hook"] != "organization" {
-		t.Errorf("expected organization to remain, got %v", hooks[0]["hook"])
-	}
+	require.Len(t, hooks, 1, "expected 1 remaining hook")
+	assert.Equal(t, "organization", hooks[0]["hook"], "expected organization to remain")
 }
 
 // When two hook attributes (show_verification_ui and session) target the same
@@ -653,9 +635,7 @@ func TestBuildHookPatches_MultipleHooksAtSamePathMerged(t *testing.T) {
 	})
 
 	patches := buildHookPatches(plan, current)
-	if len(patches) != 1 {
-		t.Fatalf("expected exactly 1 merged patch for the password hooks path, got %d", len(patches))
-	}
+	require.Len(t, patches, 1, "expected exactly 1 merged patch for the password hooks path")
 	hooks, _ := patches[0].Value.([]map[string]interface{})
 	seen := map[string]int{}
 	for _, h := range hooks {
@@ -663,13 +643,7 @@ func TestBuildHookPatches_MultipleHooksAtSamePathMerged(t *testing.T) {
 			seen[name]++
 		}
 	}
-	if seen["show_verification_ui"] != 1 {
-		t.Errorf("expected show_verification_ui to be present once, got %d", seen["show_verification_ui"])
-	}
-	if seen["session"] != 1 {
-		t.Errorf("expected session to be present once, got %d", seen["session"])
-	}
-	if seen["organization"] != 1 {
-		t.Errorf("expected organization to be preserved, got %d", seen["organization"])
-	}
+	assert.Equal(t, 1, seen["show_verification_ui"], "expected show_verification_ui to be present once")
+	assert.Equal(t, 1, seen["session"], "expected session to be present once")
+	assert.Equal(t, 1, seen["organization"], "expected organization to be preserved")
 }
