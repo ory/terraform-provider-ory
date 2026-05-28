@@ -17,9 +17,10 @@ resource "ory_project_config" "secure" {
   cors_admin_origins = ["https://admin.example.com"]
 
   # Sessions
-  session_lifespan          = "168h0m0s" # 7 days
-  session_cookie_same_site  = "Strict"
-  session_cookie_persistent = true
+  session_lifespan                 = "168h0m0s" # 7 days
+  session_earliest_possible_extend = "24h"      # Only extend sessions in the last 24h to avoid excessive writes
+  session_cookie_same_site         = "Strict"
+  session_cookie_persistent        = true
 
   # Password Policy
   selfservice_methods_password_config_min_password_length                 = 12

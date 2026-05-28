@@ -144,6 +144,59 @@ func TestAccProjectConfigResource_oauth2IssuerURL(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_sessionEarliestPossibleExtend(t *testing.T) {
+	createData := map[string]string{
+		"Lifespan":               "720h0m0s",
+		"EarliestPossibleExtend": "24h",
+	}
+	updateData := map[string]string{
+		"Lifespan":               "720h0m0s",
+		"EarliestPossibleExtend": "1h",
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/session_extend.tf.tmpl", createData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_lifespan", "720h0m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_earliest_possible_extend", "24h"),
+				),
+			},
+			// ImportState — import only sets id/project_id; Read only refreshes
+			// fields that are non-null in state, so config attributes won't be
+			// populated until apply.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"session_lifespan", "session_earliest_possible_extend",
+					"cors_enabled",
+					"selfservice_methods_password_config_min_password_length",
+					"smtp_connection_uri",
+				},
+			},
+			// Update
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/session_extend.tf.tmpl", updateData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_earliest_possible_extend", "1h"),
+				),
+			},
+			// Verify no perpetual diff
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/session_extend.tf.tmpl", updateData),
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_mfaPolicy(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },

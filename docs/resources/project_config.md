@@ -40,9 +40,10 @@ resource "ory_project_config" "secure" {
   cors_admin_origins = ["https://admin.example.com"]
 
   # Sessions
-  session_lifespan          = "168h0m0s" # 7 days
-  session_cookie_same_site  = "Strict"
-  session_cookie_persistent = true
+  session_lifespan                 = "168h0m0s" # 7 days
+  session_earliest_possible_extend = "24h"      # Only extend sessions in the last 24h to avoid excessive writes
+  session_cookie_same_site         = "Strict"
+  session_cookie_persistent        = true
 
   # Password Policy
   selfservice_methods_password_config_min_password_length                 = 12
@@ -646,6 +647,7 @@ terraform plan  # verify no changes
 - `selfservice_methods_webauthn_enabled` (Boolean) Enable WebAuthn (hardware keys).
 - `session_cookie_persistent` (Boolean) Enable persistent session cookies (survive browser close).
 - `session_cookie_same_site` (String) SameSite cookie attribute (Lax, Strict, None).
+- `session_earliest_possible_extend` (String) Earliest time before session expiry when a session can be extended (e.g., '24h'). Setting this prevents excessive database writes when sessions are extended.
 - `session_lifespan` (String) Session duration (e.g., '24h0m0s').
 - `session_tokenizer_templates` (Attributes Map) JWT tokenizer templates for the /sessions/whoami endpoint. Each key is a template name, and the value configures how JWTs are generated. (see [below for nested schema](#nestedatt--session_tokenizer_templates))
 - `session_whoami_required_aal` (String) Required AAL for session whoami endpoint: 'aal1', 'aal2', or 'highest_available'.
