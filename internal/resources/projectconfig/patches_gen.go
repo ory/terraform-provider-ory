@@ -47,6 +47,7 @@ type MapStringPatchEntry struct {
 func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEntry {
 	return []StringPatchEntry{
 		{&plan.SessionLifespan, nil, "/services/identity/config/session/lifespan"},
+		{&plan.SessionEarliestPossibleExtend, nil, "/services/identity/config/session/earliest_possible_extend"},
 		{&plan.SessionCookieSameSite, nil, "/services/identity/config/session/cookie/same_site"},
 		{&plan.SessionWhoamiRequiredAAL, nil, "/services/identity/config/session/whoami/required_aal"},
 		{&plan.OAuth2TTLAccessToken, &plan.OAuth2AccessTokenLifespan, "/services/oauth2/config/ttl/access_token"},

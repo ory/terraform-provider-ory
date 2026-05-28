@@ -144,6 +144,59 @@ func TestAccProjectConfigResource_oauth2IssuerURL(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_sessionEarliestPossibleExtend(t *testing.T) {
+	createData := map[string]string{
+		"Lifespan":               "720h0m0s",
+		"EarliestPossibleExtend": "24h",
+	}
+	updateData := map[string]string{
+		"Lifespan":               "720h0m0s",
+		"EarliestPossibleExtend": "1h",
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/session_extend.tf.tmpl", createData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_lifespan", "720h0m0s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_earliest_possible_extend", "24h"),
+				),
+			},
+			// ImportState — import only sets id/project_id; Read only refreshes
+			// fields that are non-null in state, so config attributes won't be
+			// populated until apply.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"session_lifespan", "session_earliest_possible_extend",
+					"cors_enabled",
+					"selfservice_methods_password_config_min_password_length",
+					"smtp_connection_uri",
+				},
+			},
+			// Update
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/session_extend.tf.tmpl", updateData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_earliest_possible_extend", "1h"),
+				),
+			},
+			// Verify no perpetual diff
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/session_extend.tf.tmpl", updateData),
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_mfaPolicy(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
@@ -727,6 +780,53 @@ func TestAccProjectConfigResource_recoveryFlow(t *testing.T) {
 					"selfservice_flows_recovery_use",
 					"selfservice_flows_recovery_lifespan",
 					"selfservice_flows_recovery_notify_unknown_recipients",
+					"cors_enabled",
+					"selfservice_methods_password_config_min_password_length",
+					"smtp_connection_uri",
+				},
+			},
+		},
+	})
+}
+
+func TestAccProjectConfigResource_sessionHookOnPasswordRegistration(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Enable the session hook on the password registration flow.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/session_hook.tf.tmpl", map[string]string{
+					"Session": "true",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_registration_after_password_hook_session", "true"),
+				),
+			},
+			// Disable it.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/session_hook.tf.tmpl", map[string]string{
+					"Session": "false",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_registration_after_password_hook_session", "false"),
+				),
+			},
+			// Re-apply the same config to confirm no perpetual diff.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/session_hook.tf.tmpl", map[string]string{
+					"Session": "false",
+				}),
+				PlanOnly: true,
+			},
+			// Import then verify state.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"selfservice_flows_registration_after_password_hook_session",
 					"cors_enabled",
 					"selfservice_methods_password_config_min_password_length",
 					"smtp_connection_uri",

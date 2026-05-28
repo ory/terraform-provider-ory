@@ -40,9 +40,10 @@ resource "ory_project_config" "secure" {
   cors_admin_origins = ["https://admin.example.com"]
 
   # Sessions
-  session_lifespan          = "168h0m0s" # 7 days
-  session_cookie_same_site  = "Strict"
-  session_cookie_persistent = true
+  session_lifespan                 = "168h0m0s" # 7 days
+  session_earliest_possible_extend = "24h"      # Only extend sessions in the last 24h to avoid excessive writes
+  session_cookie_same_site         = "Strict"
+  session_cookie_persistent        = true
 
   # Password Policy
   selfservice_methods_password_config_min_password_length                 = 12
@@ -290,6 +291,15 @@ resource "ory_project_config" "show_verification_ui" {
   selfservice_flows_registration_after_oidc_hook_show_verification_ui = true
   # When users change their email in profile settings, force re-verification.
   selfservice_flows_settings_after_profile_hook_show_verification_ui = true
+}
+
+# Automatically sign users in after they register with email + password.
+# OIDC, WebAuthn and Passkey flows already issue a session on registration,
+# so this toggle only affects the password flow — it mirrors the Ory Console
+# "Enable sign in after registration" toggle. Existing hooks at the same path
+# (e.g. `organization`) are preserved.
+resource "ory_project_config" "sign_in_after_registration" {
+  selfservice_flows_registration_after_password_hook_session = true
 }
 ```
 
@@ -588,6 +598,7 @@ terraform plan  # verify no changes
 - `selfservice_flows_registration_after_oidc_hook_show_verification_ui` (Boolean) Enable the `show_verification_ui` hook after a successful OIDC (social) registration. When true, users are redirected to the verification UI after registering via a social provider. Existing hooks at this path (e.g., `session`, `organization`) are preserved.
 - `selfservice_flows_registration_after_passkey_default_browser_return_url` (String) Return URL after registration via passkey.
 - `selfservice_flows_registration_after_password_default_browser_return_url` (String) Return URL after registration via password.
+- `selfservice_flows_registration_after_password_hook_session` (Boolean) Enable the `session` hook after a successful password registration, automatically signing the user in. Mirrors the Ory Console "Enable sign in after registration" toggle. Existing hooks at this path (e.g., `organization`) are preserved.
 - `selfservice_flows_registration_after_password_hook_show_verification_ui` (Boolean) Enable the `show_verification_ui` hook after a successful password registration. When true, users are redirected to the verification UI after registering with email + password. Existing hooks at this path (e.g., `session`, `organization`) are preserved.
 - `selfservice_flows_registration_after_webauthn_default_browser_return_url` (String) Return URL after registration via WebAuthn.
 - `selfservice_flows_registration_enable_legacy_one_step` (Boolean) Revert to legacy one-step registration instead of the two-step flow.
@@ -655,6 +666,7 @@ terraform plan  # verify no changes
 - `selfservice_methods_webauthn_enabled` (Boolean) Enable WebAuthn (hardware keys).
 - `session_cookie_persistent` (Boolean) Enable persistent session cookies (survive browser close).
 - `session_cookie_same_site` (String) SameSite cookie attribute (Lax, Strict, None).
+- `session_earliest_possible_extend` (String) Earliest time before session expiry when a session can be extended (e.g., '24h'). Setting this prevents excessive database writes when sessions are extended.
 - `session_lifespan` (String) Session duration (e.g., '24h0m0s').
 - `session_tokenizer_templates` (Attributes Map) JWT tokenizer templates for the /sessions/whoami endpoint. Each key is a template name, and the value configures how JWTs are generated. (see [below for nested schema](#nestedatt--session_tokenizer_templates))
 - `session_whoami_required_aal` (String) Required AAL for session whoami endpoint: 'aal1', 'aal2', or 'highest_available'.

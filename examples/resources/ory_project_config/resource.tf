@@ -17,9 +17,10 @@ resource "ory_project_config" "secure" {
   cors_admin_origins = ["https://admin.example.com"]
 
   # Sessions
-  session_lifespan          = "168h0m0s" # 7 days
-  session_cookie_same_site  = "Strict"
-  session_cookie_persistent = true
+  session_lifespan                 = "168h0m0s" # 7 days
+  session_earliest_possible_extend = "24h"      # Only extend sessions in the last 24h to avoid excessive writes
+  session_cookie_same_site         = "Strict"
+  session_cookie_persistent        = true
 
   # Password Policy
   selfservice_methods_password_config_min_password_length                 = 12
@@ -267,4 +268,13 @@ resource "ory_project_config" "show_verification_ui" {
   selfservice_flows_registration_after_oidc_hook_show_verification_ui = true
   # When users change their email in profile settings, force re-verification.
   selfservice_flows_settings_after_profile_hook_show_verification_ui = true
+}
+
+# Automatically sign users in after they register with email + password.
+# OIDC, WebAuthn and Passkey flows already issue a session on registration,
+# so this toggle only affects the password flow — it mirrors the Ory Console
+# "Enable sign in after registration" toggle. Existing hooks at the same path
+# (e.g. `organization`) are preserved.
+resource "ory_project_config" "sign_in_after_registration" {
+  selfservice_flows_registration_after_password_hook_session = true
 }
