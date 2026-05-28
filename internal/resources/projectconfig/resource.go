@@ -1645,13 +1645,16 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 	// OAuth2 Token Hook Auth — read back from oauth2.token_hook.auth. The
 	// `value` field is sensitive and the API never returns it, so we preserve
 	// whatever the user has in state to keep ImportStateVerify and refresh
-	// cycles drift-free.
+	// cycles drift-free. If the API no longer holds an auth block (cleared
+	// out-of-band or by our "drop auth" path), null the state so the next
+	// plan surfaces the divergence instead of silently keeping stale auth.
 	if project.Services.Oauth2 != nil && !state.OAuth2TokenHookAuth.IsNull() && !state.OAuth2TokenHookAuth.IsUnknown() {
 		oauth2Config := project.Services.Oauth2.Config
-		if v := getNestedValue(oauth2Config, "oauth2", "token_hook", "auth"); v != nil {
-			if authRaw, ok := v.(map[string]interface{}); ok {
-				state.OAuth2TokenHookAuth = readOAuth2TokenHookAuthObject(authRaw, state.OAuth2TokenHookAuth)
-			}
+		authRaw, ok := getNestedValue(oauth2Config, "oauth2", "token_hook", "auth").(map[string]interface{})
+		if ok {
+			state.OAuth2TokenHookAuth = readOAuth2TokenHookAuthObject(authRaw, state.OAuth2TokenHookAuth)
+		} else {
+			state.OAuth2TokenHookAuth = types.ObjectNull(oauth2TokenHookAuthAttrTypes)
 		}
 	}
 
