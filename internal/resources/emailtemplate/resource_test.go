@@ -9,6 +9,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	ory "github.com/ory/client-go"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 )
@@ -115,9 +116,7 @@ func rewriteRecoveryCodeSubjectOutOfBand(t *testing.T, newSubject string) func()
 	t.Helper()
 	return func() {
 		c, err := acctest.GetOryClient()
-		if err != nil {
-			t.Fatalf("Failed to create Ory client: %v", err)
-		}
+		require.NoError(t, err, "Failed to create Ory client")
 		projectID := acctest.GetTestProjectID(t)
 		encoded := "base64://" + base64.StdEncoding.EncodeToString([]byte(newSubject))
 		patches := []ory.JsonPatch{
@@ -127,9 +126,8 @@ func rewriteRecoveryCodeSubjectOutOfBand(t *testing.T, newSubject string) func()
 				Value: encoded,
 			},
 		}
-		if _, err := c.PatchProject(context.Background(), projectID, patches); err != nil {
-			t.Fatalf("Failed to rewrite subject out-of-band: %v", err)
-		}
+		_, err = c.PatchProject(context.Background(), projectID, patches)
+		require.NoError(t, err, "Failed to rewrite subject out-of-band")
 		t.Logf("Rewrote subject out-of-band to %q", newSubject)
 	}
 }
