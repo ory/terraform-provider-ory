@@ -547,6 +547,15 @@ func TestAccProjectConfigResource_settingsAndVerification(t *testing.T) {
 }
 
 func TestAccProjectConfigResource_oauth2TokenHookAuth(t *testing.T) {
+	// Always wipe `oauth2.token_hook` after the test, even on intermediate
+	// step failure. Background: the API normalizes a `replace token_hook =
+	// "<url>"` patch into `{"url": "<url>"}`, but its own schema's `oneOf`
+	// rejects that shape on the *next* PATCH (must be either a string URL
+	// or a full `{url, auth}` object). Without this cleanup, a failed run
+	// can leave the shared CI project in a state that breaks every
+	// subsequent PATCH from every PR and trips the EU-W3 5xx alarm.
+	t.Cleanup(func() { clearProjectTokenHook(t) })
+
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
@@ -596,6 +605,35 @@ func TestAccProjectConfigResource_oauth2TokenHookAuth(t *testing.T) {
 			},
 		},
 	})
+}
+
+// clearProjectTokenHook removes the `oauth2.token_hook` field from the shared
+// test project. The "no-auth" tail of the test leaves the API in a
+// schema-invalid `{"url": ...}` shape that the API itself rejects on the next
+// PATCH; we explicitly tear it down so the shared project doesn't break other
+// tests. Errors are downgraded to log lines because a missing field is the
+// expected post-cleanup state.
+func clearProjectTokenHook(t *testing.T) {
+	t.Helper()
+
+	c, err := acctest.GetOryClient()
+	if err != nil {
+		t.Logf("Warning: could not create client to clear token_hook: %v", err)
+		return
+	}
+
+	projectID := acctest.GetTestProjectID(t)
+	patches := []ory.JsonPatch{
+		{
+			Op:   "remove",
+			Path: "/services/oauth2/config/oauth2/token_hook",
+		},
+	}
+	if _, err := c.PatchProject(context.Background(), projectID, patches); err != nil {
+		t.Logf("Warning: failed to clear oauth2.token_hook (may already be absent): %v", err)
+		return
+	}
+	t.Log("Cleared oauth2.token_hook on test project")
 }
 
 func TestAccProjectConfigResource_courierHTTP(t *testing.T) {
