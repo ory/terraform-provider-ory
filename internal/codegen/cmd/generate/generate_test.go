@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGovernsToPatchPath(t *testing.T) {
@@ -32,13 +35,10 @@ func TestGovernsToPatchPath(t *testing.T) {
 
 	for _, tt := range tests {
 		path, ok := governsToPatchPath(tt.property, tt.desc)
-		if ok != tt.wantOK {
-			t.Errorf("governsToPatchPath(%q): got ok=%v, want %v", tt.property, ok, tt.wantOK)
+		if !assert.Equal(t, tt.wantOK, ok, "governsToPatchPath(%q): ok", tt.property) {
 			continue
 		}
-		if path != tt.wantPath {
-			t.Errorf("governsToPatchPath(%q): got %q, want %q", tt.property, path, tt.wantPath)
-		}
+		assert.Equal(t, tt.wantPath, path, "governsToPatchPath(%q): path", tt.property)
 	}
 }
 
@@ -57,10 +57,7 @@ func TestCleanDescription(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := cleanDescription(tt.input)
-		if got != tt.want {
-			t.Errorf("cleanDescription(%q):\n  got  %q\n  want %q", tt.input, got, tt.want)
-		}
+		assert.Equal(t, tt.want, cleanDescription(tt.input), "cleanDescription(%q)", tt.input)
 	}
 }
 
@@ -78,10 +75,7 @@ func TestDeriveTerraformName(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := deriveTerraformName(tt.openapi)
-		if got != tt.want {
-			t.Errorf("deriveTerraformName(%q): got %q, want %q", tt.openapi, got, tt.want)
-		}
+		assert.Equal(t, tt.want, deriveTerraformName(tt.openapi), "deriveTerraformName(%q)", tt.openapi)
 	}
 }
 
@@ -89,38 +83,23 @@ func TestAppendToMappingsFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "mappings.yaml")
 	original := "attributes:\n  - name: foo\n    go_field: Foo\n    type: bool\n"
-	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	if err := appendToMappingsFile(path, "\n  - name: bar\n    go_field: Bar\n"); err != nil {
-		t.Fatalf("append: %v", err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(original), 0o600), "seed")
+	require.NoError(t, appendToMappingsFile(path, "\n  - name: bar\n    go_field: Bar\n"), "append")
 	got, err := os.ReadFile(path) //nolint:gosec // test file
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
+	require.NoError(t, err, "read")
 	want := "attributes:\n  - name: foo\n    go_field: Foo\n    type: bool\n\n  - name: bar\n    go_field: Bar\n"
-	if string(got) != want {
-		t.Errorf("unexpected content:\n--- got ---\n%s\n--- want ---\n%s", got, want)
-	}
+	assert.Equal(t, want, string(got))
 }
 
 func TestAppendToMappingsFileHandlesMissingTrailingNewline(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "mappings.yaml")
-	if err := os.WriteFile(path, []byte("attributes:\n  - name: foo"), 0o600); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	if err := appendToMappingsFile(path, "\n  - name: bar\n"); err != nil {
-		t.Fatalf("append: %v", err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte("attributes:\n  - name: foo"), 0o600), "seed")
+	require.NoError(t, appendToMappingsFile(path, "\n  - name: bar\n"), "append")
 	got, err := os.ReadFile(path) //nolint:gosec // test file
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if !strings.HasPrefix(string(got), "attributes:\n  - name: foo\n\n") {
-		t.Errorf("expected single-newline separator, got %q", got)
-	}
+	require.NoError(t, err, "read")
+	assert.True(t, strings.HasPrefix(string(got), "attributes:\n  - name: foo\n\n"),
+		"expected single-newline separator, got %q", got)
 }
 
 func TestInsertStructFields(t *testing.T) {
@@ -134,40 +113,25 @@ type ProjectConfigResourceModel struct {
 
 func other() {}
 `
-	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(src), 0o600), "seed")
 	fields := []string{
 		"\tNewField1 types.Bool `tfsdk:\"new_field_1\"`",
 		"\tNewField2 types.String `tfsdk:\"new_field_2\"`",
 	}
-	if err := insertStructFields(path, "ProjectConfigResourceModel", fields); err != nil {
-		t.Fatalf("insert: %v", err)
-	}
+	require.NoError(t, insertStructFields(path, "ProjectConfigResourceModel", fields), "insert")
 	got, err := os.ReadFile(path) //nolint:gosec // test file
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
+	require.NoError(t, err, "read")
 	content := string(got)
-	if !strings.Contains(content, "\tID types.String `tfsdk:\"id\"`\n") {
-		t.Errorf("original field missing: %s", content)
-	}
-	if !strings.Contains(content, "NewField1 types.Bool") || !strings.Contains(content, "NewField2 types.String") {
-		t.Errorf("inserted fields missing: %s", content)
-	}
-	if !strings.Contains(content, "\n}\n\nfunc other()") {
-		t.Errorf("closing brace or trailing content broken: %s", content)
-	}
+	assert.Contains(t, content, "\tID types.String `tfsdk:\"id\"`\n", "original field missing")
+	assert.Contains(t, content, "NewField1 types.Bool", "NewField1 missing")
+	assert.Contains(t, content, "NewField2 types.String", "NewField2 missing")
+	assert.Contains(t, content, "\n}\n\nfunc other()", "closing brace or trailing content broken")
 }
 
 func TestInsertStructFieldsErrorsOnMissingStruct(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "resource.go")
-	if err := os.WriteFile(path, []byte("package foo\n"), 0o600); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte("package foo\n"), 0o600), "seed")
 	err := insertStructFields(path, "ProjectConfigResourceModel", []string{"\tX types.Bool"})
-	if err == nil {
-		t.Fatal("expected error for missing struct, got nil")
-	}
+	require.Error(t, err, "expected error for missing struct")
 }

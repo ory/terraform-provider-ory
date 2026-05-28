@@ -6,6 +6,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHashFromURL(t *testing.T) {
@@ -62,12 +65,8 @@ func TestHashFromURL(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got, ok := hashFromURL(tc.in)
-			if ok != tc.ok {
-				t.Fatalf("ok mismatch: got %v want %v", ok, tc.ok)
-			}
-			if got != tc.want {
-				t.Fatalf("hash mismatch: got %q want %q", got, tc.want)
-			}
+			require.Equal(t, tc.ok, ok, "ok mismatch")
+			assert.Equal(t, tc.want, got, "hash mismatch")
 		})
 	}
 }
@@ -80,15 +79,9 @@ func TestUrlHashMatchesContent(t *testing.T) {
 	hexHash := hex.EncodeToString(sum[:])
 	url := "https://storage.example.com/templates/" + hexHash + ".txt"
 
-	if !urlHashMatchesContent(url, content) {
-		t.Fatal("expected matching hash for known content")
-	}
-	if urlHashMatchesContent(url, "different content") {
-		t.Fatal("expected mismatch for different content")
-	}
-	if urlHashMatchesContent("not-a-storage-url", content) {
-		t.Fatal("expected mismatch for non-URL input")
-	}
+	assert.True(t, urlHashMatchesContent(url, content), "expected matching hash for known content")
+	assert.False(t, urlHashMatchesContent(url, "different content"), "expected mismatch for different content")
+	assert.False(t, urlHashMatchesContent("not-a-storage-url", content), "expected mismatch for non-URL input")
 }
 
 func TestIsHTTPSURL(t *testing.T) {
@@ -109,9 +102,7 @@ func TestIsHTTPSURL(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.in, func(t *testing.T) {
-			if got := isHTTPSURL(tc.in); got != tc.want {
-				t.Fatalf("isHTTPSURL(%q) = %v, want %v", tc.in, got, tc.want)
-			}
+			assert.Equal(t, tc.want, isHTTPSURL(tc.in))
 		})
 	}
 }
@@ -128,16 +119,12 @@ func TestResolveStoredTemplate(t *testing.T) {
 
 	t.Run("returns decoded base64 literal", func(t *testing.T) {
 		got := resolveStoredTemplate(context.Background(), "base64://SGVsbG8=", "previous")
-		if got != "Hello" {
-			t.Fatalf("got %q want %q", got, "Hello")
-		}
+		assert.Equal(t, "Hello", got)
 	})
 
 	t.Run("returns plain literal as-is", func(t *testing.T) {
 		got := resolveStoredTemplate(context.Background(), "literal value", "previous")
-		if got != "literal value" {
-			t.Fatalf("got %q want %q", got, "literal value")
-		}
+		assert.Equal(t, "literal value", got)
 	})
 
 	t.Run("non-https URL is treated as literal not fetched", func(t *testing.T) {
@@ -145,15 +132,13 @@ func TestResolveStoredTemplate(t *testing.T) {
 		// `isHTTPSURL` returns false so we surface the raw value.
 		origFetcher := urlContentFetcher
 		urlContentFetcher = func(_ context.Context, _ string) (string, error) {
-			t.Fatal("fetcher must not be called for non-HTTPS schemes")
+			require.FailNow(t, "fetcher must not be called for non-HTTPS schemes")
 			return "", nil
 		}
 		defer func() { urlContentFetcher = origFetcher }()
 
 		got := resolveStoredTemplate(context.Background(), "http://example.com/foo", "previous")
-		if got != "http://example.com/foo" {
-			t.Fatalf("got %q want literal http URL", got)
-		}
+		assert.Equal(t, "http://example.com/foo", got, "want literal http URL")
 	})
 
 	t.Run("hash matches state preserves state without fetching", func(t *testing.T) {
@@ -166,12 +151,8 @@ func TestResolveStoredTemplate(t *testing.T) {
 		defer func() { urlContentFetcher = origFetcher }()
 
 		got := resolveStoredTemplate(context.Background(), matchingURL, content)
-		if got != content {
-			t.Fatalf("got %q want %q", got, content)
-		}
-		if fetchCalled {
-			t.Fatal("fetcher should not be called when hash matches state")
-		}
+		assert.Equal(t, content, got)
+		assert.False(t, fetchCalled, "fetcher should not be called when hash matches state")
 	})
 
 	t.Run("hash mismatch fetches and returns body", func(t *testing.T) {
@@ -184,12 +165,8 @@ func TestResolveStoredTemplate(t *testing.T) {
 		defer func() { urlContentFetcher = origFetcher }()
 
 		got := resolveStoredTemplate(context.Background(), driftedURL, content)
-		if got != "OTHER VALUE" {
-			t.Fatalf("got %q want %q", got, "OTHER VALUE")
-		}
-		if fetchedURL != driftedURL {
-			t.Fatalf("fetcher called with %q, want %q", fetchedURL, driftedURL)
-		}
+		assert.Equal(t, "OTHER VALUE", got)
+		assert.Equal(t, driftedURL, fetchedURL, "fetcher should be called with drifted URL")
 	})
 
 	t.Run("fetch failure falls back to state", func(t *testing.T) {
@@ -200,15 +177,11 @@ func TestResolveStoredTemplate(t *testing.T) {
 		defer func() { urlContentFetcher = origFetcher }()
 
 		got := resolveStoredTemplate(context.Background(), driftedURL, content)
-		if got != content {
-			t.Fatalf("on fetch failure expected state %q got %q", content, got)
-		}
+		assert.Equal(t, content, got, "on fetch failure expected state")
 	})
 
 	t.Run("empty api value clears state", func(t *testing.T) {
 		got := resolveStoredTemplate(context.Background(), "", "state value")
-		if got != "" {
-			t.Fatalf("got %q want empty (Console reset must surface as drift)", got)
-		}
+		assert.Empty(t, got, "Console reset must surface as drift")
 	})
 }

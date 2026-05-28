@@ -7,6 +7,8 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestGeneratedPatchEntries_ValidAndUnique verifies that every generated patch
@@ -18,16 +20,12 @@ func TestGeneratedPatchEntries_ValidAndUnique(t *testing.T) {
 
 	checkEntry := func(typeName, path string, field interface{}) {
 		t.Helper()
+		assert.NotEmpty(t, path, "%s patch entry has empty path", typeName)
 		if path == "" {
-			t.Errorf("%s patch entry has empty path", typeName)
 			return
 		}
-		if field == nil {
-			t.Errorf("%s patch entry %q has nil field pointer", typeName, path)
-		}
-		if seen[path] {
-			t.Errorf("%s patch entry %q: duplicate path (already seen)", typeName, path)
-		}
+		assert.NotNil(t, field, "%s patch entry %q has nil field pointer", typeName, path)
+		assert.False(t, seen[path], "%s patch entry %q: duplicate path (already seen)", typeName, path)
 		seen[path] = true
 	}
 
@@ -61,10 +59,7 @@ func TestGeneratedPatchEntries_PathFormat(t *testing.T) {
 
 	checkPath := func(path string) {
 		t.Helper()
-		if !strings.HasPrefix(path, "/") {
-			t.Errorf("patch path %q does not start with /", path)
-			return
-		}
+		require.True(t, strings.HasPrefix(path, "/"), "patch path %q does not start with /", path)
 		valid := false
 		for _, prefix := range validPrefixes {
 			if strings.HasPrefix(path, prefix) {
@@ -72,9 +67,7 @@ func TestGeneratedPatchEntries_PathFormat(t *testing.T) {
 				break
 			}
 		}
-		if !valid {
-			t.Errorf("patch path %q does not match any known service prefix", path)
-		}
+		assert.True(t, valid, "patch path %q does not match any known service prefix", path)
 	}
 
 	for _, e := range simpleStringPatchEntries(plan) {
@@ -121,9 +114,7 @@ func TestGeneratedStringPatch_NullSkipped(t *testing.T) {
 	patches := r.buildPatches(context.Background(), plan)
 
 	for _, p := range patches {
-		if generatedPaths[p.Path] {
-			t.Errorf("unexpected patch for null generated field: %s", p.Path)
-		}
+		assert.False(t, generatedPaths[p.Path], "unexpected patch for null generated field: %s", p.Path)
 	}
 }
 
@@ -136,15 +127,9 @@ func TestGeneratedStringPatch_SetValue(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/login/lifespan")
-	if p == nil {
-		t.Fatal("expected patch for selfservice_flows_login_lifespan")
-	}
-	if p.Op != "replace" {
-		t.Errorf("expected op 'replace', got %q", p.Op)
-	}
-	if p.Value != "30m0s" {
-		t.Errorf("expected value '30m0s', got %v", p.Value)
-	}
+	require.NotNil(t, p, "expected patch for selfservice_flows_login_lifespan")
+	assert.Equal(t, "replace", p.Op)
+	assert.Equal(t, "30m0s", p.Value)
 }
 
 // TestGeneratedBoolPatch_SetValue verifies a set bool field produces correct patch.
@@ -156,12 +141,8 @@ func TestGeneratedBoolPatch_SetValue(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/feature_flags/cacheable_sessions")
-	if p == nil {
-		t.Fatal("expected patch for feature_flags_cacheable_sessions")
-	}
-	if p.Value != true {
-		t.Errorf("expected value true, got %v", p.Value)
-	}
+	require.NotNil(t, p, "expected patch for feature_flags_cacheable_sessions")
+	assert.Equal(t, true, p.Value)
 }
 
 // TestGeneratedReadEntries_AllFieldsExist verifies read entries reference real struct fields.
@@ -170,46 +151,30 @@ func TestGeneratedReadEntries_AllFieldsExist(t *testing.T) {
 
 	checkStringEntries := func(name string, entries []StringReadEntry) {
 		for _, e := range entries {
-			if e.Field == nil {
-				t.Errorf("%s: string read entry with keys %v has nil field", name, e.Keys)
-			}
-			if len(e.Keys) == 0 {
-				t.Errorf("%s: string read entry has empty keys", name)
-			}
+			assert.NotNil(t, e.Field, "%s: string read entry with keys %v has nil field", name, e.Keys)
+			assert.NotEmpty(t, e.Keys, "%s: string read entry has empty keys", name)
 		}
 	}
 	checkBoolEntries := func(name string, entries []BoolReadEntry) {
 		for _, e := range entries {
-			if e.Field == nil {
-				t.Errorf("%s: bool read entry with keys %v has nil field", name, e.Keys)
-			}
+			assert.NotNil(t, e.Field, "%s: bool read entry with keys %v has nil field", name, e.Keys)
 		}
 	}
 	checkInt64Entries := func(name string, entries []Int64ReadEntry) {
 		for _, e := range entries {
-			if e.Field == nil {
-				t.Errorf("%s: int64 read entry with keys %v has nil field", name, e.Keys)
-			}
+			assert.NotNil(t, e.Field, "%s: int64 read entry with keys %v has nil field", name, e.Keys)
 		}
 	}
 	checkListStringEntries := func(name string, entries []ListStringReadEntry) {
 		for _, e := range entries {
-			if e.Field == nil {
-				t.Errorf("%s: list_string read entry with keys %v has nil field", name, e.Keys)
-			}
-			if len(e.Keys) == 0 {
-				t.Errorf("%s: list_string read entry has empty keys", name)
-			}
+			assert.NotNil(t, e.Field, "%s: list_string read entry with keys %v has nil field", name, e.Keys)
+			assert.NotEmpty(t, e.Keys, "%s: list_string read entry has empty keys", name)
 		}
 	}
 	checkMapStringEntries := func(name string, entries []MapStringReadEntry) {
 		for _, e := range entries {
-			if e.Field == nil {
-				t.Errorf("%s: map_string read entry with keys %v has nil field", name, e.Keys)
-			}
-			if len(e.Keys) == 0 {
-				t.Errorf("%s: map_string read entry has empty keys", name)
-			}
+			assert.NotNil(t, e.Field, "%s: map_string read entry with keys %v has nil field", name, e.Keys)
+			assert.NotEmpty(t, e.Keys, "%s: map_string read entry has empty keys", name)
 		}
 	}
 
@@ -274,18 +239,10 @@ func TestGeneratedReadRoundTrip(t *testing.T) {
 	}
 
 	// Verify values were read correctly
-	if state.SelfserviceFlowsLoginLifespan.ValueString() != "30m0s" {
-		t.Errorf("expected login lifespan '30m0s', got %q", state.SelfserviceFlowsLoginLifespan.ValueString())
-	}
-	if state.SelfserviceFlowsRecoveryUse.ValueString() != "code" {
-		t.Errorf("expected recovery use 'code', got %q", state.SelfserviceFlowsRecoveryUse.ValueString())
-	}
-	if state.SelfserviceFlowsRecoveryNotifyUnknownRecipients.ValueBool() != true {
-		t.Error("expected recovery notify_unknown_recipients true")
-	}
-	if state.FeatureFlagsCacheableSessions.ValueBool() != true {
-		t.Error("expected cacheable_sessions true")
-	}
+	assert.Equal(t, "30m0s", state.SelfserviceFlowsLoginLifespan.ValueString(), "login lifespan")
+	assert.Equal(t, "code", state.SelfserviceFlowsRecoveryUse.ValueString(), "recovery use")
+	assert.True(t, state.SelfserviceFlowsRecoveryNotifyUnknownRecipients.ValueBool(), "recovery notify_unknown_recipients")
+	assert.True(t, state.FeatureFlagsCacheableSessions.ValueBool(), "cacheable_sessions")
 }
 
 // TestGeneratedSchemaAttributes_Count verifies generation produced a non-trivial
@@ -293,9 +250,7 @@ func TestGeneratedReadRoundTrip(t *testing.T) {
 // this test catches catastrophic generation failures (e.g., empty output).
 func TestGeneratedSchemaAttributes_Count(t *testing.T) {
 	attrs := simpleSchemaAttributes()
-	if len(attrs) == 0 {
-		t.Fatal("simpleSchemaAttributes() returned 0 attributes — generation likely failed")
-	}
+	require.NotEmpty(t, attrs, "simpleSchemaAttributes() returned 0 attributes — generation likely failed")
 }
 
 // TestGeneratedSchemaAttributes_AllOptional verifies all generated attributes are optional.
@@ -315,11 +270,9 @@ func TestGeneratedSchemaAttributes_AllOptional(t *testing.T) {
 		case schema.MapAttribute:
 			optional = a.Optional
 		default:
-			t.Errorf("attribute %q has unexpected type %T", name, attr)
+			assert.Failf(t, "unexpected attribute type", "attribute %q has unexpected type %T", name, attr)
 			continue
 		}
-		if !optional {
-			t.Errorf("attribute %q is not optional", name)
-		}
+		assert.True(t, optional, "attribute %q is not optional", name)
 	}
 }

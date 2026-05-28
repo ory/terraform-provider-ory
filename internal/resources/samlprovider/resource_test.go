@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 )
@@ -26,9 +27,7 @@ func buildTestMetadataXML(t *testing.T) string {
 	t.Helper()
 
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("failed to generate test signing key: %v", err)
-	}
+	require.NoError(t, err, "failed to generate test signing key")
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
 		Subject:      pkix.Name{CommonName: "idp.example.com"},
@@ -37,9 +36,7 @@ func buildTestMetadataXML(t *testing.T) string {
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 	}
 	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	if err != nil {
-		t.Fatalf("failed to create test certificate: %v", err)
-	}
+	require.NoError(t, err, "failed to create test certificate")
 	certB64 := base64.StdEncoding.EncodeToString(certDER)
 
 	metadata := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>

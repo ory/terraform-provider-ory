@@ -8,6 +8,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func tfStringValue(v types.String) tftypes.Value {
@@ -71,9 +73,7 @@ func TestValidateConfig_EmptyProviderID(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(context.Background(), req, &resp)
 
-	if !resp.Diagnostics.HasError() {
-		t.Fatalf("expected validation error for empty provider_id, got none")
-	}
+	require.True(t, resp.Diagnostics.HasError(), "expected validation error for empty provider_id")
 }
 
 func TestValidateConfig_EmptyMetadata(t *testing.T) {
@@ -87,9 +87,7 @@ func TestValidateConfig_EmptyMetadata(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(context.Background(), req, &resp)
 
-	if !resp.Diagnostics.HasError() {
-		t.Fatalf("expected validation error for empty raw_idp_metadata_xml, got none")
-	}
+	require.True(t, resp.Diagnostics.HasError(), "expected validation error for empty raw_idp_metadata_xml")
 }
 
 func TestValidateConfig_Valid(t *testing.T) {
@@ -103,9 +101,7 @@ func TestValidateConfig_Valid(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(context.Background(), req, &resp)
 
-	if resp.Diagnostics.HasError() {
-		t.Fatalf("unexpected validation error: %v", resp.Diagnostics)
-	}
+	assert.False(t, resp.Diagnostics.HasError(), "unexpected validation error: %v", resp.Diagnostics)
 }
 
 func TestValidateConfig_EmptyOptionalFields(t *testing.T) {
@@ -137,9 +133,7 @@ func TestValidateConfig_EmptyOptionalFields(t *testing.T) {
 			r := &SAMLProviderResource{}
 			var resp resource.ValidateConfigResponse
 			r.ValidateConfig(context.Background(), req, &resp)
-			if !resp.Diagnostics.HasError() {
-				t.Fatalf("expected validation error for empty %s, got none", name)
-			}
+			require.True(t, resp.Diagnostics.HasError(), "expected validation error for empty %s", name)
 		})
 	}
 }
