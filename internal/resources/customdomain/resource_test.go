@@ -10,6 +10,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 )
@@ -31,9 +32,7 @@ func cleanupStaleCustomDomains(t *testing.T) {
 	t.Helper()
 
 	oryClient, err := acctest.GetOryClient()
-	if err != nil {
-		t.Fatalf("failed to create Ory client for custom domain cleanup: %s", err)
-	}
+	require.NoError(t, err, "failed to create Ory client for custom domain cleanup")
 
 	projectID := acctest.GetTestProjectID(t)
 	ctx := context.Background()
@@ -46,9 +45,8 @@ func cleanupStaleCustomDomains(t *testing.T) {
 
 	for _, d := range domains {
 		t.Logf("cleaning up stale custom domain: id=%s", d.GetId())
-		if err := oryClient.DeleteCustomDomain(ctx, projectID, d.GetId()); err != nil {
-			t.Fatalf("failed to delete stale custom domain %s: %s", d.GetId(), err)
-		}
+		require.NoError(t, oryClient.DeleteCustomDomain(ctx, projectID, d.GetId()),
+			"failed to delete stale custom domain %s", d.GetId())
 	}
 }
 

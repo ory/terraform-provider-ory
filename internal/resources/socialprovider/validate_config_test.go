@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
+	"github.com/stretchr/testify/assert"
 )
 
 // buildTestConfig creates a ValidateConfigRequest from a SocialProviderResourceModel.
@@ -118,9 +119,7 @@ func TestValidateConfig_UnknownClientSecret_SkipsValidation(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if resp.Diagnostics.HasError() {
-		t.Errorf("expected no errors for unknown client_secret, got: %s", resp.Diagnostics.Errors()[0].Detail())
-	}
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for unknown client_secret: %v", resp.Diagnostics.Errors())
 }
 
 func TestValidateConfig_UnknownAppleFields_SkipsValidation(t *testing.T) {
@@ -138,9 +137,7 @@ func TestValidateConfig_UnknownAppleFields_SkipsValidation(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if resp.Diagnostics.HasError() {
-		t.Errorf("expected no errors for unknown apple fields, got: %s", resp.Diagnostics.Errors()[0].Detail())
-	}
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for unknown apple fields: %v", resp.Diagnostics.Errors())
 }
 
 func TestValidateConfig_KnownClientSecret_Passes(t *testing.T) {
@@ -156,9 +153,7 @@ func TestValidateConfig_KnownClientSecret_Passes(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if resp.Diagnostics.HasError() {
-		t.Errorf("expected no errors for known client_secret, got: %s", resp.Diagnostics.Errors()[0].Detail())
-	}
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for known client_secret: %v", resp.Diagnostics.Errors())
 }
 
 func TestValidateConfig_MissingClientSecret_Fails(t *testing.T) {
@@ -174,9 +169,7 @@ func TestValidateConfig_MissingClientSecret_Fails(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if !resp.Diagnostics.HasError() {
-		t.Error("expected error for missing client_secret, got none")
-	}
+	assert.True(t, resp.Diagnostics.HasError(), "expected error for missing client_secret")
 }
 
 func TestValidateConfig_EmptyClientSecret_Fails(t *testing.T) {
@@ -192,9 +185,7 @@ func TestValidateConfig_EmptyClientSecret_Fails(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if !resp.Diagnostics.HasError() {
-		t.Error("expected error for empty client_secret, got none")
-	}
+	assert.True(t, resp.Diagnostics.HasError(), "expected error for empty client_secret")
 }
 
 func TestValidateConfig_UnknownProviderType_SkipsValidation(t *testing.T) {
@@ -210,7 +201,5 @@ func TestValidateConfig_UnknownProviderType_SkipsValidation(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if resp.Diagnostics.HasError() {
-		t.Errorf("expected no errors for unknown provider_type, got: %s", resp.Diagnostics.Errors()[0].Detail())
-	}
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for unknown provider_type: %v", resp.Diagnostics.Errors())
 }
