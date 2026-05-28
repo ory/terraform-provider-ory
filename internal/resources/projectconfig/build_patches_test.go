@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
 	"github.com/stretchr/testify/assert"
@@ -126,6 +127,84 @@ func TestBuildPatches_OAuth2CookiesSameSiteLegacyWorkaround(t *testing.T) {
 	p := findPatch(patches, "/services/oauth2/config/serve/cookies/same_site_legacy_workaround")
 	require.NotNil(t, p, "expected a patch for oauth2_cookies_same_site_legacy_workaround")
 	assert.Equal(t, true, p.Value)
+}
+
+func TestBuildPatches_OAuth2TokenHookAuth_APIKeyHeader(t *testing.T) {
+	r := &ProjectConfigResource{}
+	auth, diags := types.ObjectValue(oauth2TokenHookAuthAttrTypes, map[string]attr.Value{
+		"type":  types.StringValue("api_key"),
+		"name":  types.StringValue("X-Api-Key"),
+		"value": types.StringValue("secret-value"),
+		"in":    types.StringValue("header"),
+	})
+	require.False(t, diags.HasError(), "failed to build auth object: %s", diags)
+	plan := &ProjectConfigResourceModel{
+		OAuth2TokenHookAuth: auth,
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/oauth2/config/oauth2/token_hook/auth")
+	require.NotNil(t, p, "expected a patch for oauth2_token_hook_auth")
+	assert.Equal(t, "replace", p.Op)
+
+	got, ok := p.Value.(map[string]interface{})
+	require.True(t, ok, "expected map value, got %T", p.Value)
+	assert.Equal(t, "api_key", got["type"])
+
+	cfg, ok := got["config"].(map[string]interface{})
+	require.True(t, ok, "expected config map, got %T", got["config"])
+	assert.Equal(t, "X-Api-Key", cfg["name"])
+	assert.Equal(t, "secret-value", cfg["value"])
+	assert.Equal(t, "header", cfg["in"])
+}
+
+func TestBuildPatches_OAuth2TokenHookAuth_APIKeyCookie(t *testing.T) {
+	r := &ProjectConfigResource{}
+	auth, diags := types.ObjectValue(oauth2TokenHookAuthAttrTypes, map[string]attr.Value{
+		"type":  types.StringValue("api_key"),
+		"name":  types.StringValue("session_cookie"),
+		"value": types.StringValue("cookie-value"),
+		"in":    types.StringValue("cookie"),
+	})
+	require.False(t, diags.HasError(), "failed to build auth object: %s", diags)
+	plan := &ProjectConfigResourceModel{
+		OAuth2TokenHookAuth: auth,
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/oauth2/config/oauth2/token_hook/auth")
+	require.NotNil(t, p, "expected a patch for oauth2_token_hook_auth")
+
+	value, ok := p.Value.(map[string]interface{})
+	require.True(t, ok, "expected map value, got %T", p.Value)
+	cfg, ok := value["config"].(map[string]interface{})
+	require.True(t, ok, "expected config map, got %T", value["config"])
+	assert.Equal(t, "cookie", cfg["in"])
+}
+
+func TestRemoveURLOnlyTokenHookPatch(t *testing.T) {
+	input := []ory.JsonPatch{
+		{Op: "replace", Path: "/services/oauth2/config/oauth2/token_hook/url", Value: "https://example.com"},
+		{Op: "replace", Path: "/services/oauth2/config/oauth2/token_hook/auth", Value: map[string]interface{}{}},
+		{Op: "replace", Path: "/services/oauth2/config/urls/self/issuer", Value: "https://auth.example.com"},
+	}
+	got := removeURLOnlyTokenHookPatch(input)
+	require.Len(t, got, 2, "expected 2 patches after filter")
+	for _, p := range got {
+		assert.NotEqual(t, "/services/oauth2/config/oauth2/token_hook/url", p.Path,
+			"expected token_hook/url patch to be removed")
+	}
+}
+
+func TestBuildPatches_NullOAuth2TokenHookAuth(t *testing.T) {
+	r := &ProjectConfigResource{}
+	plan := &ProjectConfigResourceModel{
+		OAuth2TokenHookAuth: types.ObjectNull(oauth2TokenHookAuthAttrTypes),
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/oauth2/config/oauth2/token_hook/auth")
+	assert.Nil(t, p, "expected no patch for null oauth2_token_hook_auth")
 }
 
 func TestBuildPatches_NullOAuth2IssuerURL(t *testing.T) {

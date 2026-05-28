@@ -599,6 +599,96 @@ func TestAccProjectConfigResource_settingsAndVerification(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_oauth2TokenHookAuth(t *testing.T) {
+	// Always wipe `oauth2.token_hook` after the test, even on intermediate
+	// step failure. Background: the API normalizes a `replace token_hook =
+	// "<url>"` patch into `{"url": "<url>"}`, but its own schema's `oneOf`
+	// rejects that shape on the *next* PATCH (must be either a string URL
+	// or a full `{url, auth}` object). Without this cleanup, a failed run
+	// can leave the shared CI project in a state that breaks every
+	// subsequent PATCH from every PR and trips the EU-W3 5xx alarm.
+	t.Cleanup(func() { clearProjectTokenHook(t) })
+
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_token_hook_auth.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook", "https://example.com/token-hook"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook_auth.type", "api_key"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook_auth.name", "X-Api-Key"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook_auth.value", "test-token-hook-api-key"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook_auth.in", "header"),
+				),
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_token_hook_auth_updated.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook", "https://example.com/token-hook-v2"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook_auth.name", "ory-token-hook-auth"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook_auth.value", "updated-cookie-value"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook_auth.in", "cookie"),
+				),
+			},
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"oauth2_token_hook",
+					"oauth2_token_hook_auth",
+					"smtp_connection_uri",
+					"cors_enabled",
+					"selfservice_methods_password_config_min_password_length",
+				},
+			},
+			// Drop auth but keep URL: the provider must collapse the URL
+			// patch with a full `token_hook` replace so the API doesn't reject
+			// the remove (the schema requires either a URL string or a
+			// `{url, auth}` object — never `{url}` alone).
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_token_hook_no_auth.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_hook", "https://example.com/token-hook-no-auth"),
+					resource.TestCheckNoResourceAttr("ory_project_config.test", "oauth2_token_hook_auth"),
+				),
+			},
+		},
+	})
+}
+
+// clearProjectTokenHook removes the `oauth2.token_hook` field from the shared
+// test project. The "no-auth" tail of the test leaves the API in a
+// schema-invalid `{"url": ...}` shape that the API itself rejects on the next
+// PATCH; we explicitly tear it down so the shared project doesn't break other
+// tests. Errors are downgraded to log lines because a missing field is the
+// expected post-cleanup state.
+func clearProjectTokenHook(t *testing.T) {
+	t.Helper()
+
+	c, err := acctest.GetOryClient()
+	if err != nil {
+		t.Logf("Warning: could not create client to clear token_hook: %v", err)
+		return
+	}
+
+	projectID := acctest.GetTestProjectID(t)
+	patches := []ory.JsonPatch{
+		{
+			Op:   "remove",
+			Path: "/services/oauth2/config/oauth2/token_hook",
+		},
+	}
+	if _, err := c.PatchProject(context.Background(), projectID, patches); err != nil {
+		t.Logf("Warning: failed to clear oauth2.token_hook (may already be absent): %v", err)
+		return
+	}
+	t.Log("Cleared oauth2.token_hook on test project")
+}
+
 func TestAccProjectConfigResource_courierHTTP(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
