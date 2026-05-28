@@ -317,6 +317,38 @@ func TestBuildPatches_NullCodeMissingCredentialFallbackEnabled(t *testing.T) {
 	}
 }
 
+func TestBuildPatches_SessionEarliestPossibleExtend(t *testing.T) {
+	r := &ProjectConfigResource{}
+	plan := &ProjectConfigResourceModel{
+		SessionEarliestPossibleExtend: types.StringValue("24h"),
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/identity/config/session/earliest_possible_extend")
+	if p == nil {
+		t.Fatal("expected a patch for session_earliest_possible_extend, got none")
+	}
+	if p.Op != "replace" {
+		t.Errorf("expected op 'replace', got %q", p.Op)
+	}
+	if p.Value != "24h" {
+		t.Errorf("expected value '24h', got %v", p.Value)
+	}
+}
+
+func TestBuildPatches_NullSessionEarliestPossibleExtend(t *testing.T) {
+	r := &ProjectConfigResource{}
+	plan := &ProjectConfigResourceModel{
+		SessionEarliestPossibleExtend: types.StringNull(),
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/identity/config/session/earliest_possible_extend")
+	if p != nil {
+		t.Error("expected no patch for null session_earliest_possible_extend")
+	}
+}
+
 func TestBuildPatches_SettingsLifespan(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{

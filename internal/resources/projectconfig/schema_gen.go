@@ -34,6 +34,16 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Session duration (e.g., '24h0m0s').",
 			Optional:    true,
 		},
+		"session_earliest_possible_extend": schema.StringAttribute{
+			Description: "Earliest time before session expiry when a session can be extended (e.g., '24h'). Setting this prevents excessive database writes when sessions are extended.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.RegexMatches(
+					regexp.MustCompile("^([0-9]+(ns|us|ms|s|m|h))+$"),
+					"must be a Go duration string (e.g., '1h', '30m', '24h')",
+				),
+			},
+		},
 		"session_cookie_same_site": schema.StringAttribute{
 			Description: "SameSite cookie attribute (Lax, Strict, None).",
 			Optional:    true,

@@ -354,6 +354,7 @@ func account_experienceListStringReadEntries(state *ProjectConfigResourceModel) 
 func identityStringReadEntries(state *ProjectConfigResourceModel) []StringReadEntry {
 	return []StringReadEntry{
 		{&state.SessionLifespan, nil, []string{"session", "lifespan"}, false},
+		{&state.SessionEarliestPossibleExtend, nil, []string{"session", "earliest_possible_extend"}, false},
 		{&state.SessionCookieSameSite, nil, []string{"session", "cookie", "same_site"}, false},
 		{&state.SessionWhoamiRequiredAAL, nil, []string{"session", "whoami", "required_aal"}, false},
 		{&state.SelfserviceFlowsLoginUIURL, &state.LoginUIURL, []string{"selfservice", "flows", "login", "ui_url"}, false},

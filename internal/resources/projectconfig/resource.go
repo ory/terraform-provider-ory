@@ -55,9 +55,10 @@ type ProjectConfigResourceModel struct {
 	CorsAdminOrigins types.List `tfsdk:"cors_admin_origins"`
 
 	// Session
-	SessionLifespan         types.String `tfsdk:"session_lifespan"`
-	SessionCookieSameSite   types.String `tfsdk:"session_cookie_same_site"`
-	SessionCookiePersistent types.Bool   `tfsdk:"session_cookie_persistent"`
+	SessionLifespan               types.String `tfsdk:"session_lifespan"`
+	SessionEarliestPossibleExtend types.String `tfsdk:"session_earliest_possible_extend"`
+	SessionCookieSameSite         types.String `tfsdk:"session_cookie_same_site"`
+	SessionCookiePersistent       types.Bool   `tfsdk:"session_cookie_persistent"`
 
 	// OAuth2/Hydra
 	OAuth2AccessTokenLifespan             types.String `tfsdk:"oauth2_access_token_lifespan"`

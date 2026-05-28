@@ -40,6 +40,15 @@ attributes:
     openapi_property: kratos_session_lifespan
     description: "Session duration (e.g., '24h0m0s')."
 
+  - name: session_earliest_possible_extend
+    go_field: SessionEarliestPossibleExtend
+    type: string
+    patch_path: /services/identity/config/session/earliest_possible_extend
+    description: "Earliest time before session expiry when a session can be extended (e.g., '24h'). Setting this prevents excessive database writes when sessions are extended."
+    validators:
+      regex: "^([0-9]+(ns|us|ms|s|m|h))+$"
+      regex_message: "must be a Go duration string (e.g., '1h', '30m', '24h')"
+
   - name: session_cookie_same_site
     go_field: SessionCookieSameSite
     type: string
