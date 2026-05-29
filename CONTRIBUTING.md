@@ -161,7 +161,30 @@ func TestAccMyResource_basic(t *testing.T) {
 }
 ```
 
-#### 2. Test Configuration with `testdata/` Templates
+#### 2. Test Assertions
+
+Use [testify](https://github.com/stretchr/testify) (`require` / `assert`) for assertions instead of hand-rolled `if`/`t.Errorf` blocks. This keeps assertions concise, produces consistent failure messages, and makes intent explicit.
+
+- `require.X` aborts the test immediately on failure — use it for setup steps and preconditions where continuing would produce misleading errors (e.g., `require.NoError(t, err)` after creating a client).
+- `assert.X` records the failure but lets the test keep running — use it for independent checks so a single test run surfaces every problem at once.
+
+```go
+import (
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
+)
+
+func TestExample(t *testing.T) {
+    result, err := doSomething()
+    require.NoError(t, err)         // stops the test if setup failed
+    require.NotNil(t, result)       // stops the test if result is nil
+
+    assert.Equal(t, "expected", result.Name)  // records and continues
+    assert.Len(t, result.Items, 3)            // records and continues
+}
+```
+
+#### 3. Test Configuration with `testdata/` Templates
 
 Store Terraform configurations in `testdata/` files, not inline strings. Use `acctest.LoadTestConfig()` to load and render them:
 
@@ -195,7 +218,7 @@ Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", nil)
 - Test create, read, update, import, and delete operations
 - Pass dynamic values (URLs, names) via the template data map using `testutil` constants
 
-#### 3. Feature-Gated Tests
+#### 4. Feature-Gated Tests
 
 For tests requiring specific Ory plan features:
 
@@ -221,29 +244,6 @@ provider_installation {
     "ory/ory" = "/path/to/terraform-provider-ory"
   }
   direct {}
-}
-```
-
-#### 4. Test Assertions
-
-Use [testify](https://github.com/stretchr/testify) (`require` / `assert`) for assertions instead of hand-rolled `if`/`t.Errorf` blocks. This keeps assertions concise, produces consistent failure messages, and makes intent explicit.
-
-- `require.X` aborts the test immediately on failure — use it for setup steps and preconditions where continuing would produce misleading errors (e.g., `require.NoError(t, err)` after creating a client).
-- `assert.X` records the failure but lets the test keep running — use it for independent checks so a single test run surfaces every problem at once.
-
-```go
-import (
-    "github.com/stretchr/testify/assert"
-    "github.com/stretchr/testify/require"
-)
-
-func TestExample(t *testing.T) {
-    result, err := doSomething()
-    require.NoError(t, err)         // stops the test if setup failed
-    require.NotNil(t, result)       // stops the test if result is nil
-
-    assert.Equal(t, "expected", result.Name)  // records and continues
-    assert.Len(t, result.Items, 3)            // records and continues
 }
 ```
 
