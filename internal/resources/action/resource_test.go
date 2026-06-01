@@ -132,6 +132,82 @@ func TestAccActionResource_basic(t *testing.T) {
 	})
 }
 
+// TestAccActionResource_verificationFlow is the regression test for issue #241:
+// the verification flow's "after" hooks are stored in a flat array at
+// .../verification/after/hooks (no auth_method level). Before the fix, the
+// provider PATCHed to .../verification/after/password/hooks, which the API
+// accepted with 200 but silently dropped — failing with "Hook not found in
+// PatchProject response". This exercises create, read, update, import, delete.
+func TestAccActionResource_verificationFlow(t *testing.T) {
+	hookPath := "/services/identity/config/selfservice/flows/verification/after/hooks"
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			cleanupDanglingWebhook(t, hookPath, testutil.ExampleWebhookURL+"/verification-after")
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create and Read
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/verification.tf.tmpl", map[string]string{"WebhookURL": testutil.ExampleWebhookURL}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_action.test", "id"),
+					resource.TestCheckResourceAttr("ory_action.test", "flow", "verification"),
+					resource.TestCheckResourceAttr("ory_action.test", "timing", "after"),
+					resource.TestCheckResourceAttr("ory_action.test", "method", "POST"),
+					resource.TestCheckResourceAttr("ory_action.test", "response_ignore", "false"),
+				),
+			},
+			// Import (auth_method defaults to "password" in the composite ID but is ignored for this flow)
+			{
+				ResourceName:      "ory_action.test",
+				ImportState:       true,
+				ImportStateIdFunc: actionImportStateIDFunc,
+				ImportStateVerify: true,
+			},
+			// Update an in-place attribute
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/verification_updated.tf.tmpl", map[string]string{"WebhookURL": testutil.ExampleWebhookURL}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_action.test", "response_ignore", "true"),
+				),
+			},
+		},
+	})
+}
+
+// TestAccActionResource_recoveryFlow verifies the recovery flow (also flat,
+// no auth_method level) creates, reads, and imports correctly. See issue #241.
+func TestAccActionResource_recoveryFlow(t *testing.T) {
+	hookPath := "/services/identity/config/selfservice/flows/recovery/after/hooks"
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			cleanupDanglingWebhook(t, hookPath, testutil.ExampleWebhookURL+"/recovery-after")
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create and Read
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/recovery.tf.tmpl", map[string]string{"WebhookURL": testutil.ExampleWebhookURL}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_action.test", "id"),
+					resource.TestCheckResourceAttr("ory_action.test", "flow", "recovery"),
+					resource.TestCheckResourceAttr("ory_action.test", "timing", "after"),
+					resource.TestCheckResourceAttr("ory_action.test", "method", "POST"),
+				),
+			},
+			// Import
+			{
+				ResourceName:      "ory_action.test",
+				ImportState:       true,
+				ImportStateIdFunc: actionImportStateIDFunc,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
 func actionImportStateIDFunc(s *terraform.State) (string, error) {
 	rs, ok := s.RootModule().Resources["ory_action.test"]
 	if !ok {
