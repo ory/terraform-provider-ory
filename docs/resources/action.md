@@ -214,7 +214,7 @@ terraform import ory_action.validate \
 1. **project_id**: Settings → General → Project ID
 2. **flow**: The flow type (login, registration, recovery, settings, verification)
 3. **timing**: "before" or "after"
-4. **auth_method**: for `login`/`registration`/`settings` "after" hooks, one of password, oidc, code, webauthn, passkey, totp, lookup_secret. For `recovery`/`verification` "after" hooks it is ignored — use `password` as a placeholder.
+4. **auth_method**: for `login`/`registration`/`settings` "after" hooks, one of password, oidc, code, webauthn, passkey, totp, lookup_secret. For `recovery`/`verification` "after" hooks the value is ignored, but the import ID format still requires this segment — use `password` to match the provider default and avoid a post-import diff (keep `auth_method` omitted from the resource configuration itself).
 5. **method**: The HTTP method (POST, GET, PUT, PATCH, DELETE)
 6. **url**: The exact webhook URL - must match exactly including protocol and trailing slashes
 

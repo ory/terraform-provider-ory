@@ -380,19 +380,31 @@ func (r *ActionResource) ValidateConfig(ctx context.Context, req resource.Valida
 		return
 	}
 
-	// auth_method only scopes "after" hooks for the login, registration, and
-	// settings flows. The recovery and verification flows store their after-hooks
-	// in a single flat array, so auth_method is ignored for them. Warn when it is
-	// set explicitly so users aren't surprised that the value has no effect.
+	// auth_method only takes effect for "after" hooks on the login, registration,
+	// and settings flows. It is ignored for "before" hooks (all flows) and for the
+	// recovery and verification flows, which store their after-hooks in a single
+	// flat array. Warn when it is set explicitly but will have no effect, so users
+	// aren't surprised. Timing is only considered when known, to avoid false
+	// positives for auth-scoped flows whose timing is resolved at apply time.
 	if !config.AuthMethod.IsNull() && !config.AuthMethod.IsUnknown() &&
-		!config.Flow.IsNull() && !config.Flow.IsUnknown() &&
-		!flowSupportsAuthMethod(config.Flow.ValueString()) {
-		resp.Diagnostics.AddAttributeWarning(
-			path.Root("auth_method"),
-			"auth_method has no effect for this flow",
-			fmt.Sprintf("The %q flow does not scope its hooks by authentication method, so auth_method is "+
-				"ignored. You can safely remove auth_method from this resource.", config.Flow.ValueString()),
-		)
+		!config.Flow.IsNull() && !config.Flow.IsUnknown() {
+		flow := config.Flow.ValueString()
+		ignoredByFlow := !flowSupportsAuthMethod(flow)
+		ignoredByTiming := !config.Timing.IsNull() && !config.Timing.IsUnknown() &&
+			config.Timing.ValueString() != timingAfter
+		if ignoredByFlow || ignoredByTiming {
+			detail := fmt.Sprintf("The %q flow does not scope its hooks by authentication method, so "+
+				"auth_method is ignored. You can safely remove auth_method from this resource.", flow)
+			if !ignoredByFlow {
+				detail = "auth_method only applies to \"after\" hooks, so it is ignored for \"before\" hooks. " +
+					"You can safely remove auth_method from this resource."
+			}
+			resp.Diagnostics.AddAttributeWarning(
+				path.Root("auth_method"),
+				"auth_method has no effect for this configuration",
+				detail,
+			)
+		}
 	}
 
 	if config.WebhookAuthType.IsNull() || config.WebhookAuthType.IsUnknown() {

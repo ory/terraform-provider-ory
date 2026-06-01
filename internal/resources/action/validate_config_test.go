@@ -83,10 +83,10 @@ func tfActionStringValue(v types.String) tftypes.Value {
 	return tftypes.NewValue(tftypes.String, v.ValueString())
 }
 
-// TestValidateConfig_AuthMethodOnFlowlessFlow_Warns verifies that explicitly
+// TestValidateConfig_AuthMethodOnUnsupportedFlow_Warns verifies that explicitly
 // setting auth_method on the recovery/verification flows (which have no
 // auth-method-scoped hooks) produces a warning. Regression for issue #241.
-func TestValidateConfig_AuthMethodOnFlowlessFlow_Warns(t *testing.T) {
+func TestValidateConfig_AuthMethodOnUnsupportedFlow_Warns(t *testing.T) {
 	for _, flow := range []string{"verification", "recovery"} {
 		t.Run(flow, func(t *testing.T) {
 			r := &ActionResource{}
@@ -127,6 +127,26 @@ func TestValidateConfig_AuthMethodOnAuthScopedFlow_NoWarn(t *testing.T) {
 			assert.Empty(t, resp.Diagnostics.Warnings(), "did not expect a warning for auth_method on %s flow: %v", flow, resp.Diagnostics.Warnings())
 		})
 	}
+}
+
+// TestValidateConfig_AuthMethodOnBeforeTiming_Warns verifies that auth_method set
+// on a "before" hook warns even for an auth-scoped flow, since auth_method only
+// applies to "after" hooks. Covers the timing dimension of the warning.
+func TestValidateConfig_AuthMethodOnBeforeTiming_Warns(t *testing.T) {
+	r := &ActionResource{}
+	ctx := context.Background()
+
+	req := buildActionTestConfig(t, ActionResourceModel{
+		Flow:       types.StringValue("login"),
+		Timing:     types.StringValue("before"),
+		AuthMethod: types.StringValue("password"),
+		URL:        types.StringValue("https://example.com/webhook"),
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	assert.False(t, resp.Diagnostics.HasError(), "auth_method on a before hook must not be an error: %v", resp.Diagnostics.Errors())
+	assert.NotEmpty(t, resp.Diagnostics.Warnings(), "expected a warning for auth_method on a before hook")
 }
 
 // TestValidateConfig_NoAuthMethodOnVerification_NoWarn verifies that the common
