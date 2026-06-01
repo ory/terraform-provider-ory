@@ -126,7 +126,7 @@ The ` + "`auth_method`" + ` attribute specifies which authentication method trig
 | ` + "`totp`" + ` | Time-based one-time password | "TOTP" |
 | ` + "`lookup_secret`" + ` | Recovery/backup codes | "Backup Codes" |
 
-**Note:** ` + "`auth_method`" + ` is only used for ` + "`timing = \"after\"`" + ` webhooks. For ` + "`timing = \"before\"`" + ` hooks, the webhook runs before any authentication method.
+**Note:** ` + "`auth_method`" + ` only applies to ` + "`timing = \"after\"`" + ` webhooks on the ` + "`login`" + `, ` + "`registration`" + `, and ` + "`settings`" + ` flows. The ` + "`recovery`" + ` and ` + "`verification`" + ` flows are not scoped by authentication method, so ` + "`auth_method`" + ` is ignored for them and should be omitted. For ` + "`timing = \"before\"`" + ` hooks, the webhook runs before any authentication method.
 
 ## Webhook Authentication
 
@@ -242,8 +242,8 @@ func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				},
 			},
 			"auth_method": schema.StringAttribute{
-				Description:         "Authentication method to hook into (password, oidc, code, webauthn, passkey, totp, lookup_secret). Required for 'after' timing. Defaults to 'password'.",
-				MarkdownDescription: "Authentication method that triggers the webhook. In the Ory Console UI, this is the \"Method\" selector. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`. Only used for `timing = \"after\"` webhooks.",
+				Description:         "Authentication method to hook into (password, oidc, code, webauthn, passkey, totp, lookup_secret). Defaults to 'password'. Only applies to 'after' timing on the login, registration, and settings flows; ignored for the recovery and verification flows.",
+				MarkdownDescription: "Authentication method that triggers the webhook. In the Ory Console UI, this is the \"Method\" selector. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`. Only applies to `timing = \"after\"` webhooks on the `login`, `registration`, and `settings` flows; it is ignored for the `recovery` and `verification` flows.",
 				Optional:            true,
 				Computed:            true,
 				Default:             stringdefault.StaticString("password"),
@@ -378,6 +378,21 @@ func (r *ActionResource) ValidateConfig(ctx context.Context, req resource.Valida
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	// auth_method only scopes "after" hooks for the login, registration, and
+	// settings flows. The recovery and verification flows store their after-hooks
+	// in a single flat array, so auth_method is ignored for them. Warn when it is
+	// set explicitly so users aren't surprised that the value has no effect.
+	if !config.AuthMethod.IsNull() && !config.AuthMethod.IsUnknown() &&
+		!config.Flow.IsNull() && !config.Flow.IsUnknown() &&
+		!flowSupportsAuthMethod(config.Flow.ValueString()) {
+		resp.Diagnostics.AddAttributeWarning(
+			path.Root("auth_method"),
+			"auth_method has no effect for this flow",
+			fmt.Sprintf("The %q flow does not scope its hooks by authentication method, so auth_method is "+
+				"ignored. You can safely remove auth_method from this resource.", config.Flow.ValueString()),
+		)
 	}
 
 	if config.WebhookAuthType.IsNull() || config.WebhookAuthType.IsUnknown() {
@@ -549,8 +564,24 @@ func (r *ActionResource) findHookIndex(hooks []map[string]interface{}, url, meth
 	return -1
 }
 
+// flowSupportsAuthMethod reports whether a flow's "after" hooks are scoped by
+// authentication method (e.g. .../after/password/hooks). Only the login,
+// registration, and settings flows have method-scoped after-hooks in the Ory
+// Kratos config. The recovery and verification flows store their after-hooks in
+// a single flat array at .../after/hooks with no auth-method level, so PATCHing
+// to .../after/<auth_method>/hooks for them returns 200 but silently drops the
+// hook. See https://github.com/ory/terraform-provider-ory/issues/241
+func flowSupportsAuthMethod(flow string) bool {
+	switch flow {
+	case "login", "registration", "settings":
+		return true
+	default:
+		return false
+	}
+}
+
 func (r *ActionResource) hookPath(flow, timing, authMethod string) string {
-	if timing == timingAfter {
+	if timing == timingAfter && flowSupportsAuthMethod(flow) {
 		return fmt.Sprintf("/services/identity/config/selfservice/flows/%s/%s/%s/hooks", flow, timing, authMethod)
 	}
 	return fmt.Sprintf("/services/identity/config/selfservice/flows/%s/%s/hooks", flow, timing)
@@ -587,7 +618,7 @@ func (r *ActionResource) getHooksFromProject(project *ory.Project, flow, timing,
 	}
 
 	var hooks []interface{}
-	if timing == timingAfter {
+	if timing == timingAfter && flowSupportsAuthMethod(flow) {
 		authMethodConfig, ok := timingConfig[authMethod].(map[string]interface{})
 		if !ok {
 			return []map[string]interface{}{}

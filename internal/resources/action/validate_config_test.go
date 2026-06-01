@@ -83,6 +83,71 @@ func tfActionStringValue(v types.String) tftypes.Value {
 	return tftypes.NewValue(tftypes.String, v.ValueString())
 }
 
+// TestValidateConfig_AuthMethodOnFlowlessFlow_Warns verifies that explicitly
+// setting auth_method on the recovery/verification flows (which have no
+// auth-method-scoped hooks) produces a warning. Regression for issue #241.
+func TestValidateConfig_AuthMethodOnFlowlessFlow_Warns(t *testing.T) {
+	for _, flow := range []string{"verification", "recovery"} {
+		t.Run(flow, func(t *testing.T) {
+			r := &ActionResource{}
+			ctx := context.Background()
+
+			req := buildActionTestConfig(t, ActionResourceModel{
+				Flow:       types.StringValue(flow),
+				Timing:     types.StringValue("after"),
+				AuthMethod: types.StringValue("code"),
+				URL:        types.StringValue("https://example.com/webhook"),
+			})
+			var resp resource.ValidateConfigResponse
+			r.ValidateConfig(ctx, req, &resp)
+
+			assert.False(t, resp.Diagnostics.HasError(), "auth_method on %s must not be an error: %v", flow, resp.Diagnostics.Errors())
+			assert.NotEmpty(t, resp.Diagnostics.Warnings(), "expected a warning for auth_method on %s flow", flow)
+		})
+	}
+}
+
+// TestValidateConfig_AuthMethodOnAuthScopedFlow_NoWarn verifies that setting
+// auth_method on login/registration/settings does not warn.
+func TestValidateConfig_AuthMethodOnAuthScopedFlow_NoWarn(t *testing.T) {
+	for _, flow := range []string{"login", "registration", "settings"} {
+		t.Run(flow, func(t *testing.T) {
+			r := &ActionResource{}
+			ctx := context.Background()
+
+			req := buildActionTestConfig(t, ActionResourceModel{
+				Flow:       types.StringValue(flow),
+				Timing:     types.StringValue("after"),
+				AuthMethod: types.StringValue("password"),
+				URL:        types.StringValue("https://example.com/webhook"),
+			})
+			var resp resource.ValidateConfigResponse
+			r.ValidateConfig(ctx, req, &resp)
+
+			assert.Empty(t, resp.Diagnostics.Warnings(), "did not expect a warning for auth_method on %s flow: %v", flow, resp.Diagnostics.Warnings())
+		})
+	}
+}
+
+// TestValidateConfig_NoAuthMethodOnVerification_NoWarn verifies that the common
+// case (auth_method unset, defaulted by the schema) does not warn — only an
+// explicit value does.
+func TestValidateConfig_NoAuthMethodOnVerification_NoWarn(t *testing.T) {
+	r := &ActionResource{}
+	ctx := context.Background()
+
+	req := buildActionTestConfig(t, ActionResourceModel{
+		Flow:   types.StringValue("verification"),
+		Timing: types.StringValue("after"),
+		URL:    types.StringValue("https://example.com/webhook"),
+		// AuthMethod left null — the schema default applies after validation.
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	assert.Empty(t, resp.Diagnostics.Warnings(), "did not expect a warning when auth_method is unset: %v", resp.Diagnostics.Warnings())
+}
+
 // TestValidateConfig_NoWebhookAuth passes when no webhook auth is configured.
 func TestValidateConfig_NoWebhookAuth(t *testing.T) {
 	r := &ActionResource{}

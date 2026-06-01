@@ -52,12 +52,13 @@ resource "ory_action" "audit_log" {
 }
 
 # Post-verification sync
+# The verification (and recovery) flow is not scoped by authentication method,
+# so auth_method is omitted here — the hook always runs after verification.
 resource "ory_action" "sync_verified" {
-  flow        = "verification"
-  timing      = "after"
-  auth_method = "code"
-  url         = "https://api.example.com/webhooks/user-verified"
-  method      = "POST"
+  flow   = "verification"
+  timing = "after"
+  url    = "https://api.example.com/webhooks/user-verified"
+  method = "POST"
 }
 
 # Post-registration enrichment (parse response to modify identity)
@@ -106,7 +107,7 @@ resource "ory_action" "with_api_key" {
 
 ## Authentication Methods
 
-The `auth_method` attribute specifies which authentication method triggers the webhook. This is only used for `timing = "after"` webhooks.
+The `auth_method` attribute specifies which authentication method triggers the webhook. It applies only to `timing = "after"` webhooks on the `login`, `registration`, and `settings` flows.
 
 | Value | Description |
 |-------|-------------|
@@ -118,7 +119,7 @@ The `auth_method` attribute specifies which authentication method triggers the w
 | `totp` | Time-based one-time password |
 | `lookup_secret` | Recovery/backup codes |
 
-~> **Note:** `auth_method` is only used for `timing = "after"` webhooks. For `timing = "before"` hooks, the webhook runs before any authentication method is invoked.
+~> **Note:** `auth_method` only applies to `timing = "after"` webhooks on the `login`, `registration`, and `settings` flows. The `recovery` and `verification` flows are **not** scoped by authentication method — their after-hooks always run — so `auth_method` is ignored for them and should be omitted. For `timing = "before"` hooks, the webhook runs before any authentication method is invoked.
 
 ## Webhook Authentication
 
@@ -213,7 +214,7 @@ terraform import ory_action.validate \
 1. **project_id**: Settings → General → Project ID
 2. **flow**: The flow type (login, registration, recovery, settings, verification)
 3. **timing**: "before" or "after"
-4. **auth_method** (for "after" only): password, oidc, code, webauthn, passkey, totp, lookup_secret
+4. **auth_method**: for `login`/`registration`/`settings` "after" hooks, one of password, oidc, code, webauthn, passkey, totp, lookup_secret. For `recovery`/`verification` "after" hooks it is ignored — use `password` as a placeholder.
 5. **method**: The HTTP method (POST, GET, PUT, PATCH, DELETE)
 6. **url**: The exact webhook URL - must match exactly including protocol and trailing slashes
 
@@ -238,7 +239,7 @@ Common issues:
 
 ### Optional
 
-- `auth_method` (String) Authentication method that triggers the webhook. In the Ory Console UI, this is the "Method" selector. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`. Only used for `timing = "after"` webhooks.
+- `auth_method` (String) Authentication method that triggers the webhook. In the Ory Console UI, this is the "Method" selector. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`. Only applies to `timing = "after"` webhooks on the `login`, `registration`, and `settings` flows; it is ignored for the `recovery` and `verification` flows.
 - `body` (String) Jsonnet template for the request body.
 - `can_interrupt` (Boolean) Allow webhook to interrupt/block the flow (default: false).
 - `method` (String) HTTP method (default: POST).
