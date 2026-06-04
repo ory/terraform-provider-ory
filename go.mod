@@ -1,6 +1,6 @@
 module github.com/ory/terraform-provider-ory
 
-go 1.26.3
+go 1.26.4
 
 require (
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
@@ -8,7 +8,7 @@ require (
 	github.com/hashicorp/terraform-plugin-go v0.31.0
 	github.com/hashicorp/terraform-plugin-log v0.10.0
 	github.com/hashicorp/terraform-plugin-testing v1.16.0
-	github.com/ory/client-go v1.22.43
+	github.com/ory/client-go v1.22.47
 	github.com/ory/x v0.0.729
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
