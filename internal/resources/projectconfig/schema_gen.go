@@ -1132,5 +1132,9 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Sets a per-project Access Token, Refresh Token, and Authorization Code prefix",
 			Optional:    true,
 		},
+		"selfservice_methods_deviceauthn_enabled": schema.BoolAttribute{
+			Description: "Device authentication is enabled",
+			Optional:    true,
+		},
 	}
 }

@@ -421,6 +421,9 @@ type ProjectConfigResourceModel struct {
 	// Toggles the session hook in registration.after.password.hooks, mirroring
 	// the Ory Console "Enable sign in after registration" toggle.
 	SelfserviceFlowsRegistrationAfterPasswordHookSession types.Bool `tfsdk:"selfservice_flows_registration_after_password_hook_session"`
+
+	// Auto-discovered (review naming before release)
+	SelfserviceMethodsDeviceauthnEnabled types.Bool `tfsdk:"selfservice_methods_deviceauthn_enabled"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---
