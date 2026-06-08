@@ -638,6 +638,7 @@ terraform plan  # verify no changes
 - `selfservice_methods_code_mfa_enabled` (Boolean) Enable the code method as a second factor for MFA. When enabled, users can use one-time codes as a second authentication factor.
 - `selfservice_methods_code_passwordless_enabled` (Boolean) Enable passwordless login via the code method.
 - `selfservice_methods_code_passwordless_login_fallback_enabled` (Boolean) Allow code-based login as a fallback for users registered with other methods.
+- `selfservice_methods_deviceauthn_enabled` (Boolean) Device authentication is enabled
 - `selfservice_methods_link_config_base_url` (String) Base URL for recovery, verification, and login links. Leave empty for automatic detection.
 - `selfservice_methods_link_config_lifespan` (String) Lifespan of magic links (e.g. '1h').
 - `selfservice_methods_link_enabled` (Boolean) Enable the magic link authentication method.

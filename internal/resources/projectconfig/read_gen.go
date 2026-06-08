@@ -474,6 +474,7 @@ func identityBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry 
 		{&state.SelfserviceMethodsCaptchaConfigBYO, nil, []string{"selfservice", "methods", "captcha", "config", "byo"}},
 		{&state.SelfserviceMethodsCaptchaConfigLegacyInjectNode, nil, []string{"selfservice", "methods", "captcha", "config", "legacy_inject_node"}},
 		{&state.SelfserviceMethodsCaptchaEnabled, nil, []string{"selfservice", "methods", "captcha", "enabled"}},
+		{&state.SelfserviceMethodsDeviceauthnEnabled, nil, []string{"selfservice", "methods", "deviceauthn", "enabled"}},
 	}
 }
 

@@ -1417,3 +1417,10 @@ attributes:
     openapi_property: hydra_oauth2_token_prefix
     description: "Sets a per-project Access Token, Refresh Token, and Authorization Code prefix"
 
+  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  - name: selfservice_methods_deviceauthn_enabled
+    go_field: SelfserviceMethodsDeviceauthnEnabled
+    type: bool
+    openapi_property: kratos_selfservice_methods_deviceauthn_enabled
+    description: "Device authentication is enabled"
+
