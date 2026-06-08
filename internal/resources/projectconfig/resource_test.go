@@ -259,6 +259,49 @@ func TestAccProjectConfigResource_codeMFA(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_deviceAuthn(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with device authentication enabled
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/deviceauthn.tf.tmpl", map[string]string{"DeviceAuthnEnabled": "true"}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_deviceauthn_enabled", "true"),
+				),
+			},
+			// ImportState — config fields are ignored because import only sets
+			// id/project_id; Read only refreshes fields that are non-null in
+			// state, so config attributes won't be populated until apply.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"selfservice_methods_deviceauthn_enabled",
+					"cors_enabled",
+					"smtp_connection_uri",
+				},
+			},
+			// Update to disabled
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/deviceauthn.tf.tmpl", map[string]string{"DeviceAuthnEnabled": "false"}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_deviceauthn_enabled", "false"),
+				),
+			},
+			// Verify no perpetual diff
+			{
+				Config:             acctest.LoadTestConfig(t, "testdata/deviceauthn.tf.tmpl", map[string]string{"DeviceAuthnEnabled": "false"}),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_oidc(t *testing.T) {
 	acctest.RequireSocialProviderTests(t)
 	resource.Test(t, resource.TestCase{

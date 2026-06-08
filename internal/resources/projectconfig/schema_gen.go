@@ -347,6 +347,10 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:           true,
 			DeprecationMessage: "Use selfservice_methods_passkey_enabled instead. This attribute will be removed in a future major version.",
 		},
+		"selfservice_methods_deviceauthn_enabled": schema.BoolAttribute{
+			Description: "Enable device authentication.",
+			Optional:    true,
+		},
 		"selfservice_methods_lookup_secret_enabled": schema.BoolAttribute{
 			Description: "Enable backup/recovery codes.",
 			Optional:    true,

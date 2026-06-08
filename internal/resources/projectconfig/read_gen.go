@@ -443,6 +443,7 @@ func identityBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry 
 		{&state.SelfserviceMethodsTOTPEnabled, &state.EnableTOTP, []string{"selfservice", "methods", "totp", "enabled"}},
 		{&state.SelfserviceMethodsWebAuthnEnabled, &state.EnableWebAuthn, []string{"selfservice", "methods", "webauthn", "enabled"}},
 		{&state.SelfserviceMethodsPasskeyEnabled, &state.EnablePasskey, []string{"selfservice", "methods", "passkey", "enabled"}},
+		{&state.SelfserviceMethodsDeviceauthnEnabled, nil, []string{"selfservice", "methods", "deviceauthn", "enabled"}},
 		{&state.SelfserviceMethodsLookupSecretEnabled, &state.EnableLookupSecret, []string{"selfservice", "methods", "lookup_secret", "enabled"}},
 		{&state.SelfserviceMethodsProfileEnabled, &state.EnableProfile, []string{"selfservice", "methods", "profile", "enabled"}},
 		{&state.SelfserviceMethodsCodeConfigMissingCredentialFallbackEnabled, &state.CodeMissingCredentialFallbackEnabled, []string{"selfservice", "methods", "code", "config", "missing_credential_fallback_enabled"}},

@@ -351,6 +351,12 @@ attributes:
     deprecated_name: enable_passkey
     deprecated_go_field: EnablePasskey
 
+  - name: selfservice_methods_deviceauthn_enabled
+    go_field: SelfserviceMethodsDeviceauthnEnabled
+    type: bool
+    openapi_property: kratos_selfservice_methods_deviceauthn_enabled
+    description: "Enable device authentication."
+
   - name: selfservice_methods_lookup_secret_enabled
     go_field: SelfserviceMethodsLookupSecretEnabled
     type: bool

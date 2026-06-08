@@ -364,6 +364,7 @@ type ProjectConfigResourceModel struct {
 	SelfserviceMethodsTOTPEnabled              types.Bool `tfsdk:"selfservice_methods_totp_enabled"`
 	SelfserviceMethodsWebAuthnEnabled          types.Bool `tfsdk:"selfservice_methods_webauthn_enabled"`
 	SelfserviceMethodsPasskeyEnabled           types.Bool `tfsdk:"selfservice_methods_passkey_enabled"`
+	SelfserviceMethodsDeviceauthnEnabled       types.Bool `tfsdk:"selfservice_methods_deviceauthn_enabled"`
 	SelfserviceMethodsLookupSecretEnabled      types.Bool `tfsdk:"selfservice_methods_lookup_secret_enabled"`
 	SelfserviceMethodsProfileEnabled           types.Bool `tfsdk:"selfservice_methods_profile_enabled"`
 

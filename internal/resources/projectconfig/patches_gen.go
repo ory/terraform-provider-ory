@@ -177,6 +177,7 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 		{&plan.SelfserviceMethodsTOTPEnabled, &plan.EnableTOTP, "/services/identity/config/selfservice/methods/totp/enabled"},
 		{&plan.SelfserviceMethodsWebAuthnEnabled, &plan.EnableWebAuthn, "/services/identity/config/selfservice/methods/webauthn/enabled"},
 		{&plan.SelfserviceMethodsPasskeyEnabled, &plan.EnablePasskey, "/services/identity/config/selfservice/methods/passkey/enabled"},
+		{&plan.SelfserviceMethodsDeviceauthnEnabled, nil, "/services/identity/config/selfservice/methods/deviceauthn/enabled"},
 		{&plan.SelfserviceMethodsLookupSecretEnabled, &plan.EnableLookupSecret, "/services/identity/config/selfservice/methods/lookup_secret/enabled"},
 		{&plan.SelfserviceMethodsProfileEnabled, &plan.EnableProfile, "/services/identity/config/selfservice/methods/profile/enabled"},
 		{&plan.SelfserviceMethodsCodeConfigMissingCredentialFallbackEnabled, &plan.CodeMissingCredentialFallbackEnabled, "/services/identity/config/selfservice/methods/code/config/missing_credential_fallback_enabled"},
