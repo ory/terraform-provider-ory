@@ -265,8 +265,8 @@ type ProjectConfigResourceModel struct {
 	AccountExperienceLocaleBehavior       types.String `tfsdk:"account_experience_locale_behavior"`
 	AccountExperienceLogoDark             types.String `tfsdk:"account_experience_logo_dark"`
 	AccountExperienceLogoLight            types.String `tfsdk:"account_experience_logo_light"`
-	AccountExperienceThemeVariablesDark   types.String `tfsdk:"account_experience_theme_variables_dark"`
-	AccountExperienceThemeVariablesLight  types.String `tfsdk:"account_experience_theme_variables_light"`
+	AccountExperienceThemeVariablesDark   types.Map    `tfsdk:"account_experience_theme_variables_dark"`
+	AccountExperienceThemeVariablesLight  types.Map    `tfsdk:"account_experience_theme_variables_light"`
 	DisableAccountExperienceWelcomeScreen types.Bool   `tfsdk:"disable_account_experience_welcome_screen"`
 	EnableAXV2                            types.Bool   `tfsdk:"enable_ax_v2"`
 
@@ -594,6 +594,11 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 	//   session_tokenizer_templates: nested object schema
 	//   courier_channels:           nested objects with sub-config
 	//   courier_http_request_config: nested object (url/method/headers/body/auth)
+	//   account_experience images (4): data URI upload + storage-URL drift detection
+
+	for name, attr := range accountExperienceImageSchemaAttrs() {
+		attrs[name] = attr
+	}
 
 	attrs["keto_namespaces"] = schema.ListAttribute{
 		Description: "List of Keto namespace names to configure for Ory Permissions. " +
@@ -939,6 +944,10 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 	}
 
 	// --- Custom patches for complex types ---
+
+	// Account experience images (logo/favicon): stored at *_url config keys,
+	// written as data URIs. See account_experience.go.
+	patches = append(patches, accountExperienceImagePatches(plan)...)
 
 	// Keto/Permissions Namespaces
 	if !plan.KetoNamespaces.IsNull() && !plan.KetoNamespaces.IsUnknown() {
@@ -1452,6 +1461,11 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 	readSimpleFields(ctx, project, state)
 
 	// --- Custom reads for complex types ---
+
+	// Account experience images (logo/favicon): the API returns a
+	// content-addressed storage URL; match it against the data URI in state
+	// by hash to avoid perpetual diffs. See account_experience.go.
+	readAccountExperienceImages(project, state)
 
 	// CORS (Public) — uses project struct, not config map
 	if project.CorsPublic != nil {

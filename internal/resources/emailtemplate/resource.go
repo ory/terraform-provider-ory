@@ -2,13 +2,10 @@ package emailtemplate
 
 import (
 	"context"
-	"crypto/sha512"
 	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
-	pathpkg "path"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -273,45 +270,6 @@ var urlContentFetcher = func(ctx context.Context, rawURL string) (string, error)
 	return string(body), nil
 }
 
-// urlHashMatchesContent reports whether the SHA-512 hex hash embedded in the
-// URL's filename matches the SHA-512 of the supplied content. The Ory backoffice
-// stores template values at storage URLs whose filename is the lowercase hex
-// SHA-512 of the raw content plus a known extension (.txt/.html). When the
-// hashes match we know the API value equals `content` without an extra fetch.
-func urlHashMatchesContent(rawURL, content string) bool {
-	hash, ok := hashFromURL(rawURL)
-	if !ok {
-		return false
-	}
-	sum := sha512.Sum512([]byte(content))
-	return strings.EqualFold(hash, hex.EncodeToString(sum[:]))
-}
-
-// hashFromURL extracts the hex hash portion from a storage URL filename.
-// Returns ("", false) if the URL is not in the expected shape.
-func hashFromURL(rawURL string) (string, bool) {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return "", false
-	}
-	base := pathpkg.Base(u.Path)
-	ext := pathpkg.Ext(base)
-	hash := strings.TrimSuffix(base, ext)
-	if len(hash) != 128 {
-		return "", false
-	}
-	for _, c := range hash {
-		switch {
-		case c >= '0' && c <= '9':
-		case c >= 'a' && c <= 'f':
-		case c >= 'A' && c <= 'F':
-		default:
-			return "", false
-		}
-	}
-	return hash, true
-}
-
 // resolveStoredTemplate returns the canonical decoded template value for a
 // field returned by the API. Behavior:
 //   - If the API returned an empty value, return "" so an out-of-band reset
@@ -336,7 +294,7 @@ func resolveStoredTemplate(ctx context.Context, apiValue, stateValue string) str
 	if !isHTTPSURL(apiValue) {
 		return apiValue
 	}
-	if stateValue != "" && urlHashMatchesContent(apiValue, stateValue) {
+	if stateValue != "" && helpers.URLHashMatchesContent(apiValue, []byte(stateValue)) {
 		return stateValue
 	}
 	fetched, err := urlContentFetcher(ctx, apiValue)

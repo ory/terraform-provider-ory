@@ -143,13 +143,7 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.SelfserviceMethodsPasskeyConfigRPDisplayName, nil, "/services/identity/config/selfservice/methods/passkey/config/rp/display_name"},
 		{&plan.SelfserviceMethodsPasskeyConfigRPID, nil, "/services/identity/config/selfservice/methods/passkey/config/rp/id"},
 		{&plan.SelfserviceMethodsWebAuthnConfigRPIcon, nil, "/services/identity/config/selfservice/methods/webauthn/config/rp/icon"},
-		{&plan.AccountExperienceFaviconDark, nil, "/services/account_experience/config/favicon_dark"},
-		{&plan.AccountExperienceFaviconLight, nil, "/services/account_experience/config/favicon_light"},
 		{&plan.AccountExperienceLocaleBehavior, nil, "/services/account_experience/config/locale_behavior"},
-		{&plan.AccountExperienceLogoDark, nil, "/services/account_experience/config/logo_dark"},
-		{&plan.AccountExperienceLogoLight, nil, "/services/account_experience/config/logo_light"},
-		{&plan.AccountExperienceThemeVariablesDark, nil, "/services/account_experience/config/theme_variables_dark"},
-		{&plan.AccountExperienceThemeVariablesLight, nil, "/services/account_experience/config/theme_variables_light"},
 		{&plan.KetoNamespaceConfiguration, nil, "/services/permission/config/namespaces/location"},
 		{&plan.PreviewDefaultReadConsistencyLevel, nil, "/services/identity/config/preview/default_read_consistency_level"},
 		{&plan.SelfserviceMethodsCaptchaConfigCFTurnstileSecret, nil, "/services/identity/config/selfservice/methods/captcha/config/cf_turnstile/secret"},
@@ -259,6 +253,8 @@ func simpleListStringPatchEntries(plan *ProjectConfigResourceModel) []ListString
 // simpleMapStringPatchEntries returns all simple map(string) attribute patch mappings.
 func simpleMapStringPatchEntries(plan *ProjectConfigResourceModel) []MapStringPatchEntry {
 	return []MapStringPatchEntry{
+		{&plan.AccountExperienceThemeVariablesDark, nil, "/services/account_experience/config/theme_variables_dark"},
+		{&plan.AccountExperienceThemeVariablesLight, nil, "/services/account_experience/config/theme_variables_light"},
 		{&plan.OAuth2ProviderHeaders, nil, "/services/identity/config/oauth2_provider/headers"},
 		{&plan.SMTPHeaders, nil, "/services/identity/config/courier/smtp/headers"},
 	}

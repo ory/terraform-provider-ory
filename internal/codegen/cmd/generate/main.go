@@ -870,6 +870,16 @@ func excludedProperties() map[string]bool {
 		"account_experience_default_locale":                     true, // → account_experience_default_locale (in mappings)
 		"kratos_oauth2_provider_headers":                        true, // → oauth2_provider_headers (in mappings)
 
+		// Account experience images — handled by custom code in resource.go.
+		// The spec's governs descriptions point at favicon_*/logo_* config keys,
+		// but the API stores them at favicon_*_url/logo_*_url, expects an inline
+		// data URI on write, and returns a content-addressed storage URL on read
+		// (filename is sha512 of the image bytes). See issue #250.
+		"account_experience_favicon_dark":  true, // → account_experience_favicon_dark (custom)
+		"account_experience_favicon_light": true, // → account_experience_favicon_light (custom)
+		"account_experience_logo_dark":     true, // → account_experience_logo_dark (custom)
+		"account_experience_logo_light":    true, // → account_experience_logo_light (custom)
+
 		// Courier templates — managed by the dedicated `ory_email_template`
 		// resource. They are not viable as simple-string codegen entries
 		// because writes require `base64://` encoding and reads return a

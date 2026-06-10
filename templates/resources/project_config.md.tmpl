@@ -105,6 +105,40 @@ When `true`, the provider adds the `show_verification_ui` hook to the correspond
 
 To require a verified address before a user can log in (the "Require verified address for login" toggle in the Ory Console), set `feature_flags_legacy_require_verified_login_error = true`. When that flag is `false`, an unverified user is shown the `show_verification_ui` continuation step instead of receiving a form error.
 
+## Account Experience Branding
+
+The hosted Account Experience pages (login, registration, recovery, ...) can be branded with a logo, favicon, and theme colors.
+
+**Logos and favicons** (`account_experience_logo_light`, `account_experience_logo_dark`, `account_experience_favicon_light`, `account_experience_favicon_dark`) must be provided as an inline data URI — the Ory API does not fetch remote URLs. Use [`filebase64`](https://developer.hashicorp.com/terraform/language/functions/filebase64) to embed a local image:
+
+```hcl
+resource "ory_project_config" "main" {
+  account_experience_logo_light    = "data:image/png;base64,${filebase64("${path.module}/assets/logo.png")}"
+  account_experience_favicon_light = "data:image/png;base64,${filebase64("${path.module}/assets/favicon.png")}"
+}
+```
+
+Supported content types: `image/png`, `image/svg+xml`, `image/x-icon`, `image/vnd.microsoft.icon`, `image/gif`, `image/jpeg`, `image/webp`. The API uploads the image and serves it from a content-addressed storage URL; the provider compares that URL's content hash against your data URI, so an unchanged image never shows a diff. Set the attribute to an empty string (`""`) to remove the image.
+
+**Theme colors** (`account_experience_theme_variables_light`, `account_experience_theme_variables_dark`) are maps of color tokens to CSS color values:
+
+```hcl
+resource "ory_project_config" "main" {
+  account_experience_theme_variables_light = {
+    ax_background_default             = "#fafafa"
+    brand_500                         = "#0066ff"
+    button_primary_background_default = "#0066ff"
+    button_primary_background_hover   = "#0052cc"
+  }
+}
+```
+
+Valid tokens are the fields of the [`AccountExperienceColors`](https://github.com/ory/client-go/blob/master/docs/AccountExperienceColors.md) API model (for example `ax_background_default`, `brand_50` through `brand_950`, `button_primary_*`, `input_*`, `interface_*`). The Ory Console theme editor (Branding → Theme) is an easy way to discover token names: configure colors there, then run `ory get project <id> --format json` and copy the `theme_variables_light`/`theme_variables_dark` objects.
+
+~> **Note:** The API silently discards unrecognized color tokens. If a token you set keeps reappearing in `terraform plan`, check its spelling against the model linked above.
+
+Set a theme map to `{}` to reset all colors to the defaults.
+
 ## Clearing Return URLs
 
 To explicitly clear `default_return_url` and `allowed_return_urls` (e.g., for native-only flows with no browser redirects), set them to empty values:

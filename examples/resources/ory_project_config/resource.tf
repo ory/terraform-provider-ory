@@ -75,8 +75,18 @@ resource "ory_project_config" "secure" {
   ]
 
   # Account Experience Branding
-  # (removed: account_experience_name, account_experience_logo_url, account_experience_favicon_url)
+  # Logos/favicons must be inline data URIs (the API does not fetch remote
+  # URLs), e.g. "data:image/png;base64,${filebase64("logo.png")}".
+  # Theme variables are maps of color tokens (see the AccountExperienceColors
+  # API model) to CSS color values.
   account_experience_default_locale = "en"
+  # account_experience_logo_light    = "data:image/png;base64,${filebase64("${path.module}/assets/logo.png")}"
+  # account_experience_favicon_light = "data:image/png;base64,${filebase64("${path.module}/assets/favicon.png")}"
+  # account_experience_theme_variables_light = {
+  #   ax_background_default             = "#fafafa"
+  #   brand_500                         = "#0066ff"
+  #   button_primary_background_default = "#0066ff"
+  # }
 
   # OAuth2 Token Lifespans
   oauth2_ttl_access_token          = "1h0m0s"
