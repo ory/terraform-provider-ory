@@ -301,12 +301,16 @@ func TestAccProjectConfigResource_accountExperience(t *testing.T) {
 
 	createData := map[string]string{
 		"LogoLight":    logoRed,
+		"LogoDark":     logoBlue,
 		"FaviconLight": logoRed,
+		"FaviconDark":  logoBlue,
 		"BrandColor":   "#0066ff",
 	}
 	updateData := map[string]string{
 		"LogoLight":    logoBlue,
+		"LogoDark":     logoRed,
 		"FaviconLight": logoRed,
+		"FaviconDark":  logoBlue,
 		"BrandColor":   "#22cc88",
 	}
 
@@ -324,7 +328,9 @@ func TestAccProjectConfigResource_accountExperience(t *testing.T) {
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_default_locale", "en"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_logo_light", logoRed),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_logo_dark", logoBlue),
 					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_favicon_light", logoRed),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_favicon_dark", logoBlue),
 					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_theme_variables_light.ax_background_default", "#fafafa"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_theme_variables_light.brand_500", "#0066ff"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_theme_variables_dark.ax_background_default", "#0a0a0a"),
@@ -342,7 +348,9 @@ func TestAccProjectConfigResource_accountExperience(t *testing.T) {
 				Config: acctest.LoadTestConfig(t, "testdata/account_experience.tf.tmpl", updateData),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_logo_light", logoBlue),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_logo_dark", logoRed),
 					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_favicon_light", logoRed),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_favicon_dark", logoBlue),
 					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_theme_variables_light.brand_500", "#22cc88"),
 				),
 			},
@@ -360,7 +368,9 @@ func TestAccProjectConfigResource_accountExperience(t *testing.T) {
 				ImportStateVerifyIgnore: []string{
 					"account_experience_default_locale",
 					"account_experience_logo_light",
+					"account_experience_logo_dark",
 					"account_experience_favicon_light",
+					"account_experience_favicon_dark",
 					"account_experience_theme_variables_light",
 					"account_experience_theme_variables_dark",
 					"cors_enabled",
@@ -373,7 +383,9 @@ func TestAccProjectConfigResource_accountExperience(t *testing.T) {
 				Config: acctest.LoadTestConfig(t, "testdata/account_experience_cleared.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_logo_light", ""),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_logo_dark", ""),
 					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_favicon_light", ""),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_favicon_dark", ""),
 					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_theme_variables_light.%", "0"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_theme_variables_dark.%", "0"),
 				),

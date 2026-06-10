@@ -32,8 +32,24 @@ import (
 // account experience logos and favicons (from the API's validation error).
 const axImageMIMETypes = `png|svg\+xml|x-icon|vnd\.microsoft\.icon|gif|jpeg|webp`
 
+// axImageValueRegex accepts the three shapes the Ory API allows for an account
+// experience image:
+//
+//   - an empty string (clears the image);
+//   - an inline data URI of a supported image type, which the API uploads;
+//   - a storage URL the API has already returned, whose filename stem is the
+//     lowercase hex SHA-512 of the image bytes (see helpers.HashFromURL).
+//
+// Plain remote URLs are rejected by the API (it sniffs the value's content
+// type rather than fetching the URL), so we reject them here too — surfacing
+// the error at plan time instead of deferring it to apply.
+const axStorageURLPattern = `https://[^\s]+/[0-9a-fA-F]{128}(\.[A-Za-z0-9]+)?(\?[^\s]*)?`
+
 var axImageValueRegex = regexp.MustCompile(
-	`^(|https://.+|data:image/(` + axImageMIMETypes + `);base64,[A-Za-z0-9+/]+={0,2})$`,
+	`^(` +
+		`|` + axStorageURLPattern +
+		`|data:image/(` + axImageMIMETypes + `);base64,[A-Za-z0-9+/]+={0,2}` +
+		`)$`,
 )
 
 // axImageField pairs a state/plan field with its config key under
@@ -66,8 +82,10 @@ func accountExperienceImageSchemaAttrs() map[string]schema.Attribute {
 			Validators: []validator.String{
 				stringvalidator.RegexMatches(
 					axImageValueRegex,
-					"must be empty, an https:// URL, or a data:image/<type>;base64,<data> URI "+
-						"(supported types: png, svg+xml, x-icon, vnd.microsoft.icon, gif, jpeg, webp)",
+					"must be empty, a storage URL previously returned by the Ory API, or a "+
+						"data:image/<type>;base64,<data> URI (supported types: png, svg+xml, "+
+						"x-icon, vnd.microsoft.icon, gif, jpeg, webp). Plain remote URLs are not "+
+						"accepted — embed the image as a data URI, e.g. with filebase64()",
 				),
 			},
 		}

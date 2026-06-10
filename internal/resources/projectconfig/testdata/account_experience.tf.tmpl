@@ -2,7 +2,9 @@ resource "ory_project_config" "test" {
   account_experience_default_locale = "en"
 
   account_experience_logo_light    = "[[ .LogoLight ]]"
+  account_experience_logo_dark     = "[[ .LogoDark ]]"
   account_experience_favicon_light = "[[ .FaviconLight ]]"
+  account_experience_favicon_dark  = "[[ .FaviconDark ]]"
 
   account_experience_theme_variables_light = {
     ax_background_default             = "#fafafa"

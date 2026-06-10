@@ -149,14 +149,18 @@ func TestAXImageValueRegex(t *testing.T) {
 		"data:image/jpeg;base64,/9j/4A==",
 		"data:image/webp;base64,UklGRg==",
 		"data:image/gif;base64,R0lGODsbAAAA",
-		"https://storage.googleapis.com/bucket/abc.png",
+		// Storage URLs the API returns: filename stem is the sha512 hash.
+		storageURLFor(tinyPNG),
+		storageURLFor([]byte("another image")) + "?GoogleAccessId=x&Expires=1",
 	}
 	for _, v := range valid {
 		assert.True(t, axImageValueRegex.MatchString(v), "expected valid: %q", v)
 	}
 
 	invalid := []string{
-		"http://example.com/logo.png",            // plain http
+		"http://example.com/logo.png",                          // plain http
+		"https://example.com/logo.png",                         // generic remote URL, not a storage URL
+		"https://storage.googleapis.com/bucket/not-a-hash.png", // storage host but no sha512 filename
 		"iVBORw0KGgo=",                           // raw base64 without data: prefix
 		"data:image/png,plain",                   // not base64-encoded
 		"data:application/json;base64,e30=",      // not an image type
