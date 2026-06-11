@@ -915,33 +915,19 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 			ElementType: types.StringType,
 		},
-		"account_experience_favicon_dark": schema.StringAttribute{
-			Description: "URL for the dark theme favicon in the hosted login UI.",
-			Optional:    true,
-		},
-		"account_experience_favicon_light": schema.StringAttribute{
-			Description: "URL for the light theme favicon in the hosted login UI.",
-			Optional:    true,
-		},
 		"account_experience_locale_behavior": schema.StringAttribute{
 			Description: "Locale behavior: 'respect_accept_language' or 'force_default'.",
 			Optional:    true,
 		},
-		"account_experience_logo_dark": schema.StringAttribute{
-			Description: "URL for the dark theme logo in the hosted login UI.",
+		"account_experience_theme_variables_dark": schema.MapAttribute{
+			Description: "Theme color variables for the hosted Account Experience UI (dark theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset.",
 			Optional:    true,
+			ElementType: types.StringType,
 		},
-		"account_experience_logo_light": schema.StringAttribute{
-			Description: "URL for the light theme logo in the hosted login UI.",
+		"account_experience_theme_variables_light": schema.MapAttribute{
+			Description: "Theme color variables for the hosted Account Experience UI (light theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset.",
 			Optional:    true,
-		},
-		"account_experience_theme_variables_dark": schema.StringAttribute{
-			Description: "URL for dark theme CSS variables in the hosted login UI.",
-			Optional:    true,
-		},
-		"account_experience_theme_variables_light": schema.StringAttribute{
-			Description: "URL for light theme CSS variables in the hosted login UI.",
-			Optional:    true,
+			ElementType: types.StringType,
 		},
 		"disable_account_experience_welcome_screen": schema.BoolAttribute{
 			Description: "Disable the account experience welcome screen at /ui/welcome.",

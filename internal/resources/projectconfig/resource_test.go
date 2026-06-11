@@ -294,16 +294,106 @@ func TestAccProjectConfigResource_oidcAutoLinkPolicy(t *testing.T) {
 }
 
 func TestAccProjectConfigResource_accountExperience(t *testing.T) {
-	resource.Test(t, resource.TestCase{
+	// Two distinct 1x1 PNGs (red and blue pixels) so the update step changes
+	// the image content hash.
+	logoRed := "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
+	logoBlue := "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYPj/HwADAgH/5ncLrgAAAABJRU5ErkJggg=="
+
+	createData := map[string]string{
+		"LogoLight":    logoRed,
+		"LogoDark":     logoBlue,
+		"FaviconLight": logoRed,
+		"FaviconDark":  logoBlue,
+		"BrandColor":   "#0066ff",
+	}
+	updateData := map[string]string{
+		"LogoLight":    logoBlue,
+		"LogoDark":     logoRed,
+		"FaviconLight": logoRed,
+		"FaviconDark":  logoBlue,
+		"BrandColor":   "#22cc88",
+	}
+
+	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
+			// Step 1: Create with branding configured. Regression for issue
+			// #250: the logo previously failed to apply (silently ignored
+			// config key) and theme variables returned HTTP 500 (string sent
+			// where the API expects a map of color tokens).
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/account_experience.tf.tmpl", nil),
+				Config: acctest.LoadTestConfig(t, "testdata/account_experience.tf.tmpl", createData),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_default_locale", "en"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_logo_light", logoRed),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_logo_dark", logoBlue),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_favicon_light", logoRed),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_favicon_dark", logoBlue),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_theme_variables_light.ax_background_default", "#fafafa"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_theme_variables_light.brand_500", "#0066ff"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_theme_variables_dark.ax_background_default", "#0a0a0a"),
 				),
+			},
+			// Step 2: No perpetual diff — the API stores the image at a
+			// content-addressed storage URL; the provider must match it
+			// against the configured data URI by content hash.
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/account_experience.tf.tmpl", createData),
+				PlanOnly: true,
+			},
+			// Step 3: Update the logo image and a theme color.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/account_experience.tf.tmpl", updateData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_logo_light", logoBlue),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_logo_dark", logoRed),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_favicon_light", logoRed),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_favicon_dark", logoBlue),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_theme_variables_light.brand_500", "#22cc88"),
+				),
+			},
+			// Step 4: No perpetual diff after the update.
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/account_experience.tf.tmpl", updateData),
+				PlanOnly: true,
+			},
+			// Step 5: ImportState — import only sets id/project_id, so config
+			// fields stay null until the next apply and are ignored.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"account_experience_default_locale",
+					"account_experience_logo_light",
+					"account_experience_logo_dark",
+					"account_experience_favicon_light",
+					"account_experience_favicon_dark",
+					"account_experience_theme_variables_light",
+					"account_experience_theme_variables_dark",
+					"cors_enabled",
+					"smtp_connection_uri",
+				},
+			},
+			// Step 6: Clear all branding again (also restores the shared
+			// test project to its pre-test state).
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/account_experience_cleared.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_logo_light", ""),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_logo_dark", ""),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_favicon_light", ""),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_favicon_dark", ""),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_theme_variables_light.%", "0"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_theme_variables_dark.%", "0"),
+				),
+			},
+			// Step 7: Cleared values round-trip without drift.
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/account_experience_cleared.tf.tmpl", nil),
+				PlanOnly: true,
 			},
 		},
 	})

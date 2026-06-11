@@ -1096,19 +1096,11 @@ attributes:
     openapi_property: account_experience_enabled_locales
     description: "Enabled locales for the hosted login UI."
 
-  - name: account_experience_favicon_dark
-    go_field: AccountExperienceFaviconDark
-    type: string
-    openapi_property: account_experience_favicon_dark
-    description: "URL for the dark theme favicon in the hosted login UI."
-    skip_empty_read: true
-
-  - name: account_experience_favicon_light
-    go_field: AccountExperienceFaviconLight
-    type: string
-    openapi_property: account_experience_favicon_light
-    description: "URL for the light theme favicon in the hosted login UI."
-    skip_empty_read: true
+  # account_experience_favicon_dark/light and account_experience_logo_dark/light
+  # are handled by custom code in resource.go. The spec's governs descriptions
+  # point at favicon_*/logo_* config keys, but the API actually stores them at
+  # favicon_*_url/logo_*_url, expects an inline data URI on write, and returns a
+  # content-addressed storage URL on read (sha512 of the image bytes).
 
   - name: account_experience_locale_behavior
     go_field: AccountExperienceLocaleBehavior
@@ -1117,33 +1109,17 @@ attributes:
     description: "Locale behavior: 'respect_accept_language' or 'force_default'."
     skip_empty_read: true
 
-  - name: account_experience_logo_dark
-    go_field: AccountExperienceLogoDark
-    type: string
-    openapi_property: account_experience_logo_dark
-    description: "URL for the dark theme logo in the hosted login UI."
-    skip_empty_read: true
-
-  - name: account_experience_logo_light
-    go_field: AccountExperienceLogoLight
-    type: string
-    openapi_property: account_experience_logo_light
-    description: "URL for the light theme logo in the hosted login UI."
-    skip_empty_read: true
-
   - name: account_experience_theme_variables_dark
     go_field: AccountExperienceThemeVariablesDark
-    type: string
+    type: map_string
     openapi_property: account_experience_theme_variables_dark
-    description: "URL for dark theme CSS variables in the hosted login UI."
-    skip_empty_read: true
+    description: "Theme color variables for the hosted Account Experience UI (dark theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset."
 
   - name: account_experience_theme_variables_light
     go_field: AccountExperienceThemeVariablesLight
-    type: string
+    type: map_string
     openapi_property: account_experience_theme_variables_light
-    description: "URL for light theme CSS variables in the hosted login UI."
-    skip_empty_read: true
+    description: "Theme color variables for the hosted Account Experience UI (light theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset."
 
   - name: disable_account_experience_welcome_screen
     go_field: DisableAccountExperienceWelcomeScreen

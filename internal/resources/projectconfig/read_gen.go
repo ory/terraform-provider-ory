@@ -112,6 +112,34 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				}
 			}
 		}
+		for _, e := range account_experienceMapStringReadEntries(state) {
+			target := e.Field
+			if target.IsNull() && e.Deprecated != nil && !e.Deprecated.IsNull() {
+				target = e.Deprecated
+			}
+			if !target.IsNull() {
+				if v := getNestedValue(accountExperienceConfig, e.Keys...); v != nil {
+					if m, ok := v.(map[string]interface{}); ok {
+						strMap := make(map[string]attr.Value, len(m))
+						allStrings := true
+						for k, val := range m {
+							if s, ok := val.(string); ok {
+								strMap[k] = types.StringValue(s)
+							} else {
+								allStrings = false
+								break
+							}
+						}
+						if allStrings {
+							mapVal, diags := types.MapValue(types.StringType, strMap)
+							if !diags.HasError() {
+								*target = mapVal
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 	if project.Services.Identity != nil {
 		identityConfig := project.Services.Identity.Config
@@ -326,13 +354,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 func account_experienceStringReadEntries(state *ProjectConfigResourceModel) []StringReadEntry {
 	return []StringReadEntry{
 		{&state.AccountExperienceLocale, nil, []string{"default_locale"}, true},
-		{&state.AccountExperienceFaviconDark, nil, []string{"favicon_dark"}, true},
-		{&state.AccountExperienceFaviconLight, nil, []string{"favicon_light"}, true},
 		{&state.AccountExperienceLocaleBehavior, nil, []string{"locale_behavior"}, true},
-		{&state.AccountExperienceLogoDark, nil, []string{"logo_dark"}, true},
-		{&state.AccountExperienceLogoLight, nil, []string{"logo_light"}, true},
-		{&state.AccountExperienceThemeVariablesDark, nil, []string{"theme_variables_dark"}, true},
-		{&state.AccountExperienceThemeVariablesLight, nil, []string{"theme_variables_light"}, true},
 	}
 }
 
@@ -348,6 +370,13 @@ func account_experienceBoolReadEntries(state *ProjectConfigResourceModel) []Bool
 func account_experienceListStringReadEntries(state *ProjectConfigResourceModel) []ListStringReadEntry {
 	return []ListStringReadEntry{
 		{&state.AccountExperienceEnabledLocales, nil, []string{"enabled_locales"}},
+	}
+}
+
+func account_experienceMapStringReadEntries(state *ProjectConfigResourceModel) []MapStringReadEntry {
+	return []MapStringReadEntry{
+		{&state.AccountExperienceThemeVariablesDark, nil, []string{"theme_variables_dark"}},
+		{&state.AccountExperienceThemeVariablesLight, nil, []string{"theme_variables_light"}},
 	}
 }
 

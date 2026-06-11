@@ -98,8 +98,18 @@ resource "ory_project_config" "secure" {
   ]
 
   # Account Experience Branding
-  # (removed: account_experience_name, account_experience_logo_url, account_experience_favicon_url)
+  # Logos/favicons must be inline data URIs (the API does not fetch remote
+  # URLs), e.g. "data:image/png;base64,${filebase64("logo.png")}".
+  # Theme variables are maps of color tokens (see the AccountExperienceColors
+  # API model) to CSS color values.
   account_experience_default_locale = "en"
+  # account_experience_logo_light    = "data:image/png;base64,${filebase64("${path.module}/assets/logo.png")}"
+  # account_experience_favicon_light = "data:image/png;base64,${filebase64("${path.module}/assets/favicon.png")}"
+  # account_experience_theme_variables_light = {
+  #   ax_background_default             = "#fafafa"
+  #   brand_500                         = "#0066ff"
+  #   button_primary_background_default = "#0066ff"
+  # }
 
   # OAuth2 Token Lifespans
   oauth2_ttl_access_token          = "1h0m0s"
@@ -386,6 +396,40 @@ When `true`, the provider adds the `show_verification_ui` hook to the correspond
 
 To require a verified address before a user can log in (the "Require verified address for login" toggle in the Ory Console), set `feature_flags_legacy_require_verified_login_error = true`. When that flag is `false`, an unverified user is shown the `show_verification_ui` continuation step instead of receiving a form error.
 
+## Account Experience Branding
+
+The hosted Account Experience pages (login, registration, recovery, ...) can be branded with a logo, favicon, and theme colors.
+
+**Logos and favicons** (`account_experience_logo_light`, `account_experience_logo_dark`, `account_experience_favicon_light`, `account_experience_favicon_dark`) must be provided as an inline data URI — the Ory API does not fetch remote URLs. Use [`filebase64`](https://developer.hashicorp.com/terraform/language/functions/filebase64) to embed a local image:
+
+```hcl
+resource "ory_project_config" "main" {
+  account_experience_logo_light    = "data:image/png;base64,${filebase64("${path.module}/assets/logo.png")}"
+  account_experience_favicon_light = "data:image/png;base64,${filebase64("${path.module}/assets/favicon.png")}"
+}
+```
+
+Supported content types: `image/png`, `image/svg+xml`, `image/x-icon`, `image/vnd.microsoft.icon`, `image/gif`, `image/jpeg`, `image/webp`. The API uploads the image and serves it from a content-addressed storage URL; the provider compares that URL's content hash against your data URI, so an unchanged image never shows a diff. Set the attribute to an empty string (`""`) to remove the image.
+
+**Theme colors** (`account_experience_theme_variables_light`, `account_experience_theme_variables_dark`) are maps of color tokens to CSS color values:
+
+```hcl
+resource "ory_project_config" "main" {
+  account_experience_theme_variables_light = {
+    ax_background_default             = "#fafafa"
+    brand_500                         = "#0066ff"
+    button_primary_background_default = "#0066ff"
+    button_primary_background_hover   = "#0052cc"
+  }
+}
+```
+
+Valid tokens are the fields of the [`AccountExperienceColors`](https://github.com/ory/client-go/blob/master/docs/AccountExperienceColors.md) API model (for example `ax_background_default`, `brand_50` through `brand_950`, `button_primary_*`, `input_*`, `interface_*`). The Ory Console theme editor (Branding → Theme) is an easy way to discover token names: configure colors there, then run `ory get project <id> --format json` and copy the `theme_variables_light`/`theme_variables_dark` objects.
+
+~> **Note:** The API silently discards unrecognized color tokens. If a token you set keeps reappearing in `terraform plan`, check its spelling against the model linked above.
+
+Set a theme map to `{}` to reset all colors to the defaults.
+
 ## Clearing Return URLs
 
 To explicitly clear `default_return_url` and `allowed_return_urls` (e.g., for native-only flows with no browser redirects), set them to empty values:
@@ -428,15 +472,15 @@ terraform plan  # verify no changes
 
 - `account_experience_default_locale` (String) Default locale for the hosted login UI (e.g., 'en', 'de').
 - `account_experience_enabled_locales` (List of String) Enabled locales for the hosted login UI.
-- `account_experience_favicon_dark` (String) URL for the dark theme favicon in the hosted login UI.
-- `account_experience_favicon_light` (String) URL for the light theme favicon in the hosted login UI.
+- `account_experience_favicon_dark` (String) Favicon for the hosted Account Experience UI (dark theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
+- `account_experience_favicon_light` (String) Favicon for the hosted Account Experience UI (light theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
 - `account_experience_hide_ory_branding` (Boolean) Whether to hide the Ory branding badge on the account experience.
 - `account_experience_hide_registration_link` (Boolean) Whether to hide the registration link on the account experience login card.
 - `account_experience_locale_behavior` (String) Locale behavior: 'respect_accept_language' or 'force_default'.
-- `account_experience_logo_dark` (String) URL for the dark theme logo in the hosted login UI.
-- `account_experience_logo_light` (String) URL for the light theme logo in the hosted login UI.
-- `account_experience_theme_variables_dark` (String) URL for dark theme CSS variables in the hosted login UI.
-- `account_experience_theme_variables_light` (String) URL for light theme CSS variables in the hosted login UI.
+- `account_experience_logo_dark` (String) Logo for the hosted Account Experience UI (dark theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
+- `account_experience_logo_light` (String) Logo for the hosted Account Experience UI (light theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
+- `account_experience_theme_variables_dark` (Map of String) Theme color variables for the hosted Account Experience UI (dark theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset.
+- `account_experience_theme_variables_light` (Map of String) Theme color variables for the hosted Account Experience UI (light theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset.
 - `allowed_return_urls` (List of String) List of allowed return URLs.
 - `code_lifespan` (String, Deprecated) Lifespan of the code method's one-time codes (e.g., '15m0s'). Controls how long a code remains valid after being issued.
 - `code_mfa_enabled` (Boolean, Deprecated) Enable the code method as a second factor for MFA. When enabled, users can use one-time codes as a second authentication factor.
