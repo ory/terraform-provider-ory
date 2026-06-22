@@ -505,10 +505,6 @@ terraform plan  # verify no changes
 - `courier_smtp_from_address` (String) Email address to send from.
 - `courier_smtp_from_name` (String) Name to display as sender.
 - `courier_smtp_local_name` (String) Local hostname used in SMTP HELO/EHLO commands.
-- `courier_templates_verifiable_address_changed_email_body_html` (String) Verifiable Address Changed Email Body HTML Template
-- `courier_templates_verifiable_address_changed_email_body_plaintext` (String) Verifiable Address Changed Email Body Plaintext Template
-- `courier_templates_verifiable_address_changed_email_subject` (String) Verifiable Address Changed Email Subject Template
-- `courier_templates_verifiable_address_changed_sms_body_plaintext` (String) Verifiable Address Changed SMS Body Plaintext Template
 - `default_return_url` (String) Default URL to redirect after flows.
 - `disable_account_experience_welcome_screen` (Boolean) Disable the account experience welcome screen at /ui/welcome.
 - `enable_ax_v2` (Boolean) Enable the new account experience UI.
@@ -686,7 +682,7 @@ terraform plan  # verify no changes
 - `selfservice_methods_code_mfa_enabled` (Boolean) Enable the code method as a second factor for MFA. When enabled, users can use one-time codes as a second authentication factor.
 - `selfservice_methods_code_passwordless_enabled` (Boolean) Enable passwordless login via the code method.
 - `selfservice_methods_code_passwordless_login_fallback_enabled` (Boolean) Allow code-based login as a fallback for users registered with other methods.
-- `selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation` (Boolean) Device authentication accepts relaxed attestations for testing Only allowed on development projects and forced off otherwise
+- `selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation` (Boolean) Device authentication accepts relaxed attestations for testing. Only allowed on development projects and forced off otherwise.
 - `selfservice_methods_deviceauthn_enabled` (Boolean) Device authentication is enabled
 - `selfservice_methods_link_config_base_url` (String) Base URL for recovery, verification, and login links. Leave empty for automatic detection.
 - `selfservice_methods_link_config_lifespan` (String) Lifespan of magic links (e.g. '1h').

@@ -1122,24 +1122,8 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Device authentication is enabled",
 			Optional:    true,
 		},
-		"courier_templates_verifiable_address_changed_email_body_html": schema.StringAttribute{
-			Description: "Verifiable Address Changed Email Body HTML Template",
-			Optional:    true,
-		},
-		"courier_templates_verifiable_address_changed_email_body_plaintext": schema.StringAttribute{
-			Description: "Verifiable Address Changed Email Body Plaintext Template",
-			Optional:    true,
-		},
-		"courier_templates_verifiable_address_changed_email_subject": schema.StringAttribute{
-			Description: "Verifiable Address Changed Email Subject Template",
-			Optional:    true,
-		},
-		"courier_templates_verifiable_address_changed_sms_body_plaintext": schema.StringAttribute{
-			Description: "Verifiable Address Changed SMS Body Plaintext Template",
-			Optional:    true,
-		},
 		"selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation": schema.BoolAttribute{
-			Description: "Device authentication accepts relaxed attestations for testing Only allowed on development projects and forced off otherwise",
+			Description: "Device authentication accepts relaxed attestations for testing. Only allowed on development projects and forced off otherwise.",
 			Optional:    true,
 		},
 	}

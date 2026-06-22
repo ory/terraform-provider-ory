@@ -458,10 +458,6 @@ func identityStringReadEntries(state *ProjectConfigResourceModel) []StringReadEn
 		{&state.CourierHTTPRequestConfigAuthType, nil, []string{"courier", "http", "request_config", "auth", "type"}, false},
 		{&state.CourierHTTPRequestConfigMethod, nil, []string{"courier", "http", "request_config", "method"}, false},
 		{&state.SMTPConnectionURI, nil, []string{"courier", "smtp", "connection_uri"}, true},
-		{&state.CourierTemplatesVerifiableAddressChangedEmailBodyHTML, nil, []string{"courier", "templates", "verifiable_address_changed", "email", "body", "html"}, false},
-		{&state.CourierTemplatesVerifiableAddressChangedEmailBodyPlaintext, nil, []string{"courier", "templates", "verifiable_address_changed", "email", "body", "plaintext"}, false},
-		{&state.CourierTemplatesVerifiableAddressChangedEmailSubject, nil, []string{"courier", "templates", "verifiable_address_changed", "email", "subject"}, false},
-		{&state.CourierTemplatesVerifiableAddressChangedSMSBodyPlaintext, nil, []string{"courier", "templates", "verifiable_address_changed", "sms", "body", "plaintext"}, false},
 	}
 }
 
