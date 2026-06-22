@@ -82,6 +82,20 @@ var prefixToService = map[string]string{
 // Matches: This governs the "session.lifespan" setting.
 var governsRegex = regexp.MustCompile(`This governs the "([^"]+)" setting`)
 
+// paragraphBreakRegex matches blank-line paragraph separators. Spec descriptions
+// frequently split a single field's docs across multiple paragraphs; cleanDescription
+// uses this to join them into space-separated sentences without running together.
+var paragraphBreakRegex = regexp.MustCompile(`\n[ \t]*\n`)
+
+// courierTemplatePropertyPrefix matches every kratos_courier_templates_* spec
+// property. Courier templates are managed by the dedicated `ory_email_template`
+// resource and are not viable as simple-string codegen entries: writes require
+// `base64://` encoding and reads return a storage URL whose filename is
+// sha512(content). Excluding by prefix (rather than enumerating each template
+// family) ensures new families added upstream are excluded automatically. See
+// issue #213.
+const courierTemplatePropertyPrefix = "kratos_courier_templates_"
+
 func parseService(patchPath string) (string, []string) {
 	parts := strings.Split(strings.TrimPrefix(patchPath, "/"), "/")
 	if len(parts) < 4 || parts[0] != "services" || parts[2] != "config" {
@@ -507,7 +521,7 @@ func reportUnmapped(m Mappings, specProps map[string]SpecProperty) int {
 
 	var unmapped []SpecProperty
 	for _, sp := range specProps {
-		if excluded[sp.Name] {
+		if isExcludedProperty(sp.Name, excluded) {
 			continue
 		}
 		if mapped[sp.Name] {
@@ -562,7 +576,7 @@ func discoverNewEntries(m Mappings, specProps map[string]SpecProperty) {
 	// Collect and sort unmapped properties
 	var unmapped []SpecProperty
 	for _, sp := range specProps {
-		if excluded[sp.Name] || mapped[sp.Name] {
+		if isExcludedProperty(sp.Name, excluded) || mapped[sp.Name] {
 			continue
 		}
 		if sp.GovernsPath != "" && mappedPaths[sp.GovernsPath] {
@@ -639,7 +653,7 @@ func collectUnmappedProperties(m Mappings, specProps map[string]SpecProperty) []
 
 	var unmapped []SpecProperty
 	for _, sp := range specProps {
-		if excluded[sp.Name] || mapped[sp.Name] {
+		if isExcludedProperty(sp.Name, excluded) || mapped[sp.Name] {
 			continue
 		}
 		if sp.GovernsPath != "" && mappedPaths[sp.GovernsPath] {
@@ -880,53 +894,58 @@ func excludedProperties() map[string]bool {
 		"account_experience_logo_dark":     true, // → account_experience_logo_dark (custom)
 		"account_experience_logo_light":    true, // → account_experience_logo_light (custom)
 
-		// Courier templates — managed by the dedicated `ory_email_template`
-		// resource. They are not viable as simple-string codegen entries
-		// because writes require `base64://` encoding and reads return a
-		// storage URL whose filename is sha512(content). See issue #213.
-		"kratos_courier_templates_login_code_valid_email_body_html":               true,
-		"kratos_courier_templates_login_code_valid_email_body_plaintext":          true,
-		"kratos_courier_templates_login_code_valid_email_subject":                 true,
-		"kratos_courier_templates_login_code_valid_sms_body_plaintext":            true,
-		"kratos_courier_templates_recovery_code_invalid_email_body_html":          true,
-		"kratos_courier_templates_recovery_code_invalid_email_body_plaintext":     true,
-		"kratos_courier_templates_recovery_code_invalid_email_subject":            true,
-		"kratos_courier_templates_recovery_code_valid_email_body_html":            true,
-		"kratos_courier_templates_recovery_code_valid_email_body_plaintext":       true,
-		"kratos_courier_templates_recovery_code_valid_email_subject":              true,
-		"kratos_courier_templates_recovery_invalid_email_body_html":               true,
-		"kratos_courier_templates_recovery_invalid_email_body_plaintext":          true,
-		"kratos_courier_templates_recovery_invalid_email_subject":                 true,
-		"kratos_courier_templates_recovery_valid_email_body_html":                 true,
-		"kratos_courier_templates_recovery_valid_email_body_plaintext":            true,
-		"kratos_courier_templates_recovery_valid_email_subject":                   true,
-		"kratos_courier_templates_registration_code_valid_email_body_html":        true,
-		"kratos_courier_templates_registration_code_valid_email_body_plaintext":   true,
-		"kratos_courier_templates_registration_code_valid_email_subject":          true,
-		"kratos_courier_templates_registration_code_valid_sms_body_plaintext":     true,
-		"kratos_courier_templates_verification_code_invalid_email_body_html":      true,
-		"kratos_courier_templates_verification_code_invalid_email_body_plaintext": true,
-		"kratos_courier_templates_verification_code_invalid_email_subject":        true,
-		"kratos_courier_templates_verification_code_valid_email_body_html":        true,
-		"kratos_courier_templates_verification_code_valid_email_body_plaintext":   true,
-		"kratos_courier_templates_verification_code_valid_email_subject":          true,
-		"kratos_courier_templates_verification_code_valid_sms_body_plaintext":     true,
-		"kratos_courier_templates_verification_invalid_email_body_html":           true,
-		"kratos_courier_templates_verification_invalid_email_body_plaintext":      true,
-		"kratos_courier_templates_verification_invalid_email_subject":             true,
-		"kratos_courier_templates_verification_valid_email_body_html":             true,
-		"kratos_courier_templates_verification_valid_email_body_plaintext":        true,
-		"kratos_courier_templates_verification_valid_email_subject":               true,
+		// Courier templates (kratos_courier_templates_*) are excluded by prefix in
+		// isExcludedProperty; see courierTemplatePropertyPrefix. Enumerating each
+		// family here previously missed new ones (e.g. verifiable_address_changed),
+		// which then leaked into the generated schema. See issue #213.
 	}
 }
 
-// cleanDescription removes the "governs" sentence, collapses newlines,
-// strips "Ory Kratos" / "Ory Hydra" prefixes, and truncates for Terraform docs.
+// isExcludedProperty reports whether a spec property should be skipped during
+// discovery and coverage checks: either it is in the static exclusion set or it
+// is a courier template property (excluded by prefix; see
+// courierTemplatePropertyPrefix).
+func isExcludedProperty(name string, excluded map[string]bool) bool {
+	return excluded[name] || strings.HasPrefix(name, courierTemplatePropertyPrefix)
+}
+
+// endsWithSentencePunctuation reports whether s ends with terminal punctuation,
+// so cleanDescription does not insert a redundant period when joining paragraphs.
+func endsWithSentencePunctuation(s string) bool {
+	if s == "" {
+		return false
+	}
+	switch s[len(s)-1] {
+	case '.', '!', '?', ':', ';':
+		return true
+	}
+	return false
+}
+
+// cleanDescription removes the "governs" sentence, joins multi-paragraph spec
+// docs into space-separated sentences, strips "Ory Kratos" / "Ory Hydra"
+// prefixes, and truncates for Terraform docs.
 func cleanDescription(desc string) string {
 	cleaned := governsRegex.ReplaceAllString(desc, "")
 
-	// Normalize whitespace in one pass
-	cleaned = strings.Join(strings.Fields(cleaned), " ")
+	// Join blank-line-separated paragraphs into space-separated sentences. Each
+	// paragraph is whitespace-normalized; a paragraph that does not already end in
+	// sentence punctuation gets a period so neighboring paragraphs do not run
+	// together (e.g. "...for testing" + "Only allowed..." -> "...for testing. Only
+	// allowed...").
+	paragraphs := paragraphBreakRegex.Split(cleaned, -1)
+	sentences := make([]string, 0, len(paragraphs))
+	for _, p := range paragraphs {
+		if p = strings.Join(strings.Fields(p), " "); p != "" {
+			sentences = append(sentences, p)
+		}
+	}
+	for i := 0; i < len(sentences)-1; i++ {
+		if !endsWithSentencePunctuation(sentences[i]) {
+			sentences[i] += "."
+		}
+	}
+	cleaned = strings.Join(sentences, " ")
 
 	// Strip "Configures the " / "Configures whether " prefixes for brevity.
 	// Must happen before product-name stripping so "Configures the Ory Hydra ..."

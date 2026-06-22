@@ -1122,5 +1122,9 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Device authentication is enabled",
 			Optional:    true,
 		},
+		"selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation": schema.BoolAttribute{
+			Description: "Device authentication accepts relaxed attestations for testing. Only allowed on development projects and forced off otherwise.",
+			Optional:    true,
+		},
 	}
 }

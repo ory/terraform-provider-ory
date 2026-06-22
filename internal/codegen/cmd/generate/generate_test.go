@@ -54,6 +54,13 @@ func TestCleanDescription(t *testing.T) {
 		{"Mid-sentence Ory Kratos reference stays", "Mid-sentence Ory Kratos reference stays"},
 		{"A very long description that exceeds two hundred characters and should be truncated at the first sentence boundary. This is the second sentence that should not appear in the output because it is too long.", "A very long description that exceeds two hundred characters and should be truncated at the first sentence boundary"},
 		{`This governs the "session.lifespan" setting.`, "Configuration setting."},
+		// Multi-paragraph spec descriptions become separate sentences rather than
+		// running together. Regression for the courier/deviceauthn regen (PR #261).
+		{"First clause without trailing period\n\nSecond clause.", "First clause without trailing period. Second clause"},
+		{"Configures whether Ory Kratos Device authentication accepts relaxed attestations for testing\n\n" +
+			"Only allowed on development projects and forced off otherwise. Keys enrolled under relaxation are short-lived and refused once this is turned off.\n\n" +
+			"This governs the \"selfservice.methods.deviceauthn.config.insecure_allow_relaxed_attestation\" setting.",
+			"Device authentication accepts relaxed attestations for testing"},
 	}
 
 	for _, tt := range tests {

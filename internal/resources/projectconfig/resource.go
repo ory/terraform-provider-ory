@@ -424,6 +424,9 @@ type ProjectConfigResourceModel struct {
 
 	// Auto-discovered (review naming before release)
 	SelfserviceMethodsDeviceauthnEnabled types.Bool `tfsdk:"selfservice_methods_deviceauthn_enabled"`
+
+	// Auto-discovered (review naming before release)
+	SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation types.Bool `tfsdk:"selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---

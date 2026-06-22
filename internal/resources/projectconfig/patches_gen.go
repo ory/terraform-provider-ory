@@ -213,6 +213,7 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 		{&plan.AccountExperienceHideOryBranding, nil, "/services/account_experience/config/hide_ory_branding"},
 		{&plan.AccountExperienceHideRegistrationLink, nil, "/services/account_experience/config/hide_registration_link"},
 		{&plan.SelfserviceMethodsDeviceauthnEnabled, nil, "/services/identity/config/selfservice/methods/deviceauthn/enabled"},
+		{&plan.SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/insecure_allow_relaxed_attestation"},
 	}
 }
 

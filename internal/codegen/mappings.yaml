@@ -1400,3 +1400,13 @@ attributes:
     openapi_property: kratos_selfservice_methods_deviceauthn_enabled
     description: "Device authentication is enabled"
 
+  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  # NOTE: courier_templates_* properties are intentionally excluded from codegen
+  # (managed by the dedicated `ory_email_template` resource). They are filtered by
+  # prefix in excludedProperties()/isExcludedProperty in cmd/generate/main.go.
+  - name: selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation
+    go_field: SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation
+    type: bool
+    openapi_property: kratos_selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation
+    description: "Device authentication accepts relaxed attestations for testing. Only allowed on development projects and forced off otherwise."
+
