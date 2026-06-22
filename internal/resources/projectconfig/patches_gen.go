@@ -152,6 +152,10 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.CourierHTTPRequestConfigMethod, nil, "/services/identity/config/courier/http/request_config/method"},
 		{&plan.SMTPConnectionURI, nil, "/services/identity/config/courier/smtp/connection_uri"},
 		{&plan.OAuth2TokenPrefix, nil, "/services/oauth2/config/oauth2/token_prefix"},
+		{&plan.CourierTemplatesVerifiableAddressChangedEmailBodyHTML, nil, "/services/identity/config/courier/templates/verifiable_address_changed/email/body/html"},
+		{&plan.CourierTemplatesVerifiableAddressChangedEmailBodyPlaintext, nil, "/services/identity/config/courier/templates/verifiable_address_changed/email/body/plaintext"},
+		{&plan.CourierTemplatesVerifiableAddressChangedEmailSubject, nil, "/services/identity/config/courier/templates/verifiable_address_changed/email/subject"},
+		{&plan.CourierTemplatesVerifiableAddressChangedSMSBodyPlaintext, nil, "/services/identity/config/courier/templates/verifiable_address_changed/sms/body/plaintext"},
 	}
 }
 
@@ -213,6 +217,7 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 		{&plan.AccountExperienceHideOryBranding, nil, "/services/account_experience/config/hide_ory_branding"},
 		{&plan.AccountExperienceHideRegistrationLink, nil, "/services/account_experience/config/hide_registration_link"},
 		{&plan.SelfserviceMethodsDeviceauthnEnabled, nil, "/services/identity/config/selfservice/methods/deviceauthn/enabled"},
+		{&plan.SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/insecure_allow_relaxed_attestation"},
 	}
 }
 

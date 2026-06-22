@@ -424,6 +424,13 @@ type ProjectConfigResourceModel struct {
 
 	// Auto-discovered (review naming before release)
 	SelfserviceMethodsDeviceauthnEnabled types.Bool `tfsdk:"selfservice_methods_deviceauthn_enabled"`
+
+	// Auto-discovered (review naming before release)
+	CourierTemplatesVerifiableAddressChangedEmailBodyHTML              types.String `tfsdk:"courier_templates_verifiable_address_changed_email_body_html"`
+	CourierTemplatesVerifiableAddressChangedEmailBodyPlaintext         types.String `tfsdk:"courier_templates_verifiable_address_changed_email_body_plaintext"`
+	CourierTemplatesVerifiableAddressChangedEmailSubject               types.String `tfsdk:"courier_templates_verifiable_address_changed_email_subject"`
+	CourierTemplatesVerifiableAddressChangedSMSBodyPlaintext           types.String `tfsdk:"courier_templates_verifiable_address_changed_sms_body_plaintext"`
+	SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation types.Bool   `tfsdk:"selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---

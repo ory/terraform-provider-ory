@@ -1400,3 +1400,34 @@ attributes:
     openapi_property: kratos_selfservice_methods_deviceauthn_enabled
     description: "Device authentication is enabled"
 
+  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  - name: courier_templates_verifiable_address_changed_email_body_html
+    go_field: CourierTemplatesVerifiableAddressChangedEmailBodyHTML
+    type: string
+    openapi_property: kratos_courier_templates_verifiable_address_changed_email_body_html
+    description: "Verifiable Address Changed Email Body HTML Template"
+
+  - name: courier_templates_verifiable_address_changed_email_body_plaintext
+    go_field: CourierTemplatesVerifiableAddressChangedEmailBodyPlaintext
+    type: string
+    openapi_property: kratos_courier_templates_verifiable_address_changed_email_body_plaintext
+    description: "Verifiable Address Changed Email Body Plaintext Template"
+
+  - name: courier_templates_verifiable_address_changed_email_subject
+    go_field: CourierTemplatesVerifiableAddressChangedEmailSubject
+    type: string
+    openapi_property: kratos_courier_templates_verifiable_address_changed_email_subject
+    description: "Verifiable Address Changed Email Subject Template"
+
+  - name: courier_templates_verifiable_address_changed_sms_body_plaintext
+    go_field: CourierTemplatesVerifiableAddressChangedSMSBodyPlaintext
+    type: string
+    openapi_property: kratos_courier_templates_verifiable_address_changed_sms_body_plaintext
+    description: "Verifiable Address Changed SMS Body Plaintext Template"
+
+  - name: selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation
+    go_field: SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation
+    type: bool
+    openapi_property: kratos_selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation
+    description: "Device authentication accepts relaxed attestations for testing Only allowed on development projects and forced off otherwise"
+
