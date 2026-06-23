@@ -1,6 +1,14 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 func TestGovernsToPatchPath(t *testing.T) {
 	tests := []struct {
@@ -27,13 +35,10 @@ func TestGovernsToPatchPath(t *testing.T) {
 
 	for _, tt := range tests {
 		path, ok := governsToPatchPath(tt.property, tt.desc)
-		if ok != tt.wantOK {
-			t.Errorf("governsToPatchPath(%q): got ok=%v, want %v", tt.property, ok, tt.wantOK)
+		if !assert.Equal(t, tt.wantOK, ok, "governsToPatchPath(%q): ok", tt.property) {
 			continue
 		}
-		if path != tt.wantPath {
-			t.Errorf("governsToPatchPath(%q): got %q, want %q", tt.property, path, tt.wantPath)
-		}
+		assert.Equal(t, tt.wantPath, path, "governsToPatchPath(%q): path", tt.property)
 	}
 }
 
@@ -49,13 +54,17 @@ func TestCleanDescription(t *testing.T) {
 		{"Mid-sentence Ory Kratos reference stays", "Mid-sentence Ory Kratos reference stays"},
 		{"A very long description that exceeds two hundred characters and should be truncated at the first sentence boundary. This is the second sentence that should not appear in the output because it is too long.", "A very long description that exceeds two hundred characters and should be truncated at the first sentence boundary"},
 		{`This governs the "session.lifespan" setting.`, "Configuration setting."},
+		// Multi-paragraph spec descriptions become separate sentences rather than
+		// running together. Regression for the courier/deviceauthn regen (PR #261).
+		{"First clause without trailing period\n\nSecond clause.", "First clause without trailing period. Second clause"},
+		{"Configures whether Ory Kratos Device authentication accepts relaxed attestations for testing\n\n" +
+			"Only allowed on development projects and forced off otherwise. Keys enrolled under relaxation are short-lived and refused once this is turned off.\n\n" +
+			"This governs the \"selfservice.methods.deviceauthn.config.insecure_allow_relaxed_attestation\" setting.",
+			"Device authentication accepts relaxed attestations for testing"},
 	}
 
 	for _, tt := range tests {
-		got := cleanDescription(tt.input)
-		if got != tt.want {
-			t.Errorf("cleanDescription(%q):\n  got  %q\n  want %q", tt.input, got, tt.want)
-		}
+		assert.Equal(t, tt.want, cleanDescription(tt.input), "cleanDescription(%q)", tt.input)
 	}
 }
 
@@ -73,9 +82,63 @@ func TestDeriveTerraformName(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := deriveTerraformName(tt.openapi)
-		if got != tt.want {
-			t.Errorf("deriveTerraformName(%q): got %q, want %q", tt.openapi, got, tt.want)
-		}
+		assert.Equal(t, tt.want, deriveTerraformName(tt.openapi), "deriveTerraformName(%q)", tt.openapi)
 	}
+}
+
+func TestAppendToMappingsFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mappings.yaml")
+	original := "attributes:\n  - name: foo\n    go_field: Foo\n    type: bool\n"
+	require.NoError(t, os.WriteFile(path, []byte(original), 0o600), "seed")
+	require.NoError(t, appendToMappingsFile(path, "\n  - name: bar\n    go_field: Bar\n"), "append")
+	got, err := os.ReadFile(path) //nolint:gosec // test file
+	require.NoError(t, err, "read")
+	want := "attributes:\n  - name: foo\n    go_field: Foo\n    type: bool\n\n  - name: bar\n    go_field: Bar\n"
+	assert.Equal(t, want, string(got))
+}
+
+func TestAppendToMappingsFileHandlesMissingTrailingNewline(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mappings.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("attributes:\n  - name: foo"), 0o600), "seed")
+	require.NoError(t, appendToMappingsFile(path, "\n  - name: bar\n"), "append")
+	got, err := os.ReadFile(path) //nolint:gosec // test file
+	require.NoError(t, err, "read")
+	assert.True(t, strings.HasPrefix(string(got), "attributes:\n  - name: foo\n\n"),
+		"expected single-newline separator, got %q", got)
+}
+
+func TestInsertStructFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "resource.go")
+	src := `package foo
+
+type ProjectConfigResourceModel struct {
+	ID types.String ` + "`tfsdk:\"id\"`" + `
+}
+
+func other() {}
+`
+	require.NoError(t, os.WriteFile(path, []byte(src), 0o600), "seed")
+	fields := []string{
+		"\tNewField1 types.Bool `tfsdk:\"new_field_1\"`",
+		"\tNewField2 types.String `tfsdk:\"new_field_2\"`",
+	}
+	require.NoError(t, insertStructFields(path, "ProjectConfigResourceModel", fields), "insert")
+	got, err := os.ReadFile(path) //nolint:gosec // test file
+	require.NoError(t, err, "read")
+	content := string(got)
+	assert.Contains(t, content, "\tID types.String `tfsdk:\"id\"`\n", "original field missing")
+	assert.Contains(t, content, "NewField1 types.Bool", "NewField1 missing")
+	assert.Contains(t, content, "NewField2 types.String", "NewField2 missing")
+	assert.Contains(t, content, "\n}\n\nfunc other()", "closing brace or trailing content broken")
+}
+
+func TestInsertStructFieldsErrorsOnMissingStruct(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "resource.go")
+	require.NoError(t, os.WriteFile(path, []byte("package foo\n"), 0o600), "seed")
+	err := insertStructFields(path, "ProjectConfigResourceModel", []string{"\tX types.Bool"})
+	require.Error(t, err, "expected error for missing struct")
 }

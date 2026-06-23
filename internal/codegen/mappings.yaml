@@ -40,6 +40,15 @@ attributes:
     openapi_property: kratos_session_lifespan
     description: "Session duration (e.g., '24h0m0s')."
 
+  - name: session_earliest_possible_extend
+    go_field: SessionEarliestPossibleExtend
+    type: string
+    patch_path: /services/identity/config/session/earliest_possible_extend
+    description: "Earliest time before session expiry when a session can be extended (e.g., '24h'). Setting this prevents excessive database writes when sessions are extended."
+    validators:
+      regex: "^([0-9]+(ns|us|ms|s|m|h))+$"
+      regex_message: "must be a Go duration string (e.g., '1h', '30m', '24h')"
+
   - name: session_cookie_same_site
     go_field: SessionCookieSameSite
     type: string
@@ -750,203 +759,13 @@ attributes:
     openapi_property: kratos_courier_smtp_local_name
     description: "Local hostname used in SMTP HELO/EHLO commands."
 
-  - name: courier_templates_login_code_valid_email_body_html
-    go_field: CourierTemplatesLoginCodeValidEmailBodyHTML
-    type: string
-    openapi_property: kratos_courier_templates_login_code_valid_email_body_html
-    description: "HTML body template for valid login-by-code emails."
-
-  - name: courier_templates_login_code_valid_email_body_plaintext
-    go_field: CourierTemplatesLoginCodeValidEmailBodyPlaintext
-    type: string
-    openapi_property: kratos_courier_templates_login_code_valid_email_body_plaintext
-    description: "Plaintext body template for valid login-by-code emails."
-
-  - name: courier_templates_login_code_valid_email_subject
-    go_field: CourierTemplatesLoginCodeValidEmailSubject
-    type: string
-    openapi_property: kratos_courier_templates_login_code_valid_email_subject
-    description: "Subject template for valid login-by-code emails."
-
-  - name: courier_templates_login_code_valid_sms_body_plaintext
-    go_field: CourierTemplatesLoginCodeValidSMSBodyPlaintext
-    type: string
-    openapi_property: kratos_courier_templates_login_code_valid_sms_body_plaintext
-    description: "Plaintext body template for valid login-by-code SMS messages."
-
-  - name: courier_templates_recovery_code_invalid_email_body_html
-    go_field: CourierTemplatesRecoveryCodeInvalidEmailBodyHTML
-    type: string
-    openapi_property: kratos_courier_templates_recovery_code_invalid_email_body_html
-    description: "HTML body template for invalid recovery-by-code emails."
-
-  - name: courier_templates_recovery_code_invalid_email_body_plaintext
-    go_field: CourierTemplatesRecoveryCodeInvalidEmailBodyPlaintext
-    type: string
-    openapi_property: kratos_courier_templates_recovery_code_invalid_email_body_plaintext
-    description: "Plaintext body template for invalid recovery-by-code emails."
-
-  - name: courier_templates_recovery_code_invalid_email_subject
-    go_field: CourierTemplatesRecoveryCodeInvalidEmailSubject
-    type: string
-    openapi_property: kratos_courier_templates_recovery_code_invalid_email_subject
-    description: "Subject template for invalid recovery-by-code emails."
-
-  - name: courier_templates_recovery_code_valid_email_body_html
-    go_field: CourierTemplatesRecoveryCodeValidEmailBodyHTML
-    type: string
-    openapi_property: kratos_courier_templates_recovery_code_valid_email_body_html
-    description: "HTML body template for valid recovery-by-code emails."
-
-  - name: courier_templates_recovery_code_valid_email_body_plaintext
-    go_field: CourierTemplatesRecoveryCodeValidEmailBodyPlaintext
-    type: string
-    openapi_property: kratos_courier_templates_recovery_code_valid_email_body_plaintext
-    description: "Plaintext body template for valid recovery-by-code emails."
-
-  - name: courier_templates_recovery_code_valid_email_subject
-    go_field: CourierTemplatesRecoveryCodeValidEmailSubject
-    type: string
-    openapi_property: kratos_courier_templates_recovery_code_valid_email_subject
-    description: "Subject template for valid recovery-by-code emails."
-
-  - name: courier_templates_recovery_invalid_email_body_html
-    go_field: CourierTemplatesRecoveryInvalidEmailBodyHTML
-    type: string
-    openapi_property: kratos_courier_templates_recovery_invalid_email_body_html
-    description: "HTML body template for invalid recovery emails."
-
-  - name: courier_templates_recovery_invalid_email_body_plaintext
-    go_field: CourierTemplatesRecoveryInvalidEmailBodyPlaintext
-    type: string
-    openapi_property: kratos_courier_templates_recovery_invalid_email_body_plaintext
-    description: "Plaintext body template for invalid recovery emails."
-
-  - name: courier_templates_recovery_invalid_email_subject
-    go_field: CourierTemplatesRecoveryInvalidEmailSubject
-    type: string
-    openapi_property: kratos_courier_templates_recovery_invalid_email_subject
-    description: "Subject template for invalid recovery emails."
-
-  - name: courier_templates_recovery_valid_email_body_html
-    go_field: CourierTemplatesRecoveryValidEmailBodyHTML
-    type: string
-    openapi_property: kratos_courier_templates_recovery_valid_email_body_html
-    description: "HTML body template for valid recovery emails."
-
-  - name: courier_templates_recovery_valid_email_body_plaintext
-    go_field: CourierTemplatesRecoveryValidEmailBodyPlaintext
-    type: string
-    openapi_property: kratos_courier_templates_recovery_valid_email_body_plaintext
-    description: "Plaintext body template for valid recovery emails."
-
-  - name: courier_templates_recovery_valid_email_subject
-    go_field: CourierTemplatesRecoveryValidEmailSubject
-    type: string
-    openapi_property: kratos_courier_templates_recovery_valid_email_subject
-    description: "Subject template for valid recovery emails."
-
-  - name: courier_templates_registration_code_valid_email_body_html
-    go_field: CourierTemplatesRegistrationCodeValidEmailBodyHTML
-    type: string
-    openapi_property: kratos_courier_templates_registration_code_valid_email_body_html
-    description: "HTML body template for valid registration-by-code emails."
-
-  - name: courier_templates_registration_code_valid_email_body_plaintext
-    go_field: CourierTemplatesRegistrationCodeValidEmailBodyPlaintext
-    type: string
-    openapi_property: kratos_courier_templates_registration_code_valid_email_body_plaintext
-    description: "Plaintext body template for valid registration-by-code emails."
-
-  - name: courier_templates_registration_code_valid_email_subject
-    go_field: CourierTemplatesRegistrationCodeValidEmailSubject
-    type: string
-    openapi_property: kratos_courier_templates_registration_code_valid_email_subject
-    description: "Subject template for valid registration-by-code emails."
-
-  - name: courier_templates_registration_code_valid_sms_body_plaintext
-    go_field: CourierTemplatesRegistrationCodeValidSMSBodyPlaintext
-    type: string
-    openapi_property: kratos_courier_templates_registration_code_valid_sms_body_plaintext
-    description: "Plaintext body template for valid registration-by-code SMS messages."
-
-  - name: courier_templates_verification_code_invalid_email_body_html
-    go_field: CourierTemplatesVerificationCodeInvalidEmailBodyHTML
-    type: string
-    openapi_property: kratos_courier_templates_verification_code_invalid_email_body_html
-    description: "HTML body template for invalid verification-by-code emails."
-
-  - name: courier_templates_verification_code_invalid_email_body_plaintext
-    go_field: CourierTemplatesVerificationCodeInvalidEmailBodyPlaintext
-    type: string
-    openapi_property: kratos_courier_templates_verification_code_invalid_email_body_plaintext
-    description: "Plaintext body template for invalid verification-by-code emails."
-
-  - name: courier_templates_verification_code_invalid_email_subject
-    go_field: CourierTemplatesVerificationCodeInvalidEmailSubject
-    type: string
-    openapi_property: kratos_courier_templates_verification_code_invalid_email_subject
-    description: "Subject template for invalid verification-by-code emails."
-
-  - name: courier_templates_verification_code_valid_email_body_html
-    go_field: CourierTemplatesVerificationCodeValidEmailBodyHTML
-    type: string
-    openapi_property: kratos_courier_templates_verification_code_valid_email_body_html
-    description: "HTML body template for valid verification-by-code emails."
-
-  - name: courier_templates_verification_code_valid_email_body_plaintext
-    go_field: CourierTemplatesVerificationCodeValidEmailBodyPlaintext
-    type: string
-    openapi_property: kratos_courier_templates_verification_code_valid_email_body_plaintext
-    description: "Plaintext body template for valid verification-by-code emails."
-
-  - name: courier_templates_verification_code_valid_email_subject
-    go_field: CourierTemplatesVerificationCodeValidEmailSubject
-    type: string
-    openapi_property: kratos_courier_templates_verification_code_valid_email_subject
-    description: "Subject template for valid verification-by-code emails."
-
-  - name: courier_templates_verification_code_valid_sms_body_plaintext
-    go_field: CourierTemplatesVerificationCodeValidSMSBodyPlaintext
-    type: string
-    openapi_property: kratos_courier_templates_verification_code_valid_sms_body_plaintext
-    description: "Plaintext body template for valid verification-by-code SMS messages."
-
-  - name: courier_templates_verification_invalid_email_body_html
-    go_field: CourierTemplatesVerificationInvalidEmailBodyHTML
-    type: string
-    openapi_property: kratos_courier_templates_verification_invalid_email_body_html
-    description: "HTML body template for invalid verification emails."
-
-  - name: courier_templates_verification_invalid_email_body_plaintext
-    go_field: CourierTemplatesVerificationInvalidEmailBodyPlaintext
-    type: string
-    openapi_property: kratos_courier_templates_verification_invalid_email_body_plaintext
-    description: "Plaintext body template for invalid verification emails."
-
-  - name: courier_templates_verification_invalid_email_subject
-    go_field: CourierTemplatesVerificationInvalidEmailSubject
-    type: string
-    openapi_property: kratos_courier_templates_verification_invalid_email_subject
-    description: "Subject template for invalid verification emails."
-
-  - name: courier_templates_verification_valid_email_body_html
-    go_field: CourierTemplatesVerificationValidEmailBodyHTML
-    type: string
-    openapi_property: kratos_courier_templates_verification_valid_email_body_html
-    description: "HTML body template for valid verification emails."
-
-  - name: courier_templates_verification_valid_email_body_plaintext
-    go_field: CourierTemplatesVerificationValidEmailBodyPlaintext
-    type: string
-    openapi_property: kratos_courier_templates_verification_valid_email_body_plaintext
-    description: "Plaintext body template for valid verification emails."
-
-  - name: courier_templates_verification_valid_email_subject
-    go_field: CourierTemplatesVerificationValidEmailSubject
-    type: string
-    openapi_property: kratos_courier_templates_verification_valid_email_subject
-    description: "Subject template for valid verification emails."
+  # NOTE: courier_templates_* fields are intentionally NOT mapped here.
+  # Use the dedicated `ory_email_template` resource instead — it handles the
+  # required base64:// encoding on write and the storage-URL drift detection
+  # on read, both of which the simple-string codegen path can not express.
+  # The matching `kratos_courier_templates_*` spec properties are listed in
+  # `excludedProperties()` in cmd/generate/main.go so `make check-coverage`
+  # does not flag them as drift. See issue #213.
 
   - name: feature_flags_cacheable_sessions
     go_field: FeatureFlagsCacheableSessions
@@ -1277,19 +1096,11 @@ attributes:
     openapi_property: account_experience_enabled_locales
     description: "Enabled locales for the hosted login UI."
 
-  - name: account_experience_favicon_dark
-    go_field: AccountExperienceFaviconDark
-    type: string
-    openapi_property: account_experience_favicon_dark
-    description: "URL for the dark theme favicon in the hosted login UI."
-    skip_empty_read: true
-
-  - name: account_experience_favicon_light
-    go_field: AccountExperienceFaviconLight
-    type: string
-    openapi_property: account_experience_favicon_light
-    description: "URL for the light theme favicon in the hosted login UI."
-    skip_empty_read: true
+  # account_experience_favicon_dark/light and account_experience_logo_dark/light
+  # are handled by custom code in resource.go. The spec's governs descriptions
+  # point at favicon_*/logo_* config keys, but the API actually stores them at
+  # favicon_*_url/logo_*_url, expects an inline data URI on write, and returns a
+  # content-addressed storage URL on read (sha512 of the image bytes).
 
   - name: account_experience_locale_behavior
     go_field: AccountExperienceLocaleBehavior
@@ -1298,33 +1109,17 @@ attributes:
     description: "Locale behavior: 'respect_accept_language' or 'force_default'."
     skip_empty_read: true
 
-  - name: account_experience_logo_dark
-    go_field: AccountExperienceLogoDark
-    type: string
-    openapi_property: account_experience_logo_dark
-    description: "URL for the dark theme logo in the hosted login UI."
-    skip_empty_read: true
-
-  - name: account_experience_logo_light
-    go_field: AccountExperienceLogoLight
-    type: string
-    openapi_property: account_experience_logo_light
-    description: "URL for the light theme logo in the hosted login UI."
-    skip_empty_read: true
-
   - name: account_experience_theme_variables_dark
     go_field: AccountExperienceThemeVariablesDark
-    type: string
+    type: map_string
     openapi_property: account_experience_theme_variables_dark
-    description: "URL for dark theme CSS variables in the hosted login UI."
-    skip_empty_read: true
+    description: "Theme color variables for the hosted Account Experience UI (dark theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset."
 
   - name: account_experience_theme_variables_light
     go_field: AccountExperienceThemeVariablesLight
-    type: string
+    type: map_string
     openapi_property: account_experience_theme_variables_light
-    description: "URL for light theme CSS variables in the hosted login UI."
-    skip_empty_read: true
+    description: "Theme color variables for the hosted Account Experience UI (light theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset."
 
   - name: disable_account_experience_welcome_screen
     go_field: DisableAccountExperienceWelcomeScreen
@@ -1561,6 +1356,57 @@ attributes:
     go_field: SMTPConnectionURI
     type: string
     openapi_property: kratos_courier_smtp_connection_uri
-    description: "SMTP connection URI for sending emails (e.g., smtps://user:pass@host:port)."
+    description: "SMTP connection URI for sending emails. The URI scheme selects the security mode: `smtp://` uses STARTTLS (recommended for port 587), `smtps://` uses implicit TLS (recommended for port 465). Append `?disable_starttls=true` for cleartext or `?skip_ssl_verify=true` to skip certificate verification (development only). See the SMTP Security Modes section in the resource documentation for the full list."
     sensitive: true
     skip_empty_read: true
+
+  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  - name: oauth2_preserve_ext_claims
+    go_field: OAuth2PreserveExtClaims
+    type: bool
+    openapi_property: hydra_oauth2_preserve_ext_claims
+    description: "Set to true to keep custom claims that are not promoted to the top level in the 'ext' claim. Only applies when mirror_top_level_claims is false."
+
+  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  - name: account_experience_hide_ory_branding
+    go_field: AccountExperienceHideOryBranding
+    type: bool
+    openapi_property: account_experience_hide_ory_branding
+    description: "Whether to hide the Ory branding badge on the account experience."
+
+  - name: account_experience_hide_registration_link
+    go_field: AccountExperienceHideRegistrationLink
+    type: bool
+    openapi_property: account_experience_hide_registration_link
+    description: "Whether to hide the registration link on the account experience login card."
+
+  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  - name: oauth2_grant_refresh_token_rotation_grace_reuse_count
+    go_field: OAuth2GrantRefreshTokenRotationGraceReuseCount
+    type: int64
+    openapi_property: hydra_oauth2_grant_refresh_token_rotation_grace_reuse_count
+    description: "OAuth2 Grant Refresh Token Rotation Grace Reuse Count. The maximum number of times a refresh token can be reused within the grace period. If set to `null` or `0`, the limit is disabled."
+
+  - name: oauth2_token_prefix
+    go_field: OAuth2TokenPrefix
+    type: string
+    openapi_property: hydra_oauth2_token_prefix
+    description: "Sets a per-project Access Token, Refresh Token, and Authorization Code prefix"
+
+  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  - name: selfservice_methods_deviceauthn_enabled
+    go_field: SelfserviceMethodsDeviceauthnEnabled
+    type: bool
+    openapi_property: kratos_selfservice_methods_deviceauthn_enabled
+    description: "Device authentication is enabled"
+
+  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  # NOTE: courier_templates_* properties are intentionally excluded from codegen
+  # (managed by the dedicated `ory_email_template` resource). They are filtered by
+  # prefix in excludedProperties()/isExcludedProperty in cmd/generate/main.go.
+  - name: selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation
+    go_field: SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation
+    type: bool
+    openapi_property: kratos_selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation
+    description: "Device authentication accepts relaxed attestations for testing. Only allowed on development projects and forced off otherwise."
+

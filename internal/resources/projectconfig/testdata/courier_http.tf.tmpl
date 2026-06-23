@@ -2,7 +2,7 @@ resource "ory_project_config" "test" {
   courier_delivery_strategy = "http"
 
   courier_http_request_config = {
-    url    = "https://mail-api.example.com/send"
+    url    = "https://example.com/mail-api/send"
     method = "POST"
     body   = "base64://ewogICJyZWNpcGllbnQiOiAge3sgLnJlY2lwaWVudCB9fSwKICAiYm9keSI6IHt7IC5ib2R5IH19Cn0="
     auth = {
@@ -16,7 +16,7 @@ resource "ory_project_config" "test" {
     {
       id = "sms"
       request_config = {
-        url    = "https://sms-api.example.com/send"
+        url    = "https://example.com/sms-api/send"
         method = "POST"
         body   = "base64://ewogICJ0byI6IHt7IC5yZWNpcGllbnQgfX0sCiAgIm1lc3NhZ2UiOiB7eyAuYm9keSB9fQp9"
         auth = {

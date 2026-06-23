@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
+	"github.com/stretchr/testify/assert"
 )
 
 // buildActionTestConfig creates a ValidateConfigRequest from an ActionResourceModel.
@@ -82,6 +83,91 @@ func tfActionStringValue(v types.String) tftypes.Value {
 	return tftypes.NewValue(tftypes.String, v.ValueString())
 }
 
+// TestValidateConfig_AuthMethodOnUnsupportedFlow_Warns verifies that explicitly
+// setting auth_method on the recovery/verification flows (which have no
+// auth-method-scoped hooks) produces a warning. Regression for issue #241.
+func TestValidateConfig_AuthMethodOnUnsupportedFlow_Warns(t *testing.T) {
+	for _, flow := range []string{"verification", "recovery"} {
+		t.Run(flow, func(t *testing.T) {
+			r := &ActionResource{}
+			ctx := context.Background()
+
+			req := buildActionTestConfig(t, ActionResourceModel{
+				Flow:       types.StringValue(flow),
+				Timing:     types.StringValue("after"),
+				AuthMethod: types.StringValue("code"),
+				URL:        types.StringValue("https://example.com/webhook"),
+			})
+			var resp resource.ValidateConfigResponse
+			r.ValidateConfig(ctx, req, &resp)
+
+			assert.False(t, resp.Diagnostics.HasError(), "auth_method on %s must not be an error: %v", flow, resp.Diagnostics.Errors())
+			assert.NotEmpty(t, resp.Diagnostics.Warnings(), "expected a warning for auth_method on %s flow", flow)
+		})
+	}
+}
+
+// TestValidateConfig_AuthMethodOnAuthScopedFlow_NoWarn verifies that setting
+// auth_method on login/registration/settings does not warn.
+func TestValidateConfig_AuthMethodOnAuthScopedFlow_NoWarn(t *testing.T) {
+	for _, flow := range []string{"login", "registration", "settings"} {
+		t.Run(flow, func(t *testing.T) {
+			r := &ActionResource{}
+			ctx := context.Background()
+
+			req := buildActionTestConfig(t, ActionResourceModel{
+				Flow:       types.StringValue(flow),
+				Timing:     types.StringValue("after"),
+				AuthMethod: types.StringValue("password"),
+				URL:        types.StringValue("https://example.com/webhook"),
+			})
+			var resp resource.ValidateConfigResponse
+			r.ValidateConfig(ctx, req, &resp)
+
+			assert.Empty(t, resp.Diagnostics.Warnings(), "did not expect a warning for auth_method on %s flow: %v", flow, resp.Diagnostics.Warnings())
+		})
+	}
+}
+
+// TestValidateConfig_AuthMethodOnBeforeTiming_Warns verifies that auth_method set
+// on a "before" hook warns even for an auth-scoped flow, since auth_method only
+// applies to "after" hooks. Covers the timing dimension of the warning.
+func TestValidateConfig_AuthMethodOnBeforeTiming_Warns(t *testing.T) {
+	r := &ActionResource{}
+	ctx := context.Background()
+
+	req := buildActionTestConfig(t, ActionResourceModel{
+		Flow:       types.StringValue("login"),
+		Timing:     types.StringValue("before"),
+		AuthMethod: types.StringValue("password"),
+		URL:        types.StringValue("https://example.com/webhook"),
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	assert.False(t, resp.Diagnostics.HasError(), "auth_method on a before hook must not be an error: %v", resp.Diagnostics.Errors())
+	assert.NotEmpty(t, resp.Diagnostics.Warnings(), "expected a warning for auth_method on a before hook")
+}
+
+// TestValidateConfig_NoAuthMethodOnVerification_NoWarn verifies that the common
+// case (auth_method unset, defaulted by the schema) does not warn — only an
+// explicit value does.
+func TestValidateConfig_NoAuthMethodOnVerification_NoWarn(t *testing.T) {
+	r := &ActionResource{}
+	ctx := context.Background()
+
+	req := buildActionTestConfig(t, ActionResourceModel{
+		Flow:   types.StringValue("verification"),
+		Timing: types.StringValue("after"),
+		URL:    types.StringValue("https://example.com/webhook"),
+		// AuthMethod left null — the schema default applies after validation.
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	assert.Empty(t, resp.Diagnostics.Warnings(), "did not expect a warning when auth_method is unset: %v", resp.Diagnostics.Warnings())
+}
+
 // TestValidateConfig_NoWebhookAuth passes when no webhook auth is configured.
 func TestValidateConfig_NoWebhookAuth(t *testing.T) {
 	r := &ActionResource{}
@@ -96,9 +182,7 @@ func TestValidateConfig_NoWebhookAuth(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if resp.Diagnostics.HasError() {
-		t.Errorf("expected no errors when webhook auth is not configured, got: %s", resp.Diagnostics.Errors()[0].Detail())
-	}
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors when webhook auth is not configured: %v", resp.Diagnostics.Errors())
 }
 
 // TestValidateConfig_APIKey_AllKnown_Passes verifies valid api_key config passes.
@@ -118,9 +202,7 @@ func TestValidateConfig_APIKey_AllKnown_Passes(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if resp.Diagnostics.HasError() {
-		t.Errorf("expected no errors for valid api_key config, got: %s", resp.Diagnostics.Errors()[0].Detail())
-	}
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for valid api_key config: %v", resp.Diagnostics.Errors())
 }
 
 // TestValidateConfig_APIKey_MissingValue_Fails verifies that null api_key_value fails.
@@ -140,9 +222,7 @@ func TestValidateConfig_APIKey_MissingValue_Fails(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if !resp.Diagnostics.HasError() {
-		t.Error("expected error for missing webhook_auth_api_key_value, got none")
-	}
+	assert.True(t, resp.Diagnostics.HasError(), "expected error for missing webhook_auth_api_key_value")
 }
 
 // TestValidateConfig_APIKey_UnknownValue_SkipsValidation verifies that an unknown
@@ -163,9 +243,7 @@ func TestValidateConfig_APIKey_UnknownValue_SkipsValidation(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if resp.Diagnostics.HasError() {
-		t.Errorf("expected no errors for unknown webhook_auth_api_key_value, got: %s", resp.Diagnostics.Errors()[0].Detail())
-	}
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for unknown webhook_auth_api_key_value: %v", resp.Diagnostics.Errors())
 }
 
 // TestValidateConfig_APIKey_UnknownName_SkipsValidation verifies that an unknown
@@ -186,9 +264,7 @@ func TestValidateConfig_APIKey_UnknownName_SkipsValidation(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if resp.Diagnostics.HasError() {
-		t.Errorf("expected no errors for unknown webhook_auth_api_key_name, got: %s", resp.Diagnostics.Errors()[0].Detail())
-	}
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for unknown webhook_auth_api_key_name: %v", resp.Diagnostics.Errors())
 }
 
 // TestValidateConfig_APIKey_UnknownIn_SkipsValidation verifies that an unknown
@@ -209,9 +285,7 @@ func TestValidateConfig_APIKey_UnknownIn_SkipsValidation(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if resp.Diagnostics.HasError() {
-		t.Errorf("expected no errors for unknown webhook_auth_api_key_in, got: %s", resp.Diagnostics.Errors()[0].Detail())
-	}
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for unknown webhook_auth_api_key_in: %v", resp.Diagnostics.Errors())
 }
 
 // TestValidateConfig_BasicAuth_AllKnown_Passes verifies valid basic_auth config passes.
@@ -230,9 +304,7 @@ func TestValidateConfig_BasicAuth_AllKnown_Passes(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if resp.Diagnostics.HasError() {
-		t.Errorf("expected no errors for valid basic_auth config, got: %s", resp.Diagnostics.Errors()[0].Detail())
-	}
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for valid basic_auth config: %v", resp.Diagnostics.Errors())
 }
 
 // TestValidateConfig_BasicAuth_MissingPassword_Fails verifies that null password fails.
@@ -251,9 +323,7 @@ func TestValidateConfig_BasicAuth_MissingPassword_Fails(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if !resp.Diagnostics.HasError() {
-		t.Error("expected error for missing webhook_auth_basic_auth_password, got none")
-	}
+	assert.True(t, resp.Diagnostics.HasError(), "expected error for missing webhook_auth_basic_auth_password")
 }
 
 // TestValidateConfig_BasicAuth_UnknownPassword_SkipsValidation verifies that an unknown
@@ -273,9 +343,7 @@ func TestValidateConfig_BasicAuth_UnknownPassword_SkipsValidation(t *testing.T) 
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if resp.Diagnostics.HasError() {
-		t.Errorf("expected no errors for unknown webhook_auth_basic_auth_password, got: %s", resp.Diagnostics.Errors()[0].Detail())
-	}
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for unknown webhook_auth_basic_auth_password: %v", resp.Diagnostics.Errors())
 }
 
 // TestValidateConfig_BasicAuth_UnknownUser_SkipsValidation verifies that an unknown
@@ -295,9 +363,7 @@ func TestValidateConfig_BasicAuth_UnknownUser_SkipsValidation(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if resp.Diagnostics.HasError() {
-		t.Errorf("expected no errors for unknown webhook_auth_basic_auth_user, got: %s", resp.Diagnostics.Errors()[0].Detail())
-	}
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for unknown webhook_auth_basic_auth_user: %v", resp.Diagnostics.Errors())
 }
 
 // TestValidateConfig_APIKey_UnknownValue_NullName_StillFails verifies that when
@@ -319,9 +385,7 @@ func TestValidateConfig_APIKey_UnknownValue_NullName_StillFails(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if !resp.Diagnostics.HasError() {
-		t.Error("expected error for null webhook_auth_api_key_name even when value is unknown, got none")
-	}
+	assert.True(t, resp.Diagnostics.HasError(), "expected error for null webhook_auth_api_key_name even when value is unknown")
 }
 
 // TestValidateConfig_BasicAuth_UnknownPassword_NullUser_StillFails verifies that when
@@ -342,7 +406,5 @@ func TestValidateConfig_BasicAuth_UnknownPassword_NullUser_StillFails(t *testing
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if !resp.Diagnostics.HasError() {
-		t.Error("expected error for null webhook_auth_basic_auth_user even when password is unknown, got none")
-	}
+	assert.True(t, resp.Diagnostics.HasError(), "expected error for null webhook_auth_basic_auth_user even when password is unknown")
 }

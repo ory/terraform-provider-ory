@@ -1,0 +1,10 @@
+resource "ory_project_config" "test" {
+  oauth2_token_hook = "https://example.com/token-hook-v2"
+
+  oauth2_token_hook_auth = {
+    type  = "api_key"
+    name  = "ory-token-hook-auth"
+    value = "updated-cookie-value"
+    in    = "cookie"
+  }
+}

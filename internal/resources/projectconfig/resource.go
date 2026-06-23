@@ -55,9 +55,10 @@ type ProjectConfigResourceModel struct {
 	CorsAdminOrigins types.List `tfsdk:"cors_admin_origins"`
 
 	// Session
-	SessionLifespan         types.String `tfsdk:"session_lifespan"`
-	SessionCookieSameSite   types.String `tfsdk:"session_cookie_same_site"`
-	SessionCookiePersistent types.Bool   `tfsdk:"session_cookie_persistent"`
+	SessionLifespan               types.String `tfsdk:"session_lifespan"`
+	SessionEarliestPossibleExtend types.String `tfsdk:"session_earliest_possible_extend"`
+	SessionCookieSameSite         types.String `tfsdk:"session_cookie_same_site"`
+	SessionCookiePersistent       types.Bool   `tfsdk:"session_cookie_persistent"`
 
 	// OAuth2/Hydra
 	OAuth2AccessTokenLifespan             types.String `tfsdk:"oauth2_access_token_lifespan"`
@@ -169,6 +170,7 @@ type ProjectConfigResourceModel struct {
 	OAuth2GrantRefreshTokenRotationGracePeriod        types.String `tfsdk:"oauth2_grant_refresh_token_rotation_grace_period"`
 	OAuth2RefreshTokenHook                            types.String `tfsdk:"oauth2_refresh_token_hook"`
 	OAuth2TokenHook                                   types.String `tfsdk:"oauth2_token_hook"`
+	OAuth2TokenHookAuth                               types.Object `tfsdk:"oauth2_token_hook_auth"`
 	OIDCDynamicClientRegistrationEnabled              types.Bool   `tfsdk:"oidc_dynamic_client_registration_enabled"`
 	OIDCSubjectIdentifiersPairwiseSalt                types.String `tfsdk:"oidc_subject_identifiers_pairwise_salt"`
 	OAuth2UrlsPostLogoutRedirect                      types.String `tfsdk:"oauth2_urls_post_logout_redirect"`
@@ -193,40 +195,9 @@ type ProjectConfigResourceModel struct {
 	// courier_smtp_connection_uri is handled by SMTPConnectionURI above (sensitive, write-only)
 	CourierSMTPLocalName types.String `tfsdk:"courier_smtp_local_name"`
 
-	// Courier email/SMS templates
-	CourierTemplatesLoginCodeValidEmailBodyHTML               types.String `tfsdk:"courier_templates_login_code_valid_email_body_html"`
-	CourierTemplatesLoginCodeValidEmailBodyPlaintext          types.String `tfsdk:"courier_templates_login_code_valid_email_body_plaintext"`
-	CourierTemplatesLoginCodeValidEmailSubject                types.String `tfsdk:"courier_templates_login_code_valid_email_subject"`
-	CourierTemplatesLoginCodeValidSMSBodyPlaintext            types.String `tfsdk:"courier_templates_login_code_valid_sms_body_plaintext"`
-	CourierTemplatesRecoveryCodeInvalidEmailBodyHTML          types.String `tfsdk:"courier_templates_recovery_code_invalid_email_body_html"`
-	CourierTemplatesRecoveryCodeInvalidEmailBodyPlaintext     types.String `tfsdk:"courier_templates_recovery_code_invalid_email_body_plaintext"`
-	CourierTemplatesRecoveryCodeInvalidEmailSubject           types.String `tfsdk:"courier_templates_recovery_code_invalid_email_subject"`
-	CourierTemplatesRecoveryCodeValidEmailBodyHTML            types.String `tfsdk:"courier_templates_recovery_code_valid_email_body_html"`
-	CourierTemplatesRecoveryCodeValidEmailBodyPlaintext       types.String `tfsdk:"courier_templates_recovery_code_valid_email_body_plaintext"`
-	CourierTemplatesRecoveryCodeValidEmailSubject             types.String `tfsdk:"courier_templates_recovery_code_valid_email_subject"`
-	CourierTemplatesRecoveryInvalidEmailBodyHTML              types.String `tfsdk:"courier_templates_recovery_invalid_email_body_html"`
-	CourierTemplatesRecoveryInvalidEmailBodyPlaintext         types.String `tfsdk:"courier_templates_recovery_invalid_email_body_plaintext"`
-	CourierTemplatesRecoveryInvalidEmailSubject               types.String `tfsdk:"courier_templates_recovery_invalid_email_subject"`
-	CourierTemplatesRecoveryValidEmailBodyHTML                types.String `tfsdk:"courier_templates_recovery_valid_email_body_html"`
-	CourierTemplatesRecoveryValidEmailBodyPlaintext           types.String `tfsdk:"courier_templates_recovery_valid_email_body_plaintext"`
-	CourierTemplatesRecoveryValidEmailSubject                 types.String `tfsdk:"courier_templates_recovery_valid_email_subject"`
-	CourierTemplatesRegistrationCodeValidEmailBodyHTML        types.String `tfsdk:"courier_templates_registration_code_valid_email_body_html"`
-	CourierTemplatesRegistrationCodeValidEmailBodyPlaintext   types.String `tfsdk:"courier_templates_registration_code_valid_email_body_plaintext"`
-	CourierTemplatesRegistrationCodeValidEmailSubject         types.String `tfsdk:"courier_templates_registration_code_valid_email_subject"`
-	CourierTemplatesRegistrationCodeValidSMSBodyPlaintext     types.String `tfsdk:"courier_templates_registration_code_valid_sms_body_plaintext"`
-	CourierTemplatesVerificationCodeInvalidEmailBodyHTML      types.String `tfsdk:"courier_templates_verification_code_invalid_email_body_html"`
-	CourierTemplatesVerificationCodeInvalidEmailBodyPlaintext types.String `tfsdk:"courier_templates_verification_code_invalid_email_body_plaintext"`
-	CourierTemplatesVerificationCodeInvalidEmailSubject       types.String `tfsdk:"courier_templates_verification_code_invalid_email_subject"`
-	CourierTemplatesVerificationCodeValidEmailBodyHTML        types.String `tfsdk:"courier_templates_verification_code_valid_email_body_html"`
-	CourierTemplatesVerificationCodeValidEmailBodyPlaintext   types.String `tfsdk:"courier_templates_verification_code_valid_email_body_plaintext"`
-	CourierTemplatesVerificationCodeValidEmailSubject         types.String `tfsdk:"courier_templates_verification_code_valid_email_subject"`
-	CourierTemplatesVerificationCodeValidSMSBodyPlaintext     types.String `tfsdk:"courier_templates_verification_code_valid_sms_body_plaintext"`
-	CourierTemplatesVerificationInvalidEmailBodyHTML          types.String `tfsdk:"courier_templates_verification_invalid_email_body_html"`
-	CourierTemplatesVerificationInvalidEmailBodyPlaintext     types.String `tfsdk:"courier_templates_verification_invalid_email_body_plaintext"`
-	CourierTemplatesVerificationInvalidEmailSubject           types.String `tfsdk:"courier_templates_verification_invalid_email_subject"`
-	CourierTemplatesVerificationValidEmailBodyHTML            types.String `tfsdk:"courier_templates_verification_valid_email_body_html"`
-	CourierTemplatesVerificationValidEmailBodyPlaintext       types.String `tfsdk:"courier_templates_verification_valid_email_body_plaintext"`
-	CourierTemplatesVerificationValidEmailSubject             types.String `tfsdk:"courier_templates_verification_valid_email_subject"`
+	// Courier email/SMS templates: intentionally NOT exposed here.
+	// Manage them with the dedicated `ory_email_template` resource, which
+	// handles the required base64:// encoding and storage-URL drift detection.
 
 	// Feature flags
 	FeatureFlagsCacheableSessions                types.Bool   `tfsdk:"feature_flags_cacheable_sessions"`
@@ -294,8 +265,8 @@ type ProjectConfigResourceModel struct {
 	AccountExperienceLocaleBehavior       types.String `tfsdk:"account_experience_locale_behavior"`
 	AccountExperienceLogoDark             types.String `tfsdk:"account_experience_logo_dark"`
 	AccountExperienceLogoLight            types.String `tfsdk:"account_experience_logo_light"`
-	AccountExperienceThemeVariablesDark   types.String `tfsdk:"account_experience_theme_variables_dark"`
-	AccountExperienceThemeVariablesLight  types.String `tfsdk:"account_experience_theme_variables_light"`
+	AccountExperienceThemeVariablesDark   types.Map    `tfsdk:"account_experience_theme_variables_dark"`
+	AccountExperienceThemeVariablesLight  types.Map    `tfsdk:"account_experience_theme_variables_light"`
 	DisableAccountExperienceWelcomeScreen types.Bool   `tfsdk:"disable_account_experience_welcome_screen"`
 	EnableAXV2                            types.Bool   `tfsdk:"enable_ax_v2"`
 
@@ -427,6 +398,35 @@ type ProjectConfigResourceModel struct {
 	SelfserviceMethodsWebAuthnConfigRPDisplayName types.String `tfsdk:"selfservice_methods_webauthn_config_rp_display_name"`
 	SelfserviceMethodsWebAuthnConfigRPID          types.String `tfsdk:"selfservice_methods_webauthn_config_rp_id"`
 	SelfserviceMethodsWebAuthnConfigPasswordless  types.Bool   `tfsdk:"selfservice_methods_webauthn_config_passwordless"`
+
+	// Auto-discovered (review naming before release)
+	OAuth2PreserveExtClaims types.Bool `tfsdk:"oauth2_preserve_ext_claims"`
+
+	// Auto-discovered (review naming before release)
+	AccountExperienceHideOryBranding      types.Bool `tfsdk:"account_experience_hide_ory_branding"`
+	AccountExperienceHideRegistrationLink types.Bool `tfsdk:"account_experience_hide_registration_link"`
+
+	// Auto-discovered (review naming before release)
+	OAuth2GrantRefreshTokenRotationGraceReuseCount types.Int64  `tfsdk:"oauth2_grant_refresh_token_rotation_grace_reuse_count"`
+	OAuth2TokenPrefix                              types.String `tfsdk:"oauth2_token_prefix"`
+
+	// show_verification_ui hooks (custom: not in OpenAPI spec)
+	// Each toggles the show_verification_ui hook within a specific flow's hooks array,
+	// preserving any other hooks already configured.
+	SelfserviceFlowsRegistrationAfterPasswordHookShowVerificationUI types.Bool `tfsdk:"selfservice_flows_registration_after_password_hook_show_verification_ui"`
+	SelfserviceFlowsRegistrationAfterOIDCHookShowVerificationUI     types.Bool `tfsdk:"selfservice_flows_registration_after_oidc_hook_show_verification_ui"`
+	SelfserviceFlowsSettingsAfterProfileHookShowVerificationUI      types.Bool `tfsdk:"selfservice_flows_settings_after_profile_hook_show_verification_ui"`
+
+	// session hook on password registration (custom: not in OpenAPI spec).
+	// Toggles the session hook in registration.after.password.hooks, mirroring
+	// the Ory Console "Enable sign in after registration" toggle.
+	SelfserviceFlowsRegistrationAfterPasswordHookSession types.Bool `tfsdk:"selfservice_flows_registration_after_password_hook_session"`
+
+	// Auto-discovered (review naming before release)
+	SelfserviceMethodsDeviceauthnEnabled types.Bool `tfsdk:"selfservice_methods_deviceauthn_enabled"`
+
+	// Auto-discovered (review naming before release)
+	SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation types.Bool `tfsdk:"selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---
@@ -460,6 +460,13 @@ type CourierChannelModel struct {
 	RequestConfig types.Object `tfsdk:"request_config"`
 }
 
+type OAuth2TokenHookAuthModel struct {
+	Type  types.String `tfsdk:"type"`
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
+	In    types.String `tfsdk:"in"`
+}
+
 // Shared attr.Type maps for constructing types.Object / types.Map / types.List values.
 var (
 	tokenizerTemplateAttrTypes = map[string]attr.Type{
@@ -489,6 +496,13 @@ var (
 	courierChannelAttrTypes = map[string]attr.Type{
 		"id":             types.StringType,
 		"request_config": types.ObjectType{AttrTypes: courierHTTPRequestConfigAttrTypes},
+	}
+
+	oauth2TokenHookAuthAttrTypes = map[string]attr.Type{
+		"type":  types.StringType,
+		"name":  types.StringType,
+		"value": types.StringType,
+		"in":    types.StringType,
 	}
 )
 
@@ -583,6 +597,11 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 	//   session_tokenizer_templates: nested object schema
 	//   courier_channels:           nested objects with sub-config
 	//   courier_http_request_config: nested object (url/method/headers/body/auth)
+	//   account_experience images (4): data URI upload + storage-URL drift detection
+
+	for name, attr := range accountExperienceImageSchemaAttrs() {
+		attrs[name] = attr
+	}
 
 	attrs["keto_namespaces"] = schema.ListAttribute{
 		Description: "List of Keto namespace names to configure for Ory Permissions. " +
@@ -666,6 +685,75 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 				},
 			},
 		},
+	}
+
+	// show_verification_ui hooks: toggle the show_verification_ui hook in
+	// flow-specific hook arrays. The Ory API stores these as a list of
+	// {"hook": "..."} objects, so the provider performs a read-modify-write
+	// to preserve any other hooks (for example, `session` or `organization`).
+	attrs["selfservice_flows_registration_after_password_hook_show_verification_ui"] = schema.BoolAttribute{
+		Description: "Enable the `show_verification_ui` hook after a successful password registration. " +
+			"When true, users are redirected to the verification UI after registering with email + password. " +
+			"Existing hooks at this path (e.g., `session`, `organization`) are preserved.",
+		Optional: true,
+	}
+	attrs["selfservice_flows_registration_after_oidc_hook_show_verification_ui"] = schema.BoolAttribute{
+		Description: "Enable the `show_verification_ui` hook after a successful OIDC (social) registration. " +
+			"When true, users are redirected to the verification UI after registering via a social provider. " +
+			"Existing hooks at this path (e.g., `session`, `organization`) are preserved.",
+		Optional: true,
+	}
+	attrs["selfservice_flows_settings_after_profile_hook_show_verification_ui"] = schema.BoolAttribute{
+		Description: "Enable the `show_verification_ui` hook after a successful profile settings update. " +
+			"When true, users are redirected to the verification UI after updating their profile (e.g., changing their email). " +
+			"Existing hooks at this path (e.g., `organization`) are preserved.",
+		Optional: true,
+	}
+
+	// OAuth2 Token Hook Authentication
+	// The Ory API stores oauth2.token_hook as an object {url, auth} where auth
+	// describes how Ory authenticates with the configured webhook. Currently
+	// the API only supports api_key authentication (header or cookie).
+	attrs["oauth2_token_hook_auth"] = schema.SingleNestedAttribute{
+		Description: "Authentication configuration for the OAuth2 token hook (see `oauth2_token_hook`). " +
+			"Currently only `api_key` authentication is supported.",
+		Optional: true,
+		Attributes: map[string]schema.Attribute{
+			"type": schema.StringAttribute{
+				Description: "Authentication type. Currently only `api_key` is supported.",
+				Required:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("api_key"),
+				},
+			},
+			"name": schema.StringAttribute{
+				Description: "Header or cookie name carrying the API key (e.g. `X-Api-Key`).",
+				Required:    true,
+			},
+			"value": schema.StringAttribute{
+				Description: "API key value sent to the token hook.",
+				Required:    true,
+				Sensitive:   true,
+			},
+			"in": schema.StringAttribute{
+				Description: "Where to send the API key: `header` or `cookie`.",
+				Required:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("header", "cookie"),
+				},
+			},
+		},
+	}
+
+	// session hook: mirrors the Ory Console "Enable sign in after registration"
+	// toggle. OIDC, WebAuthn and Passkey flows always issue a session on
+	// registration, so the console only exposes this for the password flow.
+	attrs["selfservice_flows_registration_after_password_hook_session"] = schema.BoolAttribute{
+		Description: "Enable the `session` hook after a successful password registration, " +
+			"automatically signing the user in. Mirrors the Ory Console " +
+			"\"Enable sign in after registration\" toggle. " +
+			"Existing hooks at this path (e.g., `organization`) are preserved.",
+		Optional: true,
 	}
 
 	// Courier HTTP Delivery
@@ -860,6 +948,10 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 
 	// --- Custom patches for complex types ---
 
+	// Account experience images (logo/favicon): stored at *_url config keys,
+	// written as data URIs. See account_experience.go.
+	patches = append(patches, accountExperienceImagePatches(plan)...)
+
 	// Keto/Permissions Namespaces
 	if !plan.KetoNamespaces.IsNull() && !plan.KetoNamespaces.IsUnknown() {
 		var namespaceNames []string
@@ -984,6 +1076,18 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 		})
 	}
 
+	// OAuth2 Token Hook Auth — replaces /oauth2/token_hook/auth with the
+	// nested {type, config: {...}} structure expected by the API.
+	if !plan.OAuth2TokenHookAuth.IsNull() && !plan.OAuth2TokenHookAuth.IsUnknown() {
+		var auth OAuth2TokenHookAuthModel
+		plan.OAuth2TokenHookAuth.As(ctx, &auth, basetypes.ObjectAsOptions{})
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/oauth2/config/oauth2/token_hook/auth",
+			Value: buildOAuth2TokenHookAuthMap(&auth),
+		})
+	}
+
 	// Courier HTTP Request Config
 	if !plan.CourierHTTPRequestConfig.IsNull() && !plan.CourierHTTPRequestConfig.IsUnknown() {
 		var reqConfig CourierHTTPRequestConfigModel
@@ -1021,6 +1125,174 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 	return patches
 }
 
+// hookEntry describes one boolean hook attribute: the field on the model, the
+// identity-config path whose hooks array it controls, the hook name within
+// that array, and a setter that writes the read-back value into state.
+type hookEntry struct {
+	Field    types.Bool
+	PathKeys []string // path under /services/identity/config, ending at the parent of "hooks"
+	HookName string
+	Set      func(state *ProjectConfigResourceModel, value types.Bool)
+}
+
+// hookEntries returns every hook attribute the provider exposes. Adding a new
+// hook toggle is a matter of appending one entry here, declaring the model
+// field, and registering the schema attribute.
+func hookEntries(plan *ProjectConfigResourceModel) []hookEntry {
+	return []hookEntry{
+		{
+			Field:    plan.SelfserviceFlowsRegistrationAfterPasswordHookShowVerificationUI,
+			PathKeys: []string{"selfservice", "flows", "registration", "after", "password"},
+			HookName: "show_verification_ui",
+			Set: func(s *ProjectConfigResourceModel, v types.Bool) {
+				s.SelfserviceFlowsRegistrationAfterPasswordHookShowVerificationUI = v
+			},
+		},
+		{
+			Field:    plan.SelfserviceFlowsRegistrationAfterOIDCHookShowVerificationUI,
+			PathKeys: []string{"selfservice", "flows", "registration", "after", "oidc"},
+			HookName: "show_verification_ui",
+			Set: func(s *ProjectConfigResourceModel, v types.Bool) {
+				s.SelfserviceFlowsRegistrationAfterOIDCHookShowVerificationUI = v
+			},
+		},
+		{
+			Field:    plan.SelfserviceFlowsSettingsAfterProfileHookShowVerificationUI,
+			PathKeys: []string{"selfservice", "flows", "settings", "after", "profile"},
+			HookName: "show_verification_ui",
+			Set: func(s *ProjectConfigResourceModel, v types.Bool) {
+				s.SelfserviceFlowsSettingsAfterProfileHookShowVerificationUI = v
+			},
+		},
+		{
+			Field:    plan.SelfserviceFlowsRegistrationAfterPasswordHookSession,
+			PathKeys: []string{"selfservice", "flows", "registration", "after", "password"},
+			HookName: "session",
+			Set: func(s *ProjectConfigResourceModel, v types.Bool) {
+				s.SelfserviceFlowsRegistrationAfterPasswordHookSession = v
+			},
+		},
+	}
+}
+
+// buildHookPatches reconciles every configured hook attribute by merging the
+// desired state with whatever hooks already exist on the project (for example
+// `organization`, which the Ory Console adds by default and that we must
+// preserve).
+//
+// When currentProject is nil, no merge target is available and the function
+// returns an empty patch list.
+func buildHookPatches(plan *ProjectConfigResourceModel, currentProject *ory.Project) []ory.JsonPatch {
+	var patches []ory.JsonPatch
+	if currentProject == nil || currentProject.Services.Identity == nil {
+		return patches
+	}
+	identityConfig := currentProject.Services.Identity.Config
+
+	// Multiple entries can share the same hooks-array path (e.g. the password
+	// registration flow has both show_verification_ui and session toggles).
+	// We accumulate per-path edits in order, then emit one patch per path so
+	// the final array reflects all toggles consistently.
+	type accum struct {
+		pathKeys []string
+		hooks    []map[string]interface{}
+	}
+	accumulators := map[string]*accum{}
+	order := []string{}
+
+	for _, e := range hookEntries(plan) {
+		if e.Field.IsNull() || e.Field.IsUnknown() {
+			continue
+		}
+		pathKey := strings.Join(e.PathKeys, "/")
+		acc, ok := accumulators[pathKey]
+		if !ok {
+			acc = &accum{
+				pathKeys: e.PathKeys,
+				hooks:    readHookList(identityConfig, e.PathKeys),
+			}
+			accumulators[pathKey] = acc
+			order = append(order, pathKey)
+		}
+		acc.hooks = setHookPresent(acc.hooks, e.HookName, e.Field.ValueBool())
+	}
+
+	for _, pathKey := range order {
+		acc := accumulators[pathKey]
+		patches = append(patches, ory.JsonPatch{
+			Op:    "replace",
+			Path:  "/services/identity/config/" + pathKey + "/hooks",
+			Value: acc.hooks,
+		})
+	}
+	return patches
+}
+
+// readHookList extracts the hooks list at the given path from the identity
+// config map, returning an empty slice when the path or array is missing.
+func readHookList(identityConfig map[string]interface{}, pathKeys []string) []map[string]interface{} {
+	keys := append([]string{}, pathKeys...)
+	keys = append(keys, "hooks")
+	raw := getNestedValue(identityConfig, keys...)
+	arr, ok := raw.([]interface{})
+	if !ok {
+		return nil
+	}
+	hooks := make([]map[string]interface{}, 0, len(arr))
+	for _, item := range arr {
+		if m, ok := item.(map[string]interface{}); ok {
+			hooks = append(hooks, m)
+		}
+	}
+	return hooks
+}
+
+// setHookPresent returns a copy of hooks with the given hook name either
+// prepended (if present == true and missing) or removed (if present == false).
+// Other hook entries are preserved in their original order.
+func setHookPresent(hooks []map[string]interface{}, hookName string, present bool) []map[string]interface{} {
+	filtered := make([]map[string]interface{}, 0, len(hooks)+1)
+	alreadyPresent := false
+	for _, h := range hooks {
+		name, _ := h["hook"].(string)
+		if name == hookName {
+			alreadyPresent = true
+			if !present {
+				continue
+			}
+		}
+		filtered = append(filtered, h)
+	}
+	if present && !alreadyPresent {
+		filtered = append([]map[string]interface{}{{"hook": hookName}}, filtered...)
+	}
+	return filtered
+}
+
+// hookListContains reports whether the hooks list at the given path includes
+// the named hook.
+func hookListContains(identityConfig map[string]interface{}, pathKeys []string, hookName string) bool {
+	for _, h := range readHookList(identityConfig, pathKeys) {
+		if name, _ := h["hook"].(string); name == hookName {
+			return true
+		}
+	}
+	return false
+}
+
+// needsHookPrefetch reports whether any hook attribute is set in the plan, in
+// which case the caller must fetch the current project state before building
+// patches so that other hooks already present (e.g. `organization`) are
+// preserved.
+func needsHookPrefetch(plan *ProjectConfigResourceModel) bool {
+	for _, e := range hookEntries(plan) {
+		if !e.Field.IsNull() && !e.Field.IsUnknown() {
+			return true
+		}
+	}
+	return false
+}
+
 func buildHTTPRequestConfigMap(ctx context.Context, cfg *CourierHTTPRequestConfigModel) map[string]interface{} {
 	result := map[string]interface{}{
 		"url":    cfg.URL.ValueString(),
@@ -1040,6 +1312,39 @@ func buildHTTPRequestConfigMap(ctx context.Context, cfg *CourierHTTPRequestConfi
 		result["auth"] = buildAuthConfigMap(&auth)
 	}
 	return result
+}
+
+// removeURLOnlyTokenHookPatch drops any `replace /oauth2/token_hook/url` patch
+// from the slice. Used when the caller is about to issue a higher-level patch
+// against the parent `/oauth2/token_hook` path — keeping the sub-path patch
+// would either be redundant or trigger schema validation against the partially
+// rewritten object.
+func removeURLOnlyTokenHookPatch(patches []ory.JsonPatch) []ory.JsonPatch {
+	filtered := patches[:0]
+	for _, p := range patches {
+		if p.Path == "/services/oauth2/config/oauth2/token_hook/url" {
+			continue
+		}
+		filtered = append(filtered, p)
+	}
+	return filtered
+}
+
+func buildOAuth2TokenHookAuthMap(auth *OAuth2TokenHookAuthModel) map[string]interface{} {
+	config := map[string]interface{}{}
+	if !auth.Name.IsNull() && !auth.Name.IsUnknown() {
+		config["name"] = auth.Name.ValueString()
+	}
+	if !auth.Value.IsNull() && !auth.Value.IsUnknown() {
+		config["value"] = auth.Value.ValueString()
+	}
+	if !auth.In.IsNull() && !auth.In.IsUnknown() {
+		config["in"] = auth.In.ValueString()
+	}
+	return map[string]interface{}{
+		"type":   auth.Type.ValueString(),
+		"config": config,
+	}
 }
 
 func buildAuthConfigMap(auth *CourierHTTPAuthModel) map[string]interface{} {
@@ -1087,6 +1392,15 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 	}
 
 	patches := r.buildPatches(ctx, &plan)
+
+	if needsHookPrefetch(&plan) {
+		currentProject, err := r.client.GetProject(ctx, projectID)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Reading Project Config For Hook Merge", err.Error())
+			return
+		}
+		patches = append(patches, buildHookPatches(&plan, currentProject)...)
+	}
 
 	tflog.Debug(ctx, "Building project config patches", map[string]interface{}{
 		"project_id":  projectID,
@@ -1150,6 +1464,11 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 	readSimpleFields(ctx, project, state)
 
 	// --- Custom reads for complex types ---
+
+	// Account experience images (logo/favicon): the API returns a
+	// content-addressed storage URL; match it against the data URI in state
+	// by hash to avoid perpetual diffs. See account_experience.go.
+	readAccountExperienceImages(project, state)
 
 	// CORS (Public) — uses project struct, not config map
 	if project.CorsPublic != nil {
@@ -1331,6 +1650,32 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 				}
 			}
 		}
+
+		// Hook reads: refresh state only when the attribute was already set,
+		// so untracked flows don't produce drift in `terraform plan`.
+		for _, e := range hookEntries(state) {
+			if e.Field.IsNull() {
+				continue
+			}
+			present := hookListContains(identityConfig, e.PathKeys, e.HookName)
+			e.Set(state, types.BoolValue(present))
+		}
+	}
+
+	// OAuth2 Token Hook Auth — read back from oauth2.token_hook.auth. The
+	// `value` field is sensitive and the API never returns it, so we preserve
+	// whatever the user has in state to keep ImportStateVerify and refresh
+	// cycles drift-free. If the API no longer holds an auth block (cleared
+	// out-of-band or by our "drop auth" path), null the state so the next
+	// plan surfaces the divergence instead of silently keeping stale auth.
+	if project.Services.Oauth2 != nil && !state.OAuth2TokenHookAuth.IsNull() && !state.OAuth2TokenHookAuth.IsUnknown() {
+		oauth2Config := project.Services.Oauth2.Config
+		authRaw, ok := getNestedValue(oauth2Config, "oauth2", "token_hook", "auth").(map[string]interface{})
+		if ok {
+			state.OAuth2TokenHookAuth = readOAuth2TokenHookAuthObject(authRaw, state.OAuth2TokenHookAuth)
+		} else {
+			state.OAuth2TokenHookAuth = types.ObjectNull(oauth2TokenHookAuthAttrTypes)
+		}
 	}
 
 	// Permission/Keto service config
@@ -1428,6 +1773,52 @@ func readHTTPRequestConfigObject(_ context.Context, raw map[string]interface{}, 
 		return types.ObjectNull(courierHTTPRequestConfigAttrTypes)
 	}
 	return objVal
+}
+
+func readOAuth2TokenHookAuthObject(raw map[string]interface{}, stateObj basetypes.ObjectValue) basetypes.ObjectValue {
+	attrs := map[string]attr.Value{
+		"type":  types.StringNull(),
+		"name":  types.StringNull(),
+		"value": types.StringNull(),
+		"in":    types.StringNull(),
+	}
+
+	authType, _ := raw["type"].(string)
+	if authType == "" {
+		return types.ObjectNull(oauth2TokenHookAuthAttrTypes)
+	}
+	attrs["type"] = types.StringValue(authType)
+
+	config, _ := raw["config"].(map[string]interface{})
+	if config == nil {
+		config = map[string]interface{}{}
+	}
+	if s, ok := config["name"].(string); ok {
+		attrs["name"] = types.StringValue(s)
+	}
+	if s, ok := config["in"].(string); ok {
+		attrs["in"] = types.StringValue(s)
+	}
+	attrs["value"] = getOAuth2TokenHookAuthStateField(stateObj, "value")
+
+	objVal, diags := types.ObjectValue(oauth2TokenHookAuthAttrTypes, attrs)
+	if diags.HasError() {
+		return types.ObjectNull(oauth2TokenHookAuthAttrTypes)
+	}
+	return objVal
+}
+
+func getOAuth2TokenHookAuthStateField(stateObj basetypes.ObjectValue, field string) basetypes.StringValue {
+	if stateObj.IsNull() || stateObj.IsUnknown() {
+		return types.StringNull()
+	}
+	attrs := stateObj.Attributes()
+	if v, ok := attrs[field]; ok {
+		if s, ok := v.(types.String); ok && !s.IsNull() {
+			return s
+		}
+	}
+	return types.StringNull()
 }
 
 func readAuthObject(raw map[string]interface{}, parentStateObj basetypes.ObjectValue) basetypes.ObjectValue {
@@ -1539,12 +1930,49 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 		return
 	}
 
+	var state ProjectConfigResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	projectID := helpers.ResolveProjectID(plan.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	patches := r.buildPatches(ctx, &plan)
+
+	// Clear `oauth2.token_hook.auth` when the user transitions from set in
+	// state to null in the plan. The API requires `token_hook` to be either a
+	// URL string or a full `{url, auth}` object — a bare `{url}` object fails
+	// schema validation — so the cleanest way to drop the auth is to replace
+	// the entire `token_hook` with the URL string and let the API normalize.
+	if !state.OAuth2TokenHookAuth.IsNull() && plan.OAuth2TokenHookAuth.IsNull() {
+		patches = removeURLOnlyTokenHookPatch(patches)
+		if !plan.OAuth2TokenHook.IsNull() && !plan.OAuth2TokenHook.IsUnknown() {
+			patches = append(patches, ory.JsonPatch{
+				Op:    "replace",
+				Path:  "/services/oauth2/config/oauth2/token_hook",
+				Value: plan.OAuth2TokenHook.ValueString(),
+			})
+		} else {
+			patches = append(patches, ory.JsonPatch{
+				Op:   "remove",
+				Path: "/services/oauth2/config/oauth2/token_hook",
+			})
+		}
+	}
+
+	if needsHookPrefetch(&plan) {
+		currentProject, err := r.client.GetProject(ctx, projectID)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Reading Project Config For Hook Merge", err.Error())
+			return
+		}
+		patches = append(patches, buildHookPatches(&plan, currentProject)...)
+	}
+
 	if len(patches) > 0 {
 		_, err := r.client.PatchProject(ctx, projectID, patches)
 		if err != nil {

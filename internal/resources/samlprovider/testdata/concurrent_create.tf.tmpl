@@ -1,0 +1,17 @@
+resource "ory_saml_provider" "concurrent_one" {
+  provider_id          = "test-concurrent-saml-one"
+  label                = "Concurrent One"
+  raw_idp_metadata_xml = "[[ .MetadataXML ]]"
+}
+
+resource "ory_saml_provider" "concurrent_two" {
+  provider_id          = "test-concurrent-saml-two"
+  label                = "Concurrent Two"
+  raw_idp_metadata_xml = "[[ .MetadataXML ]]"
+}
+
+resource "ory_saml_provider" "concurrent_three" {
+  provider_id          = "test-concurrent-saml-three"
+  label                = "Concurrent Three"
+  raw_idp_metadata_xml = "[[ .MetadataXML ]]"
+}

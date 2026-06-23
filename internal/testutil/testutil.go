@@ -10,7 +10,9 @@ const (
 	ExampleProjectAPIURL = "https://%s.projects.example.com"
 
 	// ExampleWebhookURL is a test webhook URL for action resources.
-	ExampleWebhookURL = "https://webhook.example.com"
+	// Uses the bare example.com domain (which resolves to a public IP per RFC 2606)
+	// because the Ory backend validates that webhook hostnames resolve via DNS.
+	ExampleWebhookURL = "https://example.com/webhook"
 
 	// ExampleAppURL is a test application URL for OAuth2 redirect URIs.
 	ExampleAppURL = "https://app.example.com"

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 )
@@ -81,13 +82,9 @@ func TestAccSocialProviderResource_basic(t *testing.T) {
 func generateTestPrivateKey(t *testing.T) string {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("failed to generate test private key: %v", err)
-	}
+	require.NoError(t, err, "failed to generate test private key")
 	der, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		t.Fatalf("failed to marshal test private key: %v", err)
-	}
+	require.NoError(t, err, "failed to marshal test private key")
 	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
 }
 
@@ -247,6 +244,205 @@ func TestAccSocialProviderResource_labelAndAccountLinkingMode(t *testing.T) {
 				ResourceName:            "ory_social_provider.test",
 				ImportState:             true,
 				ImportStateId:           "test-google-label-linking",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+		},
+	})
+}
+
+// TestAccSocialProviderResource_additionalIDTokenAudiences verifies that the
+// additional_id_token_audiences attribute is set, read, updated, and removed
+// correctly. Regression test for https://github.com/ory/terraform-provider-ory/issues/211.
+func TestAccSocialProviderResource_additionalIDTokenAudiences(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with two audiences
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_audiences.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-google-audiences"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "additional_id_token_audiences.#", "2"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "additional_id_token_audiences.0", "https://other.example.com"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "additional_id_token_audiences.1", "another-audience"),
+				),
+			},
+			// Verify no perpetual diff
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_audiences.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Update audiences (shrink to one entry, change value)
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_audiences_updated.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "additional_id_token_audiences.#", "1"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "additional_id_token_audiences.0", "https://updated.example.com"),
+				),
+			},
+			// Remove audiences from config — should clear them server-side
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_audiences_removed.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "additional_id_token_audiences"),
+				),
+			},
+			// Verify no diff after removal
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_audiences_removed.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// ImportState
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           "test-google-audiences",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+		},
+	})
+}
+
+// TestAccSocialProviderResource_pkce verifies that the pkce attribute is set,
+// read, updated, and removed correctly. PKCE accepts "auto", "force", or
+// "never"; this test exercises the round-trip for "force" → "auto" → "never"
+// → unset, including the explicit "auto" value (which the API also uses as
+// its default when the attribute is absent).
+func TestAccSocialProviderResource_pkce(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with pkce = "force"
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_pkce.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-google-pkce"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "pkce", "force"),
+				),
+			},
+			// Verify no perpetual diff
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_pkce.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Update pkce to "auto" — explicit default; catches drift if the API
+			// normalizes "auto" to absence.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_pkce_auto.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "pkce", "auto"),
+				),
+			},
+			// Verify no perpetual diff on "auto"
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_pkce_auto.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Update pkce to "never"
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_pkce_updated.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "pkce", "never"),
+				),
+			},
+			// Remove pkce from config — should clear it server-side
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_pkce_removed.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "pkce"),
+				),
+			},
+			// Verify no diff after removal
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_pkce_removed.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// ImportState
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           "test-google-pkce",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+		},
+	})
+}
+
+// TestAccSocialProviderResource_aal2Values exercises aal2_acr_values and
+// aal2_amr_values across create, update (changed list contents), removal, and
+// import. Values are opaque strings stored on the provider config — the API
+// does not dereference them — so the test asserts only on string equality
+// using synthetic URN-style identifiers that have no external dependency.
+func TestAccSocialProviderResource_aal2Values(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with aal2_acr_values and aal2_amr_values set
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_aal2.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-google-aal2"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "aal2_acr_values.#", "2"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "aal2_acr_values.0", "urn:test:acr:silver"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "aal2_acr_values.1", "urn:test:acr:mfa"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "aal2_amr_values.#", "3"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "aal2_amr_values.0", "mfa"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "aal2_amr_values.1", "otp"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "aal2_amr_values.2", "hwk"),
+				),
+			},
+			// Verify no perpetual diff
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_aal2.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Update both lists
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_aal2_updated.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "aal2_acr_values.#", "1"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "aal2_acr_values.0", "urn:test:acr:gold"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "aal2_amr_values.#", "2"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "aal2_amr_values.0", "mfa"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "aal2_amr_values.1", "fpt"),
+				),
+			},
+			// Remove both attributes from config — API should clear them and state should follow
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_aal2_removed.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "aal2_acr_values"),
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "aal2_amr_values"),
+				),
+			},
+			// Verify no diff after removal
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_aal2_removed.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// ImportState
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           "test-google-aal2",
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"client_secret"},
 			},

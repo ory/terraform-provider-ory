@@ -34,12 +34,13 @@ resource "ory_action" "audit_log" {
 }
 
 # Post-verification sync
+# The verification (and recovery) flow is not scoped by authentication method,
+# so auth_method is omitted here — the hook always runs after verification.
 resource "ory_action" "sync_verified" {
-  flow        = "verification"
-  timing      = "after"
-  auth_method = "code"
-  url         = "https://api.example.com/webhooks/user-verified"
-  method      = "POST"
+  flow   = "verification"
+  timing = "after"
+  url    = "https://api.example.com/webhooks/user-verified"
+  method = "POST"
 }
 
 # Post-registration enrichment (parse response to modify identity)

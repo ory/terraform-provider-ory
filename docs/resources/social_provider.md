@@ -119,6 +119,27 @@ resource "ory_social_provider" "apple" {
   scope                = ["email", "name"]
 }
 
+# Enterprise SSO that elevates the Ory session to AAL2 when the upstream
+# provider asserts MFA via the `acr` or `amr` claims (works with Auth0, Okta,
+# Keycloak, PingFederate, Entra ID v1, and other OIDC providers).
+resource "ory_social_provider" "enterprise_sso" {
+  provider_id   = "enterprise-sso"
+  provider_type = "generic"
+  client_id     = var.sso_client_id
+  client_secret = var.sso_client_secret
+  issuer_url    = "https://sso.example.com"
+  scope         = ["openid", "profile", "email"]
+
+  # Mark the Ory session as AAL2 when the ID token's `acr` claim matches any of these.
+  aal2_acr_values = [
+    "urn:mace:incommon:iap:silver",
+    "https://refeds.org/profile/mfa",
+  ]
+
+  # Mark the Ory session as AAL2 when any of these values appear in the `amr` array (per RFC 8176).
+  aal2_amr_values = ["mfa", "otp", "hwk"]
+}
+
 # Generic OIDC Provider with custom claims mapping
 resource "ory_social_provider" "corporate_sso" {
   provider_id   = "corporate-sso"
@@ -279,6 +300,50 @@ resource "ory_social_provider" "google" {
 
 ~> **Security:** Auto-linking trusts that the social provider has verified the user's email. Only enable this for providers you trust to verify email addresses.
 
+## Upstream MFA (AAL2 Elevation)
+
+When an upstream OpenID Connect provider performs multi-factor authentication, the resulting Ory session can be marked as AAL2 (Authentication Assurance Level 2) so the user is not prompted for a second factor again. Use `aal2_acr_values` and/or `aal2_amr_values` to opt in:
+
+- **`aal2_acr_values`** — A list of `acr` claim values. If the ID token returned by the upstream provider contains an `acr` claim matching any value in the list, Ory marks the session as AAL2. Works with providers that return the `acr` claim (Auth0, Okta, Keycloak, PingFederate, Entra ID v1, generic enterprise IdPs).
+- **`aal2_amr_values`** — A list of `amr` values (per [RFC 8176](https://datatracker.ietf.org/doc/html/rfc8176), for example `mfa`, `otp`, `hwk`, `fpt`). If the upstream `amr` array contains any value in the list, Ory marks the session as AAL2.
+
+Both attributes are optional and can be used together. Leave them unset to always issue AAL1 sessions through the provider.
+
+```hcl
+resource "ory_social_provider" "enterprise_sso" {
+  provider_id   = "enterprise-sso"
+  provider_type = "generic"
+  client_id     = var.sso_client_id
+  client_secret = var.sso_client_secret
+  issuer_url    = "https://sso.example.com"
+  scope         = ["openid", "profile", "email"]
+
+  aal2_acr_values = ["urn:mace:incommon:iap:silver", "https://refeds.org/profile/mfa"]
+  aal2_amr_values = ["mfa", "otp", "hwk"]
+}
+```
+
+## PKCE
+
+The `pkce` attribute controls whether the OAuth2 authorization code flow uses [Proof Key for Code Exchange (RFC 7636)](https://datatracker.ietf.org/doc/html/rfc7636) when redirecting users to the upstream provider:
+
+| Value | Description |
+|-------|-------------|
+| `auto` (default) | Enable PKCE only when the upstream provider advertises support via OIDC discovery. |
+| `force` | Always send the PKCE challenge. Use only with providers known to support it — providers that do not understand PKCE may reject the authorization request. |
+| `never` | Disable PKCE for this provider. |
+
+```hcl
+resource "ory_social_provider" "google" {
+  provider_id   = "google"
+  provider_type = "google"
+  client_id     = var.google_client_id
+  client_secret = var.google_client_secret
+  scope         = ["email", "profile"]
+  pkce          = "force"
+}
+```
+
 ## Base Redirect URI
 
 The `base_redirect_uri` attribute overrides the base URL Ory uses when constructing OIDC callback URLs. Use this when your project is accessible under a custom domain and you want callbacks to go to that domain rather than the default Ory project URL.
@@ -327,7 +392,10 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 
 ### Optional
 
+- `aal2_acr_values` (List of String) Upstream OpenID Connect `acr` claim values that elevate the resulting Ory session to AAL2. If the ID token returned by the upstream provider contains an `acr` claim matching any of these values, the user is not prompted for a second factor. Leave unset to always issue AAL1 sessions through this provider. Works with providers that return the `acr` claim (Auth0, Okta, Keycloak, PingFederate, Entra ID v1, generic enterprise IdPs).
+- `aal2_amr_values` (List of String) Upstream OpenID Connect `amr` values (per RFC 8176, for example `mfa`, `otp`, `hwk`) that mark the session AAL2 when they appear in the upstream `amr` array. Leave unset to ignore the `amr` claim.
 - `account_linking_mode` (String) Controls how accounts are linked when a user signs in with this provider and a matching identity already exists. "automatic" links without user interaction; "confirm_with_existing_credential" requires the user to verify ownership of the existing account first.
+- `additional_id_token_audiences` (List of String) Additional audiences allowed in the ID Token. Only relevant in OIDC flows that submit an ID Token directly instead of using the callback from the OIDC provider (e.g., native mobile apps signing in with Google or Apple where the app and the OIDC client are registered with different audiences).
 - `apple_private_key` (String, Sensitive) Apple private key in PEM format (contents of the .p8 file). Required when provider_type is "apple" and client_secret is not set. Ory uses this to generate the JWT client secret automatically.
 - `apple_private_key_id` (String) Apple private key ID from the Apple Developer portal (e.g., "UX56C66723"). Required when provider_type is "apple" and client_secret is not set.
 - `apple_team_id` (String) Apple Developer Team ID (e.g., "KP76DQS54M"). Required when provider_type is "apple" and client_secret is not set.
@@ -338,6 +406,7 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 - `issuer_url` (String) OIDC issuer URL (required for generic providers).
 - `label` (String) Human-readable label for the provider, displayed on the login button (e.g., "Sign in with Corporate SSO").
 - `mapper_url` (String) Jsonnet mapper URL for claims mapping. Can be a URL or base64-encoded Jsonnet (base64://...). If not set, a default mapper that extracts email from claims will be used.
+- `pkce` (String) PKCE (Proof Key for Code Exchange) behavior for the OAuth2 authorization code flow. "auto" (default) enables PKCE when the upstream provider advertises support via OIDC discovery; "force" always sends PKCE (use only with providers known to support it); "never" disables PKCE.
 - `project_id` (String) Project ID. If not set, uses provider's project_id.
 - `scope` (List of String) OAuth2 scopes to request.
 - `tenant` (String) Tenant ID (for Microsoft/Azure providers).

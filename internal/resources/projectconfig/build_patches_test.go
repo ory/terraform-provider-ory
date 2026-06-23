@@ -4,8 +4,11 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func findPatch(patches []ory.JsonPatch, path string) *ory.JsonPatch {
@@ -25,12 +28,8 @@ func TestBuildPatches_EmptyDefaultReturnURL(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/default_browser_return_url")
-	if p == nil {
-		t.Fatal("expected a patch for default_browser_return_url, got none")
-	}
-	if p.Op != "remove" {
-		t.Errorf("expected op 'remove' for empty default_return_url, got %q", p.Op)
-	}
+	require.NotNil(t, p, "expected a patch for default_browser_return_url")
+	assert.Equal(t, "remove", p.Op, "expected op 'remove' for empty default_return_url")
 }
 
 func TestBuildPatches_NonEmptyDefaultReturnURL(t *testing.T) {
@@ -41,12 +40,8 @@ func TestBuildPatches_NonEmptyDefaultReturnURL(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/default_browser_return_url")
-	if p == nil {
-		t.Fatal("expected a patch for default_browser_return_url, got none")
-	}
-	if p.Op != "replace" {
-		t.Errorf("expected op 'replace' for non-empty default_return_url, got %q", p.Op)
-	}
+	require.NotNil(t, p, "expected a patch for default_browser_return_url")
+	assert.Equal(t, "replace", p.Op, "expected op 'replace' for non-empty default_return_url")
 }
 
 func TestBuildPatches_NullDefaultReturnURL(t *testing.T) {
@@ -57,9 +52,7 @@ func TestBuildPatches_NullDefaultReturnURL(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/default_browser_return_url")
-	if p != nil {
-		t.Error("expected no patch for null default_return_url")
-	}
+	assert.Nil(t, p, "expected no patch for null default_return_url")
 }
 
 func TestBuildPatches_EmptyAllowedReturnURLs(t *testing.T) {
@@ -71,12 +64,8 @@ func TestBuildPatches_EmptyAllowedReturnURLs(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/allowed_return_urls")
-	if p == nil {
-		t.Fatal("expected a patch for allowed_return_urls, got none")
-	}
-	if p.Op != "remove" {
-		t.Errorf("expected op 'remove' for empty allowed_return_urls, got %q", p.Op)
-	}
+	require.NotNil(t, p, "expected a patch for allowed_return_urls")
+	assert.Equal(t, "remove", p.Op, "expected op 'remove' for empty allowed_return_urls")
 }
 
 func TestBuildPatches_NonEmptyAllowedReturnURLs(t *testing.T) {
@@ -88,12 +77,8 @@ func TestBuildPatches_NonEmptyAllowedReturnURLs(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/allowed_return_urls")
-	if p == nil {
-		t.Fatal("expected a patch for allowed_return_urls, got none")
-	}
-	if p.Op != "replace" {
-		t.Errorf("expected op 'replace' for non-empty allowed_return_urls, got %q", p.Op)
-	}
+	require.NotNil(t, p, "expected a patch for allowed_return_urls")
+	assert.Equal(t, "replace", p.Op, "expected op 'replace' for non-empty allowed_return_urls")
 }
 
 func TestBuildPatches_NullAllowedReturnURLs(t *testing.T) {
@@ -104,9 +89,7 @@ func TestBuildPatches_NullAllowedReturnURLs(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/allowed_return_urls")
-	if p != nil {
-		t.Error("expected no patch for null allowed_return_urls")
-	}
+	assert.Nil(t, p, "expected no patch for null allowed_return_urls")
 }
 
 func TestBuildPatches_OAuth2IssuerURL(t *testing.T) {
@@ -117,15 +100,9 @@ func TestBuildPatches_OAuth2IssuerURL(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/oauth2/config/urls/self/issuer")
-	if p == nil {
-		t.Fatal("expected a patch for oauth2_issuer_url, got none")
-	}
-	if p.Op != "replace" {
-		t.Errorf("expected op 'replace', got %q", p.Op)
-	}
-	if p.Value != "https://auth.example.com" {
-		t.Errorf("expected value 'https://auth.example.com', got %v", p.Value)
-	}
+	require.NotNil(t, p, "expected a patch for oauth2_issuer_url")
+	assert.Equal(t, "replace", p.Op)
+	assert.Equal(t, "https://auth.example.com", p.Value)
 }
 
 func TestBuildPatches_OAuth2CookiesSameSiteMode(t *testing.T) {
@@ -136,12 +113,8 @@ func TestBuildPatches_OAuth2CookiesSameSiteMode(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/oauth2/config/serve/cookies/same_site_mode")
-	if p == nil {
-		t.Fatal("expected a patch for oauth2_cookies_same_site_mode, got none")
-	}
-	if p.Value != "Strict" {
-		t.Errorf("expected value 'Strict', got %v", p.Value)
-	}
+	require.NotNil(t, p, "expected a patch for oauth2_cookies_same_site_mode")
+	assert.Equal(t, "Strict", p.Value)
 }
 
 func TestBuildPatches_OAuth2CookiesSameSiteLegacyWorkaround(t *testing.T) {
@@ -152,12 +125,86 @@ func TestBuildPatches_OAuth2CookiesSameSiteLegacyWorkaround(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/oauth2/config/serve/cookies/same_site_legacy_workaround")
-	if p == nil {
-		t.Fatal("expected a patch for oauth2_cookies_same_site_legacy_workaround, got none")
+	require.NotNil(t, p, "expected a patch for oauth2_cookies_same_site_legacy_workaround")
+	assert.Equal(t, true, p.Value)
+}
+
+func TestBuildPatches_OAuth2TokenHookAuth_APIKeyHeader(t *testing.T) {
+	r := &ProjectConfigResource{}
+	auth, diags := types.ObjectValue(oauth2TokenHookAuthAttrTypes, map[string]attr.Value{
+		"type":  types.StringValue("api_key"),
+		"name":  types.StringValue("X-Api-Key"),
+		"value": types.StringValue("secret-value"),
+		"in":    types.StringValue("header"),
+	})
+	require.False(t, diags.HasError(), "failed to build auth object: %s", diags)
+	plan := &ProjectConfigResourceModel{
+		OAuth2TokenHookAuth: auth,
 	}
-	if p.Value != true {
-		t.Errorf("expected value true, got %v", p.Value)
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/oauth2/config/oauth2/token_hook/auth")
+	require.NotNil(t, p, "expected a patch for oauth2_token_hook_auth")
+	assert.Equal(t, "replace", p.Op)
+
+	got, ok := p.Value.(map[string]interface{})
+	require.True(t, ok, "expected map value, got %T", p.Value)
+	assert.Equal(t, "api_key", got["type"])
+
+	cfg, ok := got["config"].(map[string]interface{})
+	require.True(t, ok, "expected config map, got %T", got["config"])
+	assert.Equal(t, "X-Api-Key", cfg["name"])
+	assert.Equal(t, "secret-value", cfg["value"])
+	assert.Equal(t, "header", cfg["in"])
+}
+
+func TestBuildPatches_OAuth2TokenHookAuth_APIKeyCookie(t *testing.T) {
+	r := &ProjectConfigResource{}
+	auth, diags := types.ObjectValue(oauth2TokenHookAuthAttrTypes, map[string]attr.Value{
+		"type":  types.StringValue("api_key"),
+		"name":  types.StringValue("session_cookie"),
+		"value": types.StringValue("cookie-value"),
+		"in":    types.StringValue("cookie"),
+	})
+	require.False(t, diags.HasError(), "failed to build auth object: %s", diags)
+	plan := &ProjectConfigResourceModel{
+		OAuth2TokenHookAuth: auth,
 	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/oauth2/config/oauth2/token_hook/auth")
+	require.NotNil(t, p, "expected a patch for oauth2_token_hook_auth")
+
+	value, ok := p.Value.(map[string]interface{})
+	require.True(t, ok, "expected map value, got %T", p.Value)
+	cfg, ok := value["config"].(map[string]interface{})
+	require.True(t, ok, "expected config map, got %T", value["config"])
+	assert.Equal(t, "cookie", cfg["in"])
+}
+
+func TestRemoveURLOnlyTokenHookPatch(t *testing.T) {
+	input := []ory.JsonPatch{
+		{Op: "replace", Path: "/services/oauth2/config/oauth2/token_hook/url", Value: "https://example.com"},
+		{Op: "replace", Path: "/services/oauth2/config/oauth2/token_hook/auth", Value: map[string]interface{}{}},
+		{Op: "replace", Path: "/services/oauth2/config/urls/self/issuer", Value: "https://auth.example.com"},
+	}
+	got := removeURLOnlyTokenHookPatch(input)
+	require.Len(t, got, 2, "expected 2 patches after filter")
+	for _, p := range got {
+		assert.NotEqual(t, "/services/oauth2/config/oauth2/token_hook/url", p.Path,
+			"expected token_hook/url patch to be removed")
+	}
+}
+
+func TestBuildPatches_NullOAuth2TokenHookAuth(t *testing.T) {
+	r := &ProjectConfigResource{}
+	plan := &ProjectConfigResourceModel{
+		OAuth2TokenHookAuth: types.ObjectNull(oauth2TokenHookAuthAttrTypes),
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/oauth2/config/oauth2/token_hook/auth")
+	assert.Nil(t, p, "expected no patch for null oauth2_token_hook_auth")
 }
 
 func TestBuildPatches_NullOAuth2IssuerURL(t *testing.T) {
@@ -168,9 +215,7 @@ func TestBuildPatches_NullOAuth2IssuerURL(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/oauth2/config/urls/self/issuer")
-	if p != nil {
-		t.Error("expected no patch for null oauth2_issuer_url")
-	}
+	assert.Nil(t, p, "expected no patch for null oauth2_issuer_url")
 }
 
 func TestBuildPatches_LoginStyle(t *testing.T) {
@@ -181,15 +226,9 @@ func TestBuildPatches_LoginStyle(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/login/style")
-	if p == nil {
-		t.Fatal("expected a patch for login_style, got none")
-	}
-	if p.Op != "replace" {
-		t.Errorf("expected op 'replace', got %q", p.Op)
-	}
-	if p.Value != "identifier_first" {
-		t.Errorf("expected value 'identifier_first', got %v", p.Value)
-	}
+	require.NotNil(t, p, "expected a patch for login_style")
+	assert.Equal(t, "replace", p.Op)
+	assert.Equal(t, "identifier_first", p.Value)
 }
 
 func TestBuildPatches_LoginStyleUnified(t *testing.T) {
@@ -200,12 +239,8 @@ func TestBuildPatches_LoginStyleUnified(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/login/style")
-	if p == nil {
-		t.Fatal("expected a patch for login_style, got none")
-	}
-	if p.Value != "unified" {
-		t.Errorf("expected value 'unified', got %v", p.Value)
-	}
+	require.NotNil(t, p, "expected a patch for login_style")
+	assert.Equal(t, "unified", p.Value)
 }
 
 func TestBuildPatches_NullLoginStyle(t *testing.T) {
@@ -216,9 +251,7 @@ func TestBuildPatches_NullLoginStyle(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/login/style")
-	if p != nil {
-		t.Error("expected no patch for null login_style")
-	}
+	assert.Nil(t, p, "expected no patch for null login_style")
 }
 
 func TestBuildPatches_EnableProfile(t *testing.T) {
@@ -229,15 +262,9 @@ func TestBuildPatches_EnableProfile(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/methods/profile/enabled")
-	if p == nil {
-		t.Fatal("expected a patch for enable_profile, got none")
-	}
-	if p.Op != "replace" {
-		t.Errorf("expected op 'replace', got %q", p.Op)
-	}
-	if p.Value != true {
-		t.Errorf("expected value true, got %v", p.Value)
-	}
+	require.NotNil(t, p, "expected a patch for enable_profile")
+	assert.Equal(t, "replace", p.Op)
+	assert.Equal(t, true, p.Value)
 }
 
 func TestBuildPatches_NullEnableProfile(t *testing.T) {
@@ -248,9 +275,7 @@ func TestBuildPatches_NullEnableProfile(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/methods/profile/enabled")
-	if p != nil {
-		t.Error("expected no patch for null enable_profile")
-	}
+	assert.Nil(t, p, "expected no patch for null enable_profile")
 }
 
 func TestBuildPatches_CodeLifespan(t *testing.T) {
@@ -261,15 +286,9 @@ func TestBuildPatches_CodeLifespan(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/methods/code/config/lifespan")
-	if p == nil {
-		t.Fatal("expected a patch for code_lifespan, got none")
-	}
-	if p.Op != "replace" {
-		t.Errorf("expected op 'replace', got %q", p.Op)
-	}
-	if p.Value != "15m0s" {
-		t.Errorf("expected value '15m0s', got %v", p.Value)
-	}
+	require.NotNil(t, p, "expected a patch for code_lifespan")
+	assert.Equal(t, "replace", p.Op)
+	assert.Equal(t, "15m0s", p.Value)
 }
 
 func TestBuildPatches_NullCodeLifespan(t *testing.T) {
@@ -280,9 +299,7 @@ func TestBuildPatches_NullCodeLifespan(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/methods/code/config/lifespan")
-	if p != nil {
-		t.Error("expected no patch for null code_lifespan")
-	}
+	assert.Nil(t, p, "expected no patch for null code_lifespan")
 }
 
 func TestBuildPatches_CodeMissingCredentialFallbackEnabled(t *testing.T) {
@@ -293,15 +310,9 @@ func TestBuildPatches_CodeMissingCredentialFallbackEnabled(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/methods/code/config/missing_credential_fallback_enabled")
-	if p == nil {
-		t.Fatal("expected a patch for code_missing_credential_fallback_enabled, got none")
-	}
-	if p.Op != "replace" {
-		t.Errorf("expected op 'replace', got %q", p.Op)
-	}
-	if p.Value != true {
-		t.Errorf("expected value true, got %v", p.Value)
-	}
+	require.NotNil(t, p, "expected a patch for code_missing_credential_fallback_enabled")
+	assert.Equal(t, "replace", p.Op)
+	assert.Equal(t, true, p.Value)
 }
 
 func TestBuildPatches_NullCodeMissingCredentialFallbackEnabled(t *testing.T) {
@@ -312,9 +323,31 @@ func TestBuildPatches_NullCodeMissingCredentialFallbackEnabled(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/methods/code/config/missing_credential_fallback_enabled")
-	if p != nil {
-		t.Error("expected no patch for null code_missing_credential_fallback_enabled")
+	assert.Nil(t, p, "expected no patch for null code_missing_credential_fallback_enabled")
+}
+
+func TestBuildPatches_SessionEarliestPossibleExtend(t *testing.T) {
+	r := &ProjectConfigResource{}
+	plan := &ProjectConfigResourceModel{
+		SessionEarliestPossibleExtend: types.StringValue("24h"),
 	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/identity/config/session/earliest_possible_extend")
+	require.NotNil(t, p, "expected a patch for session_earliest_possible_extend")
+	assert.Equal(t, "replace", p.Op)
+	assert.Equal(t, "24h", p.Value)
+}
+
+func TestBuildPatches_NullSessionEarliestPossibleExtend(t *testing.T) {
+	r := &ProjectConfigResource{}
+	plan := &ProjectConfigResourceModel{
+		SessionEarliestPossibleExtend: types.StringNull(),
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/identity/config/session/earliest_possible_extend")
+	assert.Nil(t, p, "expected no patch for null session_earliest_possible_extend")
 }
 
 func TestBuildPatches_SettingsLifespan(t *testing.T) {
@@ -325,15 +358,9 @@ func TestBuildPatches_SettingsLifespan(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/settings/lifespan")
-	if p == nil {
-		t.Fatal("expected a patch for settings_lifespan, got none")
-	}
-	if p.Op != "replace" {
-		t.Errorf("expected op 'replace', got %q", p.Op)
-	}
-	if p.Value != "30m0s" {
-		t.Errorf("expected value '30m0s', got %v", p.Value)
-	}
+	require.NotNil(t, p, "expected a patch for settings_lifespan")
+	assert.Equal(t, "replace", p.Op)
+	assert.Equal(t, "30m0s", p.Value)
 }
 
 func TestBuildPatches_NullSettingsLifespan(t *testing.T) {
@@ -344,9 +371,7 @@ func TestBuildPatches_NullSettingsLifespan(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/settings/lifespan")
-	if p != nil {
-		t.Error("expected no patch for null settings_lifespan")
-	}
+	assert.Nil(t, p, "expected no patch for null settings_lifespan")
 }
 
 func TestBuildPatches_SettingsPrivilegedSessionMaxAge(t *testing.T) {
@@ -357,15 +382,9 @@ func TestBuildPatches_SettingsPrivilegedSessionMaxAge(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/settings/privileged_session_max_age")
-	if p == nil {
-		t.Fatal("expected a patch for settings_privileged_session_max_age, got none")
-	}
-	if p.Op != "replace" {
-		t.Errorf("expected op 'replace', got %q", p.Op)
-	}
-	if p.Value != "15m0s" {
-		t.Errorf("expected value '15m0s', got %v", p.Value)
-	}
+	require.NotNil(t, p, "expected a patch for settings_privileged_session_max_age")
+	assert.Equal(t, "replace", p.Op)
+	assert.Equal(t, "15m0s", p.Value)
 }
 
 func TestBuildPatches_NullSettingsPrivilegedSessionMaxAge(t *testing.T) {
@@ -376,9 +395,7 @@ func TestBuildPatches_NullSettingsPrivilegedSessionMaxAge(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/settings/privileged_session_max_age")
-	if p != nil {
-		t.Error("expected no patch for null settings_privileged_session_max_age")
-	}
+	assert.Nil(t, p, "expected no patch for null settings_privileged_session_max_age")
 }
 
 func TestBuildPatches_VerificationUse(t *testing.T) {
@@ -389,15 +406,9 @@ func TestBuildPatches_VerificationUse(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/verification/use")
-	if p == nil {
-		t.Fatal("expected a patch for verification_use, got none")
-	}
-	if p.Op != "replace" {
-		t.Errorf("expected op 'replace', got %q", p.Op)
-	}
-	if p.Value != "code" {
-		t.Errorf("expected value 'code', got %v", p.Value)
-	}
+	require.NotNil(t, p, "expected a patch for verification_use")
+	assert.Equal(t, "replace", p.Op)
+	assert.Equal(t, "code", p.Value)
 }
 
 func TestBuildPatches_NullVerificationUse(t *testing.T) {
@@ -408,9 +419,7 @@ func TestBuildPatches_NullVerificationUse(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/verification/use")
-	if p != nil {
-		t.Error("expected no patch for null verification_use")
-	}
+	assert.Nil(t, p, "expected no patch for null verification_use")
 }
 
 func TestBuildPatches_VerificationLifespan(t *testing.T) {
@@ -421,15 +430,9 @@ func TestBuildPatches_VerificationLifespan(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/verification/lifespan")
-	if p == nil {
-		t.Fatal("expected a patch for verification_lifespan, got none")
-	}
-	if p.Op != "replace" {
-		t.Errorf("expected op 'replace', got %q", p.Op)
-	}
-	if p.Value != "30m0s" {
-		t.Errorf("expected value '30m0s', got %v", p.Value)
-	}
+	require.NotNil(t, p, "expected a patch for verification_lifespan")
+	assert.Equal(t, "replace", p.Op)
+	assert.Equal(t, "30m0s", p.Value)
 }
 
 func TestBuildPatches_NullVerificationLifespan(t *testing.T) {
@@ -440,9 +443,7 @@ func TestBuildPatches_NullVerificationLifespan(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/verification/lifespan")
-	if p != nil {
-		t.Error("expected no patch for null verification_lifespan")
-	}
+	assert.Nil(t, p, "expected no patch for null verification_lifespan")
 }
 
 func TestBuildPatches_VerificationNotifyUnknownRecipients(t *testing.T) {
@@ -453,15 +454,9 @@ func TestBuildPatches_VerificationNotifyUnknownRecipients(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/verification/notify_unknown_recipients")
-	if p == nil {
-		t.Fatal("expected a patch for verification_notify_unknown_recipients, got none")
-	}
-	if p.Op != "replace" {
-		t.Errorf("expected op 'replace', got %q", p.Op)
-	}
-	if p.Value != true {
-		t.Errorf("expected value true, got %v", p.Value)
-	}
+	require.NotNil(t, p, "expected a patch for verification_notify_unknown_recipients")
+	assert.Equal(t, "replace", p.Op)
+	assert.Equal(t, true, p.Value)
 }
 
 func TestBuildPatches_NullVerificationNotifyUnknownRecipients(t *testing.T) {
@@ -472,7 +467,286 @@ func TestBuildPatches_NullVerificationNotifyUnknownRecipients(t *testing.T) {
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/verification/notify_unknown_recipients")
-	if p != nil {
-		t.Error("expected no patch for null verification_notify_unknown_recipients")
+	assert.Nil(t, p, "expected no patch for null verification_notify_unknown_recipients")
+}
+
+// projectWithIdentityConfig wraps an identity config map in the *ory.Project
+// shape that buildHookPatches expects.
+func projectWithIdentityConfig(identityConfig map[string]interface{}) *ory.Project {
+	return &ory.Project{
+		Services: ory.ProjectServices{
+			Identity: &ory.ProjectServiceIdentity{
+				Config: identityConfig,
+			},
+		},
 	}
+}
+
+func TestBuildShowVerificationUIHookPatches_AddPreservesOtherHooks(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		SelfserviceFlowsRegistrationAfterPasswordHookShowVerificationUI: types.BoolValue(true),
+	}
+	current := projectWithIdentityConfig(map[string]interface{}{
+		"selfservice": map[string]interface{}{
+			"flows": map[string]interface{}{
+				"registration": map[string]interface{}{
+					"after": map[string]interface{}{
+						"password": map[string]interface{}{
+							"hooks": []interface{}{
+								map[string]interface{}{"hook": "organization"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	patches := buildHookPatches(plan, current)
+	require.Len(t, patches, 1)
+	p := patches[0]
+	assert.Equal(t, "replace", p.Op)
+	assert.Equal(t, "/services/identity/config/selfservice/flows/registration/after/password/hooks", p.Path)
+	hooks, ok := p.Value.([]map[string]interface{})
+	require.True(t, ok, "expected []map[string]interface{} value, got %T", p.Value)
+	require.Len(t, hooks, 2, "expected 2 hooks (show_verification_ui + organization)")
+	assert.Equal(t, "show_verification_ui", hooks[0]["hook"], "expected show_verification_ui first")
+	assert.Equal(t, "organization", hooks[1]["hook"], "expected organization preserved")
+}
+
+func TestBuildShowVerificationUIHookPatches_RemoveKeepsOthers(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		SelfserviceFlowsSettingsAfterProfileHookShowVerificationUI: types.BoolValue(false),
+	}
+	current := projectWithIdentityConfig(map[string]interface{}{
+		"selfservice": map[string]interface{}{
+			"flows": map[string]interface{}{
+				"settings": map[string]interface{}{
+					"after": map[string]interface{}{
+						"profile": map[string]interface{}{
+							"hooks": []interface{}{
+								map[string]interface{}{"hook": "show_verification_ui"},
+								map[string]interface{}{"hook": "organization"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	patches := buildHookPatches(plan, current)
+	require.Len(t, patches, 1)
+	hooks, ok := patches[0].Value.([]map[string]interface{})
+	require.True(t, ok, "expected []map[string]interface{} value, got %T", patches[0].Value)
+	require.Len(t, hooks, 1, "expected 1 remaining hook")
+	assert.Equal(t, "organization", hooks[0]["hook"], "expected organization to remain")
+}
+
+func TestBuildShowVerificationUIHookPatches_AddIdempotent(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		SelfserviceFlowsRegistrationAfterOIDCHookShowVerificationUI: types.BoolValue(true),
+	}
+	current := projectWithIdentityConfig(map[string]interface{}{
+		"selfservice": map[string]interface{}{
+			"flows": map[string]interface{}{
+				"registration": map[string]interface{}{
+					"after": map[string]interface{}{
+						"oidc": map[string]interface{}{
+							"hooks": []interface{}{
+								map[string]interface{}{"hook": "show_verification_ui"},
+								map[string]interface{}{"hook": "session"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	patches := buildHookPatches(plan, current)
+	hooks, _ := patches[0].Value.([]map[string]interface{})
+	require.Len(t, hooks, 2, "expected 2 hooks (no duplicate): %v", hooks)
+	seen := map[string]int{}
+	for _, h := range hooks {
+		if name, ok := h["hook"].(string); ok {
+			seen[name]++
+		}
+	}
+	assert.Equal(t, 1, seen["show_verification_ui"], "expected exactly one show_verification_ui")
+	assert.Equal(t, 1, seen["session"], "expected session preserved")
+}
+
+func TestBuildShowVerificationUIHookPatches_NullSkipped(t *testing.T) {
+	plan := &ProjectConfigResourceModel{}
+	current := projectWithIdentityConfig(map[string]interface{}{})
+
+	patches := buildHookPatches(plan, current)
+	assert.Empty(t, patches, "expected no patches when all hook attrs are null")
+}
+
+func TestBuildShowVerificationUIHookPatches_NilCurrentProject(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		SelfserviceFlowsRegistrationAfterPasswordHookShowVerificationUI: types.BoolValue(true),
+	}
+	patches := buildHookPatches(plan, nil)
+	assert.Empty(t, patches, "expected no patches when currentProject is nil")
+}
+
+func TestBuildShowVerificationUIHookPatches_MissingHooksPathIsEmptyArray(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		SelfserviceFlowsRegistrationAfterPasswordHookShowVerificationUI: types.BoolValue(true),
+	}
+	current := projectWithIdentityConfig(map[string]interface{}{})
+
+	patches := buildHookPatches(plan, current)
+	require.Len(t, patches, 1, "expected 1 patch even with empty config")
+	hooks, ok := patches[0].Value.([]map[string]interface{})
+	require.True(t, ok, "expected []map[string]interface{} value, got %T", patches[0].Value)
+	require.Len(t, hooks, 1, "expected single show_verification_ui hook")
+	assert.Equal(t, "show_verification_ui", hooks[0]["hook"])
+}
+
+func TestNeedsHookPrefetch(t *testing.T) {
+	cases := []struct {
+		name string
+		plan ProjectConfigResourceModel
+		want bool
+	}{
+		{
+			name: "all null",
+			plan: ProjectConfigResourceModel{},
+			want: false,
+		},
+		{
+			name: "password set",
+			plan: ProjectConfigResourceModel{
+				SelfserviceFlowsRegistrationAfterPasswordHookShowVerificationUI: types.BoolValue(true),
+			},
+			want: true,
+		},
+		{
+			name: "oidc set false",
+			plan: ProjectConfigResourceModel{
+				SelfserviceFlowsRegistrationAfterOIDCHookShowVerificationUI: types.BoolValue(false),
+			},
+			want: true,
+		},
+		{
+			name: "profile set",
+			plan: ProjectConfigResourceModel{
+				SelfserviceFlowsSettingsAfterProfileHookShowVerificationUI: types.BoolValue(true),
+			},
+			want: true,
+		},
+		{
+			name: "password session hook set",
+			plan: ProjectConfigResourceModel{
+				SelfserviceFlowsRegistrationAfterPasswordHookSession: types.BoolValue(true),
+			},
+			want: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, needsHookPrefetch(&tc.plan))
+		})
+	}
+}
+
+func TestBuildHookPatches_SessionAddPreservesOtherHooks(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		SelfserviceFlowsRegistrationAfterPasswordHookSession: types.BoolValue(true),
+	}
+	current := projectWithIdentityConfig(map[string]interface{}{
+		"selfservice": map[string]interface{}{
+			"flows": map[string]interface{}{
+				"registration": map[string]interface{}{
+					"after": map[string]interface{}{
+						"password": map[string]interface{}{
+							"hooks": []interface{}{
+								map[string]interface{}{"hook": "organization"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	patches := buildHookPatches(plan, current)
+	require.Len(t, patches, 1)
+	p := patches[0]
+	assert.Equal(t, "/services/identity/config/selfservice/flows/registration/after/password/hooks", p.Path)
+	hooks, ok := p.Value.([]map[string]interface{})
+	require.True(t, ok, "expected []map[string]interface{} value, got %T", p.Value)
+	require.Len(t, hooks, 2, "expected 2 hooks (session + organization)")
+	assert.Equal(t, "session", hooks[0]["hook"], "expected session first")
+	assert.Equal(t, "organization", hooks[1]["hook"], "expected organization preserved")
+}
+
+func TestBuildHookPatches_SessionRemoveKeepsOthers(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		SelfserviceFlowsRegistrationAfterPasswordHookSession: types.BoolValue(false),
+	}
+	current := projectWithIdentityConfig(map[string]interface{}{
+		"selfservice": map[string]interface{}{
+			"flows": map[string]interface{}{
+				"registration": map[string]interface{}{
+					"after": map[string]interface{}{
+						"password": map[string]interface{}{
+							"hooks": []interface{}{
+								map[string]interface{}{"hook": "session"},
+								map[string]interface{}{"hook": "organization"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	patches := buildHookPatches(plan, current)
+	require.Len(t, patches, 1)
+	hooks, _ := patches[0].Value.([]map[string]interface{})
+	require.Len(t, hooks, 1, "expected 1 remaining hook")
+	assert.Equal(t, "organization", hooks[0]["hook"], "expected organization to remain")
+}
+
+// When two hook attributes (show_verification_ui and session) target the same
+// hooks array, buildHookPatches emits a single patch that reflects both
+// toggles instead of clobbering one with the other.
+func TestBuildHookPatches_MultipleHooksAtSamePathMerged(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		SelfserviceFlowsRegistrationAfterPasswordHookShowVerificationUI: types.BoolValue(true),
+		SelfserviceFlowsRegistrationAfterPasswordHookSession:            types.BoolValue(true),
+	}
+	current := projectWithIdentityConfig(map[string]interface{}{
+		"selfservice": map[string]interface{}{
+			"flows": map[string]interface{}{
+				"registration": map[string]interface{}{
+					"after": map[string]interface{}{
+						"password": map[string]interface{}{
+							"hooks": []interface{}{
+								map[string]interface{}{"hook": "organization"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	patches := buildHookPatches(plan, current)
+	require.Len(t, patches, 1, "expected exactly 1 merged patch for the password hooks path")
+	hooks, _ := patches[0].Value.([]map[string]interface{})
+	seen := map[string]int{}
+	for _, h := range hooks {
+		if name, ok := h["hook"].(string); ok {
+			seen[name]++
+		}
+	}
+	assert.Equal(t, 1, seen["show_verification_ui"], "expected show_verification_ui to be present once")
+	assert.Equal(t, 1, seen["session"], "expected session to be present once")
+	assert.Equal(t, 1, seen["organization"], "expected organization to be preserved")
 }
