@@ -95,11 +95,17 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 	// data source for detailed rationale on API selection.
 	canUseKratosAPI := d.client.HasProjectClient()
 	canUseConsoleAPI := d.client.HasConsoleClient() && projectID != ""
+	// The workspace endpoint (GET /identity-schemas) needs only a workspace API
+	// key. The Kratos API already returns every workspace-scoped schema, so we
+	// only fall back to / merge the workspace endpoint when Kratos is not
+	// available (the bootstrap case in issue #138).
+	canUseWorkspaceAPI := d.client.HasConsoleClient()
 
-	if !canUseKratosAPI && !canUseConsoleAPI {
-		resp.Diagnostics.AddError("Missing Project ID",
-			"project_id is required when project_slug and project_api_key are not configured. "+
-				"Set project_id on the data source or configure the provider with project_slug and project_api_key.")
+	if !canUseKratosAPI && !canUseConsoleAPI && !canUseWorkspaceAPI {
+		resp.Diagnostics.AddError("Missing Credentials",
+			"Listing identity schemas requires either project credentials "+
+				"(project_slug and project_api_key) or a workspace_api_key. "+
+				"Configure one on the provider, or set project_id on the data source.")
 		return
 	}
 
@@ -108,14 +114,18 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
 		// Prefer Kratos API (canonical IDs + full content) when available.
 		// Fall back to console API if Kratos fails and console is available.
-		if canUseKratosAPI {
+		switch {
+		case canUseKratosAPI:
 			schemas, err = d.client.ListIdentitySchemas(ctx)
 			if err != nil && canUseConsoleAPI {
 				// Kratos API failed — try console API as fallback.
 				schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
 			}
-		} else {
+		case canUseConsoleAPI:
 			schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
+		default:
+			// Workspace key only (bootstrap): no project to read config from.
+			schemas, err = d.client.ListWorkspaceIdentitySchemas(ctx)
 		}
 		if err == nil {
 			break
@@ -132,6 +142,34 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 	if err != nil {
 		resp.Diagnostics.AddError("Error Listing Identity Schemas", err.Error())
 		return
+	}
+
+	// When reading from the project config (console API), the list only contains
+	// schemas explicitly added to the project — a new project sees just
+	// preset://username. Merge in the workspace-scoped schemas so they are
+	// discoverable during bootstrap. Kratos already returns the full set, and
+	// the workspace-only path above already used this endpoint, so we only
+	// merge when the project-config (console) path was the base.
+	if canUseConsoleAPI && !canUseKratosAPI {
+		wsSchemas, wsErr := d.client.ListWorkspaceIdentitySchemas(ctx)
+		if wsErr != nil {
+			// Only hard-fail if we have nothing else; otherwise keep the
+			// project-config results we already gathered.
+			if len(schemas) == 0 {
+				resp.Diagnostics.AddError("Error Listing Identity Schemas", wsErr.Error())
+				return
+			}
+		} else {
+			seen := make(map[string]struct{}, len(schemas))
+			for _, s := range schemas {
+				seen[s.GetId()] = struct{}{}
+			}
+			for i := range wsSchemas {
+				if _, ok := seen[wsSchemas[i].GetId()]; !ok {
+					schemas = append(schemas, wsSchemas[i])
+				}
+			}
+		}
 	}
 
 	schemaObjects := make([]attr.Value, 0, len(schemas))

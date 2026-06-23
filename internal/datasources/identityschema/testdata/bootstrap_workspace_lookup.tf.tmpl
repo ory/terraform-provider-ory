@@ -1,0 +1,56 @@
+# Reproduces issue #138: during project bootstrap only a workspace API key is
+# available. The schema and a brand-new project are created with the default
+# (full-credential) provider, but the schema is looked up through a
+# workspace-only provider alias against the new project's ID.
+#
+# The new project's config contains only preset://username, so the
+# project-config strategy cannot see the schema. With project_slug/
+# project_api_key explicitly empty the Kratos strategy is disabled too, so the
+# lookup must succeed via the workspace endpoint (GET /identity-schemas).
+
+resource "ory_identity_schema" "test" {
+  schema_id = "[[ .SchemaID ]]"
+  schema = jsonencode({
+    "$id" : "[[ .AppURL ]]/test-schema-email.json",
+    "$schema" : "http://json-schema.org/draft-07/schema#",
+    "title" : "Bootstrap Email Schema",
+    "type" : "object",
+    "properties" : {
+      "traits" : {
+        "type" : "object",
+        "properties" : {
+          "email" : {
+            "type" : "string",
+            "format" : "email",
+            "title" : "Email",
+            "ory.sh/kratos" : {
+              "credentials" : { "password" : { "identifier" : true } },
+              "verification" : { "via" : "email" },
+              "recovery" : { "via" : "email" }
+            }
+          }
+        },
+        "required" : ["email"]
+      }
+    }
+  })
+}
+
+resource "ory_project" "bootstrap" {
+  name        = "[[ .ProjectName ]]"
+  environment = "dev"
+}
+
+# Workspace-only provider: project credentials are explicitly empty, which
+# disables the Kratos lookup strategy and forces the workspace endpoint.
+provider "ory" {
+  alias           = "workspace_only"
+  project_slug    = ""
+  project_api_key = ""
+}
+
+data "ory_identity_schema" "test" {
+  provider   = ory.workspace_only
+  id         = ory_identity_schema.test.id
+  project_id = ory_project.bootstrap.id
+}
