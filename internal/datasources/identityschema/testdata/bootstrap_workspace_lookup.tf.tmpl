@@ -1,12 +1,11 @@
 # Reproduces issue #138: during project bootstrap only a workspace API key is
-# available. The schema and a brand-new project are created with the default
-# (full-credential) provider, but the schema is looked up through a
-# workspace-only provider alias against the new project's ID.
+# available. The schema is created with the default (full-credential) provider,
+# then looked up through a workspace-only provider alias.
 #
-# The new project's config contains only preset://username, so the
-# project-config strategy cannot see the schema. With project_slug/
-# project_api_key explicitly empty the Kratos strategy is disabled too, so the
-# lookup must succeed via the workspace endpoint (GET /identity-schemas).
+# The workspace-only provider has project_slug/project_api_key explicitly empty
+# (disabling the Kratos strategy) and the lookup passes no project_id (disabling
+# the project-config strategy), so the schema must be found via the workspace
+# endpoint (GET /identity-schemas) — exactly the bootstrap path.
 
 resource "ory_identity_schema" "test" {
   schema_id = "[[ .SchemaID ]]"
@@ -36,11 +35,6 @@ resource "ory_identity_schema" "test" {
   })
 }
 
-resource "ory_project" "bootstrap" {
-  name        = "[[ .ProjectName ]]"
-  environment = "dev"
-}
-
 # Workspace-only provider: project credentials are explicitly empty, which
 # disables the Kratos lookup strategy and forces the workspace endpoint.
 provider "ory" {
@@ -50,7 +44,6 @@ provider "ory" {
 }
 
 data "ory_identity_schema" "test" {
-  provider   = ory.workspace_only
-  id         = ory_identity_schema.test.id
-  project_id = ory_project.bootstrap.id
+  provider = ory.workspace_only
+  id       = ory_identity_schema.test.id
 }

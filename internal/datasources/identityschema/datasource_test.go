@@ -44,14 +44,13 @@ func TestAccIdentitySchemaDataSource_basic(t *testing.T) {
 }
 
 // TestAccIdentitySchemaDataSource_bootstrapWorkspaceLookup reproduces issue
-// #138: a workspace-scoped schema is looked up against a brand-new project with
-// only a workspace API key (project credentials explicitly disabled), so the
-// lookup must succeed via the workspace endpoint rather than the project config
-// or Kratos.
+// #138: a workspace-scoped schema is looked up with only a workspace API key
+// (project credentials explicitly disabled and no project_id), so the lookup
+// must succeed via the workspace endpoint rather than the project config or
+// Kratos.
 func TestAccIdentitySchemaDataSource_bootstrapWorkspaceLookup(t *testing.T) {
 	suffix := time.Now().UnixNano()
 	schemaID := fmt.Sprintf("tf-test-ds-bootstrap-%d", suffix)
-	projectName := fmt.Sprintf("tf-test-bootstrap-%d", suffix)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -62,9 +61,8 @@ func TestAccIdentitySchemaDataSource_bootstrapWorkspaceLookup(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config: acctest.LoadTestConfig(t, "testdata/bootstrap_workspace_lookup.tf.tmpl", map[string]string{
-					"SchemaID":    schemaID,
-					"AppURL":      testutil.ExampleAppURL,
-					"ProjectName": projectName,
+					"SchemaID": schemaID,
+					"AppURL":   testutil.ExampleAppURL,
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrPair(
