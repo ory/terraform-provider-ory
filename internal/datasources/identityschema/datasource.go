@@ -142,11 +142,18 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 	// from base64:// to https://.
 	canUseKratosAPI := d.client.HasProjectClient()
 	canUseConsoleAPI := d.client.HasConsoleClient() && projectID != ""
+	// The workspace endpoint (GET /identity-schemas) needs only a workspace API
+	// key — no project_id and no project credentials. This is the bootstrap
+	// case: a brand-new project has only preset://username in its config, but
+	// the workspace-scoped custom schema the caller is looking up is visible
+	// here.
+	canUseWorkspaceAPI := d.client.HasConsoleClient()
 
-	if !canUseKratosAPI && !canUseConsoleAPI {
-		resp.Diagnostics.AddError("Missing Project ID",
-			"project_id is required when project_slug and project_api_key are not configured. "+
-				"Set project_id on the data source or configure the provider with project_slug and project_api_key.")
+	if !canUseKratosAPI && !canUseConsoleAPI && !canUseWorkspaceAPI {
+		resp.Diagnostics.AddError("Missing Credentials",
+			"Looking up an identity schema requires either project credentials "+
+				"(project_slug and project_api_key) or a workspace_api_key. "+
+				"Configure one on the provider, or set project_id on the data source.")
 		return
 	}
 
@@ -158,11 +165,12 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 		if canUseKratosAPI && found == nil {
 			schemas, err := d.client.ListIdentitySchemas(ctx)
 			if err != nil {
-				if !canUseConsoleAPI {
+				if !canUseConsoleAPI && !canUseWorkspaceAPI {
 					resp.Diagnostics.AddError("Error Listing Identity Schemas", err.Error())
 					return
 				}
-				// Kratos API failed but console API is available — continue to fallback.
+				// Kratos API failed but the console or workspace strategy is
+				// available — continue to the fallbacks below.
 			} else {
 				allSchemas = schemas
 				for i := range schemas {
@@ -178,11 +186,38 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 		if canUseConsoleAPI && found == nil {
 			schemas, err := d.client.ListIdentitySchemasViaProject(ctx, projectID)
 			if err != nil {
+				if len(allSchemas) == 0 && !canUseWorkspaceAPI {
+					resp.Diagnostics.AddError("Error Listing Identity Schemas", err.Error())
+					return
+				}
+				// Console API failed but we already have Kratos results or can
+				// still try the workspace endpoint — the schema just isn't here.
+			} else {
+				if len(allSchemas) == 0 {
+					allSchemas = schemas
+				}
+				for i := range schemas {
+					if schemas[i].GetId() == targetID {
+						found = &schemas[i]
+						break
+					}
+				}
+			}
+		}
+
+		// Strategy 3: Try the workspace endpoint (bootstrap — workspace key
+		// only, no project_id or project credentials required). This is the
+		// case in issue #138: a new project sees only preset://username via the
+		// project config, but the workspace-scoped schema is visible here.
+		if canUseWorkspaceAPI && found == nil {
+			schemas, err := d.client.ListWorkspaceIdentitySchemas(ctx)
+			if err != nil {
 				if len(allSchemas) == 0 {
 					resp.Diagnostics.AddError("Error Listing Identity Schemas", err.Error())
 					return
 				}
-				// Console API failed but we already have Kratos results — schema just isn't there.
+				// Workspace endpoint failed but earlier strategies returned
+				// results — the schema just isn't there.
 			} else {
 				if len(allSchemas) == 0 {
 					allSchemas = schemas

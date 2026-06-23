@@ -1520,6 +1520,101 @@ func (c *OryClient) ListIdentitySchemasViaProject(ctx context.Context, projectID
 	return extractSchemasFromProjectConfig(ctx, project)
 }
 
+// consoleHTTPClient is used for direct calls to the console API (the workspace
+// identity-schemas endpoint) that the SDK does not yet expose. It carries an
+// explicit timeout so a stalled upstream cannot block reads indefinitely, and
+// is a variable so tests can override it.
+var consoleHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
+// managedIdentitySchema mirrors the response of the backoffice
+// GET /identity-schemas endpoint. It is defined locally so the method does not
+// depend on a specific client-go release exposing the operation.
+type managedIdentitySchema struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	ContentHash string `json:"content_hash"`
+	BlobURL     string `json:"blob_url"`
+}
+
+// ListWorkspaceIdentitySchemas lists the workspace-managed identity schemas
+// created by the workspace API key's owner via the console API
+// (GET /identity-schemas). Unlike the project-config and Kratos strategies, it
+// works during project bootstrap when only a workspace API key is configured:
+// it returns workspace-scoped schemas that have not been added to any project.
+//
+// Schemas are keyed by their content hash (the canonical hash-based ID that the
+// Kratos and project-config strategies also expose), and the full schema body
+// is fetched from each entry's blob URL.
+func (c *OryClient) ListWorkspaceIdentitySchemas(ctx context.Context) ([]ory.IdentitySchemaContainer, error) {
+	if c.consoleClient == nil {
+		return nil, fmt.Errorf("listing workspace identity schemas: %w. "+
+			"Set workspace_api_key (ORY_WORKSPACE_API_KEY)", ErrConsoleClientNotConfigured)
+	}
+
+	endpoint := strings.TrimRight(c.config.ConsoleAPIURL, "/") + "/identity-schemas"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request for workspace identity schemas: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.config.WorkspaceAPIKey)
+	req.Header.Set("Accept", "application/json")
+	if c.config.UserAgent != "" {
+		req.Header.Set("User-Agent", c.config.UserAgent)
+	}
+
+	resp, err := retryWithBackoff(ctx, "listing workspace identity schemas", func() (*http.Response, error) {
+		r, doErr := consoleHTTPClient.Do(req)
+		if doErr != nil {
+			return nil, doErr
+		}
+		if r.StatusCode == http.StatusTooManyRequests {
+			body, _ := io.ReadAll(r.Body)
+			_ = r.Body.Close()
+			return nil, fmt.Errorf("429 Too Many Requests: %s", strings.TrimSpace(string(body)))
+		}
+		return r, nil
+	})
+	if err != nil {
+		return nil, wrapAPIError(err, "listing workspace identity schemas")
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading workspace identity schemas response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, wrapAPIError(fmt.Errorf("unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(body))),
+			"listing workspace identity schemas")
+	}
+
+	var managed []managedIdentitySchema
+	if err := json.Unmarshal(body, &managed); err != nil {
+		return nil, fmt.Errorf("parsing workspace identity schemas response: %w", err)
+	}
+
+	result := make([]ory.IdentitySchemaContainer, 0, len(managed))
+	for _, m := range managed {
+		// Prefer the content hash so results match the canonical hash IDs that
+		// the Kratos and project-config strategies expose. Fall back to the row
+		// ID if the API ever omits the hash.
+		id := m.ContentHash
+		if id == "" {
+			id = m.ID
+		}
+		container := ory.IdentitySchemaContainer{Id: id, Schema: map[string]interface{}{}}
+		if strings.HasPrefix(m.BlobURL, schemeHTTPS+"://") {
+			schemaObj, fetchErr := fetchSchemaFromURL(ctx, m.BlobURL)
+			if fetchErr != nil {
+				return nil, fmt.Errorf("fetching workspace schema %q content: %w", id, fetchErr)
+			}
+			container.Schema = schemaObj
+		}
+		result = append(result, container)
+	}
+	return result, nil
+}
+
 // extractSchemasFromProjectConfig reads the identity schemas array from the
 // project's kratos config and converts each entry into an
 // IdentitySchemaContainer. For base64-encoded schemas the content is decoded
