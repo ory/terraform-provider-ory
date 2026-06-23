@@ -381,6 +381,68 @@ func TestAccSocialProviderResource_pkce(t *testing.T) {
 	})
 }
 
+// TestAccSocialProviderResource_fedcmConfigURL exercises fedcm_config_url across
+// create, update (changed URL), removal, and import. The value is an opaque URL
+// stored on the provider config; the API stores and returns it verbatim, so the
+// test asserts on string equality and on clearing when the attribute is removed.
+func TestAccSocialProviderResource_fedcmConfigURL(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with fedcm_config_url set
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_fedcm.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-google-fedcm"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "fedcm_config_url", "https://accounts.google.com/gsi/fedcm.json"),
+				),
+			},
+			// Verify no perpetual diff
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_fedcm.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Update fedcm_config_url to a different URL
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_fedcm_updated.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "fedcm_config_url", "https://accounts.example.com/fedcm/config.json"),
+				),
+			},
+			// Verify no perpetual diff after update
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_fedcm_updated.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Remove fedcm_config_url from config — should clear it server-side
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_fedcm_removed.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "fedcm_config_url"),
+				),
+			},
+			// Verify no diff after removal
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_fedcm_removed.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// ImportState
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           "test-google-fedcm",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+		},
+	})
+}
+
 // TestAccSocialProviderResource_aal2Values exercises aal2_acr_values and
 // aal2_amr_values across create, update (changed list contents), removal, and
 // import. Values are opaque strings stored on the provider config — the API

@@ -157,6 +157,23 @@ resource "ory_social_provider" "google" {
 }
 ```
 
+## FedCM (Federated Credential Management)
+
+The `fedcm_config_url` attribute enables sign-in with this provider through the browser's [FedCM API](https://developer.mozilla.org/en-US/docs/Web/API/FedCM_API) instead of a full-page OAuth2 redirect. Set it to the URL of the provider's FedCM configuration file. For Google, this is `https://accounts.google.com/gsi/fedcm.json`.
+
+```hcl
+resource "ory_social_provider" "google" {
+  provider_id      = "google"
+  provider_type    = "google"
+  client_id        = var.google_client_id
+  client_secret    = var.google_client_secret
+  scope            = ["email", "profile"]
+  fedcm_config_url = "https://accounts.google.com/gsi/fedcm.json"
+}
+```
+
+Leave the attribute unset to disable FedCM for the provider. Removing it from your configuration clears the value server-side.
+
 ## Base Redirect URI
 
 The `base_redirect_uri` attribute overrides the base URL Ory uses when constructing OIDC callback URLs. Use this when your project is accessible under a custom domain and you want callbacks to go to that domain rather than the default Ory project URL.

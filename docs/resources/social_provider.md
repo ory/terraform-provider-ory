@@ -78,6 +78,16 @@ resource "ory_social_provider" "google_labeled" {
   account_linking_mode = "automatic"
 }
 
+# Google Sign-In with FedCM (browser Federated Credential Management)
+resource "ory_social_provider" "google_fedcm" {
+  provider_id      = "google-fedcm"
+  provider_type    = "google"
+  client_id        = var.google_client_id
+  client_secret    = var.google_client_secret
+  scope            = ["email", "profile"]
+  fedcm_config_url = "https://accounts.google.com/gsi/fedcm.json"
+}
+
 # Generic OIDC with a custom base redirect URI (e.g., when using a custom domain)
 resource "ory_social_provider" "corporate_sso_custom_domain" {
   provider_id       = "corporate-sso-custom-domain"
@@ -344,6 +354,23 @@ resource "ory_social_provider" "google" {
 }
 ```
 
+## FedCM (Federated Credential Management)
+
+The `fedcm_config_url` attribute enables sign-in with this provider through the browser's [FedCM API](https://developer.mozilla.org/en-US/docs/Web/API/FedCM_API) instead of a full-page OAuth2 redirect. Set it to the URL of the provider's FedCM configuration file. For Google, this is `https://accounts.google.com/gsi/fedcm.json`.
+
+```hcl
+resource "ory_social_provider" "google" {
+  provider_id      = "google"
+  provider_type    = "google"
+  client_id        = var.google_client_id
+  client_secret    = var.google_client_secret
+  scope            = ["email", "profile"]
+  fedcm_config_url = "https://accounts.google.com/gsi/fedcm.json"
+}
+```
+
+Leave the attribute unset to disable FedCM for the provider. Removing it from your configuration clears the value server-side.
+
 ## Base Redirect URI
 
 The `base_redirect_uri` attribute overrides the base URL Ory uses when constructing OIDC callback URLs. Use this when your project is accessible under a custom domain and you want callbacks to go to that domain rather than the default Ory project URL.
@@ -403,6 +430,7 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 - `auto_link` (Boolean) Enable automatic account linking for this provider. When true, if an identity with the same identifier (e.g., email) already exists, the social sign-in will automatically link to that identity instead of failing. Requires enable_oidc_auto_link_policy to be true in the project config (ory_project_config). This attribute is write-only — the API accepts it on create/update but does not return it on read, so Terraform preserves the value from state. On import, the value will not be populated. Removing this attribute from your configuration will automatically disable auto-linking server-side.
 - `base_redirect_uri` (String, Deprecated) Override the base redirect URI for OIDC callbacks (e.g., "https://iam.example.com"). When set, Ory constructs callback URLs using this base instead of the default project domain. This is a global OIDC config setting — if multiple social providers set different values, the last applied value wins.
 - `client_secret` (String, Sensitive) OAuth2 client secret from the provider. Required for all providers except Apple (where Ory generates the secret from apple_team_id, apple_private_key_id, and apple_private_key).
+- `fedcm_config_url` (String) URL of the provider's FedCM (Federated Credential Management) configuration file. When set, Ory can use the browser's FedCM API for sign-in with this provider instead of a full-page redirect. For example, Google's FedCM configuration is served at "https://accounts.google.com/gsi/fedcm.json". Leave unset to disable FedCM for this provider.
 - `issuer_url` (String) OIDC issuer URL (required for generic providers).
 - `label` (String) Human-readable label for the provider, displayed on the login button (e.g., "Sign in with Corporate SSO").
 - `mapper_url` (String) Jsonnet mapper URL for claims mapping. Can be a URL or base64-encoded Jsonnet (base64://...). If not set, a default mapper that extracts email from claims will be used.
