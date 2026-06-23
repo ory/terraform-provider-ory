@@ -111,24 +111,28 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 
 	var schemas []ory.IdentitySchemaContainer
 	var err error
+	// Whether the results came from the project config, which only lists schemas
+	// explicitly added to the project. When true we merge in workspace-scoped
+	// schemas below. Tracked per-run (not from static capability) so a Kratos
+	// failure that falls back to the project config still triggers the merge.
+	usedProjectConfigBase := false
 	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
-		// Prefer Kratos API (canonical IDs + full content) when available.
-		// Fall back to console API if Kratos fails and console is available.
+		usedProjectConfigBase = false
+		// Prefer Kratos API (canonical IDs + full content) when available, then
+		// fall back to the project config, then the workspace endpoint.
 		switch {
 		case canUseKratosAPI:
 			schemas, err = d.client.ListIdentitySchemas(ctx)
-			if err != nil {
-				// Kratos API failed — fall back to whichever console-based
-				// strategy is available (project config, then workspace).
-				switch {
-				case canUseConsoleAPI:
-					schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
-				case canUseWorkspaceAPI:
-					schemas, err = d.client.ListWorkspaceIdentitySchemas(ctx)
-				}
+			if err != nil && canUseConsoleAPI {
+				schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
+				usedProjectConfigBase = err == nil
+			}
+			if err != nil && canUseWorkspaceAPI {
+				schemas, err = d.client.ListWorkspaceIdentitySchemas(ctx)
 			}
 		case canUseConsoleAPI:
 			schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
+			usedProjectConfigBase = err == nil
 		default:
 			// Workspace key only (bootstrap): no project to read config from.
 			schemas, err = d.client.ListWorkspaceIdentitySchemas(ctx)
@@ -150,13 +154,13 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 		return
 	}
 
-	// When reading from the project config (console API), the list only contains
-	// schemas explicitly added to the project — a new project sees just
-	// preset://username. Merge in the workspace-scoped schemas so they are
-	// discoverable during bootstrap. Kratos already returns the full set, and
-	// the workspace-only path above already used this endpoint, so we only
-	// merge when the project-config (console) path was the base.
-	if canUseConsoleAPI && !canUseKratosAPI {
+	// When the base came from the project config, the list only contains schemas
+	// explicitly added to the project — a new project sees just preset://username.
+	// Merge in the workspace-scoped schemas so they are discoverable during
+	// bootstrap. Kratos already returns the full set, and the workspace-only path
+	// already used this endpoint, so we only merge when the project config was
+	// the actual base.
+	if usedProjectConfigBase && canUseWorkspaceAPI {
 		wsSchemas, wsErr := d.client.ListWorkspaceIdentitySchemas(ctx)
 		if wsErr != nil {
 			// Only hard-fail if we have nothing else; otherwise keep the
