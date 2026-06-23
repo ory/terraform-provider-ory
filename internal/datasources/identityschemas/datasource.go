@@ -117,9 +117,15 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 		switch {
 		case canUseKratosAPI:
 			schemas, err = d.client.ListIdentitySchemas(ctx)
-			if err != nil && canUseConsoleAPI {
-				// Kratos API failed — try console API as fallback.
-				schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
+			if err != nil {
+				// Kratos API failed — fall back to whichever console-based
+				// strategy is available (project config, then workspace).
+				switch {
+				case canUseConsoleAPI:
+					schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
+				case canUseWorkspaceAPI:
+					schemas, err = d.client.ListWorkspaceIdentitySchemas(ctx)
+				}
 			}
 		case canUseConsoleAPI:
 			schemas, err = d.client.ListIdentitySchemasViaProject(ctx, projectID)
@@ -160,14 +166,23 @@ func (d *IdentitySchemasDataSource) Read(ctx context.Context, req datasource.Rea
 				return
 			}
 		} else {
-			seen := make(map[string]struct{}, len(schemas))
-			for _, s := range schemas {
-				seen[s.GetId()] = struct{}{}
+			indexByID := make(map[string]int, len(schemas))
+			for i := range schemas {
+				indexByID[schemas[i].GetId()] = i
 			}
 			for i := range wsSchemas {
-				if _, ok := seen[wsSchemas[i].GetId()]; !ok {
-					schemas = append(schemas, wsSchemas[i])
+				if idx, ok := indexByID[wsSchemas[i].GetId()]; ok {
+					// On an ID collision, prefer the workspace entry when the
+					// existing (project-config) body is empty — the workspace
+					// endpoint fetches the full schema content, whereas the
+					// project config may return an empty body.
+					if len(schemas[idx].GetSchema()) == 0 && len(wsSchemas[i].GetSchema()) > 0 {
+						schemas[idx] = wsSchemas[i]
+					}
+					continue
 				}
+				indexByID[wsSchemas[i].GetId()] = len(schemas)
+				schemas = append(schemas, wsSchemas[i])
 			}
 		}
 	}

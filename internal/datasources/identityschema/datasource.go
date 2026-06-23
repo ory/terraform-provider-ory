@@ -165,11 +165,12 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 		if canUseKratosAPI && found == nil {
 			schemas, err := d.client.ListIdentitySchemas(ctx)
 			if err != nil {
-				if !canUseConsoleAPI {
+				if !canUseConsoleAPI && !canUseWorkspaceAPI {
 					resp.Diagnostics.AddError("Error Listing Identity Schemas", err.Error())
 					return
 				}
-				// Kratos API failed but console API is available — continue to fallback.
+				// Kratos API failed but the console or workspace strategy is
+				// available — continue to the fallbacks below.
 			} else {
 				allSchemas = schemas
 				for i := range schemas {

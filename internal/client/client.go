@@ -1496,6 +1496,12 @@ func (c *OryClient) ListIdentitySchemasViaProject(ctx context.Context, projectID
 	return extractSchemasFromProjectConfig(ctx, project)
 }
 
+// consoleHTTPClient is used for direct calls to the console API (the workspace
+// identity-schemas endpoint) that the SDK does not yet expose. It carries an
+// explicit timeout so a stalled upstream cannot block reads indefinitely, and
+// is a variable so tests can override it.
+var consoleHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
 // managedIdentitySchema mirrors the response of the backoffice
 // GET /identity-schemas endpoint. It is defined locally so the method does not
 // depend on a specific client-go release exposing the operation.
@@ -1533,7 +1539,7 @@ func (c *OryClient) ListWorkspaceIdentitySchemas(ctx context.Context) ([]ory.Ide
 	}
 
 	resp, err := retryWithBackoff(ctx, "listing workspace identity schemas", func() (*http.Response, error) {
-		r, doErr := http.DefaultClient.Do(req)
+		r, doErr := consoleHTTPClient.Do(req)
 		if doErr != nil {
 			return nil, doErr
 		}
