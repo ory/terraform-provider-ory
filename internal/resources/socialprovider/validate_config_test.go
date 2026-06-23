@@ -45,6 +45,7 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 		"aal2_acr_values":               tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
 		"aal2_amr_values":               tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
 		"pkce":                          tfStringValue(model.Pkce),
+		"fedcm_config_url":              tfStringValue(model.FedcmConfigURL),
 	}
 
 	objType := tftypes.Object{
@@ -72,6 +73,7 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 			"aal2_acr_values":               tftypes.List{ElementType: tftypes.String},
 			"aal2_amr_values":               tftypes.List{ElementType: tftypes.String},
 			"pkce":                          tftypes.String,
+			"fedcm_config_url":              tftypes.String,
 		},
 	}
 
@@ -186,6 +188,23 @@ func TestValidateConfig_EmptyClientSecret_Fails(t *testing.T) {
 	r.ValidateConfig(ctx, req, &resp)
 
 	assert.True(t, resp.Diagnostics.HasError(), "expected error for empty client_secret")
+}
+
+func TestValidateConfig_EmptyFedcmConfigURL_Fails(t *testing.T) {
+	r := &SocialProviderResource{}
+	ctx := context.Background()
+
+	req := buildTestConfig(t, SocialProviderResourceModel{
+		ProviderID:     types.StringValue("google"),
+		ProviderType:   types.StringValue("generic"),
+		ClientID:       types.StringValue("my-client-id"),
+		ClientSecret:   types.StringValue("my-secret"),
+		FedcmConfigURL: types.StringValue(""), // empty string — should fail
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	assert.True(t, resp.Diagnostics.HasError(), "expected error for empty fedcm_config_url")
 }
 
 func TestValidateConfig_UnknownProviderType_SkipsValidation(t *testing.T) {

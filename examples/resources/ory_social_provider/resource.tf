@@ -28,6 +28,16 @@ resource "ory_social_provider" "google_labeled" {
   account_linking_mode = "automatic"
 }
 
+# Google Sign-In with FedCM (browser Federated Credential Management)
+resource "ory_social_provider" "google_fedcm" {
+  provider_id      = "google-fedcm"
+  provider_type    = "google"
+  client_id        = var.google_client_id
+  client_secret    = var.google_client_secret
+  scope            = ["email", "profile"]
+  fedcm_config_url = "https://accounts.google.com/gsi/fedcm.json"
+}
+
 # Generic OIDC with a custom base redirect URI (e.g., when using a custom domain)
 resource "ory_social_provider" "corporate_sso_custom_domain" {
   provider_id       = "corporate-sso-custom-domain"

@@ -80,6 +80,7 @@ type SocialProviderResourceModel struct {
 	Aal2AcrValues              types.List   `tfsdk:"aal2_acr_values"`
 	Aal2AmrValues              types.List   `tfsdk:"aal2_amr_values"`
 	Pkce                       types.String `tfsdk:"pkce"`
+	FedcmConfigURL             types.String `tfsdk:"fedcm_config_url"`
 }
 
 func (r *SocialProviderResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -214,6 +215,10 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 					stringvalidator.OneOf("auto", "force", "never"),
 				},
 			},
+			"fedcm_config_url": schema.StringAttribute{
+				Description: "URL of the provider's FedCM (Federated Credential Management) configuration file. When set, Ory can use the browser's FedCM API for sign-in with this provider instead of a full-page redirect. For example, Google's FedCM configuration is served at \"https://accounts.google.com/gsi/fedcm.json\". Leave unset to disable FedCM for this provider.",
+				Optional:    true,
+			},
 		},
 	}
 }
@@ -287,6 +292,9 @@ func (r *SocialProviderResource) ValidateConfig(ctx context.Context, req resourc
 	}
 	if !config.BaseRedirectURI.IsNull() && !config.BaseRedirectURI.IsUnknown() && config.BaseRedirectURI.ValueString() == "" {
 		resp.Diagnostics.AddAttributeError(path.Root("base_redirect_uri"), "Invalid Attribute Value", "base_redirect_uri must not be an empty string.")
+	}
+	if !config.FedcmConfigURL.IsNull() && !config.FedcmConfigURL.IsUnknown() && config.FedcmConfigURL.ValueString() == "" {
+		resp.Diagnostics.AddAttributeError(path.Root("fedcm_config_url"), "Invalid Attribute Value", "fedcm_config_url must not be an empty string.")
 	}
 
 	if providerType == "apple" {
@@ -403,6 +411,12 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 
 	if !plan.Pkce.IsNull() && !plan.Pkce.IsUnknown() {
 		config["pkce"] = plan.Pkce.ValueString()
+	}
+
+	// fedcm_config_url — only send when set to a non-empty value. Omitting it on
+	// the full-object replace performed by Update clears it server-side.
+	if !plan.FedcmConfigURL.IsNull() && !plan.FedcmConfigURL.IsUnknown() && plan.FedcmConfigURL.ValueString() != "" {
+		config["fedcm_config_url"] = plan.FedcmConfigURL.ValueString()
 	}
 
 	// Apple-specific fields — skip empty strings to avoid sending blank credentials
@@ -776,6 +790,14 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		state.Pkce = types.StringValue(pkce)
 	} else {
 		state.Pkce = types.StringNull()
+	}
+
+	// Read fedcm_config_url from the API (returned on read), clearing stale state
+	// when the API omits it.
+	if fedcmURL, ok := provider["fedcm_config_url"].(string); ok && fedcmURL != "" {
+		state.FedcmConfigURL = types.StringValue(fedcmURL)
+	} else {
+		state.FedcmConfigURL = types.StringNull()
 	}
 
 	// Read Apple-specific fields, clearing stale state when not returned by the API
