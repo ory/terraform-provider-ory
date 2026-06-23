@@ -7,6 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/ory/terraform-provider-ory/internal/testutil"
 )
 
@@ -46,35 +49,23 @@ func TestListWorkspaceIdentitySchemas(t *testing.T) {
 			WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
 			ConsoleAPIURL:   api.URL,
 		})
-		if err != nil {
-			t.Fatalf("NewOryClient: %v", err)
-		}
+		require.NoError(t, err)
 
 		schemas, err := c.ListWorkspaceIdentitySchemas(context.Background())
-		if err != nil {
-			t.Fatalf("ListWorkspaceIdentitySchemas: %v", err)
-		}
+		require.NoError(t, err)
+		require.Len(t, schemas, 2)
 
-		if gotPath != "/identity-schemas" {
-			t.Errorf("path = %q, want /identity-schemas", gotPath)
-		}
-		if gotAuth != "Bearer "+testutil.TestWorkspaceAPIKey {
-			t.Errorf("auth header = %q, want bearer workspace key", gotAuth)
-		}
-		if len(schemas) != 2 {
-			t.Fatalf("got %d schemas, want 2", len(schemas))
-		}
+		assert.Equal(t, "/identity-schemas", gotPath)
+		assert.Equal(t, "Bearer "+testutil.TestWorkspaceAPIKey, gotAuth)
+
 		// The schema is keyed by its content hash (matches the issue #138 lookup).
-		if schemas[0].GetId() != wantHash {
-			t.Errorf("schema[0].id = %q, want content hash %q", schemas[0].GetId(), wantHash)
-		}
-		if props, _ := schemas[0].GetSchema()["properties"].(map[string]any); props["email"] == nil {
-			t.Errorf("schema[0] body not fetched from blob_url: %v", schemas[0].GetSchema())
-		}
+		assert.Equal(t, wantHash, schemas[0].GetId())
+		// The body is fetched from blob_url.
+		props, ok := schemas[0].GetSchema()["properties"].(map[string]any)
+		require.True(t, ok, "schema[0] body not fetched from blob_url: %v", schemas[0].GetSchema())
+		assert.Contains(t, props, "email")
 		// content_hash empty -> falls back to the row ID.
-		if schemas[1].GetId() != "22222222-2222-2222-2222-222222222222" {
-			t.Errorf("schema[1].id = %q, want row id fallback", schemas[1].GetId())
-		}
+		assert.Equal(t, "22222222-2222-2222-2222-222222222222", schemas[1].GetId())
 	})
 
 	t.Run("surfaces API errors", func(t *testing.T) {
@@ -85,22 +76,17 @@ func TestListWorkspaceIdentitySchemas(t *testing.T) {
 		defer api.Close()
 
 		c, err := NewOryClient(OryClientConfig{WorkspaceAPIKey: testutil.TestWorkspaceAPIKey, ConsoleAPIURL: api.URL})
-		if err != nil {
-			t.Fatalf("NewOryClient: %v", err)
-		}
-		if _, err := c.ListWorkspaceIdentitySchemas(context.Background()); err == nil {
-			t.Fatal("expected error for 401 response")
-		}
+		require.NoError(t, err)
+
+		_, err = c.ListWorkspaceIdentitySchemas(context.Background())
+		require.Error(t, err, "expected error for 401 response")
 	})
 
 	t.Run("requires a console client", func(t *testing.T) {
 		c, err := NewOryClient(OryClientConfig{}) // no workspace API key
-		if err != nil {
-			t.Fatalf("NewOryClient: %v", err)
-		}
+		require.NoError(t, err)
+
 		_, err = c.ListWorkspaceIdentitySchemas(context.Background())
-		if err == nil {
-			t.Fatal("expected error when console client is not configured")
-		}
+		require.Error(t, err, "expected error when console client is not configured")
 	})
 }
