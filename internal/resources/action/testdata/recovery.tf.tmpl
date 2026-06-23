@@ -1,0 +1,6 @@
+resource "ory_action" "test" {
+  flow   = "recovery"
+  timing = "after"
+  url    = "[[ .WebhookURL ]]/recovery-after"
+  method = "POST"
+}

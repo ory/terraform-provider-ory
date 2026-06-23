@@ -72,8 +72,21 @@ clean: ## Remove build artifacts
 # Code quality tool binaries
 .bin/golangci-lint: .deps/golangci-lint.yaml .bin/ory
 	@VERSION=$$(.bin/ory dev ci deps url -o $(OS) -a $(ARCH) -c .deps/golangci-lint.yaml); \
-	echo "Installing golangci-lint $${VERSION}..."; \
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b .bin $${VERSION}
+	V=$${VERSION#v}; \
+	TARBALL=golangci-lint-$${V}-$(OS)-$(ARCH).tar.gz; \
+	BASE=https://github.com/golangci/golangci-lint/releases/download/v$${V}; \
+	echo "Installing golangci-lint v$${V}..."; \
+	mkdir -p .bin; \
+	TMP=$$(mktemp -d); \
+	curl -sSfL "$${BASE}/$${TARBALL}" -o "$${TMP}/$${TARBALL}"; \
+	curl -sSfL "$${BASE}/golangci-lint-$${V}-checksums.txt" -o "$${TMP}/checksums.txt"; \
+	WANT=$$(awk -v f="$${TARBALL}" '$$2 == f {print $$1}' "$${TMP}/checksums.txt"); \
+	GOT=$$(shasum -a 256 "$${TMP}/$${TARBALL}" | awk '{print $$1}'); \
+	if [ "$${WANT}" != "$${GOT}" ]; then echo "checksum mismatch: want $${WANT} got $${GOT}"; exit 1; fi; \
+	tar -xzf "$${TMP}/$${TARBALL}" -C "$${TMP}"; \
+	cp "$${TMP}/golangci-lint-$${V}-$(OS)-$(ARCH)/golangci-lint" .bin/golangci-lint; \
+	chmod +x .bin/golangci-lint; \
+	rm -rf "$${TMP}"
 
 .bin/tfplugindocs: .deps/tfplugindocs.yaml .bin/ory
 	@mkdir -p .bin

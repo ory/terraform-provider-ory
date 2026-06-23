@@ -17,9 +17,10 @@ resource "ory_project_config" "secure" {
   cors_admin_origins = ["https://admin.example.com"]
 
   # Sessions
-  session_lifespan          = "168h0m0s" # 7 days
-  session_cookie_same_site  = "Strict"
-  session_cookie_persistent = true
+  session_lifespan                 = "168h0m0s" # 7 days
+  session_earliest_possible_extend = "24h"      # Only extend sessions in the last 24h to avoid excessive writes
+  session_cookie_same_site         = "Strict"
+  session_cookie_persistent        = true
 
   # Password Policy
   selfservice_methods_password_config_min_password_length                 = 12
@@ -74,8 +75,18 @@ resource "ory_project_config" "secure" {
   ]
 
   # Account Experience Branding
-  # (removed: account_experience_name, account_experience_logo_url, account_experience_favicon_url)
+  # Logos/favicons must be inline data URIs (the API does not fetch remote
+  # URLs), e.g. "data:image/png;base64,${filebase64("logo.png")}".
+  # Theme variables are maps of color tokens (see the AccountExperienceColors
+  # API model) to CSS color values.
   account_experience_default_locale = "en"
+  # account_experience_logo_light    = "data:image/png;base64,${filebase64("${path.module}/assets/logo.png")}"
+  # account_experience_favicon_light = "data:image/png;base64,${filebase64("${path.module}/assets/favicon.png")}"
+  # account_experience_theme_variables_light = {
+  #   ax_background_default             = "#fafafa"
+  #   brand_500                         = "#0066ff"
+  #   button_primary_background_default = "#0066ff"
+  # }
 
   # OAuth2 Token Lifespans
   oauth2_ttl_access_token          = "1h0m0s"
@@ -132,8 +143,17 @@ resource "ory_project_config" "self_hosted_ui" {
   selfservice_flows_verification_enabled = true
 }
 
-# SMTP configuration for custom email delivery
+# SMTP configuration for custom email delivery.
+#
+# The URI scheme selects the security mode:
+#   smtp://  -> STARTTLS (typical for port 587)
+#   smtps:// -> Implicit TLS (typical for port 465)
+#
+# Append ?disable_starttls=true for cleartext (local dev only) or
+# ?skip_ssl_verify=true to skip certificate verification.
+# See the "SMTP Security Modes" section of the resource docs for details.
 resource "ory_project_config" "with_smtp" {
+  # STARTTLS on port 587 (recommended for most providers)
   smtp_connection_uri       = var.smtp_connection_uri
   courier_smtp_from_address = "noreply@example.com"
   courier_smtp_from_name    = "MyApp"
@@ -145,9 +165,13 @@ resource "ory_project_config" "with_smtp" {
 }
 
 variable "smtp_connection_uri" {
-  type        = string
-  sensitive   = true
-  description = "SMTP connection URI (e.g., smtps://user:pass@smtp.example.com:465)"
+  type      = string
+  sensitive = true
+  # Examples:
+  #   STARTTLS:      smtp://user:pass@smtp.example.com:587
+  #   Implicit TLS:  smtps://user:pass@smtp.example.com:465
+  #   Cleartext:     smtp://user:pass@localhost:1025/?disable_starttls=true
+  description = "SMTP connection URI. Scheme selects the security mode (smtp:// = STARTTLS, smtps:// = implicit TLS)."
 }
 
 # Native-only flows: explicitly clear browser return URLs
@@ -221,4 +245,46 @@ variable "sms_api_key" {
   type        = string
   sensitive   = true
   description = "API key for SMS delivery service"
+}
+
+# OAuth2 token hook with API key authentication
+resource "ory_project_config" "with_token_hook" {
+  oauth2_token_hook = "https://example.com/token-hook"
+
+  oauth2_token_hook_auth = {
+    type  = "api_key"
+    name  = "X-Api-Key"
+    value = var.token_hook_api_key
+    in    = "header"
+  }
+}
+
+variable "token_hook_api_key" {
+  type        = string
+  sensitive   = true
+  description = "API key sent to the OAuth2 token hook endpoint."
+}
+
+# Show the verification UI after registration and profile updates.
+# Each attribute toggles the `show_verification_ui` hook for one flow while
+# preserving any other hooks (e.g. `session`, `organization`) already set on
+# the project.
+resource "ory_project_config" "show_verification_ui" {
+  selfservice_flows_verification_enabled = true
+
+  # After password registration, redirect users to the verification UI.
+  selfservice_flows_registration_after_password_hook_show_verification_ui = true
+  # Same for social (OIDC) registration.
+  selfservice_flows_registration_after_oidc_hook_show_verification_ui = true
+  # When users change their email in profile settings, force re-verification.
+  selfservice_flows_settings_after_profile_hook_show_verification_ui = true
+}
+
+# Automatically sign users in after they register with email + password.
+# OIDC, WebAuthn and Passkey flows already issue a session on registration,
+# so this toggle only affects the password flow — it mirrors the Ory Console
+# "Enable sign in after registration" toggle. Existing hooks at the same path
+# (e.g. `organization`) are preserved.
+resource "ory_project_config" "sign_in_after_registration" {
+  selfservice_flows_registration_after_password_hook_session = true
 }

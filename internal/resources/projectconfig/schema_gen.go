@@ -34,6 +34,16 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Session duration (e.g., '24h0m0s').",
 			Optional:    true,
 		},
+		"session_earliest_possible_extend": schema.StringAttribute{
+			Description: "Earliest time before session expiry when a session can be extended (e.g., '24h'). Setting this prevents excessive database writes when sessions are extended.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.RegexMatches(
+					regexp.MustCompile("^([0-9]+(ns|us|ms|s|m|h))+$"),
+					"must be a Go duration string (e.g., '1h', '30m', '24h')",
+				),
+			},
+		},
 		"session_cookie_same_site": schema.StringAttribute{
 			Description: "SameSite cookie attribute (Lax, Strict, None).",
 			Optional:    true,
@@ -685,138 +695,6 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Local hostname used in SMTP HELO/EHLO commands.",
 			Optional:    true,
 		},
-		"courier_templates_login_code_valid_email_body_html": schema.StringAttribute{
-			Description: "HTML body template for valid login-by-code emails.",
-			Optional:    true,
-		},
-		"courier_templates_login_code_valid_email_body_plaintext": schema.StringAttribute{
-			Description: "Plaintext body template for valid login-by-code emails.",
-			Optional:    true,
-		},
-		"courier_templates_login_code_valid_email_subject": schema.StringAttribute{
-			Description: "Subject template for valid login-by-code emails.",
-			Optional:    true,
-		},
-		"courier_templates_login_code_valid_sms_body_plaintext": schema.StringAttribute{
-			Description: "Plaintext body template for valid login-by-code SMS messages.",
-			Optional:    true,
-		},
-		"courier_templates_recovery_code_invalid_email_body_html": schema.StringAttribute{
-			Description: "HTML body template for invalid recovery-by-code emails.",
-			Optional:    true,
-		},
-		"courier_templates_recovery_code_invalid_email_body_plaintext": schema.StringAttribute{
-			Description: "Plaintext body template for invalid recovery-by-code emails.",
-			Optional:    true,
-		},
-		"courier_templates_recovery_code_invalid_email_subject": schema.StringAttribute{
-			Description: "Subject template for invalid recovery-by-code emails.",
-			Optional:    true,
-		},
-		"courier_templates_recovery_code_valid_email_body_html": schema.StringAttribute{
-			Description: "HTML body template for valid recovery-by-code emails.",
-			Optional:    true,
-		},
-		"courier_templates_recovery_code_valid_email_body_plaintext": schema.StringAttribute{
-			Description: "Plaintext body template for valid recovery-by-code emails.",
-			Optional:    true,
-		},
-		"courier_templates_recovery_code_valid_email_subject": schema.StringAttribute{
-			Description: "Subject template for valid recovery-by-code emails.",
-			Optional:    true,
-		},
-		"courier_templates_recovery_invalid_email_body_html": schema.StringAttribute{
-			Description: "HTML body template for invalid recovery emails.",
-			Optional:    true,
-		},
-		"courier_templates_recovery_invalid_email_body_plaintext": schema.StringAttribute{
-			Description: "Plaintext body template for invalid recovery emails.",
-			Optional:    true,
-		},
-		"courier_templates_recovery_invalid_email_subject": schema.StringAttribute{
-			Description: "Subject template for invalid recovery emails.",
-			Optional:    true,
-		},
-		"courier_templates_recovery_valid_email_body_html": schema.StringAttribute{
-			Description: "HTML body template for valid recovery emails.",
-			Optional:    true,
-		},
-		"courier_templates_recovery_valid_email_body_plaintext": schema.StringAttribute{
-			Description: "Plaintext body template for valid recovery emails.",
-			Optional:    true,
-		},
-		"courier_templates_recovery_valid_email_subject": schema.StringAttribute{
-			Description: "Subject template for valid recovery emails.",
-			Optional:    true,
-		},
-		"courier_templates_registration_code_valid_email_body_html": schema.StringAttribute{
-			Description: "HTML body template for valid registration-by-code emails.",
-			Optional:    true,
-		},
-		"courier_templates_registration_code_valid_email_body_plaintext": schema.StringAttribute{
-			Description: "Plaintext body template for valid registration-by-code emails.",
-			Optional:    true,
-		},
-		"courier_templates_registration_code_valid_email_subject": schema.StringAttribute{
-			Description: "Subject template for valid registration-by-code emails.",
-			Optional:    true,
-		},
-		"courier_templates_registration_code_valid_sms_body_plaintext": schema.StringAttribute{
-			Description: "Plaintext body template for valid registration-by-code SMS messages.",
-			Optional:    true,
-		},
-		"courier_templates_verification_code_invalid_email_body_html": schema.StringAttribute{
-			Description: "HTML body template for invalid verification-by-code emails.",
-			Optional:    true,
-		},
-		"courier_templates_verification_code_invalid_email_body_plaintext": schema.StringAttribute{
-			Description: "Plaintext body template for invalid verification-by-code emails.",
-			Optional:    true,
-		},
-		"courier_templates_verification_code_invalid_email_subject": schema.StringAttribute{
-			Description: "Subject template for invalid verification-by-code emails.",
-			Optional:    true,
-		},
-		"courier_templates_verification_code_valid_email_body_html": schema.StringAttribute{
-			Description: "HTML body template for valid verification-by-code emails.",
-			Optional:    true,
-		},
-		"courier_templates_verification_code_valid_email_body_plaintext": schema.StringAttribute{
-			Description: "Plaintext body template for valid verification-by-code emails.",
-			Optional:    true,
-		},
-		"courier_templates_verification_code_valid_email_subject": schema.StringAttribute{
-			Description: "Subject template for valid verification-by-code emails.",
-			Optional:    true,
-		},
-		"courier_templates_verification_code_valid_sms_body_plaintext": schema.StringAttribute{
-			Description: "Plaintext body template for valid verification-by-code SMS messages.",
-			Optional:    true,
-		},
-		"courier_templates_verification_invalid_email_body_html": schema.StringAttribute{
-			Description: "HTML body template for invalid verification emails.",
-			Optional:    true,
-		},
-		"courier_templates_verification_invalid_email_body_plaintext": schema.StringAttribute{
-			Description: "Plaintext body template for invalid verification emails.",
-			Optional:    true,
-		},
-		"courier_templates_verification_invalid_email_subject": schema.StringAttribute{
-			Description: "Subject template for invalid verification emails.",
-			Optional:    true,
-		},
-		"courier_templates_verification_valid_email_body_html": schema.StringAttribute{
-			Description: "HTML body template for valid verification emails.",
-			Optional:    true,
-		},
-		"courier_templates_verification_valid_email_body_plaintext": schema.StringAttribute{
-			Description: "Plaintext body template for valid verification emails.",
-			Optional:    true,
-		},
-		"courier_templates_verification_valid_email_subject": schema.StringAttribute{
-			Description: "Subject template for valid verification emails.",
-			Optional:    true,
-		},
 		"feature_flags_cacheable_sessions": schema.BoolAttribute{
 			Description: "Enable session caching.",
 			Optional:    true,
@@ -1037,33 +915,19 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 			ElementType: types.StringType,
 		},
-		"account_experience_favicon_dark": schema.StringAttribute{
-			Description: "URL for the dark theme favicon in the hosted login UI.",
-			Optional:    true,
-		},
-		"account_experience_favicon_light": schema.StringAttribute{
-			Description: "URL for the light theme favicon in the hosted login UI.",
-			Optional:    true,
-		},
 		"account_experience_locale_behavior": schema.StringAttribute{
 			Description: "Locale behavior: 'respect_accept_language' or 'force_default'.",
 			Optional:    true,
 		},
-		"account_experience_logo_dark": schema.StringAttribute{
-			Description: "URL for the dark theme logo in the hosted login UI.",
+		"account_experience_theme_variables_dark": schema.MapAttribute{
+			Description: "Theme color variables for the hosted Account Experience UI (dark theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset.",
 			Optional:    true,
+			ElementType: types.StringType,
 		},
-		"account_experience_logo_light": schema.StringAttribute{
-			Description: "URL for the light theme logo in the hosted login UI.",
+		"account_experience_theme_variables_light": schema.MapAttribute{
+			Description: "Theme color variables for the hosted Account Experience UI (light theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset.",
 			Optional:    true,
-		},
-		"account_experience_theme_variables_dark": schema.StringAttribute{
-			Description: "URL for dark theme CSS variables in the hosted login UI.",
-			Optional:    true,
-		},
-		"account_experience_theme_variables_light": schema.StringAttribute{
-			Description: "URL for light theme CSS variables in the hosted login UI.",
-			Optional:    true,
+			ElementType: types.StringType,
 		},
 		"disable_account_experience_welcome_screen": schema.BoolAttribute{
 			Description: "Disable the account experience welcome screen at /ui/welcome.",
@@ -1230,9 +1094,37 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			ElementType: types.StringType,
 		},
 		"smtp_connection_uri": schema.StringAttribute{
-			Description: "SMTP connection URI for sending emails (e.g., smtps://user:pass@host:port).",
+			Description: "SMTP connection URI for sending emails. The URI scheme selects the security mode: `smtp://` uses STARTTLS (recommended for port 587), `smtps://` uses implicit TLS (recommended for port 465). Append `?disable_starttls=true` for cleartext or `?skip_ssl_verify=true` to skip certificate verification (development only). See the SMTP Security Modes section in the resource documentation for the full list.",
 			Optional:    true,
 			Sensitive:   true,
+		},
+		"oauth2_preserve_ext_claims": schema.BoolAttribute{
+			Description: "Set to true to keep custom claims that are not promoted to the top level in the 'ext' claim. Only applies when mirror_top_level_claims is false.",
+			Optional:    true,
+		},
+		"account_experience_hide_ory_branding": schema.BoolAttribute{
+			Description: "Whether to hide the Ory branding badge on the account experience.",
+			Optional:    true,
+		},
+		"account_experience_hide_registration_link": schema.BoolAttribute{
+			Description: "Whether to hide the registration link on the account experience login card.",
+			Optional:    true,
+		},
+		"oauth2_grant_refresh_token_rotation_grace_reuse_count": schema.Int64Attribute{
+			Description: "OAuth2 Grant Refresh Token Rotation Grace Reuse Count. The maximum number of times a refresh token can be reused within the grace period. If set to `null` or `0`, the limit is disabled.",
+			Optional:    true,
+		},
+		"oauth2_token_prefix": schema.StringAttribute{
+			Description: "Sets a per-project Access Token, Refresh Token, and Authorization Code prefix",
+			Optional:    true,
+		},
+		"selfservice_methods_deviceauthn_enabled": schema.BoolAttribute{
+			Description: "Device authentication is enabled",
+			Optional:    true,
+		},
+		"selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation": schema.BoolAttribute{
+			Description: "Device authentication accepts relaxed attestations for testing. Only allowed on development projects and forced off otherwise.",
+			Optional:    true,
 		},
 	}
 }

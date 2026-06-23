@@ -1,0 +1,6 @@
+resource "ory_action" "test" {
+  flow   = "verification"
+  timing = "after"
+  url    = "[[ .WebhookURL ]]/verification-after"
+  method = "POST"
+}

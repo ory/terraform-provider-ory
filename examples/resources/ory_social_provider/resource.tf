@@ -28,6 +28,16 @@ resource "ory_social_provider" "google_labeled" {
   account_linking_mode = "automatic"
 }
 
+# Google Sign-In with FedCM (browser Federated Credential Management)
+resource "ory_social_provider" "google_fedcm" {
+  provider_id      = "google-fedcm"
+  provider_type    = "google"
+  client_id        = var.google_client_id
+  client_secret    = var.google_client_secret
+  scope            = ["email", "profile"]
+  fedcm_config_url = "https://accounts.google.com/gsi/fedcm.json"
+}
+
 # Generic OIDC with a custom base redirect URI (e.g., when using a custom domain)
 resource "ory_social_provider" "corporate_sso_custom_domain" {
   provider_id       = "corporate-sso-custom-domain"
@@ -67,6 +77,27 @@ resource "ory_social_provider" "apple" {
   apple_private_key_id = var.apple_private_key_id
   apple_private_key    = var.apple_private_key
   scope                = ["email", "name"]
+}
+
+# Enterprise SSO that elevates the Ory session to AAL2 when the upstream
+# provider asserts MFA via the `acr` or `amr` claims (works with Auth0, Okta,
+# Keycloak, PingFederate, Entra ID v1, and other OIDC providers).
+resource "ory_social_provider" "enterprise_sso" {
+  provider_id   = "enterprise-sso"
+  provider_type = "generic"
+  client_id     = var.sso_client_id
+  client_secret = var.sso_client_secret
+  issuer_url    = "https://sso.example.com"
+  scope         = ["openid", "profile", "email"]
+
+  # Mark the Ory session as AAL2 when the ID token's `acr` claim matches any of these.
+  aal2_acr_values = [
+    "urn:mace:incommon:iap:silver",
+    "https://refeds.org/profile/mfa",
+  ]
+
+  # Mark the Ory session as AAL2 when any of these values appear in the `amr` array (per RFC 8176).
+  aal2_amr_values = ["mfa", "otp", "hwk"]
 }
 
 # Generic OIDC Provider with custom claims mapping

@@ -82,6 +82,20 @@ var prefixToService = map[string]string{
 // Matches: This governs the "session.lifespan" setting.
 var governsRegex = regexp.MustCompile(`This governs the "([^"]+)" setting`)
 
+// paragraphBreakRegex matches blank-line paragraph separators. Spec descriptions
+// frequently split a single field's docs across multiple paragraphs; cleanDescription
+// uses this to join them into space-separated sentences without running together.
+var paragraphBreakRegex = regexp.MustCompile(`\n[ \t]*\n`)
+
+// courierTemplatePropertyPrefix matches every kratos_courier_templates_* spec
+// property. Courier templates are managed by the dedicated `ory_email_template`
+// resource and are not viable as simple-string codegen entries: writes require
+// `base64://` encoding and reads return a storage URL whose filename is
+// sha512(content). Excluding by prefix (rather than enumerating each template
+// family) ensures new families added upstream are excluded automatically. See
+// issue #213.
+const courierTemplatePropertyPrefix = "kratos_courier_templates_"
+
 func parseService(patchPath string) (string, []string) {
 	parts := strings.Split(strings.TrimPrefix(patchPath, "/"), "/")
 	if len(parts) < 4 || parts[0] != "services" || parts[2] != "config" {
@@ -256,6 +270,8 @@ func main() {
 	outDir := flag.String("out", ".", "output directory for generated files")
 	specPath := flag.String("spec", "", "path to OpenAPI spec (JSON or YAML) for governs-based path derivation and validation")
 	discover := flag.Bool("discover", false, "output YAML entries for unmapped spec properties (requires --spec)")
+	discoverApply := flag.Bool("discover-apply", false, "append YAML entries to mappings file and Go struct fields to resource.go for unmapped spec properties (requires --spec)")
+	resourceFile := flag.String("resource-file", "", "path to resource.go for -discover-apply struct field insertion (default: <out>/resource.go)")
 	strict := flag.Bool("strict", false, "fail if any spec properties are unmapped (use in CI to detect drift)")
 	flag.Parse()
 
@@ -288,13 +304,26 @@ func main() {
 			return
 		}
 
+		if *discoverApply {
+			resourcePath := *resourceFile
+			if resourcePath == "" {
+				resourcePath = filepath.Join(*outDir, "resource.go")
+			}
+			count, err := applyDiscoveredEntries(m, specProps, cleanMappingsPath, resourcePath)
+			if err != nil {
+				log.Fatalf("discover-apply: %v", err)
+			}
+			fmt.Printf("discover-apply: %d new attributes appended\n", count)
+			return
+		}
+
 		// Report unmapped spec properties (candidates for new entries)
 		unmappedCount := reportUnmapped(m, specProps)
 		if *strict && unmappedCount > 0 {
 			log.Fatalf("STRICT MODE: %d unmapped spec properties found. Run 'make discover' to generate YAML entries.", unmappedCount)
 		}
-	} else if *discover {
-		log.Fatal("--discover requires --spec")
+	} else if *discover || *discoverApply {
+		log.Fatal("--discover / --discover-apply requires --spec")
 	} else if *strict {
 		log.Fatal("--strict requires --spec")
 	}
@@ -492,7 +521,7 @@ func reportUnmapped(m Mappings, specProps map[string]SpecProperty) int {
 
 	var unmapped []SpecProperty
 	for _, sp := range specProps {
-		if excluded[sp.Name] {
+		if isExcludedProperty(sp.Name, excluded) {
 			continue
 		}
 		if mapped[sp.Name] {
@@ -547,7 +576,7 @@ func discoverNewEntries(m Mappings, specProps map[string]SpecProperty) {
 	// Collect and sort unmapped properties
 	var unmapped []SpecProperty
 	for _, sp := range specProps {
-		if excluded[sp.Name] || mapped[sp.Name] {
+		if isExcludedProperty(sp.Name, excluded) || mapped[sp.Name] {
 			continue
 		}
 		if sp.GovernsPath != "" && mappedPaths[sp.GovernsPath] {
@@ -604,6 +633,144 @@ func discoverNewEntries(m Mappings, specProps map[string]SpecProperty) {
 		fmt.Println(f)
 	}
 	fmt.Printf("\n// Total: %d new attributes\n", len(unmapped))
+}
+
+// collectUnmappedProperties returns the spec properties that have a governs path
+// and a supported type but are not yet present in mappings. Shared by
+// discoverNewEntries and applyDiscoveredEntries so both produce the same set.
+func collectUnmappedProperties(m Mappings, specProps map[string]SpecProperty) []SpecProperty {
+	mapped := make(map[string]bool)
+	mappedPaths := make(map[string]bool)
+	for _, a := range m.Attributes {
+		if a.OpenAPIProperty != "" {
+			mapped[a.OpenAPIProperty] = true
+		}
+		if a.PatchPath != "" {
+			mappedPaths[a.PatchPath] = true
+		}
+	}
+	excluded := excludedProperties()
+
+	var unmapped []SpecProperty
+	for _, sp := range specProps {
+		if isExcludedProperty(sp.Name, excluded) || mapped[sp.Name] {
+			continue
+		}
+		if sp.GovernsPath != "" && mappedPaths[sp.GovernsPath] {
+			continue
+		}
+		if sp.GovernsPath != "" && discoverTypeToTFType(sp.Type, sp.ItemType, sp.AdditionalPropertiesType) != "" {
+			unmapped = append(unmapped, sp)
+		}
+	}
+	sortSpecProperties(unmapped)
+	return unmapped
+}
+
+// applyDiscoveredEntries appends YAML entries for unmapped properties to
+// mappingsPath and inserts matching Go struct fields into resourcePath's
+// ProjectConfigResourceModel struct. Returns the number of entries added.
+func applyDiscoveredEntries(m Mappings, specProps map[string]SpecProperty, mappingsPath, resourcePath string) (int, error) {
+	unmapped := collectUnmappedProperties(m, specProps)
+	if len(unmapped) == 0 {
+		return 0, nil
+	}
+
+	var yamlBuf strings.Builder
+	yamlBuf.WriteString("\n  # --- Auto-discovered entries (review names/descriptions before merging) ---\n")
+	goFields := make([]string, 0, len(unmapped))
+	for _, sp := range unmapped {
+		tfName := deriveTerraformName(sp.Name)
+		goField := toGoFieldName(tfName)
+		tfType := discoverTypeToTFType(sp.Type, sp.ItemType, sp.AdditionalPropertiesType)
+		desc := cleanDescription(sp.Description)
+
+		fmt.Fprintf(&yamlBuf, "  - name: %s\n", tfName)
+		fmt.Fprintf(&yamlBuf, "    go_field: %s\n", goField)
+		fmt.Fprintf(&yamlBuf, "    type: %s\n", tfType)
+		fmt.Fprintf(&yamlBuf, "    openapi_property: %s\n", sp.Name)
+		fmt.Fprintf(&yamlBuf, "    description: %q\n", desc)
+		yamlBuf.WriteString("\n")
+
+		goType := "types.String"
+		switch tfType {
+		case typeBool:
+			goType = "types.Bool"
+		case typeInt64:
+			goType = "types.Int64"
+		case typeListString:
+			goType = "types.List"
+		case typeMapString:
+			goType = "types.Map"
+		}
+		goFields = append(goFields, fmt.Sprintf("\t%s %s `tfsdk:\"%s\"`", goField, goType, tfName))
+	}
+
+	if err := appendToMappingsFile(mappingsPath, yamlBuf.String()); err != nil {
+		return 0, fmt.Errorf("appending to mappings: %w", err)
+	}
+	if err := insertStructFields(resourcePath, "ProjectConfigResourceModel", goFields); err != nil {
+		return 0, fmt.Errorf("inserting struct fields: %w", err)
+	}
+	return len(unmapped), nil
+}
+
+// appendToMappingsFile appends text to the mappings file, ensuring the file
+// ends with a single newline before the appended content.
+func appendToMappingsFile(path, content string) error {
+	cleanPath := filepath.Clean(path)
+	data, err := os.ReadFile(cleanPath) //nolint:gosec // path from trusted CLI flag
+	if err != nil {
+		return err
+	}
+	// Ensure the existing file ends with exactly one newline before our block.
+	trimmed := strings.TrimRight(string(data), "\n") + "\n"
+	// #nosec G703 -- path from trusted CLI flag, not user input
+	return os.WriteFile(cleanPath, []byte(trimmed+content), 0o600)
+}
+
+// insertStructFields inserts the given field lines immediately before the
+// closing brace of the named top-level struct. The struct is expected to be
+// declared at column 0 with `type <name> struct {` and closed with a `}` at
+// column 0.
+func insertStructFields(path, structName string, fields []string) error {
+	cleanPath := filepath.Clean(path)
+	data, err := os.ReadFile(cleanPath) //nolint:gosec // path from trusted CLI flag
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(data), "\n")
+
+	startPrefix := fmt.Sprintf("type %s struct {", structName)
+	startIdx := -1
+	for i, line := range lines {
+		if strings.HasPrefix(line, startPrefix) {
+			startIdx = i
+			break
+		}
+	}
+	if startIdx < 0 {
+		return fmt.Errorf("struct %q not found in %s", structName, path)
+	}
+	closeIdx := -1
+	for i := startIdx + 1; i < len(lines); i++ {
+		if lines[i] == "}" {
+			closeIdx = i
+			break
+		}
+	}
+	if closeIdx < 0 {
+		return fmt.Errorf("closing brace of struct %q not found in %s", structName, path)
+	}
+
+	insertion := append([]string{"", "\t// Auto-discovered (review naming before release)"}, fields...)
+	newLines := make([]string, 0, len(lines)+len(insertion))
+	newLines = append(newLines, lines[:closeIdx]...)
+	newLines = append(newLines, insertion...)
+	newLines = append(newLines, lines[closeIdx:]...)
+
+	// #nosec G703 -- path from trusted CLI flag, not user input
+	return os.WriteFile(cleanPath, []byte(strings.Join(newLines, "\n")), 0o600)
 }
 
 // sortSpecProperties sorts spec properties by name for deterministic output.
@@ -716,16 +883,69 @@ func excludedProperties() map[string]bool {
 		"kratos_courier_smtp_connection_uri":                    true, // → smtp_connection_uri (custom, sensitive)
 		"account_experience_default_locale":                     true, // → account_experience_default_locale (in mappings)
 		"kratos_oauth2_provider_headers":                        true, // → oauth2_provider_headers (in mappings)
+
+		// Account experience images — handled by custom code in resource.go.
+		// The spec's governs descriptions point at favicon_*/logo_* config keys,
+		// but the API stores them at favicon_*_url/logo_*_url, expects an inline
+		// data URI on write, and returns a content-addressed storage URL on read
+		// (filename is sha512 of the image bytes). See issue #250.
+		"account_experience_favicon_dark":  true, // → account_experience_favicon_dark (custom)
+		"account_experience_favicon_light": true, // → account_experience_favicon_light (custom)
+		"account_experience_logo_dark":     true, // → account_experience_logo_dark (custom)
+		"account_experience_logo_light":    true, // → account_experience_logo_light (custom)
+
+		// Courier templates (kratos_courier_templates_*) are excluded by prefix in
+		// isExcludedProperty; see courierTemplatePropertyPrefix. Enumerating each
+		// family here previously missed new ones (e.g. verifiable_address_changed),
+		// which then leaked into the generated schema. See issue #213.
 	}
 }
 
-// cleanDescription removes the "governs" sentence, collapses newlines,
-// strips "Ory Kratos" / "Ory Hydra" prefixes, and truncates for Terraform docs.
+// isExcludedProperty reports whether a spec property should be skipped during
+// discovery and coverage checks: either it is in the static exclusion set or it
+// is a courier template property (excluded by prefix; see
+// courierTemplatePropertyPrefix).
+func isExcludedProperty(name string, excluded map[string]bool) bool {
+	return excluded[name] || strings.HasPrefix(name, courierTemplatePropertyPrefix)
+}
+
+// endsWithSentencePunctuation reports whether s ends with terminal punctuation,
+// so cleanDescription does not insert a redundant period when joining paragraphs.
+func endsWithSentencePunctuation(s string) bool {
+	if s == "" {
+		return false
+	}
+	switch s[len(s)-1] {
+	case '.', '!', '?', ':', ';':
+		return true
+	}
+	return false
+}
+
+// cleanDescription removes the "governs" sentence, joins multi-paragraph spec
+// docs into space-separated sentences, strips "Ory Kratos" / "Ory Hydra"
+// prefixes, and truncates for Terraform docs.
 func cleanDescription(desc string) string {
 	cleaned := governsRegex.ReplaceAllString(desc, "")
 
-	// Normalize whitespace in one pass
-	cleaned = strings.Join(strings.Fields(cleaned), " ")
+	// Join blank-line-separated paragraphs into space-separated sentences. Each
+	// paragraph is whitespace-normalized; a paragraph that does not already end in
+	// sentence punctuation gets a period so neighboring paragraphs do not run
+	// together (e.g. "...for testing" + "Only allowed..." -> "...for testing. Only
+	// allowed...").
+	paragraphs := paragraphBreakRegex.Split(cleaned, -1)
+	sentences := make([]string, 0, len(paragraphs))
+	for _, p := range paragraphs {
+		if p = strings.Join(strings.Fields(p), " "); p != "" {
+			sentences = append(sentences, p)
+		}
+	}
+	for i := 0; i < len(sentences)-1; i++ {
+		if !endsWithSentencePunctuation(sentences[i]) {
+			sentences[i] += "."
+		}
+	}
+	cleaned = strings.Join(sentences, " ")
 
 	// Strip "Configures the " / "Configures whether " prefixes for brevity.
 	// Must happen before product-name stripping so "Configures the Ory Hydra ..."

@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
+	"github.com/stretchr/testify/assert"
 )
 
 // buildTestConfig creates a ValidateConfigRequest from a SocialProviderResourceModel.
@@ -21,48 +22,58 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
 
 	vals := map[string]tftypes.Value{
-		"id":                   tftypes.NewValue(tftypes.String, nil),
-		"project_id":           tftypes.NewValue(tftypes.String, nil),
-		"provider_id":          tftypes.NewValue(tftypes.String, model.ProviderID.ValueString()),
-		"provider_type":        tfStringValue(model.ProviderType),
-		"client_id":            tfStringValue(model.ClientID),
-		"client_secret":        tfStringValue(model.ClientSecret),
-		"issuer_url":           tftypes.NewValue(tftypes.String, nil),
-		"scope":                tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
-		"mapper_url":           tftypes.NewValue(tftypes.String, nil),
-		"auth_url":             tftypes.NewValue(tftypes.String, nil),
-		"token_url":            tftypes.NewValue(tftypes.String, nil),
-		"tenant":               tftypes.NewValue(tftypes.String, nil),
-		"apple_team_id":        tfStringValue(model.AppleTeamID),
-		"apple_private_key_id": tfStringValue(model.ApplePrivateKeyID),
-		"apple_private_key":    tfStringValue(model.ApplePrivateKey),
-		"auto_link":            tfBoolValue(model.AutoLink),
-		"label":                tfStringValue(model.Label),
-		"account_linking_mode": tfStringValue(model.AccountLinkingMode),
-		"base_redirect_uri":    tfStringValue(model.BaseRedirectURI),
+		"id":                            tftypes.NewValue(tftypes.String, nil),
+		"project_id":                    tftypes.NewValue(tftypes.String, nil),
+		"provider_id":                   tftypes.NewValue(tftypes.String, model.ProviderID.ValueString()),
+		"provider_type":                 tfStringValue(model.ProviderType),
+		"client_id":                     tfStringValue(model.ClientID),
+		"client_secret":                 tfStringValue(model.ClientSecret),
+		"issuer_url":                    tftypes.NewValue(tftypes.String, nil),
+		"scope":                         tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
+		"mapper_url":                    tftypes.NewValue(tftypes.String, nil),
+		"auth_url":                      tftypes.NewValue(tftypes.String, nil),
+		"token_url":                     tftypes.NewValue(tftypes.String, nil),
+		"tenant":                        tftypes.NewValue(tftypes.String, nil),
+		"apple_team_id":                 tfStringValue(model.AppleTeamID),
+		"apple_private_key_id":          tfStringValue(model.ApplePrivateKeyID),
+		"apple_private_key":             tfStringValue(model.ApplePrivateKey),
+		"auto_link":                     tfBoolValue(model.AutoLink),
+		"label":                         tfStringValue(model.Label),
+		"account_linking_mode":          tfStringValue(model.AccountLinkingMode),
+		"base_redirect_uri":             tfStringValue(model.BaseRedirectURI),
+		"additional_id_token_audiences": tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
+		"aal2_acr_values":               tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
+		"aal2_amr_values":               tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
+		"pkce":                          tfStringValue(model.Pkce),
+		"fedcm_config_url":              tfStringValue(model.FedcmConfigURL),
 	}
 
 	objType := tftypes.Object{
 		AttributeTypes: map[string]tftypes.Type{
-			"id":                   tftypes.String,
-			"project_id":           tftypes.String,
-			"provider_id":          tftypes.String,
-			"provider_type":        tftypes.String,
-			"client_id":            tftypes.String,
-			"client_secret":        tftypes.String,
-			"issuer_url":           tftypes.String,
-			"scope":                tftypes.List{ElementType: tftypes.String},
-			"mapper_url":           tftypes.String,
-			"auth_url":             tftypes.String,
-			"token_url":            tftypes.String,
-			"tenant":               tftypes.String,
-			"apple_team_id":        tftypes.String,
-			"apple_private_key_id": tftypes.String,
-			"apple_private_key":    tftypes.String,
-			"auto_link":            tftypes.Bool,
-			"label":                tftypes.String,
-			"account_linking_mode": tftypes.String,
-			"base_redirect_uri":    tftypes.String,
+			"id":                            tftypes.String,
+			"project_id":                    tftypes.String,
+			"provider_id":                   tftypes.String,
+			"provider_type":                 tftypes.String,
+			"client_id":                     tftypes.String,
+			"client_secret":                 tftypes.String,
+			"issuer_url":                    tftypes.String,
+			"scope":                         tftypes.List{ElementType: tftypes.String},
+			"mapper_url":                    tftypes.String,
+			"auth_url":                      tftypes.String,
+			"token_url":                     tftypes.String,
+			"tenant":                        tftypes.String,
+			"apple_team_id":                 tftypes.String,
+			"apple_private_key_id":          tftypes.String,
+			"apple_private_key":             tftypes.String,
+			"auto_link":                     tftypes.Bool,
+			"label":                         tftypes.String,
+			"account_linking_mode":          tftypes.String,
+			"base_redirect_uri":             tftypes.String,
+			"additional_id_token_audiences": tftypes.List{ElementType: tftypes.String},
+			"aal2_acr_values":               tftypes.List{ElementType: tftypes.String},
+			"aal2_amr_values":               tftypes.List{ElementType: tftypes.String},
+			"pkce":                          tftypes.String,
+			"fedcm_config_url":              tftypes.String,
 		},
 	}
 
@@ -110,9 +121,7 @@ func TestValidateConfig_UnknownClientSecret_SkipsValidation(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if resp.Diagnostics.HasError() {
-		t.Errorf("expected no errors for unknown client_secret, got: %s", resp.Diagnostics.Errors()[0].Detail())
-	}
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for unknown client_secret: %v", resp.Diagnostics.Errors())
 }
 
 func TestValidateConfig_UnknownAppleFields_SkipsValidation(t *testing.T) {
@@ -130,9 +139,7 @@ func TestValidateConfig_UnknownAppleFields_SkipsValidation(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if resp.Diagnostics.HasError() {
-		t.Errorf("expected no errors for unknown apple fields, got: %s", resp.Diagnostics.Errors()[0].Detail())
-	}
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for unknown apple fields: %v", resp.Diagnostics.Errors())
 }
 
 func TestValidateConfig_KnownClientSecret_Passes(t *testing.T) {
@@ -148,9 +155,7 @@ func TestValidateConfig_KnownClientSecret_Passes(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if resp.Diagnostics.HasError() {
-		t.Errorf("expected no errors for known client_secret, got: %s", resp.Diagnostics.Errors()[0].Detail())
-	}
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for known client_secret: %v", resp.Diagnostics.Errors())
 }
 
 func TestValidateConfig_MissingClientSecret_Fails(t *testing.T) {
@@ -166,9 +171,7 @@ func TestValidateConfig_MissingClientSecret_Fails(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if !resp.Diagnostics.HasError() {
-		t.Error("expected error for missing client_secret, got none")
-	}
+	assert.True(t, resp.Diagnostics.HasError(), "expected error for missing client_secret")
 }
 
 func TestValidateConfig_EmptyClientSecret_Fails(t *testing.T) {
@@ -184,9 +187,24 @@ func TestValidateConfig_EmptyClientSecret_Fails(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if !resp.Diagnostics.HasError() {
-		t.Error("expected error for empty client_secret, got none")
-	}
+	assert.True(t, resp.Diagnostics.HasError(), "expected error for empty client_secret")
+}
+
+func TestValidateConfig_EmptyFedcmConfigURL_Fails(t *testing.T) {
+	r := &SocialProviderResource{}
+	ctx := context.Background()
+
+	req := buildTestConfig(t, SocialProviderResourceModel{
+		ProviderID:     types.StringValue("google"),
+		ProviderType:   types.StringValue("generic"),
+		ClientID:       types.StringValue("my-client-id"),
+		ClientSecret:   types.StringValue("my-secret"),
+		FedcmConfigURL: types.StringValue(""), // empty string — should fail
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	assert.True(t, resp.Diagnostics.HasError(), "expected error for empty fedcm_config_url")
 }
 
 func TestValidateConfig_UnknownProviderType_SkipsValidation(t *testing.T) {
@@ -202,7 +220,5 @@ func TestValidateConfig_UnknownProviderType_SkipsValidation(t *testing.T) {
 	var resp resource.ValidateConfigResponse
 	r.ValidateConfig(ctx, req, &resp)
 
-	if resp.Diagnostics.HasError() {
-		t.Errorf("expected no errors for unknown provider_type, got: %s", resp.Diagnostics.Errors()[0].Detail())
-	}
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for unknown provider_type: %v", resp.Diagnostics.Errors())
 }

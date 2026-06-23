@@ -1,0 +1,7 @@
+resource "ory_project_config" "test" {
+  selfservice_flows_verification_enabled = true
+
+  selfservice_flows_registration_after_password_hook_show_verification_ui = [[ .Password ]]
+  selfservice_flows_registration_after_oidc_hook_show_verification_ui     = [[ .OIDC ]]
+  selfservice_flows_settings_after_profile_hook_show_verification_ui      = [[ .Profile ]]
+}

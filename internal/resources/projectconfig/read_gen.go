@@ -112,6 +112,34 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				}
 			}
 		}
+		for _, e := range account_experienceMapStringReadEntries(state) {
+			target := e.Field
+			if target.IsNull() && e.Deprecated != nil && !e.Deprecated.IsNull() {
+				target = e.Deprecated
+			}
+			if !target.IsNull() {
+				if v := getNestedValue(accountExperienceConfig, e.Keys...); v != nil {
+					if m, ok := v.(map[string]interface{}); ok {
+						strMap := make(map[string]attr.Value, len(m))
+						allStrings := true
+						for k, val := range m {
+							if s, ok := val.(string); ok {
+								strMap[k] = types.StringValue(s)
+							} else {
+								allStrings = false
+								break
+							}
+						}
+						if allStrings {
+							mapVal, diags := types.MapValue(types.StringType, strMap)
+							if !diags.HasError() {
+								*target = mapVal
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 	if project.Services.Identity != nil {
 		identityConfig := project.Services.Identity.Config
@@ -235,6 +263,19 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				}
 			}
 		}
+		for _, e := range oauth2Int64ReadEntries(state) {
+			target := e.Field
+			if target.IsNull() && e.Deprecated != nil && !e.Deprecated.IsNull() {
+				target = e.Deprecated
+			}
+			if !target.IsNull() {
+				if v, ok := getNestedFloat(oauth2Config, e.Keys...); ok {
+					if v == math.Trunc(v) {
+						*target = types.Int64Value(int64(v))
+					}
+				}
+			}
+		}
 		for _, e := range oauth2ListStringReadEntries(state) {
 			target := e.Field
 			if target.IsNull() && e.Deprecated != nil && !e.Deprecated.IsNull() {
@@ -313,13 +354,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 func account_experienceStringReadEntries(state *ProjectConfigResourceModel) []StringReadEntry {
 	return []StringReadEntry{
 		{&state.AccountExperienceLocale, nil, []string{"default_locale"}, true},
-		{&state.AccountExperienceFaviconDark, nil, []string{"favicon_dark"}, true},
-		{&state.AccountExperienceFaviconLight, nil, []string{"favicon_light"}, true},
 		{&state.AccountExperienceLocaleBehavior, nil, []string{"locale_behavior"}, true},
-		{&state.AccountExperienceLogoDark, nil, []string{"logo_dark"}, true},
-		{&state.AccountExperienceLogoLight, nil, []string{"logo_light"}, true},
-		{&state.AccountExperienceThemeVariablesDark, nil, []string{"theme_variables_dark"}, true},
-		{&state.AccountExperienceThemeVariablesLight, nil, []string{"theme_variables_light"}, true},
 	}
 }
 
@@ -327,6 +362,8 @@ func account_experienceBoolReadEntries(state *ProjectConfigResourceModel) []Bool
 	return []BoolReadEntry{
 		{&state.DisableAccountExperienceWelcomeScreen, nil, []string{"disable_welcome_screen"}},
 		{&state.EnableAXV2, nil, []string{"enable_ax_v2"}},
+		{&state.AccountExperienceHideOryBranding, nil, []string{"hide_ory_branding"}},
+		{&state.AccountExperienceHideRegistrationLink, nil, []string{"hide_registration_link"}},
 	}
 }
 
@@ -336,9 +373,17 @@ func account_experienceListStringReadEntries(state *ProjectConfigResourceModel) 
 	}
 }
 
+func account_experienceMapStringReadEntries(state *ProjectConfigResourceModel) []MapStringReadEntry {
+	return []MapStringReadEntry{
+		{&state.AccountExperienceThemeVariablesDark, nil, []string{"theme_variables_dark"}},
+		{&state.AccountExperienceThemeVariablesLight, nil, []string{"theme_variables_light"}},
+	}
+}
+
 func identityStringReadEntries(state *ProjectConfigResourceModel) []StringReadEntry {
 	return []StringReadEntry{
 		{&state.SessionLifespan, nil, []string{"session", "lifespan"}, false},
+		{&state.SessionEarliestPossibleExtend, nil, []string{"session", "earliest_possible_extend"}, false},
 		{&state.SessionCookieSameSite, nil, []string{"session", "cookie", "same_site"}, false},
 		{&state.SessionWhoamiRequiredAAL, nil, []string{"session", "whoami", "required_aal"}, false},
 		{&state.SelfserviceFlowsLoginUIURL, &state.LoginUIURL, []string{"selfservice", "flows", "login", "ui_url"}, false},
@@ -369,39 +414,6 @@ func identityStringReadEntries(state *ProjectConfigResourceModel) []StringReadEn
 		{&state.CourierHTTPRequestConfigBody, nil, []string{"courier", "http", "request_config", "body"}, false},
 		{&state.CourierHTTPRequestConfigURL, nil, []string{"courier", "http", "request_config", "url"}, false},
 		{&state.CourierSMTPLocalName, nil, []string{"courier", "smtp", "local_name"}, false},
-		{&state.CourierTemplatesLoginCodeValidEmailBodyHTML, nil, []string{"courier", "templates", "login_code", "valid", "email", "body", "html"}, false},
-		{&state.CourierTemplatesLoginCodeValidEmailBodyPlaintext, nil, []string{"courier", "templates", "login_code", "valid", "email", "body", "plaintext"}, false},
-		{&state.CourierTemplatesLoginCodeValidEmailSubject, nil, []string{"courier", "templates", "login_code", "valid", "email", "subject"}, false},
-		{&state.CourierTemplatesLoginCodeValidSMSBodyPlaintext, nil, []string{"courier", "templates", "login_code", "valid", "sms", "body", "plaintext"}, false},
-		{&state.CourierTemplatesRecoveryCodeInvalidEmailBodyHTML, nil, []string{"courier", "templates", "recovery_code", "invalid", "email", "body", "html"}, false},
-		{&state.CourierTemplatesRecoveryCodeInvalidEmailBodyPlaintext, nil, []string{"courier", "templates", "recovery_code", "invalid", "email", "body", "plaintext"}, false},
-		{&state.CourierTemplatesRecoveryCodeInvalidEmailSubject, nil, []string{"courier", "templates", "recovery_code", "invalid", "email", "subject"}, false},
-		{&state.CourierTemplatesRecoveryCodeValidEmailBodyHTML, nil, []string{"courier", "templates", "recovery_code", "valid", "email", "body", "html"}, false},
-		{&state.CourierTemplatesRecoveryCodeValidEmailBodyPlaintext, nil, []string{"courier", "templates", "recovery_code", "valid", "email", "body", "plaintext"}, false},
-		{&state.CourierTemplatesRecoveryCodeValidEmailSubject, nil, []string{"courier", "templates", "recovery_code", "valid", "email", "subject"}, false},
-		{&state.CourierTemplatesRecoveryInvalidEmailBodyHTML, nil, []string{"courier", "templates", "recovery", "invalid", "email", "body", "html"}, false},
-		{&state.CourierTemplatesRecoveryInvalidEmailBodyPlaintext, nil, []string{"courier", "templates", "recovery", "invalid", "email", "body", "plaintext"}, false},
-		{&state.CourierTemplatesRecoveryInvalidEmailSubject, nil, []string{"courier", "templates", "recovery", "invalid", "email", "subject"}, false},
-		{&state.CourierTemplatesRecoveryValidEmailBodyHTML, nil, []string{"courier", "templates", "recovery", "valid", "email", "body", "html"}, false},
-		{&state.CourierTemplatesRecoveryValidEmailBodyPlaintext, nil, []string{"courier", "templates", "recovery", "valid", "email", "body", "plaintext"}, false},
-		{&state.CourierTemplatesRecoveryValidEmailSubject, nil, []string{"courier", "templates", "recovery", "valid", "email", "subject"}, false},
-		{&state.CourierTemplatesRegistrationCodeValidEmailBodyHTML, nil, []string{"courier", "templates", "registration_code", "valid", "email", "body", "html"}, false},
-		{&state.CourierTemplatesRegistrationCodeValidEmailBodyPlaintext, nil, []string{"courier", "templates", "registration_code", "valid", "email", "body", "plaintext"}, false},
-		{&state.CourierTemplatesRegistrationCodeValidEmailSubject, nil, []string{"courier", "templates", "registration_code", "valid", "email", "subject"}, false},
-		{&state.CourierTemplatesRegistrationCodeValidSMSBodyPlaintext, nil, []string{"courier", "templates", "registration_code", "valid", "sms", "body", "plaintext"}, false},
-		{&state.CourierTemplatesVerificationCodeInvalidEmailBodyHTML, nil, []string{"courier", "templates", "verification_code", "invalid", "email", "body", "html"}, false},
-		{&state.CourierTemplatesVerificationCodeInvalidEmailBodyPlaintext, nil, []string{"courier", "templates", "verification_code", "invalid", "email", "body", "plaintext"}, false},
-		{&state.CourierTemplatesVerificationCodeInvalidEmailSubject, nil, []string{"courier", "templates", "verification_code", "invalid", "email", "subject"}, false},
-		{&state.CourierTemplatesVerificationCodeValidEmailBodyHTML, nil, []string{"courier", "templates", "verification_code", "valid", "email", "body", "html"}, false},
-		{&state.CourierTemplatesVerificationCodeValidEmailBodyPlaintext, nil, []string{"courier", "templates", "verification_code", "valid", "email", "body", "plaintext"}, false},
-		{&state.CourierTemplatesVerificationCodeValidEmailSubject, nil, []string{"courier", "templates", "verification_code", "valid", "email", "subject"}, false},
-		{&state.CourierTemplatesVerificationCodeValidSMSBodyPlaintext, nil, []string{"courier", "templates", "verification_code", "valid", "sms", "body", "plaintext"}, false},
-		{&state.CourierTemplatesVerificationInvalidEmailBodyHTML, nil, []string{"courier", "templates", "verification", "invalid", "email", "body", "html"}, false},
-		{&state.CourierTemplatesVerificationInvalidEmailBodyPlaintext, nil, []string{"courier", "templates", "verification", "invalid", "email", "body", "plaintext"}, false},
-		{&state.CourierTemplatesVerificationInvalidEmailSubject, nil, []string{"courier", "templates", "verification", "invalid", "email", "subject"}, false},
-		{&state.CourierTemplatesVerificationValidEmailBodyHTML, nil, []string{"courier", "templates", "verification", "valid", "email", "body", "html"}, false},
-		{&state.CourierTemplatesVerificationValidEmailBodyPlaintext, nil, []string{"courier", "templates", "verification", "valid", "email", "body", "plaintext"}, false},
-		{&state.CourierTemplatesVerificationValidEmailSubject, nil, []string{"courier", "templates", "verification", "valid", "email", "subject"}, false},
 		{&state.FeatureFlagsCacheableSessionsMaxAge, nil, []string{"feature_flags", "cacheable_sessions_max_age"}, false},
 		{&state.OAuth2ProviderURL, nil, []string{"oauth2_provider", "url"}, false},
 		{&state.SelfserviceDefaultBrowserReturnURL, nil, []string{"selfservice", "default_browser_return_url"}, false},
@@ -491,6 +503,8 @@ func identityBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry 
 		{&state.SelfserviceMethodsCaptchaConfigBYO, nil, []string{"selfservice", "methods", "captcha", "config", "byo"}},
 		{&state.SelfserviceMethodsCaptchaConfigLegacyInjectNode, nil, []string{"selfservice", "methods", "captcha", "config", "legacy_inject_node"}},
 		{&state.SelfserviceMethodsCaptchaEnabled, nil, []string{"selfservice", "methods", "captcha", "enabled"}},
+		{&state.SelfserviceMethodsDeviceauthnEnabled, nil, []string{"selfservice", "methods", "deviceauthn", "enabled"}},
+		{&state.SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation, nil, []string{"selfservice", "methods", "deviceauthn", "config", "insecure_allow_relaxed_attestation"}},
 	}
 }
 
@@ -538,7 +552,7 @@ func oauth2StringReadEntries(state *ProjectConfigResourceModel) []StringReadEntr
 		{&state.OAuth2URLsSelfIssuer, &state.OAuth2IssuerURL, []string{"urls", "self", "issuer"}, false},
 		{&state.OAuth2ServeCookiesSameSiteMode, &state.OAuth2CookiesSameSiteMode, []string{"serve", "cookies", "same_site_mode"}, false},
 		{&state.OAuth2GrantJWTMaxTTL, nil, []string{"oauth2", "grant", "jwt", "max_ttl"}, false},
-		{&state.OAuth2GrantRefreshTokenRotationGracePeriod, nil, []string{"oauth2", "grant", "refresh_token_rotation_grace_period"}, false},
+		{&state.OAuth2GrantRefreshTokenRotationGracePeriod, nil, []string{"oauth2", "grant", "refresh_token", "rotation_grace_period"}, false},
 		{&state.OAuth2RefreshTokenHook, nil, []string{"oauth2", "refresh_token_hook"}, false},
 		{&state.OAuth2TokenHook, nil, []string{"oauth2", "token_hook", "url"}, false},
 		{&state.OIDCSubjectIdentifiersPairwiseSalt, nil, []string{"oidc", "subject_identifiers", "pairwise_salt"}, false},
@@ -549,6 +563,7 @@ func oauth2StringReadEntries(state *ProjectConfigResourceModel) []StringReadEntr
 		{&state.OAuth2WebfingerOIDCDiscoveryJwksURL, nil, []string{"webfinger", "oidc_discovery", "jwks_url"}, false},
 		{&state.OAuth2WebfingerOIDCDiscoveryTokenURL, nil, []string{"webfinger", "oidc_discovery", "token_url"}, false},
 		{&state.OAuth2WebfingerOIDCDiscoveryUserinfoURL, nil, []string{"webfinger", "oidc_discovery", "userinfo_url"}, false},
+		{&state.OAuth2TokenPrefix, nil, []string{"oauth2", "token_prefix"}, false},
 	}
 }
 
@@ -563,6 +578,13 @@ func oauth2BoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry {
 		{&state.OAuth2GrantJWTIATOptional, nil, []string{"oauth2", "grant", "jwt", "iat_optional"}},
 		{&state.OAuth2GrantJWTJTIOptional, nil, []string{"oauth2", "grant", "jwt", "jti_optional"}},
 		{&state.OIDCDynamicClientRegistrationEnabled, nil, []string{"oidc", "dynamic_client_registration", "enabled"}},
+		{&state.OAuth2PreserveExtClaims, nil, []string{"oauth2", "preserve_ext_claims"}},
+	}
+}
+
+func oauth2Int64ReadEntries(state *ProjectConfigResourceModel) []Int64ReadEntry {
+	return []Int64ReadEntry{
+		{&state.OAuth2GrantRefreshTokenRotationGraceReuseCount, nil, []string{"oauth2", "grant", "refresh_token", "rotation_grace_reuse_count"}},
 	}
 }
 

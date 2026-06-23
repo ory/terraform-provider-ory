@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -56,25 +57,30 @@ type SocialProviderResource struct {
 }
 
 type SocialProviderResourceModel struct {
-	ID                 types.String `tfsdk:"id"`
-	ProjectID          types.String `tfsdk:"project_id"`
-	ProviderID         types.String `tfsdk:"provider_id"`
-	ProviderType       types.String `tfsdk:"provider_type"`
-	ClientID           types.String `tfsdk:"client_id"`
-	ClientSecret       types.String `tfsdk:"client_secret"`
-	IssuerURL          types.String `tfsdk:"issuer_url"`
-	Scope              types.List   `tfsdk:"scope"`
-	MapperURL          types.String `tfsdk:"mapper_url"`
-	AuthURL            types.String `tfsdk:"auth_url"`
-	TokenURL           types.String `tfsdk:"token_url"`
-	Tenant             types.String `tfsdk:"tenant"`
-	AppleTeamID        types.String `tfsdk:"apple_team_id"`
-	ApplePrivateKeyID  types.String `tfsdk:"apple_private_key_id"`
-	ApplePrivateKey    types.String `tfsdk:"apple_private_key"`
-	AutoLink           types.Bool   `tfsdk:"auto_link"`
-	Label              types.String `tfsdk:"label"`
-	AccountLinkingMode types.String `tfsdk:"account_linking_mode"`
-	BaseRedirectURI    types.String `tfsdk:"base_redirect_uri"`
+	ID                         types.String `tfsdk:"id"`
+	ProjectID                  types.String `tfsdk:"project_id"`
+	ProviderID                 types.String `tfsdk:"provider_id"`
+	ProviderType               types.String `tfsdk:"provider_type"`
+	ClientID                   types.String `tfsdk:"client_id"`
+	ClientSecret               types.String `tfsdk:"client_secret"`
+	IssuerURL                  types.String `tfsdk:"issuer_url"`
+	Scope                      types.List   `tfsdk:"scope"`
+	MapperURL                  types.String `tfsdk:"mapper_url"`
+	AuthURL                    types.String `tfsdk:"auth_url"`
+	TokenURL                   types.String `tfsdk:"token_url"`
+	Tenant                     types.String `tfsdk:"tenant"`
+	AppleTeamID                types.String `tfsdk:"apple_team_id"`
+	ApplePrivateKeyID          types.String `tfsdk:"apple_private_key_id"`
+	ApplePrivateKey            types.String `tfsdk:"apple_private_key"`
+	AutoLink                   types.Bool   `tfsdk:"auto_link"`
+	Label                      types.String `tfsdk:"label"`
+	AccountLinkingMode         types.String `tfsdk:"account_linking_mode"`
+	BaseRedirectURI            types.String `tfsdk:"base_redirect_uri"`
+	AdditionalIDTokenAudiences types.List   `tfsdk:"additional_id_token_audiences"`
+	Aal2AcrValues              types.List   `tfsdk:"aal2_acr_values"`
+	Aal2AmrValues              types.List   `tfsdk:"aal2_amr_values"`
+	Pkce                       types.String `tfsdk:"pkce"`
+	FedcmConfigURL             types.String `tfsdk:"fedcm_config_url"`
 }
 
 func (r *SocialProviderResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -187,6 +193,32 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 					"This attribute sets a global OIDC config value, not a per-provider setting, " +
 					"and is better managed at the project level.",
 			},
+			"additional_id_token_audiences": schema.ListAttribute{
+				Description: "Additional audiences allowed in the ID Token. Only relevant in OIDC flows that submit an ID Token directly instead of using the callback from the OIDC provider (e.g., native mobile apps signing in with Google or Apple where the app and the OIDC client are registered with different audiences).",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"aal2_acr_values": schema.ListAttribute{
+				Description: "Upstream OpenID Connect `acr` claim values that elevate the resulting Ory session to AAL2. If the ID token returned by the upstream provider contains an `acr` claim matching any of these values, the user is not prompted for a second factor. Leave unset to always issue AAL1 sessions through this provider. Works with providers that return the `acr` claim (Auth0, Okta, Keycloak, PingFederate, Entra ID v1, generic enterprise IdPs).",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"aal2_amr_values": schema.ListAttribute{
+				Description: "Upstream OpenID Connect `amr` values (per RFC 8176, for example `mfa`, `otp`, `hwk`) that mark the session AAL2 when they appear in the upstream `amr` array. Leave unset to ignore the `amr` claim.",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"pkce": schema.StringAttribute{
+				Description: "PKCE (Proof Key for Code Exchange) behavior for the OAuth2 authorization code flow. \"auto\" (default) enables PKCE when the upstream provider advertises support via OIDC discovery; \"force\" always sends PKCE (use only with providers known to support it); \"never\" disables PKCE.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("auto", "force", "never"),
+				},
+			},
+			"fedcm_config_url": schema.StringAttribute{
+				Description: "URL of the provider's FedCM (Federated Credential Management) configuration file. When set, Ory can use the browser's FedCM API for sign-in with this provider instead of a full-page redirect. For example, Google's FedCM configuration is served at \"https://accounts.google.com/gsi/fedcm.json\". Leave unset to disable FedCM for this provider.",
+				Optional:    true,
+			},
 		},
 	}
 }
@@ -260,6 +292,9 @@ func (r *SocialProviderResource) ValidateConfig(ctx context.Context, req resourc
 	}
 	if !config.BaseRedirectURI.IsNull() && !config.BaseRedirectURI.IsUnknown() && config.BaseRedirectURI.ValueString() == "" {
 		resp.Diagnostics.AddAttributeError(path.Root("base_redirect_uri"), "Invalid Attribute Value", "base_redirect_uri must not be an empty string.")
+	}
+	if !config.FedcmConfigURL.IsNull() && !config.FedcmConfigURL.IsUnknown() && config.FedcmConfigURL.ValueString() == "" {
+		resp.Diagnostics.AddAttributeError(path.Root("fedcm_config_url"), "Invalid Attribute Value", "fedcm_config_url must not be an empty string.")
 	}
 
 	if providerType == "apple" {
@@ -349,6 +384,41 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 		config["account_linking_mode"] = plan.AccountLinkingMode.ValueString()
 	}
 
+	if !plan.AdditionalIDTokenAudiences.IsNull() && !plan.AdditionalIDTokenAudiences.IsUnknown() {
+		var audiences []string
+		plan.AdditionalIDTokenAudiences.ElementsAs(ctx, &audiences, false)
+		config["additional_id_token_audiences"] = audiences
+	}
+
+	// AAL2 elevation lists — send only when the user configured a non-empty
+	// list. Empty lists are skipped to match Read, which collapses missing and
+	// empty arrays to null; sending [] would otherwise produce a perpetual diff
+	// for users who explicitly write `aal2_acr_values = []`.
+	if !plan.Aal2AcrValues.IsNull() && !plan.Aal2AcrValues.IsUnknown() {
+		var values []string
+		plan.Aal2AcrValues.ElementsAs(ctx, &values, false)
+		if len(values) > 0 {
+			config["aal2_acr_values"] = values
+		}
+	}
+	if !plan.Aal2AmrValues.IsNull() && !plan.Aal2AmrValues.IsUnknown() {
+		var values []string
+		plan.Aal2AmrValues.ElementsAs(ctx, &values, false)
+		if len(values) > 0 {
+			config["aal2_amr_values"] = values
+		}
+	}
+
+	if !plan.Pkce.IsNull() && !plan.Pkce.IsUnknown() {
+		config["pkce"] = plan.Pkce.ValueString()
+	}
+
+	// fedcm_config_url — only send when set to a non-empty value. Omitting it on
+	// the full-object replace performed by Update clears it server-side.
+	if !plan.FedcmConfigURL.IsNull() && !plan.FedcmConfigURL.IsUnknown() && plan.FedcmConfigURL.ValueString() != "" {
+		config["fedcm_config_url"] = plan.FedcmConfigURL.ValueString()
+	}
+
 	// Apple-specific fields — skip empty strings to avoid sending blank credentials
 	if !plan.AppleTeamID.IsNull() && !plan.AppleTeamID.IsUnknown() && plan.AppleTeamID.ValueString() != "" {
 		config["apple_team_id"] = plan.AppleTeamID.ValueString()
@@ -361,6 +431,29 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 	}
 
 	return config
+}
+
+// readStringList converts a JSON-decoded string array from the API into a
+// types.List, returning null when the API omits the field or returns an empty
+// array. Empty/null are treated identically so removing all entries from
+// Terraform config matches the API's "missing" state on the next read.
+func readStringList(ctx context.Context, diagnostics *diag.Diagnostics, raw interface{}) types.List {
+	values, ok := raw.([]interface{})
+	if !ok || len(values) == 0 {
+		return types.ListNull(types.StringType)
+	}
+	strs := make([]string, 0, len(values))
+	for _, v := range values {
+		if s, ok := v.(string); ok {
+			strs = append(strs, s)
+		}
+	}
+	list, d := types.ListValueFrom(ctx, types.StringType, strs)
+	diagnostics.Append(d...)
+	if d.HasError() {
+		return types.ListNull(types.StringType)
+	}
+	return list
 }
 
 // extractOIDCConfigFromProject navigates to the OIDC method config map.
@@ -684,6 +777,27 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		state.AccountLinkingMode = types.StringValue(mode)
 	} else {
 		state.AccountLinkingMode = types.StringNull()
+	}
+
+	// Read additional_id_token_audiences from API (returned on read)
+	state.AdditionalIDTokenAudiences = readStringList(ctx, &resp.Diagnostics, provider["additional_id_token_audiences"])
+
+	// Read AAL2 elevation lists, clearing state when the API omits them.
+	state.Aal2AcrValues = readStringList(ctx, &resp.Diagnostics, provider["aal2_acr_values"])
+	state.Aal2AmrValues = readStringList(ctx, &resp.Diagnostics, provider["aal2_amr_values"])
+
+	if pkce, ok := provider["pkce"].(string); ok && pkce != "" {
+		state.Pkce = types.StringValue(pkce)
+	} else {
+		state.Pkce = types.StringNull()
+	}
+
+	// Read fedcm_config_url from the API (returned on read), clearing stale state
+	// when the API omits it.
+	if fedcmURL, ok := provider["fedcm_config_url"].(string); ok && fedcmURL != "" {
+		state.FedcmConfigURL = types.StringValue(fedcmURL)
+	} else {
+		state.FedcmConfigURL = types.StringNull()
 	}
 
 	// Read Apple-specific fields, clearing stale state when not returned by the API

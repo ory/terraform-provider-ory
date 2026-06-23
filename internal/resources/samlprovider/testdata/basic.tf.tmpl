@@ -1,0 +1,5 @@
+resource "ory_saml_provider" "test" {
+  provider_id          = "test-saml"
+  label                = "Test SAML"
+  raw_idp_metadata_xml = "[[ .MetadataXML ]]"
+}

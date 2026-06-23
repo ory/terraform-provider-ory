@@ -132,6 +132,82 @@ func TestAccActionResource_basic(t *testing.T) {
 	})
 }
 
+// TestAccActionResource_verificationFlow is the regression test for issue #241:
+// the verification flow's "after" hooks are stored in a flat array at
+// .../verification/after/hooks (no auth_method level). Before the fix, the
+// provider PATCHed to .../verification/after/password/hooks, which the API
+// accepted with 200 but silently dropped — failing with "Hook not found in
+// PatchProject response". This exercises create, read, update, import, delete.
+func TestAccActionResource_verificationFlow(t *testing.T) {
+	hookPath := "/services/identity/config/selfservice/flows/verification/after/hooks"
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			cleanupDanglingWebhook(t, hookPath, testutil.ExampleWebhookURL+"/verification-after")
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create and Read
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/verification.tf.tmpl", map[string]string{"WebhookURL": testutil.ExampleWebhookURL}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_action.test", "id"),
+					resource.TestCheckResourceAttr("ory_action.test", "flow", "verification"),
+					resource.TestCheckResourceAttr("ory_action.test", "timing", "after"),
+					resource.TestCheckResourceAttr("ory_action.test", "method", "POST"),
+					resource.TestCheckResourceAttr("ory_action.test", "response_ignore", "false"),
+				),
+			},
+			// Import (auth_method defaults to "password" in the composite ID but is ignored for this flow)
+			{
+				ResourceName:      "ory_action.test",
+				ImportState:       true,
+				ImportStateIdFunc: actionImportStateIDFunc,
+				ImportStateVerify: true,
+			},
+			// Update an in-place attribute
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/verification_updated.tf.tmpl", map[string]string{"WebhookURL": testutil.ExampleWebhookURL}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_action.test", "response_ignore", "true"),
+				),
+			},
+		},
+	})
+}
+
+// TestAccActionResource_recoveryFlow verifies the recovery flow (also flat,
+// no auth_method level) creates, reads, and imports correctly. See issue #241.
+func TestAccActionResource_recoveryFlow(t *testing.T) {
+	hookPath := "/services/identity/config/selfservice/flows/recovery/after/hooks"
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			cleanupDanglingWebhook(t, hookPath, testutil.ExampleWebhookURL+"/recovery-after")
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create and Read
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/recovery.tf.tmpl", map[string]string{"WebhookURL": testutil.ExampleWebhookURL}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_action.test", "id"),
+					resource.TestCheckResourceAttr("ory_action.test", "flow", "recovery"),
+					resource.TestCheckResourceAttr("ory_action.test", "timing", "after"),
+					resource.TestCheckResourceAttr("ory_action.test", "method", "POST"),
+				),
+			},
+			// Import
+			{
+				ResourceName:      "ory_action.test",
+				ImportState:       true,
+				ImportStateIdFunc: actionImportStateIDFunc,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
 func actionImportStateIDFunc(s *terraform.State) (string, error) {
 	rs, ok := s.RootModule().Resources["ory_action.test"]
 	if !ok {
@@ -189,6 +265,103 @@ func TestAccActionResource_withBasicAuth(t *testing.T) {
 			},
 		},
 	})
+}
+
+// TestAccActionResource_parallel verifies that creating and destroying multiple
+// actions in the same flow/timing/auth_method does not suffer from
+// read-modify-write races. Without per-project serialization, Terraform's
+// default parallelism causes concurrent goroutines to read the same hooks
+// array, append their own hook, and replace the array — so the last writer
+// wins and the other hooks are silently dropped. See issue #189.
+func TestAccActionResource_parallel(t *testing.T) {
+	hookPath := "/services/identity/config/selfservice/flows/registration/after/password/hooks"
+	urls := []string{
+		testutil.ExampleWebhookURL + "/parallel-a",
+		testutil.ExampleWebhookURL + "/parallel-b",
+		testutil.ExampleWebhookURL + "/parallel-c",
+		testutil.ExampleWebhookURL + "/parallel-d",
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			for _, u := range urls {
+				cleanupDanglingWebhook(t, hookPath, u)
+			}
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/parallel.tf.tmpl", map[string]string{"WebhookURL": testutil.ExampleWebhookURL}),
+				Check:  allParallelHooksExist(hookPath, urls),
+			},
+		},
+	})
+}
+
+// allParallelHooksExist asserts that every URL in urls is present in the hooks
+// array at hookPath on the test project. This is the invariant issue #189
+// breaks: all resources report success, but only some of them actually landed.
+func allParallelHooksExist(hookPath string, urls []string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		c, err := acctest.GetOryClient()
+		if err != nil {
+			return fmt.Errorf("could not create client: %w", err)
+		}
+
+		var projectID string
+		for _, rs := range s.RootModule().Resources {
+			if pid := rs.Primary.Attributes["project_id"]; pid != "" {
+				projectID = pid
+				break
+			}
+		}
+		if projectID == "" {
+			return fmt.Errorf("no project_id found in state")
+		}
+
+		ctx := context.Background()
+		p, err := c.GetProject(ctx, projectID)
+		if err != nil {
+			return fmt.Errorf("could not get project: %w", err)
+		}
+
+		trimmed := strings.TrimPrefix(hookPath, "/services/identity/config/")
+		trimmed = strings.TrimSuffix(trimmed, "/hooks")
+		segments := strings.Split(trimmed, "/")
+
+		var current interface{} = p.Services.Identity.Config
+		for _, seg := range segments {
+			m, ok := current.(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("unexpected type at segment %q", seg)
+			}
+			current = m[seg]
+			if current == nil {
+				return fmt.Errorf("nothing found at segment %q", seg)
+			}
+		}
+		hooks, _ := current.(map[string]interface{})["hooks"].([]interface{})
+
+		found := make(map[string]bool, len(urls))
+		for _, h := range hooks {
+			hm, _ := h.(map[string]interface{})
+			if hm["hook"] != "web_hook" {
+				continue
+			}
+			cfg, _ := hm["config"].(map[string]interface{})
+			if url, _ := cfg["url"].(string); url != "" {
+				found[url] = true
+			}
+		}
+
+		for _, u := range urls {
+			if !found[u] {
+				return fmt.Errorf("expected webhook %q to exist at %s but it was not found (race condition clobbered it)", u, hookPath)
+			}
+		}
+		return nil
+	}
 }
 
 func TestAccActionResource_withAPIKeyAuth(t *testing.T) {

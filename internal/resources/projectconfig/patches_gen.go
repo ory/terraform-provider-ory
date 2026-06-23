@@ -47,6 +47,7 @@ type MapStringPatchEntry struct {
 func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEntry {
 	return []StringPatchEntry{
 		{&plan.SessionLifespan, nil, "/services/identity/config/session/lifespan"},
+		{&plan.SessionEarliestPossibleExtend, nil, "/services/identity/config/session/earliest_possible_extend"},
 		{&plan.SessionCookieSameSite, nil, "/services/identity/config/session/cookie/same_site"},
 		{&plan.SessionWhoamiRequiredAAL, nil, "/services/identity/config/session/whoami/required_aal"},
 		{&plan.OAuth2TTLAccessToken, &plan.OAuth2AccessTokenLifespan, "/services/oauth2/config/ttl/access_token"},
@@ -84,7 +85,7 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.CourierDeliveryStrategy, nil, "/services/identity/config/courier/delivery_strategy"},
 		{&plan.AccountExperienceLocale, nil, "/services/account_experience/config/default_locale"},
 		{&plan.OAuth2GrantJWTMaxTTL, nil, "/services/oauth2/config/oauth2/grant/jwt/max_ttl"},
-		{&plan.OAuth2GrantRefreshTokenRotationGracePeriod, nil, "/services/oauth2/config/oauth2/grant/refresh_token_rotation_grace_period"},
+		{&plan.OAuth2GrantRefreshTokenRotationGracePeriod, nil, "/services/oauth2/config/oauth2/grant/refresh_token/rotation_grace_period"},
 		{&plan.OAuth2RefreshTokenHook, nil, "/services/oauth2/config/oauth2/refresh_token_hook"},
 		{&plan.OAuth2TokenHook, nil, "/services/oauth2/config/oauth2/token_hook/url"},
 		{&plan.OIDCSubjectIdentifiersPairwiseSalt, nil, "/services/oauth2/config/oidc/subject_identifiers/pairwise_salt"},
@@ -104,39 +105,6 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.CourierHTTPRequestConfigBody, nil, "/services/identity/config/courier/http/request_config/body"},
 		{&plan.CourierHTTPRequestConfigURL, nil, "/services/identity/config/courier/http/request_config/url"},
 		{&plan.CourierSMTPLocalName, nil, "/services/identity/config/courier/smtp/local_name"},
-		{&plan.CourierTemplatesLoginCodeValidEmailBodyHTML, nil, "/services/identity/config/courier/templates/login_code/valid/email/body/html"},
-		{&plan.CourierTemplatesLoginCodeValidEmailBodyPlaintext, nil, "/services/identity/config/courier/templates/login_code/valid/email/body/plaintext"},
-		{&plan.CourierTemplatesLoginCodeValidEmailSubject, nil, "/services/identity/config/courier/templates/login_code/valid/email/subject"},
-		{&plan.CourierTemplatesLoginCodeValidSMSBodyPlaintext, nil, "/services/identity/config/courier/templates/login_code/valid/sms/body/plaintext"},
-		{&plan.CourierTemplatesRecoveryCodeInvalidEmailBodyHTML, nil, "/services/identity/config/courier/templates/recovery_code/invalid/email/body/html"},
-		{&plan.CourierTemplatesRecoveryCodeInvalidEmailBodyPlaintext, nil, "/services/identity/config/courier/templates/recovery_code/invalid/email/body/plaintext"},
-		{&plan.CourierTemplatesRecoveryCodeInvalidEmailSubject, nil, "/services/identity/config/courier/templates/recovery_code/invalid/email/subject"},
-		{&plan.CourierTemplatesRecoveryCodeValidEmailBodyHTML, nil, "/services/identity/config/courier/templates/recovery_code/valid/email/body/html"},
-		{&plan.CourierTemplatesRecoveryCodeValidEmailBodyPlaintext, nil, "/services/identity/config/courier/templates/recovery_code/valid/email/body/plaintext"},
-		{&plan.CourierTemplatesRecoveryCodeValidEmailSubject, nil, "/services/identity/config/courier/templates/recovery_code/valid/email/subject"},
-		{&plan.CourierTemplatesRecoveryInvalidEmailBodyHTML, nil, "/services/identity/config/courier/templates/recovery/invalid/email/body/html"},
-		{&plan.CourierTemplatesRecoveryInvalidEmailBodyPlaintext, nil, "/services/identity/config/courier/templates/recovery/invalid/email/body/plaintext"},
-		{&plan.CourierTemplatesRecoveryInvalidEmailSubject, nil, "/services/identity/config/courier/templates/recovery/invalid/email/subject"},
-		{&plan.CourierTemplatesRecoveryValidEmailBodyHTML, nil, "/services/identity/config/courier/templates/recovery/valid/email/body/html"},
-		{&plan.CourierTemplatesRecoveryValidEmailBodyPlaintext, nil, "/services/identity/config/courier/templates/recovery/valid/email/body/plaintext"},
-		{&plan.CourierTemplatesRecoveryValidEmailSubject, nil, "/services/identity/config/courier/templates/recovery/valid/email/subject"},
-		{&plan.CourierTemplatesRegistrationCodeValidEmailBodyHTML, nil, "/services/identity/config/courier/templates/registration_code/valid/email/body/html"},
-		{&plan.CourierTemplatesRegistrationCodeValidEmailBodyPlaintext, nil, "/services/identity/config/courier/templates/registration_code/valid/email/body/plaintext"},
-		{&plan.CourierTemplatesRegistrationCodeValidEmailSubject, nil, "/services/identity/config/courier/templates/registration_code/valid/email/subject"},
-		{&plan.CourierTemplatesRegistrationCodeValidSMSBodyPlaintext, nil, "/services/identity/config/courier/templates/registration_code/valid/sms/body/plaintext"},
-		{&plan.CourierTemplatesVerificationCodeInvalidEmailBodyHTML, nil, "/services/identity/config/courier/templates/verification_code/invalid/email/body/html"},
-		{&plan.CourierTemplatesVerificationCodeInvalidEmailBodyPlaintext, nil, "/services/identity/config/courier/templates/verification_code/invalid/email/body/plaintext"},
-		{&plan.CourierTemplatesVerificationCodeInvalidEmailSubject, nil, "/services/identity/config/courier/templates/verification_code/invalid/email/subject"},
-		{&plan.CourierTemplatesVerificationCodeValidEmailBodyHTML, nil, "/services/identity/config/courier/templates/verification_code/valid/email/body/html"},
-		{&plan.CourierTemplatesVerificationCodeValidEmailBodyPlaintext, nil, "/services/identity/config/courier/templates/verification_code/valid/email/body/plaintext"},
-		{&plan.CourierTemplatesVerificationCodeValidEmailSubject, nil, "/services/identity/config/courier/templates/verification_code/valid/email/subject"},
-		{&plan.CourierTemplatesVerificationCodeValidSMSBodyPlaintext, nil, "/services/identity/config/courier/templates/verification_code/valid/sms/body/plaintext"},
-		{&plan.CourierTemplatesVerificationInvalidEmailBodyHTML, nil, "/services/identity/config/courier/templates/verification/invalid/email/body/html"},
-		{&plan.CourierTemplatesVerificationInvalidEmailBodyPlaintext, nil, "/services/identity/config/courier/templates/verification/invalid/email/body/plaintext"},
-		{&plan.CourierTemplatesVerificationInvalidEmailSubject, nil, "/services/identity/config/courier/templates/verification/invalid/email/subject"},
-		{&plan.CourierTemplatesVerificationValidEmailBodyHTML, nil, "/services/identity/config/courier/templates/verification/valid/email/body/html"},
-		{&plan.CourierTemplatesVerificationValidEmailBodyPlaintext, nil, "/services/identity/config/courier/templates/verification/valid/email/body/plaintext"},
-		{&plan.CourierTemplatesVerificationValidEmailSubject, nil, "/services/identity/config/courier/templates/verification/valid/email/subject"},
 		{&plan.FeatureFlagsCacheableSessionsMaxAge, nil, "/services/identity/config/feature_flags/cacheable_sessions_max_age"},
 		{&plan.OAuth2ProviderURL, nil, "/services/identity/config/oauth2_provider/url"},
 		{&plan.SelfserviceDefaultBrowserReturnURL, nil, "/services/identity/config/selfservice/default_browser_return_url"},
@@ -175,13 +143,7 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.SelfserviceMethodsPasskeyConfigRPDisplayName, nil, "/services/identity/config/selfservice/methods/passkey/config/rp/display_name"},
 		{&plan.SelfserviceMethodsPasskeyConfigRPID, nil, "/services/identity/config/selfservice/methods/passkey/config/rp/id"},
 		{&plan.SelfserviceMethodsWebAuthnConfigRPIcon, nil, "/services/identity/config/selfservice/methods/webauthn/config/rp/icon"},
-		{&plan.AccountExperienceFaviconDark, nil, "/services/account_experience/config/favicon_dark"},
-		{&plan.AccountExperienceFaviconLight, nil, "/services/account_experience/config/favicon_light"},
 		{&plan.AccountExperienceLocaleBehavior, nil, "/services/account_experience/config/locale_behavior"},
-		{&plan.AccountExperienceLogoDark, nil, "/services/account_experience/config/logo_dark"},
-		{&plan.AccountExperienceLogoLight, nil, "/services/account_experience/config/logo_light"},
-		{&plan.AccountExperienceThemeVariablesDark, nil, "/services/account_experience/config/theme_variables_dark"},
-		{&plan.AccountExperienceThemeVariablesLight, nil, "/services/account_experience/config/theme_variables_light"},
 		{&plan.KetoNamespaceConfiguration, nil, "/services/permission/config/namespaces/location"},
 		{&plan.PreviewDefaultReadConsistencyLevel, nil, "/services/identity/config/preview/default_read_consistency_level"},
 		{&plan.SelfserviceMethodsCaptchaConfigCFTurnstileSecret, nil, "/services/identity/config/selfservice/methods/captcha/config/cf_turnstile/secret"},
@@ -189,6 +151,7 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.CourierHTTPRequestConfigAuthType, nil, "/services/identity/config/courier/http/request_config/auth/type"},
 		{&plan.CourierHTTPRequestConfigMethod, nil, "/services/identity/config/courier/http/request_config/method"},
 		{&plan.SMTPConnectionURI, nil, "/services/identity/config/courier/smtp/connection_uri"},
+		{&plan.OAuth2TokenPrefix, nil, "/services/oauth2/config/oauth2/token_prefix"},
 	}
 }
 
@@ -246,6 +209,11 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 		{&plan.SelfserviceMethodsCaptchaConfigBYO, nil, "/services/identity/config/selfservice/methods/captcha/config/byo"},
 		{&plan.SelfserviceMethodsCaptchaConfigLegacyInjectNode, nil, "/services/identity/config/selfservice/methods/captcha/config/legacy_inject_node"},
 		{&plan.SelfserviceMethodsCaptchaEnabled, nil, "/services/identity/config/selfservice/methods/captcha/enabled"},
+		{&plan.OAuth2PreserveExtClaims, nil, "/services/oauth2/config/oauth2/preserve_ext_claims"},
+		{&plan.AccountExperienceHideOryBranding, nil, "/services/account_experience/config/hide_ory_branding"},
+		{&plan.AccountExperienceHideRegistrationLink, nil, "/services/account_experience/config/hide_registration_link"},
+		{&plan.SelfserviceMethodsDeviceauthnEnabled, nil, "/services/identity/config/selfservice/methods/deviceauthn/enabled"},
+		{&plan.SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/insecure_allow_relaxed_attestation"},
 	}
 }
 
@@ -255,6 +223,7 @@ func simpleInt64PatchEntries(plan *ProjectConfigResourceModel) []Int64PatchEntry
 		{&plan.SelfserviceMethodsPasswordConfigMinPasswordLength, &plan.PasswordMinLength, "/services/identity/config/selfservice/methods/password/config/min_password_length"},
 		{&plan.SelfserviceMethodsPasswordConfigMaxBreaches, &plan.PasswordMaxBreaches, "/services/identity/config/selfservice/methods/password/config/max_breaches"},
 		{&plan.SelfserviceMethodsCodeConfigMaxSubmissions, nil, "/services/identity/config/selfservice/methods/code/max_submissions"},
+		{&plan.OAuth2GrantRefreshTokenRotationGraceReuseCount, nil, "/services/oauth2/config/oauth2/grant/refresh_token/rotation_grace_reuse_count"},
 	}
 }
 
@@ -285,6 +254,8 @@ func simpleListStringPatchEntries(plan *ProjectConfigResourceModel) []ListString
 // simpleMapStringPatchEntries returns all simple map(string) attribute patch mappings.
 func simpleMapStringPatchEntries(plan *ProjectConfigResourceModel) []MapStringPatchEntry {
 	return []MapStringPatchEntry{
+		{&plan.AccountExperienceThemeVariablesDark, nil, "/services/account_experience/config/theme_variables_dark"},
+		{&plan.AccountExperienceThemeVariablesLight, nil, "/services/account_experience/config/theme_variables_light"},
 		{&plan.OAuth2ProviderHeaders, nil, "/services/identity/config/oauth2_provider/headers"},
 		{&plan.SMTPHeaders, nil, "/services/identity/config/courier/smtp/headers"},
 	}

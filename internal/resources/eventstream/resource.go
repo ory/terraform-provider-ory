@@ -240,7 +240,7 @@ func (r *EventStreamResource) Update(ctx context.Context, req resource.UpdateReq
 	}
 
 	body := ory.SetEventStreamBody{
-		Type:     plan.Type.ValueString(),
+		Type:     ory.PtrString(plan.Type.ValueString()),
 		TopicArn: ory.PtrString(plan.TopicArn.ValueString()),
 		RoleArn:  ory.PtrString(plan.RoleArn.ValueString()),
 	}

@@ -40,9 +40,10 @@ resource "ory_project_config" "secure" {
   cors_admin_origins = ["https://admin.example.com"]
 
   # Sessions
-  session_lifespan          = "168h0m0s" # 7 days
-  session_cookie_same_site  = "Strict"
-  session_cookie_persistent = true
+  session_lifespan                 = "168h0m0s" # 7 days
+  session_earliest_possible_extend = "24h"      # Only extend sessions in the last 24h to avoid excessive writes
+  session_cookie_same_site         = "Strict"
+  session_cookie_persistent        = true
 
   # Password Policy
   selfservice_methods_password_config_min_password_length                 = 12
@@ -97,8 +98,18 @@ resource "ory_project_config" "secure" {
   ]
 
   # Account Experience Branding
-  # (removed: account_experience_name, account_experience_logo_url, account_experience_favicon_url)
+  # Logos/favicons must be inline data URIs (the API does not fetch remote
+  # URLs), e.g. "data:image/png;base64,${filebase64("logo.png")}".
+  # Theme variables are maps of color tokens (see the AccountExperienceColors
+  # API model) to CSS color values.
   account_experience_default_locale = "en"
+  # account_experience_logo_light    = "data:image/png;base64,${filebase64("${path.module}/assets/logo.png")}"
+  # account_experience_favicon_light = "data:image/png;base64,${filebase64("${path.module}/assets/favicon.png")}"
+  # account_experience_theme_variables_light = {
+  #   ax_background_default             = "#fafafa"
+  #   brand_500                         = "#0066ff"
+  #   button_primary_background_default = "#0066ff"
+  # }
 
   # OAuth2 Token Lifespans
   oauth2_ttl_access_token          = "1h0m0s"
@@ -155,8 +166,17 @@ resource "ory_project_config" "self_hosted_ui" {
   selfservice_flows_verification_enabled = true
 }
 
-# SMTP configuration for custom email delivery
+# SMTP configuration for custom email delivery.
+#
+# The URI scheme selects the security mode:
+#   smtp://  -> STARTTLS (typical for port 587)
+#   smtps:// -> Implicit TLS (typical for port 465)
+#
+# Append ?disable_starttls=true for cleartext (local dev only) or
+# ?skip_ssl_verify=true to skip certificate verification.
+# See the "SMTP Security Modes" section of the resource docs for details.
 resource "ory_project_config" "with_smtp" {
+  # STARTTLS on port 587 (recommended for most providers)
   smtp_connection_uri       = var.smtp_connection_uri
   courier_smtp_from_address = "noreply@example.com"
   courier_smtp_from_name    = "MyApp"
@@ -168,9 +188,13 @@ resource "ory_project_config" "with_smtp" {
 }
 
 variable "smtp_connection_uri" {
-  type        = string
-  sensitive   = true
-  description = "SMTP connection URI (e.g., smtps://user:pass@smtp.example.com:465)"
+  type      = string
+  sensitive = true
+  # Examples:
+  #   STARTTLS:      smtp://user:pass@smtp.example.com:587
+  #   Implicit TLS:  smtps://user:pass@smtp.example.com:465
+  #   Cleartext:     smtp://user:pass@localhost:1025/?disable_starttls=true
+  description = "SMTP connection URI. Scheme selects the security mode (smtp:// = STARTTLS, smtps:// = implicit TLS)."
 }
 
 # Native-only flows: explicitly clear browser return URLs
@@ -245,6 +269,48 @@ variable "sms_api_key" {
   sensitive   = true
   description = "API key for SMS delivery service"
 }
+
+# OAuth2 token hook with API key authentication
+resource "ory_project_config" "with_token_hook" {
+  oauth2_token_hook = "https://example.com/token-hook"
+
+  oauth2_token_hook_auth = {
+    type  = "api_key"
+    name  = "X-Api-Key"
+    value = var.token_hook_api_key
+    in    = "header"
+  }
+}
+
+variable "token_hook_api_key" {
+  type        = string
+  sensitive   = true
+  description = "API key sent to the OAuth2 token hook endpoint."
+}
+
+# Show the verification UI after registration and profile updates.
+# Each attribute toggles the `show_verification_ui` hook for one flow while
+# preserving any other hooks (e.g. `session`, `organization`) already set on
+# the project.
+resource "ory_project_config" "show_verification_ui" {
+  selfservice_flows_verification_enabled = true
+
+  # After password registration, redirect users to the verification UI.
+  selfservice_flows_registration_after_password_hook_show_verification_ui = true
+  # Same for social (OIDC) registration.
+  selfservice_flows_registration_after_oidc_hook_show_verification_ui = true
+  # When users change their email in profile settings, force re-verification.
+  selfservice_flows_settings_after_profile_hook_show_verification_ui = true
+}
+
+# Automatically sign users in after they register with email + password.
+# OIDC, WebAuthn and Passkey flows already issue a session on registration,
+# so this toggle only affects the password flow — it mirrors the Ory Console
+# "Enable sign in after registration" toggle. Existing hooks at the same path
+# (e.g. `organization`) are preserved.
+resource "ory_project_config" "sign_in_after_registration" {
+  selfservice_flows_registration_after_password_hook_session = true
+}
 ```
 
 ## Duration Format
@@ -299,6 +365,71 @@ This resource supports CORS configuration for both public and admin endpoints:
 - **Public CORS** (`cors_enabled`, `cors_origins`) — Controls CORS for public-facing endpoints (login, registration, etc.)
 - **Admin CORS** (`cors_admin_enabled`, `cors_admin_origins`) — Controls CORS for admin API endpoints
 
+## SMTP Security Modes
+
+The `smtp_connection_uri` attribute selects the SMTP security mode through the URI scheme and query parameters. The Ory API stores the SMTP configuration as a single URI, so there is no separate security-mode attribute — the scheme and query string fully describe the connection.
+
+| Security mode | URI format | Typical port | When to use |
+|---------------|------------|--------------|-------------|
+| STARTTLS (recommended) | `smtp://user:pass@host:port/` | 587 | Most modern SMTP relays (SendGrid, Mailgun, SES SMTP, Postfix submission) |
+| STARTTLS, skip certificate verification | `smtp://user:pass@host:port/?skip_ssl_verify=true` | 587 | Development or self-signed certs only |
+| Cleartext (no encryption) | `smtp://user:pass@host:port/?disable_starttls=true` | 25, 1025 | Local development with [MailHog](https://github.com/mailhog/MailHog), [MailCatcher](https://mailcatcher.me), or similar |
+| Implicit TLS | `smtps://user:pass@host:port/` | 465 | Legacy SMTPS endpoints that negotiate TLS before any plaintext |
+| Implicit TLS, skip certificate verification | `smtps://user:pass@host:port/?skip_ssl_verify=true` | 465 | Development or self-signed certs only |
+| Implicit TLS with server-name override | `smtps://user:pass@host:port/?server_name=mail.example.com` | 465 | When the SMTP host's certificate is issued for a different hostname (non-wildcard certs) |
+
+~> **Common mistake:** Using `smtps://...:587` forces implicit TLS on a port that expects STARTTLS, which causes most providers to reject the connection or return TLS handshake errors. Use `smtp://...:587` for STARTTLS on port 587.
+
+-> **Credential encoding:** Usernames and passwords must be URI-encoded if they contain special characters (e.g., `@`, `:`, `/`, `?`, `#`). Use [`urlencode`](https://developer.hashicorp.com/terraform/language/functions/urlencode) in Terraform to encode them safely.
+
+For more detail, see the [Ory Kratos SMTP documentation](https://www.ory.com/docs/kratos/emails-sms/sending-emails-smtp).
+
+## Verification After Registration / Settings
+
+Three boolean attributes toggle the [`show_verification_ui`](https://www.ory.com/docs/kratos/self-service/flows/user-registration) post-flow hook for each authentication method:
+
+- `selfservice_flows_registration_after_password_hook_show_verification_ui`
+- `selfservice_flows_registration_after_oidc_hook_show_verification_ui`
+- `selfservice_flows_settings_after_profile_hook_show_verification_ui`
+
+When `true`, the provider adds the `show_verification_ui` hook to the corresponding flow; when `false`, it removes only that hook. Other hooks at the same path (for example `session` or `organization`) are preserved by reading the current hook list before each apply.
+
+To require a verified address before a user can log in (the "Require verified address for login" toggle in the Ory Console), set `feature_flags_legacy_require_verified_login_error = true`. When that flag is `false`, an unverified user is shown the `show_verification_ui` continuation step instead of receiving a form error.
+
+## Account Experience Branding
+
+The hosted Account Experience pages (login, registration, recovery, ...) can be branded with a logo, favicon, and theme colors.
+
+**Logos and favicons** (`account_experience_logo_light`, `account_experience_logo_dark`, `account_experience_favicon_light`, `account_experience_favicon_dark`) must be provided as an inline data URI — the Ory API does not fetch remote URLs. Use [`filebase64`](https://developer.hashicorp.com/terraform/language/functions/filebase64) to embed a local image:
+
+```hcl
+resource "ory_project_config" "main" {
+  account_experience_logo_light    = "data:image/png;base64,${filebase64("${path.module}/assets/logo.png")}"
+  account_experience_favicon_light = "data:image/png;base64,${filebase64("${path.module}/assets/favicon.png")}"
+}
+```
+
+Supported content types: `image/png`, `image/svg+xml`, `image/x-icon`, `image/vnd.microsoft.icon`, `image/gif`, `image/jpeg`, `image/webp`. The API uploads the image and serves it from a content-addressed storage URL; the provider compares that URL's content hash against your data URI, so an unchanged image never shows a diff. Set the attribute to an empty string (`""`) to remove the image.
+
+**Theme colors** (`account_experience_theme_variables_light`, `account_experience_theme_variables_dark`) are maps of color tokens to CSS color values:
+
+```hcl
+resource "ory_project_config" "main" {
+  account_experience_theme_variables_light = {
+    ax_background_default             = "#fafafa"
+    brand_500                         = "#0066ff"
+    button_primary_background_default = "#0066ff"
+    button_primary_background_hover   = "#0052cc"
+  }
+}
+```
+
+Valid tokens are the fields of the [`AccountExperienceColors`](https://github.com/ory/client-go/blob/master/docs/AccountExperienceColors.md) API model (for example `ax_background_default`, `brand_50` through `brand_950`, `button_primary_*`, `input_*`, `interface_*`). The Ory Console theme editor (Branding → Theme) is an easy way to discover token names: configure colors there, then run `ory get project <id> --format json` and copy the `theme_variables_light`/`theme_variables_dark` objects.
+
+~> **Note:** The API silently discards unrecognized color tokens. If a token you set keeps reappearing in `terraform plan`, check its spelling against the model linked above.
+
+Set a theme map to `{}` to reset all colors to the defaults.
+
 ## Clearing Return URLs
 
 To explicitly clear `default_return_url` and `allowed_return_urls` (e.g., for native-only flows with no browser redirects), set them to empty values:
@@ -341,13 +472,15 @@ terraform plan  # verify no changes
 
 - `account_experience_default_locale` (String) Default locale for the hosted login UI (e.g., 'en', 'de').
 - `account_experience_enabled_locales` (List of String) Enabled locales for the hosted login UI.
-- `account_experience_favicon_dark` (String) URL for the dark theme favicon in the hosted login UI.
-- `account_experience_favicon_light` (String) URL for the light theme favicon in the hosted login UI.
+- `account_experience_favicon_dark` (String) Favicon for the hosted Account Experience UI (dark theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
+- `account_experience_favicon_light` (String) Favicon for the hosted Account Experience UI (light theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
+- `account_experience_hide_ory_branding` (Boolean) Whether to hide the Ory branding badge on the account experience.
+- `account_experience_hide_registration_link` (Boolean) Whether to hide the registration link on the account experience login card.
 - `account_experience_locale_behavior` (String) Locale behavior: 'respect_accept_language' or 'force_default'.
-- `account_experience_logo_dark` (String) URL for the dark theme logo in the hosted login UI.
-- `account_experience_logo_light` (String) URL for the light theme logo in the hosted login UI.
-- `account_experience_theme_variables_dark` (String) URL for dark theme CSS variables in the hosted login UI.
-- `account_experience_theme_variables_light` (String) URL for light theme CSS variables in the hosted login UI.
+- `account_experience_logo_dark` (String) Logo for the hosted Account Experience UI (dark theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
+- `account_experience_logo_light` (String) Logo for the hosted Account Experience UI (light theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
+- `account_experience_theme_variables_dark` (Map of String) Theme color variables for the hosted Account Experience UI (dark theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset.
+- `account_experience_theme_variables_light` (Map of String) Theme color variables for the hosted Account Experience UI (light theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset.
 - `allowed_return_urls` (List of String) List of allowed return URLs.
 - `code_lifespan` (String, Deprecated) Lifespan of the code method's one-time codes (e.g., '15m0s'). Controls how long a code remains valid after being issued.
 - `code_mfa_enabled` (Boolean, Deprecated) Enable the code method as a second factor for MFA. When enabled, users can use one-time codes as a second authentication factor.
@@ -372,39 +505,6 @@ terraform plan  # verify no changes
 - `courier_smtp_from_address` (String) Email address to send from.
 - `courier_smtp_from_name` (String) Name to display as sender.
 - `courier_smtp_local_name` (String) Local hostname used in SMTP HELO/EHLO commands.
-- `courier_templates_login_code_valid_email_body_html` (String) HTML body template for valid login-by-code emails.
-- `courier_templates_login_code_valid_email_body_plaintext` (String) Plaintext body template for valid login-by-code emails.
-- `courier_templates_login_code_valid_email_subject` (String) Subject template for valid login-by-code emails.
-- `courier_templates_login_code_valid_sms_body_plaintext` (String) Plaintext body template for valid login-by-code SMS messages.
-- `courier_templates_recovery_code_invalid_email_body_html` (String) HTML body template for invalid recovery-by-code emails.
-- `courier_templates_recovery_code_invalid_email_body_plaintext` (String) Plaintext body template for invalid recovery-by-code emails.
-- `courier_templates_recovery_code_invalid_email_subject` (String) Subject template for invalid recovery-by-code emails.
-- `courier_templates_recovery_code_valid_email_body_html` (String) HTML body template for valid recovery-by-code emails.
-- `courier_templates_recovery_code_valid_email_body_plaintext` (String) Plaintext body template for valid recovery-by-code emails.
-- `courier_templates_recovery_code_valid_email_subject` (String) Subject template for valid recovery-by-code emails.
-- `courier_templates_recovery_invalid_email_body_html` (String) HTML body template for invalid recovery emails.
-- `courier_templates_recovery_invalid_email_body_plaintext` (String) Plaintext body template for invalid recovery emails.
-- `courier_templates_recovery_invalid_email_subject` (String) Subject template for invalid recovery emails.
-- `courier_templates_recovery_valid_email_body_html` (String) HTML body template for valid recovery emails.
-- `courier_templates_recovery_valid_email_body_plaintext` (String) Plaintext body template for valid recovery emails.
-- `courier_templates_recovery_valid_email_subject` (String) Subject template for valid recovery emails.
-- `courier_templates_registration_code_valid_email_body_html` (String) HTML body template for valid registration-by-code emails.
-- `courier_templates_registration_code_valid_email_body_plaintext` (String) Plaintext body template for valid registration-by-code emails.
-- `courier_templates_registration_code_valid_email_subject` (String) Subject template for valid registration-by-code emails.
-- `courier_templates_registration_code_valid_sms_body_plaintext` (String) Plaintext body template for valid registration-by-code SMS messages.
-- `courier_templates_verification_code_invalid_email_body_html` (String) HTML body template for invalid verification-by-code emails.
-- `courier_templates_verification_code_invalid_email_body_plaintext` (String) Plaintext body template for invalid verification-by-code emails.
-- `courier_templates_verification_code_invalid_email_subject` (String) Subject template for invalid verification-by-code emails.
-- `courier_templates_verification_code_valid_email_body_html` (String) HTML body template for valid verification-by-code emails.
-- `courier_templates_verification_code_valid_email_body_plaintext` (String) Plaintext body template for valid verification-by-code emails.
-- `courier_templates_verification_code_valid_email_subject` (String) Subject template for valid verification-by-code emails.
-- `courier_templates_verification_code_valid_sms_body_plaintext` (String) Plaintext body template for valid verification-by-code SMS messages.
-- `courier_templates_verification_invalid_email_body_html` (String) HTML body template for invalid verification emails.
-- `courier_templates_verification_invalid_email_body_plaintext` (String) Plaintext body template for invalid verification emails.
-- `courier_templates_verification_invalid_email_subject` (String) Subject template for invalid verification emails.
-- `courier_templates_verification_valid_email_body_html` (String) HTML body template for valid verification emails.
-- `courier_templates_verification_valid_email_body_plaintext` (String) Plaintext body template for valid verification emails.
-- `courier_templates_verification_valid_email_subject` (String) Subject template for valid verification emails.
 - `default_return_url` (String) Default URL to redirect after flows.
 - `disable_account_experience_welcome_screen` (Boolean) Disable the account experience welcome screen at /ui/welcome.
 - `enable_ax_v2` (Boolean) Enable the new account experience UI.
@@ -454,6 +554,7 @@ terraform plan  # verify no changes
 - `oauth2_grant_jwt_jti_optional` (Boolean) Make the `jti` claim optional in JWT assertion grants (RFC 7523).
 - `oauth2_grant_jwt_max_ttl` (String) Maximum TTL for JWT assertions in grant flows (e.g. '720h').
 - `oauth2_grant_refresh_token_rotation_grace_period` (String) Grace period for refresh token rotation (e.g. '5s'). Set to '0s' to disable.
+- `oauth2_grant_refresh_token_rotation_grace_reuse_count` (Number) OAuth2 Grant Refresh Token Rotation Grace Reuse Count. The maximum number of times a refresh token can be reused within the grace period. If set to `null` or `0`, the limit is disabled.
 - `oauth2_id_token_lifespan` (String, Deprecated) OAuth2 ID token lifespan (e.g., '1h'). Requires Hydra service.
 - `oauth2_issuer_url` (String, Deprecated) OAuth2 issuer URL. Overrides the default project URL used as the OAuth2/OIDC issuer.
 - `oauth2_jwt_scope_claim` (String, Deprecated) How scopes are represented in JWT access tokens ('list', 'string', or 'both').
@@ -463,6 +564,7 @@ terraform plan  # verify no changes
 - `oauth2_mirror_top_level_claims` (Boolean) Mirror top-level claims in OAuth2 ID tokens.
 - `oauth2_pkce_enforced` (Boolean) Enforce PKCE for all OAuth2 clients.
 - `oauth2_pkce_enforced_for_public_clients` (Boolean) Enforce PKCE for public OAuth2 clients only.
+- `oauth2_preserve_ext_claims` (Boolean) Set to true to keep custom claims that are not promoted to the top level in the 'ext' claim. Only applies when mirror_top_level_claims is false.
 - `oauth2_provider_headers` (Map of String) Custom HTTP headers for the OAuth2 provider integration.
 - `oauth2_provider_override_return_to` (Boolean) Allow the OAuth2 provider to automatically set the return_to parameter.
 - `oauth2_provider_url` (String) OAuth2 provider integration URL.
@@ -478,6 +580,8 @@ terraform plan  # verify no changes
 - `oauth2_strategies_jwt_scope_claim` (String) How scopes are represented in JWT access tokens ('list', 'string', or 'both').
 - `oauth2_strategies_scope` (String) OAuth2 scope matching strategy ('exact', 'wildcard').
 - `oauth2_token_hook` (String) Webhook URL called during token issuance for all grant types to customize claims.
+- `oauth2_token_hook_auth` (Attributes) Authentication configuration for the OAuth2 token hook (see `oauth2_token_hook`). Currently only `api_key` authentication is supported. (see [below for nested schema](#nestedatt--oauth2_token_hook_auth))
+- `oauth2_token_prefix` (String) Sets a per-project Access Token, Refresh Token, and Authorization Code prefix
 - `oauth2_ttl_access_token` (String) OAuth2 access token lifespan (e.g., '1h', '30m'). Requires Hydra service.
 - `oauth2_ttl_auth_code` (String) OAuth2 authorization code lifespan (e.g., '30m'). Requires Hydra service.
 - `oauth2_ttl_id_token` (String) OAuth2 ID token lifespan (e.g., '1h'). Requires Hydra service.
@@ -535,8 +639,11 @@ terraform plan  # verify no changes
 - `selfservice_flows_registration_after_code_default_browser_return_url` (String) Return URL after registration via code method.
 - `selfservice_flows_registration_after_default_browser_return_url` (String) Default return URL after registration.
 - `selfservice_flows_registration_after_oidc_default_browser_return_url` (String) Return URL after registration via OIDC.
+- `selfservice_flows_registration_after_oidc_hook_show_verification_ui` (Boolean) Enable the `show_verification_ui` hook after a successful OIDC (social) registration. When true, users are redirected to the verification UI after registering via a social provider. Existing hooks at this path (e.g., `session`, `organization`) are preserved.
 - `selfservice_flows_registration_after_passkey_default_browser_return_url` (String) Return URL after registration via passkey.
 - `selfservice_flows_registration_after_password_default_browser_return_url` (String) Return URL after registration via password.
+- `selfservice_flows_registration_after_password_hook_session` (Boolean) Enable the `session` hook after a successful password registration, automatically signing the user in. Mirrors the Ory Console "Enable sign in after registration" toggle. Existing hooks at this path (e.g., `organization`) are preserved.
+- `selfservice_flows_registration_after_password_hook_show_verification_ui` (Boolean) Enable the `show_verification_ui` hook after a successful password registration. When true, users are redirected to the verification UI after registering with email + password. Existing hooks at this path (e.g., `session`, `organization`) are preserved.
 - `selfservice_flows_registration_after_webauthn_default_browser_return_url` (String) Return URL after registration via WebAuthn.
 - `selfservice_flows_registration_enable_legacy_one_step` (Boolean) Revert to legacy one-step registration instead of the two-step flow.
 - `selfservice_flows_registration_enabled` (Boolean) Enable user registration.
@@ -549,6 +656,7 @@ terraform plan  # verify no changes
 - `selfservice_flows_settings_after_passkey_default_browser_return_url` (String) Return URL after updating passkey in settings.
 - `selfservice_flows_settings_after_password_default_browser_return_url` (String) Return URL after updating password in settings.
 - `selfservice_flows_settings_after_profile_default_browser_return_url` (String) Return URL after updating profile in settings.
+- `selfservice_flows_settings_after_profile_hook_show_verification_ui` (Boolean) Enable the `show_verification_ui` hook after a successful profile settings update. When true, users are redirected to the verification UI after updating their profile (e.g., changing their email). Existing hooks at this path (e.g., `organization`) are preserved.
 - `selfservice_flows_settings_after_totp_default_browser_return_url` (String) Return URL after updating TOTP in settings.
 - `selfservice_flows_settings_after_webauthn_default_browser_return_url` (String) Return URL after updating WebAuthn in settings.
 - `selfservice_flows_settings_lifespan` (String) Lifespan of the settings flow (e.g., '30m0s'). Controls how long a settings flow session remains valid.
@@ -574,6 +682,8 @@ terraform plan  # verify no changes
 - `selfservice_methods_code_mfa_enabled` (Boolean) Enable the code method as a second factor for MFA. When enabled, users can use one-time codes as a second authentication factor.
 - `selfservice_methods_code_passwordless_enabled` (Boolean) Enable passwordless login via the code method.
 - `selfservice_methods_code_passwordless_login_fallback_enabled` (Boolean) Allow code-based login as a fallback for users registered with other methods.
+- `selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation` (Boolean) Device authentication accepts relaxed attestations for testing. Only allowed on development projects and forced off otherwise.
+- `selfservice_methods_deviceauthn_enabled` (Boolean) Device authentication is enabled
 - `selfservice_methods_link_config_base_url` (String) Base URL for recovery, verification, and login links. Leave empty for automatic detection.
 - `selfservice_methods_link_config_lifespan` (String) Lifespan of magic links (e.g. '1h').
 - `selfservice_methods_link_enabled` (Boolean) Enable the magic link authentication method.
@@ -602,13 +712,14 @@ terraform plan  # verify no changes
 - `selfservice_methods_webauthn_enabled` (Boolean) Enable WebAuthn (hardware keys).
 - `session_cookie_persistent` (Boolean) Enable persistent session cookies (survive browser close).
 - `session_cookie_same_site` (String) SameSite cookie attribute (Lax, Strict, None).
+- `session_earliest_possible_extend` (String) Earliest time before session expiry when a session can be extended (e.g., '24h'). Setting this prevents excessive database writes when sessions are extended.
 - `session_lifespan` (String) Session duration (e.g., '24h0m0s').
 - `session_tokenizer_templates` (Attributes Map) JWT tokenizer templates for the /sessions/whoami endpoint. Each key is a template name, and the value configures how JWTs are generated. (see [below for nested schema](#nestedatt--session_tokenizer_templates))
 - `session_whoami_required_aal` (String) Required AAL for session whoami endpoint: 'aal1', 'aal2', or 'highest_available'.
 - `settings_lifespan` (String, Deprecated) Lifespan of the settings flow (e.g., '30m0s'). Controls how long a settings flow session remains valid.
 - `settings_privileged_session_max_age` (String, Deprecated) Maximum age of a privileged session for the settings flow (e.g., '15m0s'). After this duration, the user must re-authenticate to make privileged changes like password updates.
 - `settings_ui_url` (String, Deprecated) URL for the account settings UI.
-- `smtp_connection_uri` (String, Sensitive) SMTP connection URI for sending emails (e.g., smtps://user:pass@host:port).
+- `smtp_connection_uri` (String, Sensitive) SMTP connection URI for sending emails. The URI scheme selects the security mode: `smtp://` uses STARTTLS (recommended for port 587), `smtps://` uses implicit TLS (recommended for port 465). Append `?disable_starttls=true` for cleartext or `?skip_ssl_verify=true` to skip certificate verification (development only). See the SMTP Security Modes section in the resource documentation for the full list.
 - `smtp_from_address` (String, Deprecated) Email address to send from.
 - `smtp_from_name` (String, Deprecated) Name to display as sender.
 - `smtp_headers` (Map of String) Custom SMTP headers for outbound emails.
@@ -698,6 +809,17 @@ Optional:
 - `user` (String) Username for basic_auth.
 - `value` (String, Sensitive) API key value for api_key auth.
 
+
+
+<a id="nestedatt--oauth2_token_hook_auth"></a>
+### Nested Schema for `oauth2_token_hook_auth`
+
+Required:
+
+- `in` (String) Where to send the API key: `header` or `cookie`.
+- `name` (String) Header or cookie name carrying the API key (e.g. `X-Api-Key`).
+- `type` (String) Authentication type. Currently only `api_key` is supported.
+- `value` (String, Sensitive) API key value sent to the token hook.
 
 
 <a id="nestedatt--session_tokenizer_templates"></a>

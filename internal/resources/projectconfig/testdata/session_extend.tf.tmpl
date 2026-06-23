@@ -1,0 +1,4 @@
+resource "ory_project_config" "test" {
+  session_lifespan                 = "[[ .Lifespan ]]"
+  session_earliest_possible_extend = "[[ .EarliestPossibleExtend ]]"
+}

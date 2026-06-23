@@ -78,6 +78,16 @@ resource "ory_social_provider" "google_labeled" {
   account_linking_mode = "automatic"
 }
 
+# Google Sign-In with FedCM (browser Federated Credential Management)
+resource "ory_social_provider" "google_fedcm" {
+  provider_id      = "google-fedcm"
+  provider_type    = "google"
+  client_id        = var.google_client_id
+  client_secret    = var.google_client_secret
+  scope            = ["email", "profile"]
+  fedcm_config_url = "https://accounts.google.com/gsi/fedcm.json"
+}
+
 # Generic OIDC with a custom base redirect URI (e.g., when using a custom domain)
 resource "ory_social_provider" "corporate_sso_custom_domain" {
   provider_id       = "corporate-sso-custom-domain"
@@ -117,6 +127,27 @@ resource "ory_social_provider" "apple" {
   apple_private_key_id = var.apple_private_key_id
   apple_private_key    = var.apple_private_key
   scope                = ["email", "name"]
+}
+
+# Enterprise SSO that elevates the Ory session to AAL2 when the upstream
+# provider asserts MFA via the `acr` or `amr` claims (works with Auth0, Okta,
+# Keycloak, PingFederate, Entra ID v1, and other OIDC providers).
+resource "ory_social_provider" "enterprise_sso" {
+  provider_id   = "enterprise-sso"
+  provider_type = "generic"
+  client_id     = var.sso_client_id
+  client_secret = var.sso_client_secret
+  issuer_url    = "https://sso.example.com"
+  scope         = ["openid", "profile", "email"]
+
+  # Mark the Ory session as AAL2 when the ID token's `acr` claim matches any of these.
+  aal2_acr_values = [
+    "urn:mace:incommon:iap:silver",
+    "https://refeds.org/profile/mfa",
+  ]
+
+  # Mark the Ory session as AAL2 when any of these values appear in the `amr` array (per RFC 8176).
+  aal2_amr_values = ["mfa", "otp", "hwk"]
 }
 
 # Generic OIDC Provider with custom claims mapping
@@ -279,6 +310,67 @@ resource "ory_social_provider" "google" {
 
 ~> **Security:** Auto-linking trusts that the social provider has verified the user's email. Only enable this for providers you trust to verify email addresses.
 
+## Upstream MFA (AAL2 Elevation)
+
+When an upstream OpenID Connect provider performs multi-factor authentication, the resulting Ory session can be marked as AAL2 (Authentication Assurance Level 2) so the user is not prompted for a second factor again. Use `aal2_acr_values` and/or `aal2_amr_values` to opt in:
+
+- **`aal2_acr_values`** — A list of `acr` claim values. If the ID token returned by the upstream provider contains an `acr` claim matching any value in the list, Ory marks the session as AAL2. Works with providers that return the `acr` claim (Auth0, Okta, Keycloak, PingFederate, Entra ID v1, generic enterprise IdPs).
+- **`aal2_amr_values`** — A list of `amr` values (per [RFC 8176](https://datatracker.ietf.org/doc/html/rfc8176), for example `mfa`, `otp`, `hwk`, `fpt`). If the upstream `amr` array contains any value in the list, Ory marks the session as AAL2.
+
+Both attributes are optional and can be used together. Leave them unset to always issue AAL1 sessions through the provider.
+
+```hcl
+resource "ory_social_provider" "enterprise_sso" {
+  provider_id   = "enterprise-sso"
+  provider_type = "generic"
+  client_id     = var.sso_client_id
+  client_secret = var.sso_client_secret
+  issuer_url    = "https://sso.example.com"
+  scope         = ["openid", "profile", "email"]
+
+  aal2_acr_values = ["urn:mace:incommon:iap:silver", "https://refeds.org/profile/mfa"]
+  aal2_amr_values = ["mfa", "otp", "hwk"]
+}
+```
+
+## PKCE
+
+The `pkce` attribute controls whether the OAuth2 authorization code flow uses [Proof Key for Code Exchange (RFC 7636)](https://datatracker.ietf.org/doc/html/rfc7636) when redirecting users to the upstream provider:
+
+| Value | Description |
+|-------|-------------|
+| `auto` (default) | Enable PKCE only when the upstream provider advertises support via OIDC discovery. |
+| `force` | Always send the PKCE challenge. Use only with providers known to support it — providers that do not understand PKCE may reject the authorization request. |
+| `never` | Disable PKCE for this provider. |
+
+```hcl
+resource "ory_social_provider" "google" {
+  provider_id   = "google"
+  provider_type = "google"
+  client_id     = var.google_client_id
+  client_secret = var.google_client_secret
+  scope         = ["email", "profile"]
+  pkce          = "force"
+}
+```
+
+## FedCM (Federated Credential Management)
+
+The `fedcm_config_url` attribute enables sign-in with this provider through the browser's [FedCM API](https://developer.mozilla.org/en-US/docs/Web/API/FedCM_API) instead of a full-page OAuth2 redirect. Set it to the URL of the provider's FedCM configuration file. For Google, this is `https://accounts.google.com/gsi/fedcm.json`.
+
+```hcl
+resource "ory_social_provider" "google" {
+  provider_id      = "google"
+  provider_type    = "google"
+  client_id        = var.google_client_id
+  client_secret    = var.google_client_secret
+  scope            = ["email", "profile"]
+  fedcm_config_url = "https://accounts.google.com/gsi/fedcm.json"
+}
+```
+
+Leave the attribute unset to disable FedCM for the provider. Removing it from your configuration clears the value server-side.
+
 ## Base Redirect URI
 
 The `base_redirect_uri` attribute overrides the base URL Ory uses when constructing OIDC callback URLs. Use this when your project is accessible under a custom domain and you want callbacks to go to that domain rather than the default Ory project URL.
@@ -327,7 +419,10 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 
 ### Optional
 
+- `aal2_acr_values` (List of String) Upstream OpenID Connect `acr` claim values that elevate the resulting Ory session to AAL2. If the ID token returned by the upstream provider contains an `acr` claim matching any of these values, the user is not prompted for a second factor. Leave unset to always issue AAL1 sessions through this provider. Works with providers that return the `acr` claim (Auth0, Okta, Keycloak, PingFederate, Entra ID v1, generic enterprise IdPs).
+- `aal2_amr_values` (List of String) Upstream OpenID Connect `amr` values (per RFC 8176, for example `mfa`, `otp`, `hwk`) that mark the session AAL2 when they appear in the upstream `amr` array. Leave unset to ignore the `amr` claim.
 - `account_linking_mode` (String) Controls how accounts are linked when a user signs in with this provider and a matching identity already exists. "automatic" links without user interaction; "confirm_with_existing_credential" requires the user to verify ownership of the existing account first.
+- `additional_id_token_audiences` (List of String) Additional audiences allowed in the ID Token. Only relevant in OIDC flows that submit an ID Token directly instead of using the callback from the OIDC provider (e.g., native mobile apps signing in with Google or Apple where the app and the OIDC client are registered with different audiences).
 - `apple_private_key` (String, Sensitive) Apple private key in PEM format (contents of the .p8 file). Required when provider_type is "apple" and client_secret is not set. Ory uses this to generate the JWT client secret automatically.
 - `apple_private_key_id` (String) Apple private key ID from the Apple Developer portal (e.g., "UX56C66723"). Required when provider_type is "apple" and client_secret is not set.
 - `apple_team_id` (String) Apple Developer Team ID (e.g., "KP76DQS54M"). Required when provider_type is "apple" and client_secret is not set.
@@ -335,9 +430,11 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 - `auto_link` (Boolean) Enable automatic account linking for this provider. When true, if an identity with the same identifier (e.g., email) already exists, the social sign-in will automatically link to that identity instead of failing. Requires enable_oidc_auto_link_policy to be true in the project config (ory_project_config). This attribute is write-only — the API accepts it on create/update but does not return it on read, so Terraform preserves the value from state. On import, the value will not be populated. Removing this attribute from your configuration will automatically disable auto-linking server-side.
 - `base_redirect_uri` (String, Deprecated) Override the base redirect URI for OIDC callbacks (e.g., "https://iam.example.com"). When set, Ory constructs callback URLs using this base instead of the default project domain. This is a global OIDC config setting — if multiple social providers set different values, the last applied value wins.
 - `client_secret` (String, Sensitive) OAuth2 client secret from the provider. Required for all providers except Apple (where Ory generates the secret from apple_team_id, apple_private_key_id, and apple_private_key).
+- `fedcm_config_url` (String) URL of the provider's FedCM (Federated Credential Management) configuration file. When set, Ory can use the browser's FedCM API for sign-in with this provider instead of a full-page redirect. For example, Google's FedCM configuration is served at "https://accounts.google.com/gsi/fedcm.json". Leave unset to disable FedCM for this provider.
 - `issuer_url` (String) OIDC issuer URL (required for generic providers).
 - `label` (String) Human-readable label for the provider, displayed on the login button (e.g., "Sign in with Corporate SSO").
 - `mapper_url` (String) Jsonnet mapper URL for claims mapping. Can be a URL or base64-encoded Jsonnet (base64://...). If not set, a default mapper that extracts email from claims will be used.
+- `pkce` (String) PKCE (Proof Key for Code Exchange) behavior for the OAuth2 authorization code flow. "auto" (default) enables PKCE when the upstream provider advertises support via OIDC discovery; "force" always sends PKCE (use only with providers known to support it); "never" disables PKCE.
 - `project_id` (String) Project ID. If not set, uses provider's project_id.
 - `scope` (List of String) OAuth2 scopes to request.
 - `tenant` (String) Tenant ID (for Microsoft/Azure providers).

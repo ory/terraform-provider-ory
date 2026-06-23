@@ -118,10 +118,13 @@ while IFS= read -r -d '' file; do
   for entry in "${RENAMES[@]}"; do
     old="${entry%%=*}"
     new="${entry#*=}"
-    # Only match HCL attribute assignments: fixed-string pre-check + perl assignment match
-    if grep -qF "${old}" "$file" 2>/dev/null && perl -ne "exit 0 if /^\\s*\\Q${old}\\E\\s*=/; END { exit 1 }" "$file" 2>/dev/null; then
+    # Only match HCL attribute assignments: fixed-string pre-check + perl assignment match.
+    # Use a flag variable with the END block so the exit code survives the implicit
+    # `while (<>)` loop that perl -n wraps around the code. A bare `exit 0` inside the
+    # loop still triggers END, which would override the exit code back to 1.
+    if grep -qF "${old}" "$file" 2>/dev/null && perl -ne "BEGIN { \$f = 0 } \$f = 1 if /^\\s*\\Q${old}\\E\\s*=/; END { exit(\$f ? 0 : 1) }" "$file" 2>/dev/null; then
       # Check if the new name already exists in the file to avoid duplicates
-      if perl -ne "exit 0 if /^\\s*\\Q${new}\\E\\s*=/; END { exit 1 }" "$file" 2>/dev/null; then
+      if perl -ne "BEGIN { \$f = 0 } \$f = 1 if /^\\s*\\Q${new}\\E\\s*=/; END { exit(\$f ? 0 : 1) }" "$file" 2>/dev/null; then
         echo "  WARNING: $file: both '$old' and '$new' exist — skipping rename to avoid duplicate"
         continue
       fi
@@ -138,7 +141,7 @@ while IFS= read -r -d '' file; do
       # Tracks brace depth; handles opening brace on same or next line.
       perl -pi -e '
         BEGIN { $in_block = 0; $depth = 0; $seen_open = 0; }
-        if (!$in_block && /^\s*resource\s+"ory_project_config"\b/ && !/^\s*#/ && !/^\s*\/\//) { $in_block = 1; $depth = 0; $seen_open = 0; }
+        if (!$in_block && /^\s*resource\s+"ory_project_config"/ && !/^\s*#/ && !/^\s*\/\//) { $in_block = 1; $depth = 0; $seen_open = 0; }
         if ($in_block) {
           my $opens = () = /\{/g;
           my $closes = () = /\}/g;
@@ -160,7 +163,7 @@ done < <(find "$DIR" -type f -name '*.tf' -not -path '*/.terraform/*' -print0)
 FOUND_REMOVED=false
 while IFS= read -r -d '' file; do
   for removed in "${REMOVED[@]}"; do
-    if grep -qF "$removed" "$file" 2>/dev/null && perl -ne "exit 0 if /^\\s*\\Q${removed}\\E\\s*=/; END { exit 1 }" "$file" 2>/dev/null; then
+    if grep -qF "$removed" "$file" 2>/dev/null && perl -ne "BEGIN { \$f = 0 } \$f = 1 if /^\\s*\\Q${removed}\\E\\s*=/; END { exit(\$f ? 0 : 1) }" "$file" 2>/dev/null; then
       if [ "$FOUND_REMOVED" = false ]; then
         echo ""
         echo "WARNING: The following attributes have been removed and should be deleted:"

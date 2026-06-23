@@ -6,6 +6,9 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFetchSchemaFromURL(t *testing.T) {
@@ -34,12 +37,8 @@ func TestFetchSchemaFromURL(t *testing.T) {
 			_, _ = w.Write([]byte(`{"type":"object","properties":{"name":{"type":"string"}}}`))
 		}, func(t *testing.T, url string) {
 			result, err := fetchSchemaFromURL(context.Background(), url)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if result["type"] != "object" {
-				t.Errorf("expected type=object, got %v", result["type"])
-			}
+			require.NoError(t, err)
+			assert.Equal(t, "object", result["type"])
 		})
 	})
 
@@ -48,9 +47,7 @@ func TestFetchSchemaFromURL(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}, func(t *testing.T, url string) {
 			_, err := fetchSchemaFromURL(context.Background(), url)
-			if err == nil {
-				t.Fatal("expected error for non-200 response")
-			}
+			require.Error(t, err, "expected error for non-200 response")
 		})
 	})
 
@@ -59,31 +56,23 @@ func TestFetchSchemaFromURL(t *testing.T) {
 			_, _ = w.Write([]byte(`not json`))
 		}, func(t *testing.T, url string) {
 			_, err := fetchSchemaFromURL(context.Background(), url)
-			if err == nil {
-				t.Fatal("expected error for invalid JSON")
-			}
+			require.Error(t, err, "expected error for invalid JSON")
 		})
 	})
 
 	t.Run("rejects non-HTTPS URL", func(t *testing.T) {
 		_, err := fetchSchemaFromURL(context.Background(), "http://example.com/schema.json")
-		if err == nil {
-			t.Fatal("expected error for non-HTTPS URL")
-		}
+		require.Error(t, err, "expected error for non-HTTPS URL")
 	})
 
 	t.Run("rejects private host IP", func(t *testing.T) {
 		_, err := fetchSchemaFromURL(context.Background(), "https://127.0.0.1/schema.json")
-		if err == nil {
-			t.Fatal("expected error for loopback IP")
-		}
+		require.Error(t, err, "expected error for loopback IP")
 	})
 
 	t.Run("rejects private host 10.x", func(t *testing.T) {
 		_, err := fetchSchemaFromURL(context.Background(), "https://10.0.0.1/schema.json")
-		if err == nil {
-			t.Fatal("expected error for private IP 10.x")
-		}
+		require.Error(t, err, "expected error for private IP 10.x")
 	})
 }
 
@@ -128,9 +117,7 @@ func TestFetchSchemaFromURL_RedirectToPrivateHost(t *testing.T) {
 	schemaFetchClient = c
 
 	_, err := fetchSchemaFromURL(context.Background(), publicSrv.URL+"/schema.json")
-	if err == nil {
-		t.Fatal("expected error when redirect target is a private host")
-	}
+	require.Error(t, err, "expected error when redirect target is a private host")
 }
 
 func TestFetchSchemaFromURL_RedirectToHTTP(t *testing.T) {
@@ -160,9 +147,7 @@ func TestFetchSchemaFromURL_RedirectToHTTP(t *testing.T) {
 	schemaFetchClient = c
 
 	_, err := fetchSchemaFromURL(context.Background(), publicSrv.URL+"/schema.json")
-	if err == nil {
-		t.Fatal("expected error when redirect goes to HTTP")
-	}
+	require.Error(t, err, "expected error when redirect goes to HTTP")
 }
 
 func TestIsPrivateHost(t *testing.T) {
@@ -204,18 +189,11 @@ func TestIsPrivateHost(t *testing.T) {
 		t.Run(tt.host, func(t *testing.T) {
 			got, err := isPrivateHost(context.Background(), tt.host)
 			if tt.wantErr {
-				if err == nil {
-					t.Errorf("isPrivateHost(%q) expected error, got nil", tt.host)
-				}
+				assert.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Errorf("isPrivateHost(%q) unexpected error: %v", tt.host, err)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("isPrivateHost(%q) = %v, want %v", tt.host, got, tt.want)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -245,13 +223,50 @@ func TestIsPrivateAddr(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.ip, func(t *testing.T) {
 			addr, err := netip.ParseAddr(tt.ip)
-			if err != nil {
-				t.Fatalf("failed to parse %q: %v", tt.ip, err)
-			}
-			got := isPrivateAddr(addr)
-			if got != tt.want {
-				t.Errorf("isPrivateAddr(%q) = %v, want %v", tt.ip, got, tt.want)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, isPrivateAddr(addr))
 		})
 	}
+}
+
+// TestFetchSafeHTTPS covers the exported helper used by resources that need
+// to fetch URLs returned by the Ory API (e.g. email template storage URLs).
+// The defensive plumbing — non-HTTPS rejection, private-host pre-flight,
+// safeDialContext, redirect checks, 1 MiB cap — is shared with
+// fetchSchemaFromURL, so we only sanity-check the new surface here.
+func TestFetchSafeHTTPS(t *testing.T) {
+	t.Run("rejects non-HTTPS scheme", func(t *testing.T) {
+		_, err := FetchSafeHTTPS(context.Background(), "email template", "http://example.com/x.txt")
+		require.Error(t, err, "expected error for http:// URL")
+	})
+
+	t.Run("rejects private host", func(t *testing.T) {
+		_, err := FetchSafeHTTPS(context.Background(), "email template", "https://127.0.0.1/x.txt")
+		require.Error(t, err, "expected error for loopback host")
+	})
+
+	t.Run("returns body and caps at MaxBytes", func(t *testing.T) {
+		// Serve 2 MiB; expect FetchSafeHTTPS to truncate at FetchSafeHTTPSMaxBytes.
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			payload := make([]byte, 2*FetchSafeHTTPSMaxBytes)
+			for i := range payload {
+				payload[i] = 'a'
+			}
+			_, _ = w.Write(payload)
+		}))
+		defer srv.Close()
+
+		origClient := schemaFetchClient
+		origChecker := hostChecker
+		schemaFetchClient = srv.Client()
+		hostChecker = func(context.Context, string) (bool, error) { return false, nil }
+		defer func() {
+			schemaFetchClient = origClient
+			hostChecker = origChecker
+		}()
+
+		body, err := FetchSafeHTTPS(context.Background(), "email template", srv.URL+"/big.txt")
+		require.NoError(t, err)
+		assert.Equal(t, int(FetchSafeHTTPSMaxBytes), len(body))
+	})
 }

@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	ory "github.com/ory/client-go"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExtractSchemasFromProjectConfig(t *testing.T) {
@@ -15,12 +17,8 @@ func TestExtractSchemasFromProjectConfig(t *testing.T) {
 			Services: ory.ProjectServices{},
 		}
 		schemas, err := extractSchemasFromProjectConfig(context.Background(), project)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(schemas) != 0 {
-			t.Fatalf("expected 0 schemas, got %d", len(schemas))
-		}
+		require.NoError(t, err)
+		assert.Empty(t, schemas)
 	})
 
 	t.Run("base64 schema", func(t *testing.T) {
@@ -43,21 +41,11 @@ func TestExtractSchemasFromProjectConfig(t *testing.T) {
 			},
 		}
 		schemas, err := extractSchemasFromProjectConfig(context.Background(), project)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(schemas) != 1 {
-			t.Fatalf("expected 1 schema, got %d", len(schemas))
-		}
-		if schemas[0].GetId() != "test-schema-hash" {
-			t.Errorf("expected id 'test-schema-hash', got %q", schemas[0].GetId())
-		}
-		if schemas[0].Schema == nil {
-			t.Fatal("expected schema content to be decoded, got nil")
-		}
-		if schemas[0].Schema["type"] != "object" {
-			t.Errorf("expected schema type 'object', got %v", schemas[0].Schema["type"])
-		}
+		require.NoError(t, err)
+		require.Len(t, schemas, 1)
+		assert.Equal(t, "test-schema-hash", schemas[0].GetId())
+		require.NotNil(t, schemas[0].Schema, "expected schema content to be decoded")
+		assert.Equal(t, "object", schemas[0].Schema["type"])
 	})
 
 	t.Run("preset schema returns empty object", func(t *testing.T) {
@@ -78,21 +66,11 @@ func TestExtractSchemasFromProjectConfig(t *testing.T) {
 			},
 		}
 		schemas, err := extractSchemasFromProjectConfig(context.Background(), project)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(schemas) != 1 {
-			t.Fatalf("expected 1 schema, got %d", len(schemas))
-		}
-		if schemas[0].GetId() != "preset://username" {
-			t.Errorf("expected id 'preset://username', got %q", schemas[0].GetId())
-		}
-		if schemas[0].Schema == nil {
-			t.Fatal("expected schema to be empty object, got nil")
-		}
-		if len(schemas[0].Schema) != 0 {
-			t.Errorf("expected empty schema object, got %v", schemas[0].Schema)
-		}
+		require.NoError(t, err)
+		require.Len(t, schemas, 1)
+		assert.Equal(t, "preset://username", schemas[0].GetId())
+		require.NotNil(t, schemas[0].Schema, "expected schema to be empty object")
+		assert.Empty(t, schemas[0].Schema)
 	})
 
 	t.Run("invalid base64 returns error", func(t *testing.T) {
@@ -113,9 +91,7 @@ func TestExtractSchemasFromProjectConfig(t *testing.T) {
 			},
 		}
 		_, err := extractSchemasFromProjectConfig(context.Background(), project)
-		if err == nil {
-			t.Fatal("expected error for invalid base64, got nil")
-		}
+		require.Error(t, err, "expected error for invalid base64")
 	})
 
 	t.Run("invalid JSON in base64 returns error", func(t *testing.T) {
@@ -137,9 +113,7 @@ func TestExtractSchemasFromProjectConfig(t *testing.T) {
 			},
 		}
 		_, err := extractSchemasFromProjectConfig(context.Background(), project)
-		if err == nil {
-			t.Fatal("expected error for invalid JSON, got nil")
-		}
+		require.Error(t, err, "expected error for invalid JSON")
 	})
 
 	t.Run("multiple schemas", func(t *testing.T) {
@@ -165,12 +139,8 @@ func TestExtractSchemasFromProjectConfig(t *testing.T) {
 			},
 		}
 		schemas, err := extractSchemasFromProjectConfig(context.Background(), project)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(schemas) != 2 {
-			t.Fatalf("expected 2 schemas, got %d", len(schemas))
-		}
+		require.NoError(t, err)
+		assert.Len(t, schemas, 2)
 	})
 }
 
@@ -210,47 +180,27 @@ func TestExtractSchemasFromProjectConfig_HTTPS(t *testing.T) {
 	}
 
 	schemas, err := extractSchemasFromProjectConfig(context.Background(), project)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(schemas) != 1 {
-		t.Fatalf("expected 1 schema, got %d", len(schemas))
-	}
-	if schemas[0].GetId() != "https-schema-id" {
-		t.Errorf("expected id 'https-schema-id', got %q", schemas[0].GetId())
-	}
-	if schemas[0].Schema == nil {
-		t.Fatal("expected schema content from HTTPS fetch, got nil")
-	}
-	if schemas[0].Schema["type"] != "object" {
-		t.Errorf("expected schema type 'object', got %v", schemas[0].Schema["type"])
-	}
+	require.NoError(t, err)
+	require.Len(t, schemas, 1)
+	assert.Equal(t, "https-schema-id", schemas[0].GetId())
+	require.NotNil(t, schemas[0].Schema, "expected schema content from HTTPS fetch")
+	assert.Equal(t, "object", schemas[0].Schema["type"])
 	props, ok := schemas[0].Schema["properties"].(map[string]interface{})
-	if !ok {
-		t.Fatal("expected properties map in schema")
-	}
-	if _, hasEmail := props["email"]; !hasEmail {
-		t.Error("expected 'email' property in fetched schema")
-	}
+	require.True(t, ok, "expected properties map in schema")
+	assert.Contains(t, props, "email")
 }
 
 func TestHasProjectClient(t *testing.T) {
 	t.Run("configured", func(t *testing.T) {
 		c := &OryClient{config: OryClientConfig{ProjectSlug: "slug", ProjectAPIKey: "key"}}
-		if !c.HasProjectClient() {
-			t.Error("expected HasProjectClient to return true")
-		}
+		assert.True(t, c.HasProjectClient())
 	})
 	t.Run("missing slug", func(t *testing.T) {
 		c := &OryClient{config: OryClientConfig{ProjectAPIKey: "key"}}
-		if c.HasProjectClient() {
-			t.Error("expected HasProjectClient to return false")
-		}
+		assert.False(t, c.HasProjectClient())
 	})
 	t.Run("missing key", func(t *testing.T) {
 		c := &OryClient{config: OryClientConfig{ProjectSlug: "slug"}}
-		if c.HasProjectClient() {
-			t.Error("expected HasProjectClient to return false")
-		}
+		assert.False(t, c.HasProjectClient())
 	})
 }

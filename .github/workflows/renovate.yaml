@@ -20,10 +20,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       - name: Self-hosted Renovate
-        uses: renovatebot/github-action@eb932558ad942cccfd8211cf535f17ff183a9f74 # v46.1.9
+        uses: renovatebot/github-action@8217b3fc286df088d7c27f3255fe8414463bc0fd # v46.1.15
         with:
           configurationFile: 'renovate-self-hosted.json'
           env-regex: "^(?:RENOVATE_\\w+|LOG_LEVEL|GITHUB_COM_TOKEN|NODE_OPTIONS|AWS_TOKEN)$"

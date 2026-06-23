@@ -340,6 +340,24 @@ type OryClient struct {
 	// This avoids redundant API calls when multiple CRUD operations resolve the
 	// same project_id within a single Terraform run.
 	cachedSlugs sync.Map
+
+	// patchProjectMus holds a per-project mutex. The Ory API merges patches
+	// against the project's current revision, so concurrent PATCHes against
+	// the same project can lose writes (e.g. two parallel `remove` ops where
+	// one resource's deletion is silently dropped). Serializing patches per
+	// project — different projects still run in parallel — eliminates that
+	// race without changing the SDK call sites. See issue #213.
+	patchProjectMus sync.Map // map[string]*sync.Mutex
+}
+
+// patchProjectMutex returns the (lazily allocated) mutex for serializing
+// PatchProject calls for a given project ID.
+func (c *OryClient) patchProjectMutex(projectID string) *sync.Mutex {
+	if v, ok := c.patchProjectMus.Load(projectID); ok {
+		return v.(*sync.Mutex)
+	}
+	actual, _ := c.patchProjectMus.LoadOrStore(projectID, &sync.Mutex{})
+	return actual.(*sync.Mutex)
 }
 
 // NewOryClient creates a new Ory API client.
@@ -623,10 +641,16 @@ func (c *OryClient) DeleteProject(ctx context.Context, projectID string) error {
 
 // PatchProject applies JSON Patch operations to a project.
 // The response is automatically cached to avoid stale GetProject reads.
+// Calls against the same project_id are serialized because the API merges
+// patches against the current project revision and concurrent requests can
+// silently drop writes from a stale revision.
 func (c *OryClient) PatchProject(ctx context.Context, projectID string, patches []ory.JsonPatch) (*ory.SuccessfulProjectUpdate, error) {
 	if err := c.requireConsoleClient("patching project"); err != nil {
 		return nil, err
 	}
+	mu := c.patchProjectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
 	result, httpResp, err := c.consoleClient.ProjectAPI.PatchProject(ctx, projectID).
 		JsonPatch(patches).
 		Execute()
@@ -1762,16 +1786,22 @@ func safeDialContext(ctx context.Context, network, addr string) (net.Conn, error
 	return nil, fmt.Errorf("all resolved addresses for %q are private or unreachable", host)
 }
 
-// fetchSchemaFromURL retrieves a JSON schema from an HTTPS URL. The URL must
-// use the https scheme (enforced by the caller's switch statement) and must not
-// resolve to a private/loopback address.
-func fetchSchemaFromURL(ctx context.Context, schemaURL string) (map[string]interface{}, error) {
-	parsed, err := url.Parse(schemaURL)
+// FetchSafeHTTPSMaxBytes is the per-response cap applied to FetchSafeHTTPS.
+// Mirrors the historic 1 MiB cap on fetchSchemaFromURL.
+const FetchSafeHTTPSMaxBytes = 1 << 20
+
+// FetchSafeHTTPS performs an HTTPS GET against an URL returned by the Ory
+// API with full SSRF protection (private/loopback hosts and redirects to them
+// are rejected, non-HTTPS schemes refused, response size capped). The kind
+// argument is a short label used in error messages ("schema", "email
+// template", ...) so callers don't have to wrap errors themselves.
+func FetchSafeHTTPS(ctx context.Context, kind, rawURL string) ([]byte, error) {
+	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return nil, fmt.Errorf("parsing schema URL %q: %w", schemaURL, err)
+		return nil, fmt.Errorf("parsing %s URL %q: %w", kind, rawURL, err)
 	}
 	if parsed.Scheme != "https" {
-		return nil, fmt.Errorf("refusing non-HTTPS schema URL %q", schemaURL)
+		return nil, fmt.Errorf("refusing non-HTTPS %s URL %q", kind, rawURL)
 	}
 	host := parsed.Hostname()
 	isPrivate, err := hostChecker(ctx, host)
@@ -1779,29 +1809,39 @@ func fetchSchemaFromURL(ctx context.Context, schemaURL string) (map[string]inter
 		return nil, err
 	}
 	if isPrivate {
-		return nil, fmt.Errorf("refusing schema URL with private/loopback host %q", host)
+		return nil, fmt.Errorf("refusing %s URL with private/loopback host %q", kind, host)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, schemaURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating request for schema %q: %w", schemaURL, err)
+		return nil, fmt.Errorf("creating request for %s %q: %w", kind, rawURL, err)
 	}
 
 	resp, err := schemaFetchClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetching schema from %q: %w", schemaURL, err)
+		return nil, fmt.Errorf("fetching %s from %q: %w", kind, rawURL, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetching schema from %q: HTTP %d", schemaURL, resp.StatusCode)
+		return nil, fmt.Errorf("fetching %s from %q: HTTP %d", kind, rawURL, resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MB limit
+	body, err := io.ReadAll(io.LimitReader(resp.Body, FetchSafeHTTPSMaxBytes))
 	if err != nil {
-		return nil, fmt.Errorf("reading schema from %q: %w", schemaURL, err)
+		return nil, fmt.Errorf("reading %s from %q: %w", kind, rawURL, err)
 	}
+	return body, nil
+}
 
+// fetchSchemaFromURL retrieves a JSON schema from an HTTPS URL. The URL must
+// use the https scheme (enforced by the caller's switch statement) and must not
+// resolve to a private/loopback address.
+func fetchSchemaFromURL(ctx context.Context, schemaURL string) (map[string]interface{}, error) {
+	body, err := FetchSafeHTTPS(ctx, "schema", schemaURL)
+	if err != nil {
+		return nil, err
+	}
 	var schemaObj map[string]interface{}
 	if err := json.Unmarshal(body, &schemaObj); err != nil {
 		return nil, fmt.Errorf("parsing schema JSON from %q: %w", schemaURL, err)

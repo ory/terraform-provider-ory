@@ -3,8 +3,10 @@ package action
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -39,6 +41,19 @@ var (
 	_ resource.ResourceWithImportState    = &ActionResource{}
 	_ resource.ResourceWithValidateConfig = &ActionResource{}
 )
+
+// projectMutexes serializes Create, Update, and Delete operations per project.
+// The Ory API stores action hooks as arrays nested in the project config. Every
+// mutation is a read-modify-write (read hooks → append/replace/remove → PatchProject).
+// Without serialization, concurrent operations read the same stale hooks array
+// and the last write wins, silently dropping the other hooks.
+// See: https://github.com/ory/terraform-provider-ory/issues/189
+var projectMutexes sync.Map // map[projectID]*sync.Mutex
+
+func projectMutex(projectID string) *sync.Mutex {
+	v, _ := projectMutexes.LoadOrStore(projectID, &sync.Mutex{})
+	return v.(*sync.Mutex)
+}
 
 func NewResource() resource.Resource {
 	return &ActionResource{}
@@ -111,7 +126,7 @@ The ` + "`auth_method`" + ` attribute specifies which authentication method trig
 | ` + "`totp`" + ` | Time-based one-time password | "TOTP" |
 | ` + "`lookup_secret`" + ` | Recovery/backup codes | "Backup Codes" |
 
-**Note:** ` + "`auth_method`" + ` is only used for ` + "`timing = \"after\"`" + ` webhooks. For ` + "`timing = \"before\"`" + ` hooks, the webhook runs before any authentication method.
+**Note:** ` + "`auth_method`" + ` only applies to ` + "`timing = \"after\"`" + ` webhooks on the ` + "`login`" + `, ` + "`registration`" + `, and ` + "`settings`" + ` flows. The ` + "`recovery`" + ` and ` + "`verification`" + ` flows are not scoped by authentication method, so ` + "`auth_method`" + ` is ignored for them and should be omitted. For ` + "`timing = \"before\"`" + ` hooks, the webhook runs before any authentication method.
 
 ## Webhook Authentication
 
@@ -227,8 +242,8 @@ func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				},
 			},
 			"auth_method": schema.StringAttribute{
-				Description:         "Authentication method to hook into (password, oidc, code, webauthn, passkey, totp, lookup_secret). Required for 'after' timing. Defaults to 'password'.",
-				MarkdownDescription: "Authentication method that triggers the webhook. In the Ory Console UI, this is the \"Method\" selector. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`. Only used for `timing = \"after\"` webhooks.",
+				Description:         "Authentication method to hook into (password, oidc, code, webauthn, passkey, totp, lookup_secret). Defaults to 'password'. Only applies to 'after' timing on the login, registration, and settings flows; ignored for the recovery and verification flows.",
+				MarkdownDescription: "Authentication method that triggers the webhook. In the Ory Console UI, this is the \"Method\" selector. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`. Only applies to `timing = \"after\"` webhooks on the `login`, `registration`, and `settings` flows; it is ignored for the `recovery` and `verification` flows.",
 				Optional:            true,
 				Computed:            true,
 				Default:             stringdefault.StaticString("password"),
@@ -365,6 +380,33 @@ func (r *ActionResource) ValidateConfig(ctx context.Context, req resource.Valida
 		return
 	}
 
+	// auth_method only takes effect for "after" hooks on the login, registration,
+	// and settings flows. It is ignored for "before" hooks (all flows) and for the
+	// recovery and verification flows, which store their after-hooks in a single
+	// flat array. Warn when it is set explicitly but will have no effect, so users
+	// aren't surprised. Timing is only considered when known, to avoid false
+	// positives for auth-scoped flows whose timing is resolved at apply time.
+	if !config.AuthMethod.IsNull() && !config.AuthMethod.IsUnknown() &&
+		!config.Flow.IsNull() && !config.Flow.IsUnknown() {
+		flow := config.Flow.ValueString()
+		ignoredByFlow := !flowSupportsAuthMethod(flow)
+		ignoredByTiming := !config.Timing.IsNull() && !config.Timing.IsUnknown() &&
+			config.Timing.ValueString() != timingAfter
+		if ignoredByFlow || ignoredByTiming {
+			detail := fmt.Sprintf("The %q flow does not scope its hooks by authentication method, so "+
+				"auth_method is ignored. You can safely remove auth_method from this resource.", flow)
+			if !ignoredByFlow {
+				detail = "auth_method only applies to \"after\" hooks, so it is ignored for \"before\" hooks. " +
+					"You can safely remove auth_method from this resource."
+			}
+			resp.Diagnostics.AddAttributeWarning(
+				path.Root("auth_method"),
+				"auth_method has no effect for this configuration",
+				detail,
+			)
+		}
+	}
+
 	if config.WebhookAuthType.IsNull() || config.WebhookAuthType.IsUnknown() {
 		return
 	}
@@ -485,61 +527,35 @@ func (r *ActionResource) buildHookValue(plan *ActionResourceModel) map[string]in
 	}
 }
 
+// copyHooks returns a deep copy of the hooks slice via a JSON round-trip so
+// callers cannot accidentally mutate the cached project state shared with
+// other resources in the same Terraform run.
+func copyHooks(hooks []map[string]interface{}) []map[string]interface{} {
+	b, err := json.Marshal(hooks)
+	if err != nil {
+		// Should never happen — the data was decoded from JSON.
+		return hooks
+	}
+	var cp []map[string]interface{}
+	if err := json.Unmarshal(b, &cp); err != nil {
+		return hooks
+	}
+	return cp
+}
+
 func (r *ActionResource) getHooks(ctx context.Context, projectID, flow, timing, authMethod string) ([]map[string]interface{}, error) {
+	// Prefer cached project state from a previous PatchProject call in this
+	// Terraform run. This avoids reading stale data from the eventually-consistent
+	// GetProject API, which is critical when the mutex serializes back-to-back
+	// mutations — the second operation must see the first operation's result.
+	if cached := r.client.GetCachedProject(projectID); cached != nil {
+		return copyHooks(r.getHooksFromProject(cached, flow, timing, authMethod)), nil
+	}
 	project, err := r.client.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get project %s: %w", projectID, err)
 	}
-
-	if project.Services.Identity == nil {
-		return []map[string]interface{}{}, nil
-	}
-
-	configMap := project.Services.Identity.Config
-	if configMap == nil {
-		return []map[string]interface{}{}, nil
-	}
-
-	selfservice, ok := configMap["selfservice"].(map[string]interface{})
-	if !ok {
-		return []map[string]interface{}{}, nil
-	}
-
-	flows, ok := selfservice["flows"].(map[string]interface{})
-	if !ok {
-		return []map[string]interface{}{}, nil
-	}
-
-	flowConfig, ok := flows[flow].(map[string]interface{})
-	if !ok {
-		return []map[string]interface{}{}, nil
-	}
-
-	timingConfig, ok := flowConfig[timing].(map[string]interface{})
-	if !ok {
-		return []map[string]interface{}{}, nil
-	}
-
-	// For 'after' timing, hooks are nested under the auth method
-	// For 'before' timing, hooks are directly under timing
-	var hooks []interface{}
-	if timing == timingAfter {
-		authMethodConfig, ok := timingConfig[authMethod].(map[string]interface{})
-		if !ok {
-			return []map[string]interface{}{}, nil
-		}
-		hooks, _ = authMethodConfig["hooks"].([]interface{})
-	} else {
-		hooks, _ = timingConfig["hooks"].([]interface{})
-	}
-
-	result := make([]map[string]interface{}, 0, len(hooks))
-	for _, h := range hooks {
-		if hm, ok := h.(map[string]interface{}); ok {
-			result = append(result, hm)
-		}
-	}
-	return result, nil
+	return r.getHooksFromProject(project, flow, timing, authMethod), nil
 }
 
 func (r *ActionResource) findHookIndex(hooks []map[string]interface{}, url, method string) int {
@@ -560,8 +576,24 @@ func (r *ActionResource) findHookIndex(hooks []map[string]interface{}, url, meth
 	return -1
 }
 
+// flowSupportsAuthMethod reports whether a flow's "after" hooks are scoped by
+// authentication method (e.g. .../after/password/hooks). Only the login,
+// registration, and settings flows have method-scoped after-hooks in the Ory
+// Kratos config. The recovery and verification flows store their after-hooks in
+// a single flat array at .../after/hooks with no auth-method level, so PATCHing
+// to .../after/<auth_method>/hooks for them returns 200 but silently drops the
+// hook. See https://github.com/ory/terraform-provider-ory/issues/241
+func flowSupportsAuthMethod(flow string) bool {
+	switch flow {
+	case "login", "registration", "settings":
+		return true
+	default:
+		return false
+	}
+}
+
 func (r *ActionResource) hookPath(flow, timing, authMethod string) string {
-	if timing == timingAfter {
+	if timing == timingAfter && flowSupportsAuthMethod(flow) {
 		return fmt.Sprintf("/services/identity/config/selfservice/flows/%s/%s/%s/hooks", flow, timing, authMethod)
 	}
 	return fmt.Sprintf("/services/identity/config/selfservice/flows/%s/%s/hooks", flow, timing)
@@ -598,7 +630,7 @@ func (r *ActionResource) getHooksFromProject(project *ory.Project, flow, timing,
 	}
 
 	var hooks []interface{}
-	if timing == timingAfter {
+	if timing == timingAfter && flowSupportsAuthMethod(flow) {
 		authMethodConfig, ok := timingConfig[authMethod].(map[string]interface{})
 		if !ok {
 			return []map[string]interface{}{}
@@ -635,6 +667,11 @@ func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest,
 	url := plan.URL.ValueString()
 	httpMethod := plan.HTTPMethod.ValueString()
 
+	// Serialize mutations to prevent concurrent read-modify-write races.
+	mu := projectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
+
 	// Check if hook already exists
 	hooks, err := r.getHooks(ctx, projectID, flow, timing, authMethod)
 	if err != nil {
@@ -653,7 +690,7 @@ func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest,
 
 	// Append the new hook to existing hooks and replace the entire array
 	// This handles the case where the hooks array might not exist
-	newHooks := make([]interface{}, 0, len(hooks)+1)
+	newHooks := make([]interface{}, 0, len(hooks))
 	for _, h := range hooks {
 		newHooks = append(newHooks, h)
 	}
@@ -911,6 +948,11 @@ func (r *ActionResource) Update(ctx context.Context, req resource.UpdateRequest,
 	url := state.URL.ValueString() // Use old URL to find
 	httpMethod := state.HTTPMethod.ValueString()
 
+	// Serialize mutations to prevent concurrent read-modify-write races.
+	mu := projectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
+
 	hooks, err := r.getHooks(ctx, projectID, flow, timing, authMethod)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Getting Hooks", err.Error())
@@ -968,6 +1010,11 @@ func (r *ActionResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	authMethod := state.AuthMethod.ValueString()
 	url := state.URL.ValueString()
 	httpMethod := state.HTTPMethod.ValueString()
+
+	// Serialize mutations to prevent concurrent read-modify-write races.
+	mu := projectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
 
 	hooks, err := r.getHooks(ctx, projectID, flow, timing, authMethod)
 	if err != nil {
