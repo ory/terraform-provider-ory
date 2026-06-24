@@ -245,6 +245,47 @@ func TestGeneratedReadRoundTrip(t *testing.T) {
 	assert.True(t, state.FeatureFlagsCacheableSessions.ValueBool(), "cacheable_sessions")
 }
 
+// TestSMTPConnectionURI_WriteOnly verifies the SMTP connection URI is treated as
+// write-only: it is sent on create/update (it remains in the schema and patch
+// tables) but is never read back from the API. A value the API returns — empty,
+// a masked sentinel such as "****", or a partially-masked URI — must never
+// overwrite the configured value, otherwise every plan would show a perpetual
+// diff between the real URI in HCL and the masked value in state.
+//
+// This is the provider-side guard for the Ory API stripping SMTP credentials from
+// project-config responses.
+func TestSMTPConnectionURI_WriteOnly(t *testing.T) {
+	// A realistic SMTP URI whose credentials must never be clobbered by the API.
+	const configured = "smtps://user:secret@smtp.example.com:465" //nolint:gosec // G101 false positive: test fixture, not a real credential
+
+	// 1. It must be excluded from the generated read entries entirely.
+	state := &ProjectConfigResourceModel{
+		SMTPConnectionURI: types.StringValue(configured),
+	}
+	for _, e := range identityStringReadEntries(state) {
+		assert.NotSame(t, &state.SMTPConnectionURI, e.Field,
+			"smtp_connection_uri must not appear in read entries — it is write-only")
+	}
+
+	// 2. readSimpleFields must preserve the configured value regardless of what the
+	//    API returns for courier.smtp.connection_uri (absent, empty, or masked).
+	for _, apiValue := range []string{"", "****", "smtps://user:masked@smtp.example.com:465"} {
+		st := &ProjectConfigResourceModel{
+			SMTPConnectionURI: types.StringValue(configured),
+		}
+		project := projectWithIdentityConfig(map[string]interface{}{
+			"courier": map[string]interface{}{
+				"smtp": map[string]interface{}{
+					"connection_uri": apiValue,
+				},
+			},
+		})
+		readSimpleFields(context.Background(), project, st)
+		assert.Equal(t, configured, st.SMTPConnectionURI.ValueString(),
+			"configured smtp_connection_uri must be preserved when the API returns %q", apiValue)
+	}
+}
+
 // TestGeneratedSchemaAttributes_Count verifies generation produced a non-trivial
 // number of attributes. The AllOptional and ValidAndUnique tests verify correctness;
 // this test catches catastrophic generation failures (e.g., empty output).

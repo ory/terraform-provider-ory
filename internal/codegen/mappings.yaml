@@ -1358,7 +1358,11 @@ attributes:
     openapi_property: kratos_courier_smtp_connection_uri
     description: "SMTP connection URI for sending emails. The URI scheme selects the security mode: `smtp://` uses STARTTLS (recommended for port 587), `smtps://` uses implicit TLS (recommended for port 465). Append `?disable_starttls=true` for cleartext or `?skip_ssl_verify=true` to skip certificate verification (development only). See the SMTP Security Modes section in the resource documentation for the full list."
     sensitive: true
-    skip_empty_read: true
+    # The API never returns the connection URI — it is stripped/masked server-side.
+    # Reading it back would clobber the configured value with an empty string or a
+    # sentinel (e.g. "****") and cause a perpetual diff, so it is write-only:
+    # sent on create/update, never read into state.
+    write_only: true
 
   # --- Auto-discovered entries (review names/descriptions before merging) ---
   - name: oauth2_preserve_ext_claims

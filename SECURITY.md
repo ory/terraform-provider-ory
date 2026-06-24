@@ -28,3 +28,18 @@ When using this provider:
 - API keys configured in the provider are passed to the Ory API
 
 Use Terraform's sensitive variable handling and state encryption to protect these values.
+
+### Write-only secrets
+
+Some secrets are **write-only**: the provider sends them to the Ory API on create
+and update, but the API does not return them in its responses, so the provider never
+reads them back from the API. The value configured in Terraform is the source of
+truth (and is still stored in state, masked as sensitive). Because the provider does
+not refresh these from the API, it tolerates the API omitting the value or returning
+a masked sentinel (such as `****`) without producing a spurious diff:
+
+- `smtp_connection_uri` in `ory_project_config`
+- `client_secret` and `apple_private_key` in `ory_social_provider`
+
+These values still originate from your configuration, so keep them in sensitive
+variables and protect your state as described above.

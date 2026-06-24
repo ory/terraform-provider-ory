@@ -382,6 +382,8 @@ The `smtp_connection_uri` attribute selects the SMTP security mode through the U
 
 -> **Credential encoding:** Usernames and passwords must be URI-encoded if they contain special characters (e.g., `@`, `:`, `/`, `?`, `#`). Use [`urlencode`](https://developer.hashicorp.com/terraform/language/functions/urlencode) in Terraform to encode them safely.
 
+-> **Write-only:** The Ory API does not return the SMTP connection URI in project-config responses (it contains credentials). The provider therefore treats `smtp_connection_uri` as write-only — it is sent on create and update but never read back, so the value in your configuration is authoritative. As a result, out-of-band changes to the SMTP URI are not detected, and the attribute will not show a diff if the API omits or masks the value.
+
 For more detail, see the [Ory Kratos SMTP documentation](https://www.ory.com/docs/kratos/emails-sms/sending-emails-smtp).
 
 ## Verification After Registration / Settings
