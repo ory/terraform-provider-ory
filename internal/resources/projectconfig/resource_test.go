@@ -44,6 +44,39 @@ func TestAccProjectConfigResource_basic(t *testing.T) {
 	})
 }
 
+// TestAccProjectConfigResource_smtpConnectionURIWriteOnly verifies that
+// smtp_connection_uri can be created and updated, and that it never produces a
+// perpetual diff even though the Ory API does not return it in project-config
+// responses (it is a write-only secret). The terraform-plugin-testing framework
+// runs a plan after each apply and fails the step on a non-empty plan, so each
+// step also asserts idempotency — the read path must not clobber the configured
+// value with an empty or masked value returned by the API.
+func TestAccProjectConfigResource_smtpConnectionURIWriteOnly(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with the connection URI set (STARTTLS on 587).
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/smtp_write_only.tf.tmpl", map[string]string{
+					"SMTPURI": "smtp://tf-acc-test:not-a-real-secret@smtp.example.com:587",
+				}),
+				Check: resource.TestCheckResourceAttr("ory_project_config.test", "smtp_connection_uri",
+					"smtp://tf-acc-test:not-a-real-secret@smtp.example.com:587"),
+			},
+			// Update the secret (implicit TLS on 465). A successful no-diff plan after
+			// this apply confirms the update was applied and not re-read as a diff.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/smtp_write_only.tf.tmpl", map[string]string{
+					"SMTPURI": "smtps://tf-acc-test:also-not-real@smtp.example.com:465",
+				}),
+				Check: resource.TestCheckResourceAttr("ory_project_config.test", "smtp_connection_uri",
+					"smtps://tf-acc-test:also-not-real@smtp.example.com:465"),
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_hydraConfig(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },

@@ -37,6 +37,7 @@ type Attribute struct {
 	DefaultInt64    *int64     `yaml:"default_int64"`
 	Sensitive       bool       `yaml:"sensitive"`
 	SkipEmptyRead   bool       `yaml:"skip_empty_read"`
+	WriteOnly       bool       `yaml:"write_only"` // omit from the API read path: sent on create/update but never read back into state (for secrets the API does not return, or returns masked)
 	Validators      *Validator `yaml:"validators"`
 
 	// Deprecated alias support: when set, generates a second schema attribute
@@ -1411,7 +1412,9 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 func {{ $svc }}StringReadEntries(state *ProjectConfigResourceModel) []StringReadEntry {
 	return []StringReadEntry{
 {{- range $strings }}
+{{- if not .WriteOnly }}
 		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }, {{ .SkipEmptyRead }}},
+{{- end }}
 {{- end }}
 	}
 }
@@ -1423,7 +1426,9 @@ func {{ $svc }}StringReadEntries(state *ProjectConfigResourceModel) []StringRead
 func {{ $svc }}BoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry {
 	return []BoolReadEntry{
 {{- range $bools }}
+{{- if not .WriteOnly }}
 		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }},
+{{- end }}
 {{- end }}
 	}
 }
@@ -1435,7 +1440,9 @@ func {{ $svc }}BoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntr
 func {{ $svc }}Int64ReadEntries(state *ProjectConfigResourceModel) []Int64ReadEntry {
 	return []Int64ReadEntry{
 {{- range $ints }}
+{{- if not .WriteOnly }}
 		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }},
+{{- end }}
 {{- end }}
 	}
 }
@@ -1447,7 +1454,9 @@ func {{ $svc }}Int64ReadEntries(state *ProjectConfigResourceModel) []Int64ReadEn
 func {{ $svc }}ListStringReadEntries(state *ProjectConfigResourceModel) []ListStringReadEntry {
 	return []ListStringReadEntry{
 {{- range $listStrings }}
+{{- if not .WriteOnly }}
 		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }},
+{{- end }}
 {{- end }}
 	}
 }
@@ -1459,7 +1468,9 @@ func {{ $svc }}ListStringReadEntries(state *ProjectConfigResourceModel) []ListSt
 func {{ $svc }}MapStringReadEntries(state *ProjectConfigResourceModel) []MapStringReadEntry {
 	return []MapStringReadEntry{
 {{- range $mapStrings }}
+{{- if not .WriteOnly }}
 		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }},
+{{- end }}
 {{- end }}
 	}
 }

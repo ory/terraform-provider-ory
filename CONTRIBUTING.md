@@ -328,6 +328,7 @@ That's it — the field appears in the Terraform schema, JSON Patch operations, 
 | `default_int64` | No | Static default for int64 attributes |
 | `sensitive` | No | If `true`, value is masked in Terraform output |
 | `skip_empty_read` | No | If `true`, skip reading empty strings from API (used for account_experience fields) |
+| `write_only` | No | If `true`, the attribute is sent on create/update but never read back from the API. Use for secrets the API does not return (or returns masked, e.g. `****`), so the configured value is always preserved and never produces a spurious diff |
 | `validators` | No | `one_of: [...]` or `regex: "..."` + `regex_message: "..."` |
 | `deprecated_name` | No | Old terraform attribute name (shows deprecation warning in Terraform) |
 | `deprecated_go_field` | No | Old Go struct field name for the deprecated attribute |
@@ -398,8 +399,13 @@ These require hand-written code in `resource.go` because they have non-trivial s
 - Courier channels (list of objects with discriminated auth config)
 - Courier HTTP request config (nested object with auth sub-object)
 - `default_return_url` / `allowed_return_urls` (remove-on-empty semantics)
-- `smtp_connection_uri` (sensitive, write-only — not read from API)
 - `mfa_enforcement` (maps string values to different API fields)
+
+> **Note:** `smtp_connection_uri` is fully codegen'd, but uses `write_only: true`
+> (see the mappings table above). The Ory API never returns the connection URI in
+> project-config responses, so the provider sends it on create/update but never
+> reads it back — this keeps it from showing a perpetual diff if the API returns an
+> empty value or a masked sentinel.
 
 ### Adding a New Resource
 
