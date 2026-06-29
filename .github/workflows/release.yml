@@ -25,6 +25,7 @@ jobs:
       enable_project_tests: true
       enable_event_stream_tests: true
       enable_custom_domain_tests: true
+      enable_auto_link_tests: true
     secrets: inherit
 
   goreleaser:

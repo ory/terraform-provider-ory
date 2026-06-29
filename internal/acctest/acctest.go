@@ -327,6 +327,15 @@ func RequireEventStreamTests(t *testing.T) {
 	SkipIfFeatureDisabled(t, "ORY_EVENT_STREAM_TESTS_ENABLED", "event stream")
 }
 
+// RequireAutoLinkTests skips the test if ORY_AUTO_LINK_TESTS_ENABLED is not "true".
+// The OIDC auto-link policy is an enterprise feature that Ory enables per project
+// (the use_auto_link flag); without the entitlement the API rejects it with a 403
+// feature_not_available, so the test only runs against an entitled project.
+func RequireAutoLinkTests(t *testing.T) {
+	t.Helper()
+	SkipIfFeatureDisabled(t, "ORY_AUTO_LINK_TESTS_ENABLED", "OIDC auto-link policy")
+}
+
 // RunTest runs an acceptance test.
 // This is a convenience wrapper around resource.Test() that follows
 // provider conventions and can be extended in the future.

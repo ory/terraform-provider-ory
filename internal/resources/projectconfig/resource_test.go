@@ -319,6 +319,12 @@ func TestAccProjectConfigResource_oidc(t *testing.T) {
 // (see internal/client) instead of a bare "403 Forbidden". This test requires a
 // project on a plan that includes the feature.
 func TestAccProjectConfigResource_oidcAutoLinkPolicy(t *testing.T) {
+	// Enabling the auto-link policy requires the enterprise use_auto_link
+	// entitlement; without it the API returns 403 feature_not_available, so this
+	// test only runs when ORY_AUTO_LINK_TESTS_ENABLED=true against an entitled
+	// project.
+	acctest.RequireAutoLinkTests(t)
+
 	enabled := map[string]string{"EnableAutoLink": "true"}
 	disabled := map[string]string{"EnableAutoLink": "false"}
 
