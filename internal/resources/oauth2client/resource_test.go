@@ -8,10 +8,67 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/statecheck"
+	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
+	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 	"github.com/ory/terraform-provider-ory/internal/testutil"
 )
+
+// TestAccOAuth2ClientResource_writeOnlyJWKS verifies that an inline JWKS supplied
+// via jwks_wo is sent to the API but never written to Terraform state, and that
+// bumping jwks_wo_version triggers an update. Write-only arguments require
+// Terraform 1.11+.
+func TestAccOAuth2ClientResource_writeOnlyJWKS(t *testing.T) {
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck: func() { acctest.AccPreCheck(t) },
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+			tfversion.SkipBelow(tfversion.Version1_11_0),
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/write_only_jwks.tf.tmpl", map[string]string{
+					"Name":    "Test Client with write-only JWKS",
+					"Version": "1",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_oauth2_client.wo", "id"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.wo", "token_endpoint_auth_method", "private_key_jwt"),
+					resource.TestCheckResourceAttr("ory_oauth2_client.wo", "jwks_wo_version", "1"),
+				),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue("ory_oauth2_client.wo", tfjsonpath.New("jwks_wo"), knownvalue.Null()),
+					statecheck.ExpectKnownValue("ory_oauth2_client.wo", tfjsonpath.New("jwks"), knownvalue.Null()),
+				},
+			},
+			// Rotate via version bump.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/write_only_jwks.tf.tmpl", map[string]string{
+					"Name":    "Test Client with write-only JWKS",
+					"Version": "2",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_oauth2_client.wo", "jwks_wo_version", "2"),
+				),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue("ory_oauth2_client.wo", tfjsonpath.New("jwks_wo"), knownvalue.Null()),
+					statecheck.ExpectKnownValue("ory_oauth2_client.wo", tfjsonpath.New("jwks"), knownvalue.Null()),
+				},
+			},
+			// Idempotency.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/write_only_jwks.tf.tmpl", map[string]string{
+					"Name":    "Test Client with write-only JWKS",
+					"Version": "2",
+				}),
+				PlanOnly: true,
+			},
+		},
+	})
+}
 
 func TestAccOAuth2ClientResource_basic(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{

@@ -29,17 +29,41 @@ When using this provider:
 
 Use Terraform's sensitive variable handling and state encryption to protect these values.
 
-### Write-only secrets
+### Not-read-back secrets (still stored in state)
 
-Some secrets are **write-only**: the provider sends them to the Ory API on create
-and update, but the API does not return them in its responses, so the provider never
-reads them back from the API. The value configured in Terraform is the source of
-truth (and is still stored in state, masked as sensitive). Because the provider does
-not refresh these from the API, it tolerates the API omitting the value or returning
-a masked sentinel (such as `****`) without producing a spurious diff:
+Some secrets are sent to the Ory API on create and update, but the API does not
+return them in its responses, so the provider never reads them back. The value
+configured in Terraform is the source of truth and is **still stored in state**,
+masked as sensitive. Because the provider does not refresh these from the API, it
+tolerates the API omitting the value or returning a masked sentinel (such as
+`****`) without producing a spurious diff:
 
 - `smtp_connection_uri` in `ory_project_config`
 - `client_secret` and `apple_private_key` in `ory_social_provider`
 
 These values still originate from your configuration, so keep them in sensitive
 variables and protect your state as described above.
+
+### Write-only arguments (never stored in state)
+
+For stronger protection, several secrets also offer **write-only** arguments
+(Terraform 1.11+ [write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral/write-only)).
+A write-only value is sent to the Ory API but is **never written to Terraform state
+or plan** — making it ideal for credentials sourced from an ephemeral resource such
+as a Vault secret. Each write-only argument is mutually exclusive with its stateful
+counterpart and has a companion `*_wo_version` attribute; because write-only values
+are not stored, Terraform cannot diff them, so you change the version whenever the
+secret rotates to have the provider re-send it.
+
+| Resource | Write-only argument | Stateful counterpart |
+|----------|---------------------|----------------------|
+| `ory_social_provider` | `client_id_wo`, `client_secret_wo`, `apple_private_key_wo` | `client_id`, `client_secret`, `apple_private_key` |
+| `ory_identity` | `password_wo` | `password` |
+| `ory_action` | `webhook_auth_basic_auth_password_wo`, `webhook_auth_api_key_value_wo` | `webhook_auth_basic_auth_password`, `webhook_auth_api_key_value` |
+| `ory_oauth2_client` | `jwks_wo` | `jwks` |
+| `ory_project_config` | `smtp_connection_uri_wo` | `smtp_connection_uri` |
+
+> **Note:** Write-only values are only available to the provider during create and
+> update (Terraform does not expose them during refresh or import). Importing a
+> resource therefore cannot recover a write-only value — re-supply it in your
+> configuration after import.

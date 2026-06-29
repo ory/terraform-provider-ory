@@ -29,6 +29,19 @@ resource "ory_project_config" "basic" {
   session_lifespan                                        = "720h0m0s" # 30 days
 }
 
+# Project configuration with a write-only (ephemeral) SMTP connection URI from Vault.
+# smtp_connection_uri_wo is never stored in Terraform state or plan (Terraform 1.11+).
+# Bump smtp_connection_uri_wo_version whenever the secret rotates so Terraform re-sends it.
+ephemeral "vault_kv_secret_v2" "smtp" {
+  mount = "secret"
+  name  = "ory/smtp"
+}
+
+resource "ory_project_config" "with_write_only_smtp" {
+  smtp_connection_uri_wo         = ephemeral.vault_kv_secret_v2.smtp.data["connection_uri"]
+  smtp_connection_uri_wo_version = "1"
+}
+
 # Full security configuration
 resource "ory_project_config" "secure" {
   # Public CORS
@@ -472,6 +485,8 @@ terraform plan  # verify no changes
 
 ### Optional
 
+> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
+
 - `account_experience_default_locale` (String) Default locale for the hosted login UI (e.g., 'en', 'de').
 - `account_experience_enabled_locales` (List of String) Enabled locales for the hosted login UI.
 - `account_experience_favicon_dark` (String) Favicon for the hosted Account Experience UI (dark theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
@@ -722,6 +737,8 @@ terraform plan  # verify no changes
 - `settings_privileged_session_max_age` (String, Deprecated) Maximum age of a privileged session for the settings flow (e.g., '15m0s'). After this duration, the user must re-authenticate to make privileged changes like password updates.
 - `settings_ui_url` (String, Deprecated) URL for the account settings UI.
 - `smtp_connection_uri` (String, Sensitive) SMTP connection URI for sending emails. The URI scheme selects the security mode: `smtp://` uses STARTTLS (recommended for port 587), `smtps://` uses implicit TLS (recommended for port 465). Append `?disable_starttls=true` for cleartext or `?skip_ssl_verify=true` to skip certificate verification (development only). See the SMTP Security Modes section in the resource documentation for the full list.
+- `smtp_connection_uri_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of smtp_connection_uri (Terraform 1.11+ write-only argument): the SMTP connection URI is sent to Ory but never stored in Terraform state or plan. Use this to source the value from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change smtp_connection_uri_wo_version to rotate it. Mutually exclusive with smtp_connection_uri.
+- `smtp_connection_uri_wo_version` (String) Version trigger for smtp_connection_uri_wo. Change this value whenever the write-only smtp_connection_uri_wo changes so Terraform sends the new value to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless smtp_connection_uri_wo is set.
 - `smtp_from_address` (String, Deprecated) Email address to send from.
 - `smtp_from_name` (String, Deprecated) Name to display as sender.
 - `smtp_headers` (Map of String) Custom SMTP headers for outbound emails.

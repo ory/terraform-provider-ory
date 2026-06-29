@@ -7,12 +7,63 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/statecheck"
+	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
+	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	ory "github.com/ory/client-go"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 	"github.com/ory/terraform-provider-ory/internal/testutil"
 )
+
+// TestAccProjectConfigResource_smtpConnectionURIWriteOnlyArgument verifies the
+// native write-only argument smtp_connection_uri_wo: the value is sent to the API
+// but never written to Terraform state, and bumping smtp_connection_uri_wo_version
+// rotates it. This is distinct from smtp_connection_uri, which is not read back
+// but is still stored in state. Write-only arguments require Terraform 1.11+.
+func TestAccProjectConfigResource_smtpConnectionURIWriteOnlyArgument(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() { acctest.AccPreCheck(t) },
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+			tfversion.SkipBelow(tfversion.Version1_11_0),
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/smtp_connection_uri_wo.tf.tmpl", map[string]string{
+					"SMTPURI": "smtp://tf-acc-wo:not-a-real-secret@smtp.example.com:587",
+					"Version": "1",
+				}),
+				Check: resource.TestCheckResourceAttr("ory_project_config.test", "smtp_connection_uri_wo_version", "1"),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue("ory_project_config.test", tfjsonpath.New("smtp_connection_uri_wo"), knownvalue.Null()),
+					statecheck.ExpectKnownValue("ory_project_config.test", tfjsonpath.New("smtp_connection_uri"), knownvalue.Null()),
+				},
+			},
+			// Rotate the secret via the version trigger.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/smtp_connection_uri_wo.tf.tmpl", map[string]string{
+					"SMTPURI": "smtps://tf-acc-wo:also-not-real@smtp.example.com:465",
+					"Version": "2",
+				}),
+				Check: resource.TestCheckResourceAttr("ory_project_config.test", "smtp_connection_uri_wo_version", "2"),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue("ory_project_config.test", tfjsonpath.New("smtp_connection_uri_wo"), knownvalue.Null()),
+				},
+			},
+			// Idempotency.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/smtp_connection_uri_wo.tf.tmpl", map[string]string{
+					"SMTPURI": "smtps://tf-acc-wo:also-not-real@smtp.example.com:465",
+					"Version": "2",
+				}),
+				PlanOnly: true,
+			},
+		},
+	})
+}
 
 func TestAccProjectConfigResource_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{

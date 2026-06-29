@@ -22,44 +22,52 @@ func buildActionTestConfig(t *testing.T, model ActionResourceModel) resource.Val
 	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
 
 	vals := map[string]tftypes.Value{
-		"id":                               tftypes.NewValue(tftypes.String, nil),
-		"project_id":                       tftypes.NewValue(tftypes.String, nil),
-		"flow":                             tfActionStringValue(model.Flow),
-		"timing":                           tfActionStringValue(model.Timing),
-		"auth_method":                      tfActionStringValue(model.AuthMethod),
-		"url":                              tfActionStringValue(model.URL),
-		"method":                           tfActionStringValue(model.HTTPMethod),
-		"body":                             tftypes.NewValue(tftypes.String, nil),
-		"response_ignore":                  tftypes.NewValue(tftypes.Bool, nil),
-		"response_parse":                   tftypes.NewValue(tftypes.Bool, nil),
-		"can_interrupt":                    tftypes.NewValue(tftypes.Bool, nil),
-		"webhook_auth_type":                tfActionStringValue(model.WebhookAuthType),
-		"webhook_auth_basic_auth_user":     tfActionStringValue(model.WebhookAuthBasicAuthUser),
-		"webhook_auth_basic_auth_password": tfActionStringValue(model.WebhookAuthBasicAuthPassword),
-		"webhook_auth_api_key_name":        tfActionStringValue(model.WebhookAuthAPIKeyName),
-		"webhook_auth_api_key_value":       tfActionStringValue(model.WebhookAuthAPIKeyValue),
-		"webhook_auth_api_key_in":          tfActionStringValue(model.WebhookAuthAPIKeyIn),
+		"id":                                  tftypes.NewValue(tftypes.String, nil),
+		"project_id":                          tftypes.NewValue(tftypes.String, nil),
+		"flow":                                tfActionStringValue(model.Flow),
+		"timing":                              tfActionStringValue(model.Timing),
+		"auth_method":                         tfActionStringValue(model.AuthMethod),
+		"url":                                 tfActionStringValue(model.URL),
+		"method":                              tfActionStringValue(model.HTTPMethod),
+		"body":                                tftypes.NewValue(tftypes.String, nil),
+		"response_ignore":                     tftypes.NewValue(tftypes.Bool, nil),
+		"response_parse":                      tftypes.NewValue(tftypes.Bool, nil),
+		"can_interrupt":                       tftypes.NewValue(tftypes.Bool, nil),
+		"webhook_auth_type":                   tfActionStringValue(model.WebhookAuthType),
+		"webhook_auth_basic_auth_user":        tfActionStringValue(model.WebhookAuthBasicAuthUser),
+		"webhook_auth_basic_auth_password":    tfActionStringValue(model.WebhookAuthBasicAuthPassword),
+		"webhook_auth_basic_auth_password_wo": tfActionStringValue(model.WebhookAuthBasicAuthPasswordWO),
+		"webhook_auth_basic_auth_password_wo_version": tfActionStringValue(model.WebhookAuthBasicAuthPasswordWOVersion),
+		"webhook_auth_api_key_name":                   tfActionStringValue(model.WebhookAuthAPIKeyName),
+		"webhook_auth_api_key_value":                  tfActionStringValue(model.WebhookAuthAPIKeyValue),
+		"webhook_auth_api_key_value_wo":               tfActionStringValue(model.WebhookAuthAPIKeyValueWO),
+		"webhook_auth_api_key_value_wo_version":       tfActionStringValue(model.WebhookAuthAPIKeyValueWOVersion),
+		"webhook_auth_api_key_in":                     tfActionStringValue(model.WebhookAuthAPIKeyIn),
 	}
 
 	objType := tftypes.Object{
 		AttributeTypes: map[string]tftypes.Type{
-			"id":                               tftypes.String,
-			"project_id":                       tftypes.String,
-			"flow":                             tftypes.String,
-			"timing":                           tftypes.String,
-			"auth_method":                      tftypes.String,
-			"url":                              tftypes.String,
-			"method":                           tftypes.String,
-			"body":                             tftypes.String,
-			"response_ignore":                  tftypes.Bool,
-			"response_parse":                   tftypes.Bool,
-			"can_interrupt":                    tftypes.Bool,
-			"webhook_auth_type":                tftypes.String,
-			"webhook_auth_basic_auth_user":     tftypes.String,
-			"webhook_auth_basic_auth_password": tftypes.String,
-			"webhook_auth_api_key_name":        tftypes.String,
-			"webhook_auth_api_key_value":       tftypes.String,
-			"webhook_auth_api_key_in":          tftypes.String,
+			"id":                                  tftypes.String,
+			"project_id":                          tftypes.String,
+			"flow":                                tftypes.String,
+			"timing":                              tftypes.String,
+			"auth_method":                         tftypes.String,
+			"url":                                 tftypes.String,
+			"method":                              tftypes.String,
+			"body":                                tftypes.String,
+			"response_ignore":                     tftypes.Bool,
+			"response_parse":                      tftypes.Bool,
+			"can_interrupt":                       tftypes.Bool,
+			"webhook_auth_type":                   tftypes.String,
+			"webhook_auth_basic_auth_user":        tftypes.String,
+			"webhook_auth_basic_auth_password":    tftypes.String,
+			"webhook_auth_basic_auth_password_wo": tftypes.String,
+			"webhook_auth_basic_auth_password_wo_version": tftypes.String,
+			"webhook_auth_api_key_name":                   tftypes.String,
+			"webhook_auth_api_key_value":                  tftypes.String,
+			"webhook_auth_api_key_value_wo":               tftypes.String,
+			"webhook_auth_api_key_value_wo_version":       tftypes.String,
+			"webhook_auth_api_key_in":                     tftypes.String,
 		},
 	}
 
@@ -364,6 +372,49 @@ func TestValidateConfig_BasicAuth_UnknownUser_SkipsValidation(t *testing.T) {
 	r.ValidateConfig(ctx, req, &resp)
 
 	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for unknown webhook_auth_basic_auth_user: %v", resp.Diagnostics.Errors())
+}
+
+// TestValidateConfig_BasicAuth_WriteOnlyPassword_Passes verifies that supplying
+// only the write-only webhook_auth_basic_auth_password_wo satisfies the password
+// requirement for basic_auth.
+func TestValidateConfig_BasicAuth_WriteOnlyPassword_Passes(t *testing.T) {
+	r := &ActionResource{}
+	ctx := context.Background()
+
+	req := buildActionTestConfig(t, ActionResourceModel{
+		Flow:                           types.StringValue("registration"),
+		Timing:                         types.StringValue("after"),
+		URL:                            types.StringValue("https://example.com/webhook"),
+		WebhookAuthType:                types.StringValue("basic_auth"),
+		WebhookAuthBasicAuthUser:       types.StringValue("user"),
+		WebhookAuthBasicAuthPasswordWO: types.StringValue("wo-pass"),
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for write-only basic auth password: %v", resp.Diagnostics.Errors())
+}
+
+// TestValidateConfig_APIKey_WriteOnlyValue_Passes verifies that supplying only the
+// write-only webhook_auth_api_key_value_wo satisfies the value requirement for
+// api_key.
+func TestValidateConfig_APIKey_WriteOnlyValue_Passes(t *testing.T) {
+	r := &ActionResource{}
+	ctx := context.Background()
+
+	req := buildActionTestConfig(t, ActionResourceModel{
+		Flow:                     types.StringValue("login"),
+		Timing:                   types.StringValue("after"),
+		URL:                      types.StringValue("https://example.com/webhook"),
+		WebhookAuthType:          types.StringValue("api_key"),
+		WebhookAuthAPIKeyName:    types.StringValue("X-API-Key"),
+		WebhookAuthAPIKeyValueWO: types.StringValue("wo-secret"),
+		WebhookAuthAPIKeyIn:      types.StringValue("header"),
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for write-only api key value: %v", resp.Diagnostics.Errors())
 }
 
 // TestValidateConfig_APIKey_UnknownValue_NullName_StillFails verifies that when
