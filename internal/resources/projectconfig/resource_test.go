@@ -309,18 +309,56 @@ func TestAccProjectConfigResource_oidc(t *testing.T) {
 	})
 }
 
+// TestAccProjectConfigResource_oidcAutoLinkPolicy covers create, import, update
+// and idempotency for the OIDC auto-link policy toggle.
+//
+// Note: the auto-link policy is a plan-gated feature. Setting it to true on a
+// project whose subscription plan does not include the "Auto Link Policy"
+// feature is rejected by the Ory API with a 403 feature_not_available. The
+// provider surfaces that feature name, reason, and request ID via wrapAPIError
+// (see internal/client) instead of a bare "403 Forbidden". This test requires a
+// project on a plan that includes the feature.
 func TestAccProjectConfigResource_oidcAutoLinkPolicy(t *testing.T) {
+	enabled := map[string]string{"EnableAutoLink": "true"}
+	disabled := map[string]string{"EnableAutoLink": "false"}
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
+			// Create with the auto-link policy enabled.
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/oidc_auto_link_policy.tf.tmpl", nil),
+				Config: acctest.LoadTestConfig(t, "testdata/oidc_auto_link_policy.tf.tmpl", enabled),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_oidc_enabled", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_oidc_enable_auto_link_policy", "true"),
 				),
+			},
+			// ImportState — import only sets id/project_id, so configured
+			// attributes (and computed defaults like cors_enabled) are not
+			// repopulated until apply and must be ignored here.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"selfservice_methods_oidc_enabled",
+					"selfservice_methods_oidc_enable_auto_link_policy",
+					"cors_enabled",
+				},
+			},
+			// Update — toggle the auto-link policy back off.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oidc_auto_link_policy.tf.tmpl", disabled),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_oidc_enable_auto_link_policy", "false"),
+				),
+			},
+			// Verify no perpetual diff.
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/oidc_auto_link_policy.tf.tmpl", disabled),
+				PlanOnly: true,
 			},
 		},
 	})
