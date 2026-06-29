@@ -25,8 +25,12 @@ import (
 // written to Terraform state, and that bumping the version trigger rotates it.
 // Write-only arguments require Terraform 1.11+.
 func TestAccActionResource_writeOnlyBasicAuth(t *testing.T) {
+	hookPath := "/services/identity/config/selfservice/flows/registration/after/password/hooks"
 	resource.Test(t, resource.TestCase{
-		PreCheck: func() { acctest.AccPreCheck(t) },
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			cleanupDanglingWebhook(t, hookPath, testutil.ExampleWebhookURL+"/wo-basic-auth-webhook")
+		},
 		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
 			tfversion.SkipBelow(tfversion.Version1_11_0),
 		},
@@ -75,8 +79,12 @@ func TestAccActionResource_writeOnlyBasicAuth(t *testing.T) {
 // TestAccActionResource_writeOnlyAPIKey verifies the same for the api-key value
 // supplied via webhook_auth_api_key_value_wo.
 func TestAccActionResource_writeOnlyAPIKey(t *testing.T) {
+	hookPath := "/services/identity/config/selfservice/flows/registration/after/password/hooks"
 	resource.Test(t, resource.TestCase{
-		PreCheck: func() { acctest.AccPreCheck(t) },
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			cleanupDanglingWebhook(t, hookPath, testutil.ExampleWebhookURL+"/wo-api-key-webhook")
+		},
 		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
 			tfversion.SkipBelow(tfversion.Version1_11_0),
 		},
