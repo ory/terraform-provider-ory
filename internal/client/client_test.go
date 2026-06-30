@@ -182,6 +182,92 @@ func TestOryErrorDebugInfo_String(t *testing.T) {
 	}
 }
 
+func TestWrapAPIError_Nil(t *testing.T) {
+	assert.NoError(t, wrapAPIError(nil, "patching project"))
+}
+
+// autoLinkFeatureErrorBody is the exact 403 body the Ory console API returns
+// when enabling the OIDC auto-link policy on a project whose subscription plan
+// does not include the "Auto Link Policy" feature (captured against the live
+// production API). The provider must surface its reason, not a bare 403.
+const autoLinkFeatureErrorBody = `{"error":{"id":"feature_not_available","code":403,"status":"Forbidden",` +
+	`"request":"83130baf-0313-9115-8f8e-dabe3a5516c4",` +
+	`"reason":"This project's subscription plan does not include feature \"Auto Link Policy\". ` +
+	`Please take a look at https://www.ory.com/pricing/ to select an appropriate plan and upgrade accordingly.",` +
+	`"details":{"feature":"auto_link_policy"},"message":"The requested action was forbidden"}}`
+
+// TestWrapAPIError_FeatureNotAvailable verifies that the plan-gated 403 for the
+// OIDC auto-link policy is surfaced with the feature name, the human-readable
+// reason, and the pricing link — so a user immediately understands it is a plan
+// limitation rather than a mysterious permission error.
+func TestWrapAPIError_FeatureNotAvailable(t *testing.T) {
+	err := fmt.Errorf("403 Forbidden: %s", autoLinkFeatureErrorBody)
+
+	wrapped := wrapAPIError(err, "patching project")
+	require.Error(t, wrapped)
+
+	msg := wrapped.Error()
+	assert.Contains(t, msg, "patching project")
+	assert.Contains(t, msg, "auto_link_policy", "should name the gated feature")
+	assert.Contains(t, msg, "not available on current plan")
+	assert.Contains(t, msg, "subscription plan does not include", "should surface the API reason")
+	assert.Contains(t, msg, "ory.com/pricing", "should surface the pricing link from the reason")
+	assert.Contains(t, msg, "83130baf", "should surface the request ID for Ory support")
+}
+
+// TestWrapAPIError_Forbidden covers a generic (non-feature) 403: it is enriched
+// with the API reason and request ID and remains unwrappable for callers that
+// inspect the underlying error.
+func TestWrapAPIError_Forbidden(t *testing.T) {
+	body := `{"error":{"code":403,"status":"Forbidden","request":"req-abc-123",` +
+		`"reason":"insufficient permissions for this operation"}}`
+	err := fmt.Errorf("403 Forbidden: %s", body)
+
+	wrapped := wrapAPIError(err, "patching project")
+	require.Error(t, wrapped)
+
+	msg := wrapped.Error()
+	assert.Contains(t, msg, "patching project")
+	assert.Contains(t, msg, "forbidden (403)")
+	assert.Contains(t, msg, "req-abc-123", "should surface the request ID for Ory support")
+	assert.Contains(t, msg, "insufficient permissions", "should surface the API error reason")
+
+	// The original error must remain unwrappable for callers that inspect it.
+	assert.ErrorIs(t, wrapped, err)
+}
+
+// TestPatchProject_WrapsFeatureNotAvailable exercises the full client path: the
+// plan-gated 403 from the console API must come back from PatchProject with the
+// parsed feature/reason/request ID, not a bare "403 Forbidden". This guards
+// against the regression where project_config updates surfaced an opaque 403
+// (see issue #271).
+func TestPatchProject_WrapsFeatureNotAvailable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(autoLinkFeatureErrorBody))
+	}))
+	defer srv.Close()
+
+	client, err := NewOryClient(OryClientConfig{
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   srv.URL,
+	})
+	require.NoError(t, err)
+
+	_, patchErr := client.PatchProject(context.Background(), "prod-project", []ory.JsonPatch{{
+		Op:    "replace",
+		Path:  "/services/identity/config/selfservice/methods/oidc/enable_auto_link_policy",
+		Value: true,
+	}})
+	require.Error(t, patchErr)
+
+	msg := patchErr.Error()
+	assert.Contains(t, msg, "auto_link_policy")
+	assert.Contains(t, msg, "not available on current plan")
+	assert.Contains(t, msg, "ory.com/pricing")
+}
+
 func TestNewOryClient_InvalidConsoleURL(t *testing.T) {
 	cfg := OryClientConfig{
 		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,

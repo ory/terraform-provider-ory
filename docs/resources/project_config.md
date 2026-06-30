@@ -18,6 +18,8 @@ This resource supports drift detection — `terraform plan` will detect changes 
 
 ~> **Note:** Only attributes present in your Terraform configuration are tracked for drift. Attributes you have not configured will not appear in plan output, even if they have non-default values in the API.
 
+~> **Plan-gated features:** Some settings require a feature that your project's subscription must include, and the Ory API rejects them with an `HTTP 403 (feature_not_available)` otherwise. Notably, `selfservice_methods_oidc_enable_auto_link_policy = true` requires the OIDC auto-link policy (`use_auto_link`), an enterprise feature that Ory enables per project on request — being on an enterprise plan does not enable it automatically. If an apply fails with a `feature_not_available` error, the provider surfaces the feature name and a request ID; contact Ory support or your account executive to enable the feature.
+
 ## Example Usage
 
 ```terraform
@@ -528,7 +530,7 @@ terraform plan  # verify no changes
 - `enable_code` (Boolean, Deprecated) Enable code-based authentication.
 - `enable_lookup_secret` (Boolean, Deprecated) Enable backup/recovery codes.
 - `enable_oidc` (Boolean, Deprecated) Enable OIDC (OpenID Connect) social sign-in. Must be enabled for social providers (e.g. Google, GitHub) to work.
-- `enable_oidc_auto_link_policy` (Boolean, Deprecated) Enable the OIDC auto-link policy. When true, social sign-in providers with auto_link enabled (on ory_social_provider) can automatically link to existing identities that share the same identifier (e.g., email).
+- `enable_oidc_auto_link_policy` (Boolean, Deprecated) Enable the OIDC auto-link policy. When true, social sign-in providers with auto_link enabled (on ory_social_provider) can automatically link to existing identities that share the same identifier (e.g., email). This is an enterprise-gated feature that Ory must enable for the project (the `use_auto_link` feature flag); without the entitlement, setting this to true is rejected by the API with an HTTP 403 (feature_not_available).
 - `enable_passkey` (Boolean, Deprecated) Enable Passkey authentication.
 - `enable_password` (Boolean, Deprecated) Enable password authentication.
 - `enable_profile` (Boolean, Deprecated) Enable the profile authentication method. When enabled, users can update their identity traits (e.g., name, address) via the settings flow.
@@ -706,7 +708,7 @@ terraform plan  # verify no changes
 - `selfservice_methods_link_enabled` (Boolean) Enable the magic link authentication method.
 - `selfservice_methods_lookup_secret_enabled` (Boolean) Enable backup/recovery codes.
 - `selfservice_methods_oidc_config_base_redirect_uri` (String) Base redirect URI for OIDC/social sign-in callbacks.
-- `selfservice_methods_oidc_enable_auto_link_policy` (Boolean) Enable the OIDC auto-link policy. When true, social sign-in providers with auto_link enabled (on ory_social_provider) can automatically link to existing identities that share the same identifier (e.g., email).
+- `selfservice_methods_oidc_enable_auto_link_policy` (Boolean) Enable the OIDC auto-link policy. When true, social sign-in providers with auto_link enabled (on ory_social_provider) can automatically link to existing identities that share the same identifier (e.g., email). This is an enterprise-gated feature that Ory must enable for the project (the `use_auto_link` feature flag); without the entitlement, setting this to true is rejected by the API with an HTTP 403 (feature_not_available).
 - `selfservice_methods_oidc_enabled` (Boolean) Enable OIDC (OpenID Connect) social sign-in. Must be enabled for social providers (e.g. Google, GitHub) to work.
 - `selfservice_methods_passkey_config_rp_display_name` (String) Passkey relying party display name.
 - `selfservice_methods_passkey_config_rp_id` (String) Passkey relying party ID (typically your domain).

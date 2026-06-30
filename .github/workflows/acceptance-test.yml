@@ -45,6 +45,11 @@ on:
         required: false
         default: false
         type: boolean
+      enable_auto_link_tests:
+        description: 'OIDC auto-link policy tests (requires enterprise use_auto_link entitlement)'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: acceptance-tests
@@ -88,4 +93,5 @@ jobs:
       enable_project_tests: ${{ github.event_name == 'pull_request' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_project_tests == 'true' }}
       enable_event_stream_tests: ${{ github.event_name == 'pull_request' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_event_stream_tests == 'true' }}
       enable_custom_domain_tests: ${{ github.event_name == 'pull_request' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_custom_domain_tests == 'true' }}
+      enable_auto_link_tests: ${{ github.event_name == 'pull_request' || github.event.inputs.run_all == 'true' || github.event.inputs.enable_auto_link_tests == 'true' }}
     secrets: inherit

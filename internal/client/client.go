@@ -657,11 +657,22 @@ func (c *OryClient) PatchProject(ctx context.Context, projectID string, patches 
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
-	if err == nil && result != nil {
+	if err != nil {
+		// The raw SDK error for a project patch is just the bare HTTP status
+		// (e.g. "403 Forbidden") with no body, so a rejected setting surfaces
+		// with zero diagnostic detail. wrapAPIError parses the response body and
+		// recognizes feature_not_available errors — e.g. enabling the OIDC
+		// auto-link policy on a project whose plan lacks the "Auto Link Policy"
+		// feature returns a 403 whose reason names the feature and links to
+		// pricing. Wrap it so that reason and the request ID reach the user, the
+		// same treatment every other console operation already gets.
+		return result, wrapAPIError(err, "patching project")
+	}
+	if result != nil {
 		project := result.GetProject()
 		c.cachedProjects.Store(projectID, &project)
 	}
-	return result, err
+	return result, nil
 }
 
 // GetCachedProject returns the cached project state from the last PatchProject call.
