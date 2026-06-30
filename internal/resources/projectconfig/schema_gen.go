@@ -312,11 +312,11 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			DeprecationMessage: "Use selfservice_methods_oidc_enabled instead. This attribute will be removed in a future major version.",
 		},
 		"selfservice_methods_oidc_enable_auto_link_policy": schema.BoolAttribute{
-			Description: "Enable the OIDC auto-link policy. When true, social sign-in providers with auto_link enabled (on ory_social_provider) can automatically link to existing identities that share the same identifier (e.g., email).",
+			Description: "Enable the OIDC auto-link policy. When true, social sign-in providers with auto_link enabled (on ory_social_provider) can automatically link to existing identities that share the same identifier (e.g., email). This is an enterprise-gated feature that Ory must enable for the project (the `use_auto_link` feature flag); without the entitlement, setting this to true is rejected by the API with an HTTP 403 (feature_not_available).",
 			Optional:    true,
 		},
 		"enable_oidc_auto_link_policy": schema.BoolAttribute{
-			Description:        "Enable the OIDC auto-link policy. When true, social sign-in providers with auto_link enabled (on ory_social_provider) can automatically link to existing identities that share the same identifier (e.g., email).",
+			Description:        "Enable the OIDC auto-link policy. When true, social sign-in providers with auto_link enabled (on ory_social_provider) can automatically link to existing identities that share the same identifier (e.g., email). This is an enterprise-gated feature that Ory must enable for the project (the `use_auto_link` feature flag); without the entitlement, setting this to true is rejected by the API with an HTTP 403 (feature_not_available).",
 			Optional:           true,
 			DeprecationMessage: "Use selfservice_methods_oidc_enable_auto_link_policy instead. This attribute will be removed in a future major version.",
 		},

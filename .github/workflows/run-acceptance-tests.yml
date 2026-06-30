@@ -27,6 +27,9 @@ on:
       enable_custom_domain_tests:
         type: boolean
         default: false
+      enable_auto_link_tests:
+        type: boolean
+        default: false
     secrets:
       ORY_WORKSPACE_API_KEY:
         required: true
@@ -106,6 +109,7 @@ jobs:
           ORY_SCHEMA_TESTS_ENABLED: ${{ inputs.enable_schema_tests }}
           ORY_PROJECT_TESTS_ENABLED: ${{ inputs.enable_project_tests }}
           ORY_EVENT_STREAM_TESTS_ENABLED: ${{ inputs.enable_event_stream_tests }}
+          ORY_AUTO_LINK_TESTS_ENABLED: ${{ inputs.enable_auto_link_tests }}
           ORY_EVENT_STREAM_TOPIC_ARN: ${{ secrets.ORY_EVENT_STREAM_TOPIC_ARN }}
           ORY_EVENT_STREAM_ROLE_ARN: ${{ secrets.ORY_EVENT_STREAM_ROLE_ARN }}
           ORY_CUSTOM_DOMAIN_HOSTNAME: ${{ inputs.enable_custom_domain_tests && secrets.ORY_CUSTOM_DOMAIN_HOSTNAME || '' }}
