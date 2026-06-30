@@ -40,8 +40,10 @@ tolerates the API omitting the value or returning a masked sentinel (such as
 
 - `smtp_connection_uri` in `ory_project_config`
 - `client_secret` and `apple_private_key` in `ory_social_provider`
+- `password` in `ory_identity`
+- `client_secret` in `ory_oauth2_client` (server-generated; returned only on create, never on subsequent reads)
 
-These values still originate from your configuration, so keep them in sensitive
+These values still originate from your configuration (or, for `ory_oauth2_client.client_secret`, from the create response), so keep them in sensitive
 variables and protect your state as described above.
 
 ### Write-only arguments (never stored in state)

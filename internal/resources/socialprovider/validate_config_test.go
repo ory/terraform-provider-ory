@@ -255,6 +255,24 @@ func TestValidateConfig_WriteOnlyClientID_Passes(t *testing.T) {
 	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for write-only client_id_wo: %v", resp.Diagnostics.Errors())
 }
 
+func TestValidateConfig_UnknownClientID_SkipsValidation(t *testing.T) {
+	r := &SocialProviderResource{}
+	ctx := context.Background()
+
+	// client_id sourced from an unknown value (e.g. an ephemeral resource) must
+	// not be rejected as an empty string at plan time.
+	req := buildTestConfig(t, SocialProviderResourceModel{
+		ProviderID:   types.StringValue("google"),
+		ProviderType: types.StringValue("generic"),
+		ClientID:     types.StringUnknown(),
+		ClientSecret: types.StringValue("my-secret"),
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for unknown client_id: %v", resp.Diagnostics.Errors())
+}
+
 func TestValidateConfig_MissingClientID_Fails(t *testing.T) {
 	r := &SocialProviderResource{}
 	ctx := context.Background()

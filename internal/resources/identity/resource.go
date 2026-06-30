@@ -470,21 +470,33 @@ func (r *IdentityResource) Update(ctx context.Context, req resource.UpdateReques
 		body.MetadataAdmin = metadataAdmin
 	}
 
-	// Rotate the password when it is supplied write-only (password_wo) and its
-	// version trigger changed. Write-only values are read from req.Config; the
-	// version comparison ensures the secret is only re-sent on an intentional
-	// rotation, not on every unrelated update.
+	// Build password credentials for the update. Two independent paths set a new
+	// password (they are mutually exclusive via the password/password_wo
+	// ConflictsWith validator, so at most one fires):
+	//   - the write-only password_wo, re-sent only when its version trigger
+	//     changes so the secret is not re-sent on every unrelated update; and
+	//   - the stateful password, sent when it actually changed (plan != state).
+	// Write-only values live only in the configuration, so password_wo is read
+	// from req.Config.
 	var passwordWO types.String
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("password_wo"), &passwordWO)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if !passwordWO.IsNull() && !passwordWO.IsUnknown() && passwordWO.ValueString() != "" &&
-		!plan.PasswordWOVersion.Equal(state.PasswordWOVersion) {
+	var newPassword *string
+	switch {
+	case !passwordWO.IsNull() && !passwordWO.IsUnknown() && passwordWO.ValueString() != "" &&
+		!plan.PasswordWOVersion.Equal(state.PasswordWOVersion):
+		newPassword = ory.PtrString(passwordWO.ValueString())
+	case !plan.Password.IsNull() && !plan.Password.IsUnknown() && plan.Password.ValueString() != "" &&
+		!plan.Password.Equal(state.Password):
+		newPassword = ory.PtrString(plan.Password.ValueString())
+	}
+	if newPassword != nil {
 		body.Credentials = &ory.IdentityWithCredentials{
 			Password: &ory.IdentityWithCredentialsPassword{
 				Config: &ory.IdentityWithCredentialsPasswordConfig{
-					Password: ory.PtrString(passwordWO.ValueString()),
+					Password: newPassword,
 				},
 			},
 		}

@@ -358,11 +358,13 @@ func (r *SocialProviderResource) ValidateConfig(ctx context.Context, req resourc
 	hasAnyAppleField := hasAppleTeamID || hasApplePrivateKeyID || hasApplePrivateKey
 	hasAllAppleFields := hasAppleTeamID && hasApplePrivateKeyID && hasApplePrivateKey
 
-	// Validate that known values are not empty strings
-	if !config.ClientID.IsNull() && config.ClientID.ValueString() == "" {
+	// Validate that known values are not empty strings. client_id and
+	// client_id_wo are not covered by the unknown-deferral block above, so guard
+	// against unknown values here (an unknown value reports ValueString() == "").
+	if !config.ClientID.IsNull() && !config.ClientID.IsUnknown() && config.ClientID.ValueString() == "" {
 		resp.Diagnostics.AddAttributeError(path.Root("client_id"), "Invalid Attribute Value", "client_id must not be an empty string.")
 	}
-	if !config.ClientIDWO.IsNull() && config.ClientIDWO.ValueString() == "" {
+	if !config.ClientIDWO.IsNull() && !config.ClientIDWO.IsUnknown() && config.ClientIDWO.ValueString() == "" {
 		resp.Diagnostics.AddAttributeError(path.Root("client_id_wo"), "Invalid Attribute Value", "client_id_wo must not be an empty string.")
 	}
 	if !config.ClientSecret.IsNull() && config.ClientSecret.ValueString() == "" {

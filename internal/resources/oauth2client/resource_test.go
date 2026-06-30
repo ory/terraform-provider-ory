@@ -3,6 +3,7 @@
 package oauth2client_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -10,12 +11,48 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 	"github.com/ory/terraform-provider-ory/internal/testutil"
 )
+
+// checkOAuth2ClientServerJWKSKid reads the OAuth2 client back from the Ory API
+// and asserts its JWKS contains a key with the expected kid. Because jwks is
+// supplied write-only (and therefore absent from state), this is the only way to
+// confirm the write-only JWKS — and its rotation via jwks_wo_version — actually
+// reached the server, so a no-op Update path cannot pass silently.
+func checkOAuth2ClientServerJWKSKid(resourceName, expectedKid string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return fmt.Errorf("resource not found in state: %s", resourceName)
+		}
+		clientID := rs.Primary.Attributes["client_id"]
+		if clientID == "" {
+			return fmt.Errorf("client_id is empty in state for %s", resourceName)
+		}
+		c, err := acctest.GetOryClient()
+		if err != nil {
+			return err
+		}
+		oauthClient, err := c.GetOAuth2Client(context.Background(), clientID)
+		if err != nil {
+			return fmt.Errorf("failed to read OAuth2 client %s: %w", clientID, err)
+		}
+		if oauthClient.Jwks == nil || len(oauthClient.Jwks.Keys) == 0 {
+			return fmt.Errorf("expected JWKS with keys on the server for %s, got none", clientID)
+		}
+		for _, k := range oauthClient.Jwks.Keys {
+			if k.Kid == expectedKid {
+				return nil
+			}
+		}
+		return fmt.Errorf("expected server JWKS for %s to contain kid %q", clientID, expectedKid)
+	}
+}
 
 // TestAccOAuth2ClientResource_writeOnlyJWKS verifies that an inline JWKS supplied
 // via jwks_wo is sent to the API but never written to Terraform state, and that
@@ -38,6 +75,8 @@ func TestAccOAuth2ClientResource_writeOnlyJWKS(t *testing.T) {
 					resource.TestCheckResourceAttrSet("ory_oauth2_client.wo", "id"),
 					resource.TestCheckResourceAttr("ory_oauth2_client.wo", "token_endpoint_auth_method", "private_key_jwt"),
 					resource.TestCheckResourceAttr("ory_oauth2_client.wo", "jwks_wo_version", "1"),
+					// Confirm the write-only JWKS reached the server.
+					checkOAuth2ClientServerJWKSKid("ory_oauth2_client.wo", "test-key-1"),
 				),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue("ory_oauth2_client.wo", tfjsonpath.New("jwks_wo"), knownvalue.Null()),
@@ -52,6 +91,8 @@ func TestAccOAuth2ClientResource_writeOnlyJWKS(t *testing.T) {
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("ory_oauth2_client.wo", "jwks_wo_version", "2"),
+					// The rotated key set (new kid) must have reached the server.
+					checkOAuth2ClientServerJWKSKid("ory_oauth2_client.wo", "test-key-2"),
 				),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue("ory_oauth2_client.wo", tfjsonpath.New("jwks_wo"), knownvalue.Null()),
