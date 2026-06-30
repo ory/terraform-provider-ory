@@ -12,6 +12,23 @@ resource "ory_oauth2_client" "api_service" {
   client_credentials_grant_access_token_lifespan = "30m"
 }
 
+# Client using private_key_jwt with a write-only (ephemeral) JWKS from Vault.
+# jwks_wo is never stored in Terraform state or plan (Terraform 1.11+). Bump
+# jwks_wo_version whenever the key set rotates so Terraform re-sends it.
+ephemeral "vault_kv_secret_v2" "client_jwks" {
+  mount = "secret"
+  name  = "ory/client-jwks"
+}
+
+resource "ory_oauth2_client" "private_key_jwt_client" {
+  client_name                = "Private Key JWT Client"
+  grant_types                = ["client_credentials"]
+  token_endpoint_auth_method = "private_key_jwt"
+
+  jwks_wo         = ephemeral.vault_kv_secret_v2.client_jwks.data["jwks"]
+  jwks_wo_version = "1"
+}
+
 # Web application (Authorization Code flow) with OIDC logout and metadata
 resource "ory_oauth2_client" "web_app" {
   client_name    = "Web Application"

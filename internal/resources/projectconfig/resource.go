@@ -9,6 +9,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -16,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -131,10 +133,12 @@ type ProjectConfigResourceModel struct {
 	VerificationNotifyUnknownRecipients types.Bool   `tfsdk:"verification_notify_unknown_recipients"`
 
 	// SMTP Configuration
-	SMTPConnectionURI types.String `tfsdk:"smtp_connection_uri"`
-	SMTPFromAddress   types.String `tfsdk:"smtp_from_address"`
-	SMTPFromName      types.String `tfsdk:"smtp_from_name"`
-	SMTPHeaders       types.Map    `tfsdk:"smtp_headers"`
+	SMTPConnectionURI          types.String `tfsdk:"smtp_connection_uri"`
+	SMTPConnectionURIWO        types.String `tfsdk:"smtp_connection_uri_wo"`
+	SMTPConnectionURIWOVersion types.String `tfsdk:"smtp_connection_uri_wo_version"`
+	SMTPFromAddress            types.String `tfsdk:"smtp_from_address"`
+	SMTPFromName               types.String `tfsdk:"smtp_from_name"`
+	SMTPHeaders                types.Map    `tfsdk:"smtp_headers"`
 
 	// MFA Policy
 	MFAEnforcement           types.String `tfsdk:"mfa_enforcement"`
@@ -587,6 +591,27 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 			stringplanmodifier.RequiresReplace(),
 		},
 	}
+	// Write-only companions for smtp_connection_uri (Terraform 1.11+ write-only
+	// arguments). These are hand-written rather than codegen'd because write-only
+	// values must be read from the configuration (req.Config) at apply time, not
+	// from the plan model the codegen patch tables iterate over.
+	attrs["smtp_connection_uri_wo"] = schema.StringAttribute{
+		Description: "Write-only equivalent of smtp_connection_uri (Terraform 1.11+ write-only argument): the SMTP connection URI is sent to Ory but never stored in Terraform state or plan. Use this to source the value from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change smtp_connection_uri_wo_version to rotate it. Mutually exclusive with smtp_connection_uri.",
+		Optional:    true,
+		WriteOnly:   true,
+		Sensitive:   true,
+		Validators: []validator.String{
+			stringvalidator.ConflictsWith(path.MatchRoot("smtp_connection_uri")),
+		},
+	}
+	attrs["smtp_connection_uri_wo_version"] = schema.StringAttribute{
+		Description: "Version trigger for smtp_connection_uri_wo. Change this value whenever the write-only smtp_connection_uri_wo changes so Terraform sends the new value to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless smtp_connection_uri_wo is set.",
+		Optional:    true,
+		Validators: []validator.String{
+			stringvalidator.AlsoRequires(path.MatchRoot("smtp_connection_uri_wo")),
+		},
+	}
+
 	// --- Hand-written attributes (not in mappings.yaml) ---
 	// These require custom logic that the codegen can't express:
 	//   CORS (4):                   project-level /cors_* paths (not /services/*/config/)
@@ -866,6 +891,26 @@ func (r *ProjectConfigResource) Configure(ctx context.Context, req resource.Conf
 		return
 	}
 	r.client = oryClient
+}
+
+// appendWriteOnlySMTPPatch appends a patch for the SMTP connection URI when it is
+// supplied via the write-only smtp_connection_uri_wo attribute. Write-only values
+// live only in the configuration (nullified in the plan and state), so they are
+// read from req.Config rather than the plan model that buildPatches iterates over,
+// and are never written back into state. smtp_connection_uri and
+// smtp_connection_uri_wo are mutually exclusive, so at most one patch targets the
+// connection_uri path.
+func (r *ProjectConfigResource) appendWriteOnlySMTPPatch(ctx context.Context, config tfsdk.Config, patches []ory.JsonPatch, diags *diag.Diagnostics) []ory.JsonPatch {
+	var uriWO types.String
+	diags.Append(config.GetAttribute(ctx, path.Root("smtp_connection_uri_wo"), &uriWO)...)
+	if diags.HasError() || uriWO.IsNull() || uriWO.IsUnknown() {
+		return patches
+	}
+	return append(patches, ory.JsonPatch{
+		Op:    "replace",
+		Path:  "/services/identity/config/courier/smtp/connection_uri",
+		Value: uriWO.ValueString(),
+	})
 }
 
 // =============================================================================
@@ -1392,6 +1437,10 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 	}
 
 	patches := r.buildPatches(ctx, &plan)
+	patches = r.appendWriteOnlySMTPPatch(ctx, req.Config, patches, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	if needsHookPrefetch(&plan) {
 		currentProject, err := r.client.GetProject(ctx, projectID)
@@ -1942,6 +1991,10 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 	}
 
 	patches := r.buildPatches(ctx, &plan)
+	patches = r.appendWriteOnlySMTPPatch(ctx, req.Config, patches, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	// Clear `oauth2.token_hook.auth` when the user transitions from set in
 	// state to null in the plan. The API requires `token_hook` to be either a

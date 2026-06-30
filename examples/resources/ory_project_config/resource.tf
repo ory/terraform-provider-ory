@@ -6,6 +6,19 @@ resource "ory_project_config" "basic" {
   session_lifespan                                        = "720h0m0s" # 30 days
 }
 
+# Project configuration with a write-only (ephemeral) SMTP connection URI from Vault.
+# smtp_connection_uri_wo is never stored in Terraform state or plan (Terraform 1.11+).
+# Bump smtp_connection_uri_wo_version whenever the secret rotates so Terraform re-sends it.
+ephemeral "vault_kv_secret_v2" "smtp" {
+  mount = "secret"
+  name  = "ory/smtp"
+}
+
+resource "ory_project_config" "with_write_only_smtp" {
+  smtp_connection_uri_wo         = ephemeral.vault_kv_secret_v2.smtp.data["connection_uri"]
+  smtp_connection_uri_wo_version = "1"
+}
+
 # Full security configuration
 resource "ory_project_config" "secure" {
   # Public CORS

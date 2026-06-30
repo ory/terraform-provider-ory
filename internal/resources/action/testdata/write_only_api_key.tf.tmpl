@@ -1,0 +1,13 @@
+resource "ory_action" "wo" {
+  flow        = "registration"
+  timing      = "after"
+  auth_method = "password"
+  url         = "[[ .WebhookURL ]]/wo-api-key-webhook"
+  method      = "POST"
+
+  webhook_auth_type                     = "api_key"
+  webhook_auth_api_key_name             = "X-API-KEY"
+  webhook_auth_api_key_value_wo         = "wo-api-key-[[ .Version ]]"
+  webhook_auth_api_key_value_wo_version = "[[ .Version ]]"
+  webhook_auth_api_key_in               = "header"
+}

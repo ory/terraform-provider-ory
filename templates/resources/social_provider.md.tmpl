@@ -45,6 +45,43 @@ Ory uses these to automatically generate the JWT `client_secret` required by App
 
 Alternatively, you may provide a pre-generated `client_secret` directly if you prefer to manage the JWT yourself.
 
+## Ephemeral (Write-Only) Credentials
+
+In addition to `client_id`, `client_secret`, and `apple_private_key`, this resource
+exposes **write-only** equivalents that are never written to Terraform state or
+plan (Terraform 1.11+ [write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral/write-only)):
+
+| Write-only attribute | Replaces | Version trigger |
+|----------------------|----------|-----------------|
+| `client_id_wo` | `client_id` | `client_id_wo_version` |
+| `client_secret_wo` | `client_secret` | `client_secret_wo_version` |
+| `apple_private_key_wo` | `apple_private_key` | `apple_private_key_wo_version` |
+
+Each write-only attribute is mutually exclusive with its stateful counterpart. Use
+them to feed credentials from an ephemeral source such as a Vault secret without
+persisting them in state. Because write-only values are never stored, Terraform
+cannot detect when the value changes on its own — change the matching
+`*_wo_version` whenever the secret rotates so Terraform sends the new value to Ory.
+
+```hcl
+ephemeral "vault_kv_secret_v2" "google_oauth" {
+  mount = "secret"
+  name  = "ory/google-oauth"
+}
+
+resource "ory_social_provider" "google" {
+  provider_id   = "google"
+  provider_type = "google"
+
+  client_id_wo             = ephemeral.vault_kv_secret_v2.google_oauth.data["client_id"]
+  client_id_wo_version     = "1"
+  client_secret_wo         = ephemeral.vault_kv_secret_v2.google_oauth.data["client_secret"]
+  client_secret_wo_version = "1"
+
+  scope = ["email", "profile"]
+}
+```
+
 ## Example Usage
 
 {{ tffile "examples/resources/ory_social_provider/resource.tf" }}
@@ -193,9 +230,9 @@ resource "ory_social_provider" "google" {
 ## Important Behaviors
 
 - **`provider_id` and `provider_type` cannot be changed** after creation. Changing either forces a new resource.
-- **`client_secret` is write-only.** The API does not return secrets on read, so Terraform cannot detect external changes to the secret.
+- **`client_secret` is not returned on read.** The API does not return secrets, so Terraform cannot detect external changes to the secret. (For a value that is never stored in state at all, use the write-only `client_secret_wo` — see [Ephemeral (Write-Only) Credentials](#ephemeral-write-only-credentials).)
 - **`tenant` maps to `microsoft_tenant`** in the Ory API. This is only used with `provider_type = "microsoft"`.
-- **Apple-specific fields** (`apple_team_id`, `apple_private_key_id`, `apple_private_key`) are only valid with `provider_type = "apple"`. The `apple_private_key` is write-only (not returned by API).
+- **Apple-specific fields** (`apple_team_id`, `apple_private_key_id`, `apple_private_key`) are only valid with `provider_type = "apple"`. The `apple_private_key` is not returned by the API on read.
 - **Deleting the last provider** resets the entire OIDC configuration to a disabled state with an empty providers array.
 
 ## Import
@@ -206,9 +243,9 @@ Import using the provider ID:
 terraform import ory_social_provider.google google
 ```
 
-The `provider_id` is the unique identifier you chose when creating the provider. After import, you must provide write-only credentials in your configuration since they cannot be read from the API:
+The `provider_id` is the unique identifier you chose when creating the provider. After import, you must provide the secret credentials in your configuration since they cannot be read from the API (either the stateful attributes below or their `_wo` write-only equivalents):
 
-- **Non-Apple providers:** Set `client_secret`.
-- **Apple providers:** Set either `client_secret` (pre-generated JWT) or all three Apple-specific fields (`apple_team_id`, `apple_private_key_id`, and `apple_private_key`).
+- **Non-Apple providers:** Set `client_secret` (or `client_secret_wo`).
+- **Apple providers:** Set either `client_secret` (pre-generated JWT) or all three Apple-specific fields (`apple_team_id`, `apple_private_key_id`, and `apple_private_key` / `apple_private_key_wo`).
 
 {{ .SchemaMarkdown | trimspace }}

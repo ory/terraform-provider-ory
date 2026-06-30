@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -18,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
 
@@ -77,12 +79,16 @@ type ActionResourceModel struct {
 	CanInterrupt   types.Bool   `tfsdk:"can_interrupt"`
 
 	// Webhook authentication configuration
-	WebhookAuthType              types.String `tfsdk:"webhook_auth_type"`
-	WebhookAuthBasicAuthUser     types.String `tfsdk:"webhook_auth_basic_auth_user"`
-	WebhookAuthBasicAuthPassword types.String `tfsdk:"webhook_auth_basic_auth_password"`
-	WebhookAuthAPIKeyName        types.String `tfsdk:"webhook_auth_api_key_name"`
-	WebhookAuthAPIKeyValue       types.String `tfsdk:"webhook_auth_api_key_value"`
-	WebhookAuthAPIKeyIn          types.String `tfsdk:"webhook_auth_api_key_in"`
+	WebhookAuthType                       types.String `tfsdk:"webhook_auth_type"`
+	WebhookAuthBasicAuthUser              types.String `tfsdk:"webhook_auth_basic_auth_user"`
+	WebhookAuthBasicAuthPassword          types.String `tfsdk:"webhook_auth_basic_auth_password"`
+	WebhookAuthBasicAuthPasswordWO        types.String `tfsdk:"webhook_auth_basic_auth_password_wo"`
+	WebhookAuthBasicAuthPasswordWOVersion types.String `tfsdk:"webhook_auth_basic_auth_password_wo_version"`
+	WebhookAuthAPIKeyName                 types.String `tfsdk:"webhook_auth_api_key_name"`
+	WebhookAuthAPIKeyValue                types.String `tfsdk:"webhook_auth_api_key_value"`
+	WebhookAuthAPIKeyValueWO              types.String `tfsdk:"webhook_auth_api_key_value_wo"`
+	WebhookAuthAPIKeyValueWOVersion       types.String `tfsdk:"webhook_auth_api_key_value_wo_version"`
+	WebhookAuthAPIKeyIn                   types.String `tfsdk:"webhook_auth_api_key_in"`
 }
 
 const actionMarkdownDescription = `
@@ -309,7 +315,7 @@ func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				},
 			},
 			"webhook_auth_basic_auth_password": schema.StringAttribute{
-				Description: "Password for basic auth webhook authentication.",
+				Description: "Password for basic auth webhook authentication. Stored in Terraform state; for an ephemeral alternative that is never persisted, use webhook_auth_basic_auth_password_wo.",
 				Optional:    true,
 				Sensitive:   true,
 				Validators: []validator.String{
@@ -319,6 +325,28 @@ func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest,
 						path.MatchRoot("webhook_auth_api_key_value"),
 						path.MatchRoot("webhook_auth_api_key_in"),
 					),
+				},
+			},
+			"webhook_auth_basic_auth_password_wo": schema.StringAttribute{
+				Description: "Write-only equivalent of webhook_auth_basic_auth_password (Terraform 1.11+ write-only argument): the value is sent to Ory but never stored in Terraform state or plan. Use this to source the password from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change webhook_auth_basic_auth_password_wo_version to rotate it. Mutually exclusive with webhook_auth_basic_auth_password.",
+				Optional:    true,
+				WriteOnly:   true,
+				Sensitive:   true,
+				Validators: []validator.String{
+					stringvalidator.AlsoRequires(path.MatchRoot("webhook_auth_type")),
+					stringvalidator.ConflictsWith(
+						path.MatchRoot("webhook_auth_basic_auth_password"),
+						path.MatchRoot("webhook_auth_api_key_name"),
+						path.MatchRoot("webhook_auth_api_key_value"),
+						path.MatchRoot("webhook_auth_api_key_in"),
+					),
+				},
+			},
+			"webhook_auth_basic_auth_password_wo_version": schema.StringAttribute{
+				Description: "Version trigger for webhook_auth_basic_auth_password_wo. Change this value whenever the write-only password changes so Terraform sends the new value to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless webhook_auth_basic_auth_password_wo is set.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.AlsoRequires(path.MatchRoot("webhook_auth_basic_auth_password_wo")),
 				},
 			},
 			"webhook_auth_api_key_name": schema.StringAttribute{
@@ -333,7 +361,7 @@ func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				},
 			},
 			"webhook_auth_api_key_value": schema.StringAttribute{
-				Description: "API key value for API key webhook authentication.",
+				Description: "API key value for API key webhook authentication. Stored in Terraform state; for an ephemeral alternative that is never persisted, use webhook_auth_api_key_value_wo.",
 				Optional:    true,
 				Sensitive:   true,
 				Validators: []validator.String{
@@ -342,6 +370,28 @@ func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest,
 						path.MatchRoot("webhook_auth_basic_auth_user"),
 						path.MatchRoot("webhook_auth_basic_auth_password"),
 					),
+				},
+			},
+			"webhook_auth_api_key_value_wo": schema.StringAttribute{
+				Description: "Write-only equivalent of webhook_auth_api_key_value (Terraform 1.11+ write-only argument): the value is sent to Ory but never stored in Terraform state or plan. Use this to source the API key from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change webhook_auth_api_key_value_wo_version to rotate it. Mutually exclusive with webhook_auth_api_key_value.",
+				Optional:    true,
+				WriteOnly:   true,
+				Sensitive:   true,
+				Validators: []validator.String{
+					stringvalidator.AlsoRequires(path.MatchRoot("webhook_auth_type")),
+					stringvalidator.ConflictsWith(
+						path.MatchRoot("webhook_auth_api_key_value"),
+						path.MatchRoot("webhook_auth_basic_auth_user"),
+						path.MatchRoot("webhook_auth_basic_auth_password"),
+						path.MatchRoot("webhook_auth_basic_auth_password_wo"),
+					),
+				},
+			},
+			"webhook_auth_api_key_value_wo_version": schema.StringAttribute{
+				Description: "Version trigger for webhook_auth_api_key_value_wo. Change this value whenever the write-only API key changes so Terraform sends the new value to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless webhook_auth_api_key_value_wo is set.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.AlsoRequires(path.MatchRoot("webhook_auth_api_key_value_wo")),
 				},
 			},
 			"webhook_auth_api_key_in": schema.StringAttribute{
@@ -426,11 +476,14 @@ func (r *ActionResource) ValidateConfig(ctx context.Context, req resource.Valida
 				"webhook_auth_basic_auth_user is required when webhook_auth_type is \"basic_auth\".",
 			)
 		}
-		if !config.WebhookAuthBasicAuthPassword.IsUnknown() && config.WebhookAuthBasicAuthPassword.IsNull() {
+		// The password may be supplied via webhook_auth_basic_auth_password or its
+		// write-only counterpart. Only error when both are known and null.
+		if !config.WebhookAuthBasicAuthPassword.IsUnknown() && config.WebhookAuthBasicAuthPassword.IsNull() &&
+			!config.WebhookAuthBasicAuthPasswordWO.IsUnknown() && config.WebhookAuthBasicAuthPasswordWO.IsNull() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("webhook_auth_basic_auth_password"),
 				"Missing Required Attribute",
-				"webhook_auth_basic_auth_password is required when webhook_auth_type is \"basic_auth\".",
+				"webhook_auth_basic_auth_password (or webhook_auth_basic_auth_password_wo) is required when webhook_auth_type is \"basic_auth\".",
 			)
 		}
 	case webhookAuthAPIKey:
@@ -441,11 +494,14 @@ func (r *ActionResource) ValidateConfig(ctx context.Context, req resource.Valida
 				"webhook_auth_api_key_name is required when webhook_auth_type is \"api_key\".",
 			)
 		}
-		if !config.WebhookAuthAPIKeyValue.IsUnknown() && config.WebhookAuthAPIKeyValue.IsNull() {
+		// The API key value may be supplied via webhook_auth_api_key_value or its
+		// write-only counterpart. Only error when both are known and null.
+		if !config.WebhookAuthAPIKeyValue.IsUnknown() && config.WebhookAuthAPIKeyValue.IsNull() &&
+			!config.WebhookAuthAPIKeyValueWO.IsUnknown() && config.WebhookAuthAPIKeyValueWO.IsNull() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("webhook_auth_api_key_value"),
 				"Missing Required Attribute",
-				"webhook_auth_api_key_value is required when webhook_auth_type is \"api_key\".",
+				"webhook_auth_api_key_value (or webhook_auth_api_key_value_wo) is required when webhook_auth_type is \"api_key\".",
 			)
 		}
 		if !config.WebhookAuthAPIKeyIn.IsUnknown() && config.WebhookAuthAPIKeyIn.IsNull() {
@@ -458,7 +514,12 @@ func (r *ActionResource) ValidateConfig(ctx context.Context, req resource.Valida
 	}
 }
 
-func (r *ActionResource) buildHookValue(plan *ActionResourceModel) map[string]interface{} {
+// buildHookValue builds the Ory web_hook config map. basicAuthPassword and
+// apiKeyValue carry the resolved secret values (the write-only _wo value when
+// set, otherwise the stateful attribute), read from req.Config by
+// resolveAuthSecrets. They are used only to build the API payload and are never
+// written back into the model, so they never reach Terraform state.
+func (r *ActionResource) buildHookValue(plan *ActionResourceModel, basicAuthPassword, apiKeyValue types.String) map[string]interface{} {
 	hookConfig := map[string]interface{}{
 		"url":    plan.URL.ValueString(),
 		"method": plan.HTTPMethod.ValueString(),
@@ -497,17 +558,17 @@ func (r *ActionResource) buildHookValue(plan *ActionResourceModel) map[string]in
 		switch authType {
 		case webhookAuthBasicAuth:
 			if !plan.WebhookAuthBasicAuthUser.IsNull() && !plan.WebhookAuthBasicAuthUser.IsUnknown() &&
-				!plan.WebhookAuthBasicAuthPassword.IsNull() && !plan.WebhookAuthBasicAuthPassword.IsUnknown() {
+				!basicAuthPassword.IsNull() && !basicAuthPassword.IsUnknown() {
 				authCfg["user"] = plan.WebhookAuthBasicAuthUser.ValueString()
-				authCfg["password"] = plan.WebhookAuthBasicAuthPassword.ValueString()
+				authCfg["password"] = basicAuthPassword.ValueString()
 				hasValidAuthConfig = true
 			}
 		case webhookAuthAPIKey:
 			if !plan.WebhookAuthAPIKeyName.IsNull() && !plan.WebhookAuthAPIKeyName.IsUnknown() &&
-				!plan.WebhookAuthAPIKeyValue.IsNull() && !plan.WebhookAuthAPIKeyValue.IsUnknown() &&
+				!apiKeyValue.IsNull() && !apiKeyValue.IsUnknown() &&
 				!plan.WebhookAuthAPIKeyIn.IsNull() && !plan.WebhookAuthAPIKeyIn.IsUnknown() {
 				authCfg["name"] = plan.WebhookAuthAPIKeyName.ValueString()
-				authCfg["value"] = plan.WebhookAuthAPIKeyValue.ValueString()
+				authCfg["value"] = apiKeyValue.ValueString()
 				authCfg["in"] = plan.WebhookAuthAPIKeyIn.ValueString()
 				hasValidAuthConfig = true
 			}
@@ -525,6 +586,27 @@ func (r *ActionResource) buildHookValue(plan *ActionResourceModel) map[string]in
 		"hook":   "web_hook",
 		"config": hookConfig,
 	}
+}
+
+// resolveAuthSecrets returns the effective basic-auth password and api-key value
+// for an apply, preferring the write-only (_wo) value when the user supplied one.
+// Write-only attribute values are nullified in the plan and state, so they must
+// be read from the configuration (req.Config) at Create and Update time.
+func (r *ActionResource) resolveAuthSecrets(ctx context.Context, config tfsdk.Config, plan *ActionResourceModel, diags *diag.Diagnostics) (basicAuthPassword, apiKeyValue types.String) {
+	basicAuthPassword = plan.WebhookAuthBasicAuthPassword
+	apiKeyValue = plan.WebhookAuthAPIKeyValue
+
+	var passwordWO, valueWO types.String
+	diags.Append(config.GetAttribute(ctx, path.Root("webhook_auth_basic_auth_password_wo"), &passwordWO)...)
+	diags.Append(config.GetAttribute(ctx, path.Root("webhook_auth_api_key_value_wo"), &valueWO)...)
+
+	if !passwordWO.IsNull() && !passwordWO.IsUnknown() {
+		basicAuthPassword = passwordWO
+	}
+	if !valueWO.IsNull() && !valueWO.IsUnknown() {
+		apiKeyValue = valueWO
+	}
+	return basicAuthPassword, apiKeyValue
 }
 
 // copyHooks returns a deep copy of the hooks slice via a JSON round-trip so
@@ -685,7 +767,11 @@ func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	hookValue := r.buildHookValue(&plan)
+	basicAuthPassword, apiKeyValue := r.resolveAuthSecrets(ctx, req.Config, &plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	hookValue := r.buildHookValue(&plan, basicAuthPassword, apiKeyValue)
 	hookPath := r.hookPath(flow, timing, authMethod)
 
 	// Append the new hook to existing hooks and replace the entire array
@@ -873,8 +959,13 @@ func (r *ActionResource) Read(ctx context.Context, req resource.ReadRequest, res
 				}
 				// Password is sensitive - the API may not return it.
 				// Preserve the existing state value to avoid drift when omitted.
-				if password, ok := authCfg["password"].(string); ok && password != "" {
-					state.WebhookAuthBasicAuthPassword = types.StringValue(password)
+				// Only refresh when already tracked in state: when supplied via the
+				// write-only webhook_auth_basic_auth_password_wo it is null in state
+				// and must stay null so the secret never lands in state.
+				if !state.WebhookAuthBasicAuthPassword.IsNull() {
+					if password, ok := authCfg["password"].(string); ok && password != "" {
+						state.WebhookAuthBasicAuthPassword = types.StringValue(password)
+					}
 				}
 				// Clear unrelated auth-type fields
 				state.WebhookAuthAPIKeyName = types.StringNull()
@@ -888,8 +979,13 @@ func (r *ActionResource) Read(ctx context.Context, req resource.ReadRequest, res
 				}
 				// Value is sensitive - the API may not return it.
 				// Preserve the existing state value to avoid drift when omitted.
-				if value, ok := authCfg["value"].(string); ok && value != "" {
-					state.WebhookAuthAPIKeyValue = types.StringValue(value)
+				// Only refresh when already tracked in state: when supplied via the
+				// write-only webhook_auth_api_key_value_wo it is null in state and
+				// must stay null so the secret never lands in state.
+				if !state.WebhookAuthAPIKeyValue.IsNull() {
+					if value, ok := authCfg["value"].(string); ok && value != "" {
+						state.WebhookAuthAPIKeyValue = types.StringValue(value)
+					}
 				}
 				if in, ok := authCfg["in"].(string); ok && in != "" {
 					state.WebhookAuthAPIKeyIn = types.StringValue(in)
@@ -966,7 +1062,11 @@ func (r *ActionResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	hookValue := r.buildHookValue(&plan)
+	basicAuthPassword, apiKeyValue := r.resolveAuthSecrets(ctx, req.Config, &plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	hookValue := r.buildHookValue(&plan, basicAuthPassword, apiKeyValue)
 	hookPath := r.hookPath(flow, timing, authMethod)
 
 	patches := []ory.JsonPatch{{

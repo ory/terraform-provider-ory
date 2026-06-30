@@ -1,0 +1,4 @@
+resource "ory_project_config" "test" {
+  smtp_connection_uri_wo         = "[[ .SMTPURI ]]"
+  smtp_connection_uri_wo_version = "[[ .Version ]]"
+}

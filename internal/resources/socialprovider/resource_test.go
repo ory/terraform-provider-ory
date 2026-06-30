@@ -11,6 +11,10 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/statecheck"
+	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
+	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ory/terraform-provider-ory/internal/acctest"
@@ -41,6 +45,106 @@ func TestAccSocialProviderResource_concurrentCreate(t *testing.T) {
 			// Verify no diff — all 4 providers should already exist
 			{
 				Config:   acctest.LoadTestConfig(t, "testdata/concurrent_create.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
+// TestAccSocialProviderResource_writeOnlySecret verifies that client_secret_wo
+// is accepted by the API but never written to Terraform state, and that bumping
+// client_secret_wo_version triggers an update (rotation). Write-only arguments
+// require Terraform 1.11+.
+func TestAccSocialProviderResource_writeOnlySecret(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+			tfversion.SkipBelow(tfversion.Version1_11_0),
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with a write-only client secret (version 1).
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/write_only_secret.tf.tmpl", map[string]string{
+					"Version": "1",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.wo", "provider_id", "test-wo-google"),
+					resource.TestCheckResourceAttr("ory_social_provider.wo", "provider_type", "google"),
+					resource.TestCheckResourceAttr("ory_social_provider.wo", "client_id", "test-wo-client-id.apps.googleusercontent.com"),
+					resource.TestCheckResourceAttr("ory_social_provider.wo", "client_secret_wo_version", "1"),
+				),
+				ConfigStateChecks: []statecheck.StateCheck{
+					// The write-only secret and the unused stateful client_secret
+					// must both be absent from state.
+					statecheck.ExpectKnownValue("ory_social_provider.wo", tfjsonpath.New("client_secret_wo"), knownvalue.Null()),
+					statecheck.ExpectKnownValue("ory_social_provider.wo", tfjsonpath.New("client_secret"), knownvalue.Null()),
+				},
+			},
+			// Rotate the secret by bumping the version trigger (version 2).
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/write_only_secret.tf.tmpl", map[string]string{
+					"Version": "2",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.wo", "client_secret_wo_version", "2"),
+				),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue("ory_social_provider.wo", tfjsonpath.New("client_secret_wo"), knownvalue.Null()),
+				},
+			},
+			// Re-applying the same config must produce no diff (idempotency).
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/write_only_secret.tf.tmpl", map[string]string{
+					"Version": "2",
+				}),
+				PlanOnly: true,
+			},
+			// Import: client_id round-trips; write-only attributes do not.
+			{
+				ResourceName:            "ory_social_provider.wo",
+				ImportState:             true,
+				ImportStateId:           "test-wo-google",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret", "client_secret_wo", "client_secret_wo_version"},
+			},
+		},
+	})
+}
+
+// TestAccSocialProviderResource_writeOnlyClientID verifies that when client_id is
+// supplied via the write-only client_id_wo, the client_id never appears in state
+// and the configuration remains free of perpetual diffs.
+func TestAccSocialProviderResource_writeOnlyClientID(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+			tfversion.SkipBelow(tfversion.Version1_11_0),
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/write_only_client_id.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.woid", "provider_id", "test-wo-id-google"),
+					resource.TestCheckResourceAttr("ory_social_provider.woid", "client_id_wo_version", "1"),
+				),
+				ConfigStateChecks: []statecheck.StateCheck{
+					// Neither the stateful client_id nor any write-only value is stored.
+					statecheck.ExpectKnownValue("ory_social_provider.woid", tfjsonpath.New("client_id"), knownvalue.Null()),
+					statecheck.ExpectKnownValue("ory_social_provider.woid", tfjsonpath.New("client_id_wo"), knownvalue.Null()),
+					statecheck.ExpectKnownValue("ory_social_provider.woid", tfjsonpath.New("client_secret_wo"), knownvalue.Null()),
+				},
+			},
+			// No perpetual diff: client_id stays out of state across refreshes.
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/write_only_client_id.tf.tmpl", nil),
 				PlanOnly: true,
 			},
 		},

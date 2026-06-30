@@ -41,6 +41,27 @@ resource "ory_action" "validate_login" {
   can_interrupt = true # Allow webhook to block login
 }
 
+# Webhook with write-only (ephemeral) authentication secrets sourced from Vault.
+# The *_wo secrets are never stored in Terraform state or plan (Terraform 1.11+).
+# Bump the matching *_wo_version whenever a secret rotates so Terraform re-sends it.
+ephemeral "vault_kv_secret_v2" "webhook_auth" {
+  mount = "secret"
+  name  = "ory/webhook-auth"
+}
+
+resource "ory_action" "secured_webhook" {
+  flow        = "registration"
+  timing      = "after"
+  auth_method = "password"
+  url         = "https://api.example.com/webhooks/secured"
+  method      = "POST"
+
+  webhook_auth_type                           = "basic_auth"
+  webhook_auth_basic_auth_user                = "webhook-user"
+  webhook_auth_basic_auth_password_wo         = ephemeral.vault_kv_secret_v2.webhook_auth.data["password"]
+  webhook_auth_basic_auth_password_wo_version = "1"
+}
+
 # Async audit log (fire and forget)
 resource "ory_action" "audit_log" {
   flow            = "settings"
@@ -239,6 +260,8 @@ Common issues:
 
 ### Optional
 
+> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
+
 - `auth_method` (String) Authentication method that triggers the webhook. In the Ory Console UI, this is the "Method" selector. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`. Only applies to `timing = "after"` webhooks on the `login`, `registration`, and `settings` flows; it is ignored for the `recovery` and `verification` flows.
 - `body` (String) Jsonnet template for the request body.
 - `can_interrupt` (Boolean) Allow webhook to interrupt/block the flow (default: false).
@@ -248,8 +271,12 @@ Common issues:
 - `response_parse` (Boolean) Parse response to modify identity (default: false).
 - `webhook_auth_api_key_in` (String) Where to send the API key: 'header' or 'cookie'.
 - `webhook_auth_api_key_name` (String) Header or cookie name for API key webhook authentication.
-- `webhook_auth_api_key_value` (String, Sensitive) API key value for API key webhook authentication.
-- `webhook_auth_basic_auth_password` (String, Sensitive) Password for basic auth webhook authentication.
+- `webhook_auth_api_key_value` (String, Sensitive) API key value for API key webhook authentication. Stored in Terraform state; for an ephemeral alternative that is never persisted, use webhook_auth_api_key_value_wo.
+- `webhook_auth_api_key_value_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of webhook_auth_api_key_value (Terraform 1.11+ write-only argument): the value is sent to Ory but never stored in Terraform state or plan. Use this to source the API key from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change webhook_auth_api_key_value_wo_version to rotate it. Mutually exclusive with webhook_auth_api_key_value.
+- `webhook_auth_api_key_value_wo_version` (String) Version trigger for webhook_auth_api_key_value_wo. Change this value whenever the write-only API key changes so Terraform sends the new value to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless webhook_auth_api_key_value_wo is set.
+- `webhook_auth_basic_auth_password` (String, Sensitive) Password for basic auth webhook authentication. Stored in Terraform state; for an ephemeral alternative that is never persisted, use webhook_auth_basic_auth_password_wo.
+- `webhook_auth_basic_auth_password_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of webhook_auth_basic_auth_password (Terraform 1.11+ write-only argument): the value is sent to Ory but never stored in Terraform state or plan. Use this to source the password from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change webhook_auth_basic_auth_password_wo_version to rotate it. Mutually exclusive with webhook_auth_basic_auth_password.
+- `webhook_auth_basic_auth_password_wo_version` (String) Version trigger for webhook_auth_basic_auth_password_wo. Change this value whenever the write-only password changes so Terraform sends the new value to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless webhook_auth_basic_auth_password_wo is set.
 - `webhook_auth_basic_auth_user` (String) Username for basic auth webhook authentication.
 - `webhook_auth_type` (String) Webhook authentication type: 'basic_auth' or 'api_key'.
 

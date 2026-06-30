@@ -1,0 +1,9 @@
+resource "ory_social_provider" "woid" {
+  provider_id              = "test-wo-id-google"
+  provider_type            = "google"
+  client_id_wo             = "test-wo-id-client-id.apps.googleusercontent.com"
+  client_id_wo_version     = "1"
+  client_secret_wo         = "test-wo-id-client-secret"
+  client_secret_wo_version = "1"
+  scope                    = ["email", "profile"]
+}

@@ -41,15 +41,17 @@ type IdentityResource struct {
 
 // IdentityResourceModel describes the resource data model.
 type IdentityResourceModel struct {
-	ID             types.String `tfsdk:"id"`
-	ProjectSlug    types.String `tfsdk:"project_slug"`
-	ProjectAPIKey  types.String `tfsdk:"project_api_key"`
-	SchemaID       types.String `tfsdk:"schema_id"`
-	Traits         types.String `tfsdk:"traits"`
-	State          types.String `tfsdk:"state"`
-	Password       types.String `tfsdk:"password"`
-	MetadataPublic types.String `tfsdk:"metadata_public"`
-	MetadataAdmin  types.String `tfsdk:"metadata_admin"`
+	ID                types.String `tfsdk:"id"`
+	ProjectSlug       types.String `tfsdk:"project_slug"`
+	ProjectAPIKey     types.String `tfsdk:"project_api_key"`
+	SchemaID          types.String `tfsdk:"schema_id"`
+	Traits            types.String `tfsdk:"traits"`
+	State             types.String `tfsdk:"state"`
+	Password          types.String `tfsdk:"password"`
+	PasswordWO        types.String `tfsdk:"password_wo"`
+	PasswordWOVersion types.String `tfsdk:"password_wo_version"`
+	MetadataPublic    types.String `tfsdk:"metadata_public"`
+	MetadataAdmin     types.String `tfsdk:"metadata_admin"`
 }
 
 func (r *IdentityResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -183,11 +185,30 @@ func (r *IdentityResource) Schema(ctx context.Context, req resource.SchemaReques
 				Default:     stringdefault.StaticString("active"),
 			},
 			"password": schema.StringAttribute{
-				Description: "Password for the identity. Write-only, not returned on read.",
+				Description: "Password for the identity. Not returned on read. Stored in Terraform state; for an ephemeral alternative that is never persisted, use password_wo. Exactly one of password or password_wo may be set.",
 				Optional:    true,
 				Sensitive:   true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
+				},
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("password_wo")),
+				},
+			},
+			"password_wo": schema.StringAttribute{
+				Description: "Write-only equivalent of password (Terraform 1.11+ write-only argument): the value is sent to Ory but never stored in Terraform state or plan. Use this to source the password from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change password_wo_version to rotate it. Mutually exclusive with password.",
+				Optional:    true,
+				WriteOnly:   true,
+				Sensitive:   true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("password")),
+				},
+			},
+			"password_wo_version": schema.StringAttribute{
+				Description: "Version trigger for password_wo. Change this value whenever the write-only password_wo changes so Terraform sends the new password to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless password_wo is set.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.AlsoRequires(path.MatchRoot("password_wo")),
 				},
 			},
 			"metadata_public": schema.StringAttribute{
@@ -227,6 +248,14 @@ func (r *IdentityResource) ValidateConfig(ctx context.Context, req resource.Vali
 		return
 	}
 	resp.Diagnostics.Append(helpers.ValidateProjectCredentialPair(config.ProjectSlug, config.ProjectAPIKey)...)
+
+	if !config.PasswordWO.IsNull() && !config.PasswordWO.IsUnknown() && config.PasswordWO.ValueString() == "" {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("password_wo"),
+			"Invalid Attribute Value",
+			"password_wo must not be an empty string.",
+		)
+	}
 }
 
 func (r *IdentityResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -260,11 +289,25 @@ func (r *IdentityResource) Create(ctx context.Context, req resource.CreateReques
 		State:    ory.PtrString(plan.State.ValueString()),
 	}
 
-	if !plan.Password.IsNull() && !plan.Password.IsUnknown() {
+	// Resolve the effective password, preferring the write-only password_wo. Its
+	// value lives only in the configuration (write-only values are nullified in
+	// the plan and state), so it must be read from req.Config and is never
+	// written back into the model.
+	password := plan.Password
+	var passwordWO types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("password_wo"), &passwordWO)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !passwordWO.IsNull() && !passwordWO.IsUnknown() {
+		password = passwordWO
+	}
+
+	if !password.IsNull() && !password.IsUnknown() && password.ValueString() != "" {
 		body.Credentials = &ory.IdentityWithCredentials{
 			Password: &ory.IdentityWithCredentialsPassword{
 				Config: &ory.IdentityWithCredentialsPasswordConfig{
-					Password: ory.PtrString(plan.Password.ValueString()),
+					Password: ory.PtrString(password.ValueString()),
 				},
 			},
 		}
@@ -425,6 +468,38 @@ func (r *IdentityResource) Update(ctx context.Context, req resource.UpdateReques
 			return
 		}
 		body.MetadataAdmin = metadataAdmin
+	}
+
+	// Build password credentials for the update. Two independent paths set a new
+	// password (they are mutually exclusive via the password/password_wo
+	// ConflictsWith validator, so at most one fires):
+	//   - the write-only password_wo, re-sent only when its version trigger
+	//     changes so the secret is not re-sent on every unrelated update; and
+	//   - the stateful password, sent when it actually changed (plan != state).
+	// Write-only values live only in the configuration, so password_wo is read
+	// from req.Config.
+	var passwordWO types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("password_wo"), &passwordWO)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	var newPassword *string
+	switch {
+	case !passwordWO.IsNull() && !passwordWO.IsUnknown() && passwordWO.ValueString() != "" &&
+		!plan.PasswordWOVersion.Equal(state.PasswordWOVersion):
+		newPassword = ory.PtrString(passwordWO.ValueString())
+	case !plan.Password.IsNull() && !plan.Password.IsUnknown() && plan.Password.ValueString() != "" &&
+		!plan.Password.Equal(state.Password):
+		newPassword = ory.PtrString(plan.Password.ValueString())
+	}
+	if newPassword != nil {
+		body.Credentials = &ory.IdentityWithCredentials{
+			Password: &ory.IdentityWithCredentialsPassword{
+				Config: &ory.IdentityWithCredentialsPasswordConfig{
+					Password: newPassword,
+				},
+			},
+		}
 	}
 
 	identity, err := client.UpdateIdentity(ctx, state.ID.ValueString(), body)

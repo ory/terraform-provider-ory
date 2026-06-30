@@ -9,12 +9,126 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
+	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 	"github.com/ory/terraform-provider-ory/internal/testutil"
 )
+
+// TestAccActionResource_writeOnlyBasicAuth verifies that the basic-auth password
+// supplied via webhook_auth_basic_auth_password_wo is sent to the API but never
+// written to Terraform state, and that bumping the version trigger rotates it.
+// Write-only arguments require Terraform 1.11+.
+func TestAccActionResource_writeOnlyBasicAuth(t *testing.T) {
+	hookPath := "/services/identity/config/selfservice/flows/registration/after/password/hooks"
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			cleanupDanglingWebhook(t, hookPath, testutil.ExampleWebhookURL+"/wo-basic-auth-webhook")
+		},
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+			tfversion.SkipBelow(tfversion.Version1_11_0),
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/write_only_basic_auth.tf.tmpl", map[string]string{
+					"WebhookURL": testutil.ExampleWebhookURL,
+					"Version":    "1",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_action.wo", "webhook_auth_type", "basic_auth"),
+					resource.TestCheckResourceAttr("ory_action.wo", "webhook_auth_basic_auth_user", "webhook-user"),
+					resource.TestCheckResourceAttr("ory_action.wo", "webhook_auth_basic_auth_password_wo_version", "1"),
+				),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue("ory_action.wo", tfjsonpath.New("webhook_auth_basic_auth_password_wo"), knownvalue.Null()),
+					statecheck.ExpectKnownValue("ory_action.wo", tfjsonpath.New("webhook_auth_basic_auth_password"), knownvalue.Null()),
+				},
+			},
+			// Rotate via version bump.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/write_only_basic_auth.tf.tmpl", map[string]string{
+					"WebhookURL": testutil.ExampleWebhookURL,
+					"Version":    "2",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_action.wo", "webhook_auth_basic_auth_password_wo_version", "2"),
+				),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue("ory_action.wo", tfjsonpath.New("webhook_auth_basic_auth_password_wo"), knownvalue.Null()),
+				},
+			},
+			// Idempotency.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/write_only_basic_auth.tf.tmpl", map[string]string{
+					"WebhookURL": testutil.ExampleWebhookURL,
+					"Version":    "2",
+				}),
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
+// TestAccActionResource_writeOnlyAPIKey verifies the same for the api-key value
+// supplied via webhook_auth_api_key_value_wo.
+func TestAccActionResource_writeOnlyAPIKey(t *testing.T) {
+	hookPath := "/services/identity/config/selfservice/flows/registration/after/password/hooks"
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			cleanupDanglingWebhook(t, hookPath, testutil.ExampleWebhookURL+"/wo-api-key-webhook")
+		},
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+			tfversion.SkipBelow(tfversion.Version1_11_0),
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/write_only_api_key.tf.tmpl", map[string]string{
+					"WebhookURL": testutil.ExampleWebhookURL,
+					"Version":    "1",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_action.wo", "webhook_auth_type", "api_key"),
+					resource.TestCheckResourceAttr("ory_action.wo", "webhook_auth_api_key_name", "X-API-KEY"),
+					resource.TestCheckResourceAttr("ory_action.wo", "webhook_auth_api_key_value_wo_version", "1"),
+				),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue("ory_action.wo", tfjsonpath.New("webhook_auth_api_key_value_wo"), knownvalue.Null()),
+					statecheck.ExpectKnownValue("ory_action.wo", tfjsonpath.New("webhook_auth_api_key_value"), knownvalue.Null()),
+				},
+			},
+			// Rotate via version bump.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/write_only_api_key.tf.tmpl", map[string]string{
+					"WebhookURL": testutil.ExampleWebhookURL,
+					"Version":    "2",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_action.wo", "webhook_auth_api_key_value_wo_version", "2"),
+				),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue("ory_action.wo", tfjsonpath.New("webhook_auth_api_key_value_wo"), knownvalue.Null()),
+				},
+			},
+			// Idempotency.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/write_only_api_key.tf.tmpl", map[string]string{
+					"WebhookURL": testutil.ExampleWebhookURL,
+					"Version":    "2",
+				}),
+				PlanOnly: true,
+			},
+		},
+	})
+}
 
 // cleanupDanglingWebhook removes a specific webhook left behind by a previous
 // failed test run. Only the matching webhook is removed; other hooks at the

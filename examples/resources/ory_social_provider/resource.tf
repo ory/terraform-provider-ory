@@ -7,6 +7,28 @@ resource "ory_social_provider" "google" {
   scope         = ["email", "profile"]
 }
 
+# Google Sign-In with write-only (ephemeral) credentials sourced from Vault.
+# Write-only arguments (Terraform 1.11+) send the value to Ory without ever
+# storing it in state or plan — ideal for secrets read from an ephemeral
+# resource such as Vault. Bump the matching *_wo_version whenever a secret
+# changes so Terraform re-sends it (write-only values cannot be diffed).
+ephemeral "vault_kv_secret_v2" "google_oauth" {
+  mount = "secret"
+  name  = "ory/google-oauth"
+}
+
+resource "ory_social_provider" "google_write_only" {
+  provider_id   = "google-wo"
+  provider_type = "google"
+
+  client_id_wo             = ephemeral.vault_kv_secret_v2.google_oauth.data["client_id"]
+  client_id_wo_version     = "1"
+  client_secret_wo         = ephemeral.vault_kv_secret_v2.google_oauth.data["client_secret"]
+  client_secret_wo_version = "1"
+
+  scope = ["email", "profile"]
+}
+
 # Google Sign-In with automatic account linking
 resource "ory_social_provider" "google_auto_link" {
   provider_id   = "google-auto-link"
