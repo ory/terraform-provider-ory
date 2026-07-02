@@ -1,6 +1,6 @@
 resource "ory_action" "test" {
   flow   = "login"
   timing = "before"
-  url    = "[[ .WebhookURL ]]/before-login"
+  url    = "[[ .WebhookURL ]]/before-login?redirect=https://callback.example.com"
   method = "POST"
 }

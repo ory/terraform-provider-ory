@@ -1150,17 +1150,32 @@ func isImportHTTPMethod(s string) bool {
 	return false
 }
 
-func (r *ActionResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	// Import ID layouts (colon-separated, the url is always the tail):
-	// - For "after" timing: project_id:flow:after:auth_method:method:url
-	// - For "before" timing: project_id:flow:before:method:url
-	//
-	// The method segment is optional and defaults to POST (legacy formats).
-	//
-	// The url itself contains colons (https://...), so the ID cannot be parsed
-	// by counting segments (issue #280). Parse the fixed segments from the
-	// left instead, and recognize the optional method segment by matching it
-	// against the known HTTP verbs.
+// actionImportID holds the fields parsed from an ory_action import ID.
+type actionImportID struct {
+	projectID  string
+	flow       string
+	timing     string
+	authMethod string
+	httpMethod string
+	url        string
+}
+
+// parseActionImportID parses an ory_action import ID. On success it returns the
+// parsed fields and an empty detail; on failure it returns a non-empty
+// diagnostic detail describing the problem (suitable as the detail of an
+// "Invalid Import ID" diagnostic).
+//
+// Import ID layouts (colon-separated, the url is always the tail):
+//   - For "after" timing:  project_id:flow:after:auth_method:method:url
+//   - For "before" timing: project_id:flow:before:method:url
+//
+// The method segment is optional and defaults to POST (legacy formats).
+//
+// The url itself contains colons (https://...), so the ID cannot be parsed by
+// counting segments (issue #280). The fixed segments are parsed from the left,
+// and the optional method segment is recognized by matching it against the
+// known HTTP verbs.
+func parseActionImportID(id string) (actionImportID, string) {
 	const importFormatHelp = "Import ID must be in one of these formats:\n" +
 		"  - For 'after' timing: project_id:flow:after:auth_method:method:url\n" +
 		"  - For 'before' timing: project_id:flow:before:method:url\n" +
@@ -1169,64 +1184,74 @@ func (r *ActionResource) ImportState(ctx context.Context, req resource.ImportSta
 		"  550e8400-...:registration:after:password:POST:https://api.example.com/webhook\n" +
 		"  550e8400-...:login:before:PATCH:https://api.example.com/validate"
 
-	parts := strings.SplitN(req.ID, ":", 4)
+	parts := strings.SplitN(id, ":", 4)
 	if len(parts) != 4 {
-		resp.Diagnostics.AddError("Invalid Import ID", importFormatHelp)
-		return
+		return actionImportID{}, importFormatHelp
 	}
-	projectID, flow, timing, rest := parts[0], parts[1], parts[2], parts[3]
+	parsed := actionImportID{
+		projectID:  parts[0],
+		flow:       parts[1],
+		timing:     parts[2],
+		authMethod: defaultAuthMethod,
+		httpMethod: defaultHTTPMethod,
+	}
+	rest := parts[3]
 
-	if timing != timingBefore && timing != timingAfter {
-		resp.Diagnostics.AddError("Invalid Import ID",
-			fmt.Sprintf("Invalid timing '%s'. Must be 'before' or 'after'.\n\n%s", timing, importFormatHelp))
-		return
+	if parsed.timing != timingBefore && parsed.timing != timingAfter {
+		return actionImportID{}, fmt.Sprintf("Invalid timing '%s'. Must be 'before' or 'after'.\n\n%s", parsed.timing, importFormatHelp)
 	}
 
-	authMethod := defaultAuthMethod
-	if timing == timingAfter {
+	if parsed.timing == timingAfter {
 		// The auth_method segment is required for "after" timing. "_", "none",
 		// and "" are accepted as placeholders for flows that ignore it.
 		segment, tail, found := strings.Cut(rest, ":")
 		if !found {
-			resp.Diagnostics.AddError("Invalid Import ID",
-				"Missing url after auth_method for 'after' timing.\n\n"+importFormatHelp)
-			return
+			return actionImportID{}, "Missing url after auth_method for 'after' timing.\n\n" + importFormatHelp
 		}
 		if segment != "_" && segment != "none" && segment != "" {
-			authMethod = segment
+			parsed.authMethod = segment
 		}
 		rest = tail
 	}
 
-	httpMethod := defaultHTTPMethod
+	// Optional method segment. A leading segment before the first ':' is only a
+	// method if it matches a known HTTP verb; otherwise the ':' belongs to the
+	// url's own scheme separator (https://...) and the method was omitted.
+	// Detect the scheme case by the "//" authority prefix rather than scanning
+	// the whole tail for "://", which would false-positive on urls with an
+	// embedded scheme in a query param (e.g. ?redirect=https://other).
 	if segment, tail, found := strings.Cut(rest, ":"); found {
 		if isImportHTTPMethod(strings.ToUpper(segment)) {
-			httpMethod = strings.ToUpper(segment)
+			parsed.httpMethod = strings.ToUpper(segment)
 			rest = tail
-		} else if strings.Contains(tail, "://") {
+		} else if !strings.HasPrefix(tail, "//") {
 			// A url still follows, so this segment was meant to be the method.
-			resp.Diagnostics.AddError("Invalid Import ID",
-				fmt.Sprintf("Invalid HTTP method '%s'. Must be one of: POST, GET, PUT, PATCH, DELETE", segment))
-			return
+			return actionImportID{}, fmt.Sprintf("Invalid HTTP method '%s'. Must be one of: POST, GET, PUT, PATCH, DELETE", segment)
 		}
-		// Otherwise the colon belongs to the url scheme (e.g. https://...):
-		// the method was omitted and rest is already the full url.
 	}
 
-	url := rest
-	if url == "" {
-		resp.Diagnostics.AddError("Invalid Import ID", "Missing url.\n\n"+importFormatHelp)
+	parsed.url = rest
+	if parsed.url == "" {
+		return actionImportID{}, "Missing url.\n\n" + importFormatHelp
+	}
+	return parsed, ""
+}
+
+func (r *ActionResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	parsed, detail := parseActionImportID(req.ID)
+	if detail != "" {
+		resp.Diagnostics.AddError("Invalid Import ID", detail)
 		return
 	}
 
 	// Construct the full ID for state
-	fullID := fmt.Sprintf("%s:%s:%s:%s:%s", projectID, flow, timing, authMethod, url)
+	fullID := fmt.Sprintf("%s:%s:%s:%s:%s", parsed.projectID, parsed.flow, parsed.timing, parsed.authMethod, parsed.url)
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), fullID)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), projectID)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("flow"), flow)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("timing"), timing)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("auth_method"), authMethod)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("url"), url)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("method"), httpMethod)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), parsed.projectID)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("flow"), parsed.flow)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("timing"), parsed.timing)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("auth_method"), parsed.authMethod)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("url"), parsed.url)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("method"), parsed.httpMethod)...)
 }

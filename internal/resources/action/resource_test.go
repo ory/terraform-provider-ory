@@ -250,9 +250,11 @@ func TestAccActionResource_basic(t *testing.T) {
 // before-timing actions could not be imported because the url's own colons
 // (https://...) broke the segment-counting import ID parser. Both documented
 // before formats are exercised: with an explicit method and the legacy form
-// without one.
+// without one. The webhook url also embeds a nested scheme in a query param
+// (?redirect=https://...) to guard against the method detector mistaking it for
+// an invalid HTTP method when the method segment is omitted.
 func TestAccActionResource_beforeTiming(t *testing.T) {
-	webhookURL := testutil.ExampleWebhookURL + "/before-login"
+	webhookURL := testutil.ExampleWebhookURL + "/before-login?redirect=https://callback.example.com"
 	hookPath := "/services/identity/config/selfservice/flows/login/before/hooks"
 
 	resource.Test(t, resource.TestCase{
