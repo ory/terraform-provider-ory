@@ -95,7 +95,7 @@ The `mapper_url` attribute controls how OIDC claims are mapped to Ory identity t
 
 If not set, the provider uses a default mapper that extracts the email claim.
 
-~> **Note:** The `mapper_url` value may be transformed by the API (e.g., stored as a GCS URL). The provider only tracks this field if you explicitly set it in your configuration to avoid false drift detection.
+~> **Note:** Ory rewrites the `mapper_url` you configure into an opaque, content-addressed URL (for example `https://storage.googleapis.com/.../<hash>.jsonnet`). The provider preserves the value exactly as you wrote it in your configuration and does **not** read the transformed value back into state, so a configured `mapper_url` no longer produces a perpetual diff. Because the transformed URL cannot be reversed, `mapper_url` is not populated on `terraform import`; add it back to your configuration after importing.
 
 ## Label
 
@@ -210,6 +210,29 @@ resource "ory_social_provider" "google" {
 ```
 
 Leave the attribute unset to disable FedCM for the provider. Removing it from your configuration clears the value server-side.
+
+## Update Identity on Login
+
+The `update_identity_on_login` attribute controls whether an identity's traits and metadata are refreshed from the upstream OIDC claims every time the user signs in:
+
+| Value | Description |
+|-------|-------------|
+| `never` (default) | The identity is populated from the claims mapper on first sign-up and left unchanged on subsequent logins. |
+| `automatic` | Ory re-runs the Jsonnet claims mapper on every login and updates the identity's traits and metadata to match the latest upstream claims. |
+
+```hcl
+resource "ory_social_provider" "google" {
+  provider_id   = "google"
+  provider_type = "google"
+  client_id     = var.google_client_id
+  client_secret = var.google_client_secret
+  scope         = ["email", "profile"]
+
+  update_identity_on_login = "automatic"
+}
+```
+
+Leave the attribute unset to use the Ory default (`never`). The API accepts only the values `never` and `automatic`.
 
 ## Base Redirect URI
 
