@@ -239,8 +239,8 @@ if [ "$(echo "$NAMESPACES" | jq 'length')" -gt 0 ]; then
   echo "# Keto namespaces (managed inside ory_project_config, not separate resources):"
   echo "$NAMESPACES" | jq -r '.[] | "#   \(.)"'
   echo "# Relationship tuples are data, not configuration; import selectively with an"
-  echo "# import block whose id is \"namespace:object#relation@subject\". List tuples"
-  echo "# via GET /relation-tuples?namespace=<name> on the project API."
+  echo "# ory_relationship import block whose id is \"namespace:object#relation@subject\"."
+  echo "# List tuples via GET /relation-tuples?namespace=<name> on the project API."
   echo
 fi
 log "keto namespaces: $(echo "$NAMESPACES" | jq 'length')"
@@ -300,8 +300,9 @@ if [ -n "${ORY_PROJECT_API_KEY:-}" ]; then
     if [ "$IDENTITY_COUNT" -gt 0 ]; then
       [ "$IDENTITY_COUNT" = "250" ] && SUFFIX="+"
       echo "# This project has $IDENTITY_COUNT$SUFFIX identities. Identities are data, not"
-      echo "# configuration; import selectively (e.g. service accounts) with an import"
-      echo "# block whose id is the identity UUID. Credentials are not importable."
+      echo "# configuration; import selectively (e.g. service accounts) with an"
+      echo "# ory_identity import block whose id is the identity UUID. Credentials"
+      echo "# are not importable."
       echo
     fi
     log "identities: $IDENTITY_COUNT$SUFFIX (not imported)"
