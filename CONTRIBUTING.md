@@ -455,6 +455,7 @@ After editing templates, run `make format` to regenerate docs.
 - [ ] Test configs stored in `testdata/` directory (not inline strings)
 - [ ] Documentation template added to `templates/resources/`
 - [ ] Examples added to `examples/resources/`
+- [ ] Import skill updated (`.claude/skills/import-existing-project/`): reference table row in `SKILL.md` and handling in `scripts/generate-imports.sh` (enforced by `TestImportSkillCoversAllResources`)
 - [ ] Code passes `make format` (includes lint, fmt, and doc generation)
 
 ### Pre-Commit Checklist

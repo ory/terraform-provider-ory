@@ -93,7 +93,8 @@ The `method` attribute specifies the HTTP method used when calling the webhook:
 
 ## Import
 
-Actions must be imported with the HTTP method included in the import ID.
+Actions are imported with the HTTP method included in the import ID. The
+method segment is optional and defaults to `POST` when omitted.
 
 **For "after" timing (post-hooks):**
 ```shell
