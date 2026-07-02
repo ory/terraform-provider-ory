@@ -121,6 +121,24 @@ resource "ory_action" "welcome_email" {
 
 For all available resources, data sources, and their attributes, see the [Terraform Registry documentation](https://registry.terraform.io/providers/ory/ory/latest/docs) or browse the `examples/` directory.
 
+## Importing an Existing Project
+
+Already have an Ory Network project configured through the Console? You can adopt Terraform without recreating anything:
+
+```bash
+export ORY_WORKSPACE_API_KEY=ory_wak_...
+export ORY_PROJECT_API_KEY=ory_pat_...   # optional: covers OAuth2 clients, JWKS, ...
+export ORY_PROJECT_ID=<project-uuid>
+
+# Inventory the project and emit import blocks for everything importable
+./.claude/skills/import-existing-project/scripts/generate-imports.sh > imports.tf
+
+# Generate matching resource configuration, then refine until `terraform plan` is clean
+terraform plan -generate-config-out=generated.tf
+```
+
+The full runbook — per-resource discovery endpoints, import ID formats, what cannot be imported (identity schemas, API key values, secrets), and how to refine the generated config — lives in [`.claude/skills/import-existing-project/SKILL.md`](.claude/skills/import-existing-project/SKILL.md). It is packaged as an agent skill, so coding agents pick it up automatically from `.claude/skills/`, and it doubles as a step-by-step guide for humans.
+
 ## Documentation
 
 Documentation is auto-generated from templates in `templates/` using [tfplugindocs](https://github.com/hashicorp/terraform-plugin-docs). Do NOT edit files in `docs/` directly — they are overwritten by `make format`.
