@@ -1,0 +1,12 @@
+resource "ory_social_provider" "test" {
+  provider_id   = "test-google-mapper"
+  provider_type = "google"
+  client_id     = "test-client-id.apps.googleusercontent.com"
+  client_secret = "test-client-secret"
+  scope         = ["email", "profile"]
+
+  # A base64-encoded Jsonnet mapper. Ory rewrites this into an opaque GCS URL
+  # server-side; the provider must preserve the configured value so this does
+  # not produce a perpetual diff. Regression test for issue #278.
+  mapper_url = "base64://bG9jYWwgY2xhaW1zID0gc3RkLmV4dFZhcignY2xhaW1zJyk7CnsKICBpZGVudGl0eTogewogICAgdHJhaXRzOiB7CiAgICAgIGVtYWlsOiBjbGFpbXMuZW1haWwsCiAgICB9LAogIH0sCn0="
+}

@@ -39,6 +39,12 @@ provider "ory" {
   project_api_key   = var.ory_project_api_key
   project_id        = var.ory_project_id
   project_slug      = var.ory_project_slug
+
+  # Optional safety guardrail. When set, the provider refuses any project
+  # operation targeting a project ID not in this list. This bounds the blast
+  # radius of a workspace API key so a mis-pointed project_id, such as
+  # production, cannot be read or changed. Omit for no restriction.
+  allowed_project_ids = var.ory_allowed_project_ids
 }
 
 # =============================================================================
@@ -82,6 +88,12 @@ variable "ory_project_id" {
 variable "ory_project_slug" {
   type        = string
   description = "Ory Project Slug (e.g., vibrant-moore-abc123)"
+  default     = null
+}
+
+variable "ory_allowed_project_ids" {
+  type        = list(string)
+  description = "Optional allowlist of project IDs the provider may read or modify. Null or empty means no restriction."
   default     = null
 }
 

@@ -616,6 +616,120 @@ func TestAccSocialProviderResource_aal2Values(t *testing.T) {
 	})
 }
 
+// TestAccSocialProviderResource_updateIdentityOnLogin exercises the
+// update_identity_on_login attribute across create ("automatic"), update to the
+// explicit default ("never"), removal, and import. The Ory API accepts only the
+// enum values "never" and "automatic"; when the attribute is omitted the API
+// omits it on read, which the provider collapses to null.
+// Regression test for https://github.com/ory/terraform-provider-ory/issues/278.
+func TestAccSocialProviderResource_updateIdentityOnLogin(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with update_identity_on_login = "automatic"
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_update_identity_on_login.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-google-uiol"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "update_identity_on_login", "automatic"),
+				),
+			},
+			// Verify no perpetual diff
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_update_identity_on_login.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Update to "never" — the explicit default; catches drift if the API
+			// normalizes "never" to absence.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_update_identity_on_login_never.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "update_identity_on_login", "never"),
+				),
+			},
+			// Verify no perpetual diff on "never"
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_update_identity_on_login_never.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Remove update_identity_on_login from config — should clear it server-side
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_update_identity_on_login_removed.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "update_identity_on_login"),
+				),
+			},
+			// Verify no diff after removal
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_update_identity_on_login_removed.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// ImportState
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           "test-google-uiol",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+		},
+	})
+}
+
+// TestAccSocialProviderResource_mapperURLNoDrift verifies that a configured
+// base64:// mapper_url does not produce a perpetual diff even though Ory rewrites
+// it into an opaque GCS URL server-side. The provider preserves the configured
+// value in state instead of reading back the transformed value.
+// Regression test for https://github.com/ory/terraform-provider-ory/issues/278.
+func TestAccSocialProviderResource_mapperURLNoDrift(t *testing.T) {
+	const mapperURL = "base64://bG9jYWwgY2xhaW1zID0gc3RkLmV4dFZhcignY2xhaW1zJyk7CnsKICBpZGVudGl0eTogewogICAgdHJhaXRzOiB7CiAgICAgIGVtYWlsOiBjbGFpbXMuZW1haWwsCiAgICB9LAogIH0sCn0="
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with a base64 mapper_url
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_mapper_url.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-google-mapper"),
+					// State must hold the configured value, not the API's GCS rewrite.
+					resource.TestCheckResourceAttr("ory_social_provider.test", "mapper_url", mapperURL),
+				),
+			},
+			// The critical assertion: re-planning the same config must show no diff,
+			// even though the API stores a transformed mapper_url.
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_mapper_url.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// A second refresh-and-plan cycle confirms the value stays stable.
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_mapper_url.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// ImportState — mapper_url is not read back from the API (it cannot be
+			// reversed from the GCS URL), so it is not populated on import.
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           "test-google-mapper",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret", "mapper_url"},
+			},
+		},
+	})
+}
+
 func TestAccSocialProviderResource_apple(t *testing.T) {
 	tmplData := struct{ PrivateKey string }{PrivateKey: generateTestPrivateKey(t)}
 

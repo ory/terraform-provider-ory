@@ -52,6 +52,7 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 		"aal2_amr_values":               tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
 		"pkce":                          tfStringValue(model.Pkce),
 		"fedcm_config_url":              tfStringValue(model.FedcmConfigURL),
+		"update_identity_on_login":      tfStringValue(model.UpdateIdentityOnLogin),
 	}
 
 	objType := tftypes.Object{
@@ -86,6 +87,7 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 			"aal2_amr_values":               tftypes.List{ElementType: tftypes.String},
 			"pkce":                          tftypes.String,
 			"fedcm_config_url":              tftypes.String,
+			"update_identity_on_login":      tftypes.String,
 		},
 	}
 
