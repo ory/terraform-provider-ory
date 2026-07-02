@@ -133,6 +133,32 @@ terraform plan
 | `ory_identity`, `ory_oauth2_client`, `ory_relationship` | `project_api_key`, `project_slug` |
 | `ory_json_web_key_set` | `project_api_key`, `project_slug` |
 
+## Why project configuration requires a workspace API key
+
+Project configuration and project-level resources are managed through the Ory Console API, which requires a **workspace API key** (`ory_wak_...`). A **project API key** (`ory_pat_...`) authenticates project *data* operations such as identities, OAuth2 clients, and relationships, but is not authorized to read or change project *configuration*. This is a property of the Ory Network API, not the provider: the Console endpoints reject a project API key with `403 Forbidden`.
+
+As a result, `ory_project_config`, `ory_action`, `ory_email_template`, `ory_social_provider`, `ory_saml_provider`, `ory_identity_schema`, `ory_custom_domain`, `ory_event_stream`, `ory_organization`, and `ory_project_api_key` all require a workspace API key. For more detail, see [Manage Ory Network projects through the API](https://www.ory.com/docs/guides/manage-project-via-api).
+
+## Limiting blast radius with `allowed_project_ids`
+
+A workspace API key can read and modify every project in the workspace, including production. To reduce the risk of an accidental change to the wrong project, set `allowed_project_ids` to the project IDs this configuration is permitted to touch. When set, the provider refuses any project operation whose target project ID is not in the list, before any request is sent to Ory.
+
+```hcl
+provider "ory" {
+  workspace_api_key   = var.ory_workspace_api_key
+  project_id          = var.ory_project_id
+  allowed_project_ids = [var.ory_project_id] # only this project may be changed
+}
+```
+
+The list can also be supplied as a comma-separated `ORY_ALLOWED_PROJECT_IDS` environment variable:
+
+```bash
+export ORY_ALLOWED_PROJECT_IDS="3fa274fe-910d-4766-b1a4-0c0dd3b41429,7bc1e0c2-..."
+```
+
+When `allowed_project_ids` is unset, no restriction is applied.
+
 ## Import Requirements
 
 When importing existing resources, ensure you have the appropriate credentials configured **before** running `terraform import`.
@@ -142,6 +168,7 @@ When importing existing resources, ensure you have the appropriate credentials c
 
 ### Optional
 
+- `allowed_project_ids` (List of String) Optional safety guardrail. When set, the provider refuses any project-configuration operation (`ory_project_config`, `ory_action`, `ory_email_template`, `ory_social_provider`, `ory_saml_provider`, `ory_identity_schema`, `ory_custom_domain`, `ory_event_stream`, `ory_organization`, `ory_project_api_key`, and `ory_project` create/delete) that targets a project ID not in this list. This bounds the blast radius of a workspace API key so a mis-pointed `project_id` (such as production) cannot be read or changed. When unset, no restriction is applied. Can also be set via the `ORY_ALLOWED_PROJECT_IDS` environment variable as a comma-separated list.
 - `console_api_url` (String) Override the console API URL (default: `https://api.console.ory.sh`). Mainly for testing.
 - `project_api_key` (String, Sensitive) Ory Project API Key (`ory_pat_...`). Used for identity and OAuth2 operations. Can also be set via `ORY_PROJECT_API_KEY` environment variable.
 - `project_api_url` (String) Override the project API URL template (default: `https://%s.projects.oryapis.com`).

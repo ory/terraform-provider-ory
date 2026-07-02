@@ -3,8 +3,10 @@ package provider
 import (
 	"context"
 	"os"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
@@ -72,6 +74,9 @@ type OryProviderModel struct {
 	ProjectID   types.String `tfsdk:"project_id"`
 	ProjectSlug types.String `tfsdk:"project_slug"`
 	WorkspaceID types.String `tfsdk:"workspace_id"`
+
+	// Optional safety guardrail: restrict which project IDs may be touched
+	AllowedProjectIDs types.List `tfsdk:"allowed_project_ids"`
 
 	// Optional: Override API URLs (for testing)
 	ConsoleAPIURL types.String `tfsdk:"console_api_url"`
@@ -185,6 +190,12 @@ When importing existing resources, ensure you have the appropriate credentials c
 				MarkdownDescription: "Ory Workspace ID. Can also be set via `ORY_WORKSPACE_ID` environment variable.",
 				Optional:            true,
 			},
+			"allowed_project_ids": schema.ListAttribute{
+				Description:         "Optional safety guardrail. When set, the provider refuses any project-configuration operation (project config, actions, email templates, social/SAML providers, identity schema, custom domains, event streams, organizations, project API keys, and project create/delete) that targets a project ID not in this list. This bounds the blast radius of a workspace API key so a mis-pointed project_id, such as production, cannot be read or changed. When unset, no restriction is applied. Can also be set via the ORY_ALLOWED_PROJECT_IDS environment variable as a comma-separated list.",
+				MarkdownDescription: "Optional safety guardrail. When set, the provider refuses any project-configuration operation (`ory_project_config`, `ory_action`, `ory_email_template`, `ory_social_provider`, `ory_saml_provider`, `ory_identity_schema`, `ory_custom_domain`, `ory_event_stream`, `ory_organization`, `ory_project_api_key`, and `ory_project` create/delete) that targets a project ID not in this list. This bounds the blast radius of a workspace API key so a mis-pointed `project_id` (such as production) cannot be read or changed. When unset, no restriction is applied. Can also be set via the `ORY_ALLOWED_PROJECT_IDS` environment variable as a comma-separated list.",
+				Optional:            true,
+				ElementType:         types.StringType,
+			},
 			"console_api_url": schema.StringAttribute{
 				Description:         "Override the console API URL (default: https://api.console.ory.sh). Mainly for testing.",
 				MarkdownDescription: "Override the console API URL (default: `https://api.console.ory.sh`). Mainly for testing.",
@@ -215,6 +226,10 @@ func (p *OryProvider) Configure(ctx context.Context, req provider.ConfigureReque
 	workspaceID := resolveString(config.WorkspaceID, "ORY_WORKSPACE_ID")
 	consoleAPIURL := resolveStringDefault(config.ConsoleAPIURL, "ORY_CONSOLE_API_URL", DefaultConsoleAPIURL)
 	projectAPIURL := resolveStringDefault(config.ProjectAPIURL, "ORY_PROJECT_API_URL", DefaultProjectAPIURL)
+	allowedProjectIDs := resolveAllowedProjectIDs(ctx, config.AllowedProjectIDs, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	// Validate required configuration
 	if workspaceAPIKey == "" && projectAPIKey == "" {
@@ -250,17 +265,18 @@ For more information: https://www.ory.sh/docs/guides/api-keys`,
 	// This preserves cached project state across Terraform operations
 	// (apply → plan/refresh) within the same provider server lifecycle.
 	newConfig := client.OryClientConfig{
-		WorkspaceAPIKey: workspaceAPIKey,
-		ProjectAPIKey:   projectAPIKey,
-		ProjectID:       projectID,
-		ProjectSlug:     projectSlug,
-		WorkspaceID:     workspaceID,
-		ConsoleAPIURL:   consoleAPIURL,
-		ProjectAPIURL:   projectAPIURL,
-		UserAgent:       userAgent,
+		WorkspaceAPIKey:   workspaceAPIKey,
+		ProjectAPIKey:     projectAPIKey,
+		ProjectID:         projectID,
+		ProjectSlug:       projectSlug,
+		WorkspaceID:       workspaceID,
+		ConsoleAPIURL:     consoleAPIURL,
+		ProjectAPIURL:     projectAPIURL,
+		UserAgent:         userAgent,
+		AllowedProjectIDs: allowedProjectIDs,
 	}
 
-	if p.oryClient == nil || p.lastConfig != newConfig {
+	if p.oryClient == nil || !p.lastConfig.Equal(newConfig) {
 		oryClient, err := client.NewOryClient(newConfig)
 		if err != nil {
 			resp.Diagnostics.AddError(
@@ -338,4 +354,36 @@ func resolveStringDefault(tfValue types.String, envVar, defaultValue string) str
 		return v
 	}
 	return defaultValue
+}
+
+// resolveAllowedProjectIDs resolves the allowed_project_ids list with a
+// comma-separated ORY_ALLOWED_PROJECT_IDS environment variable fallback. When
+// the Terraform value is set it takes precedence; otherwise the env var is split
+// on commas. Entries are trimmed and empty entries dropped. Returns nil when
+// neither source yields any value.
+func resolveAllowedProjectIDs(ctx context.Context, tfValue types.List, diags *diag.Diagnostics) []string {
+	if !tfValue.IsNull() && !tfValue.IsUnknown() {
+		var out []string
+		diags.Append(tfValue.ElementsAs(ctx, &out, false)...)
+		return normalizeStringList(out)
+	}
+	if v := os.Getenv("ORY_ALLOWED_PROJECT_IDS"); v != "" {
+		return normalizeStringList(strings.Split(v, ","))
+	}
+	return nil
+}
+
+// normalizeStringList trims whitespace from each entry and drops empty strings.
+// Returns nil when nothing remains.
+func normalizeStringList(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

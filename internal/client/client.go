@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +27,11 @@ var ErrCustomDomainNotFound = errors.New("custom domain not found")
 // ErrConsoleClientNotConfigured is returned when a console API method is called
 // without a workspace API key configured. Callers can check with errors.Is.
 var ErrConsoleClientNotConfigured = errors.New("console API client not configured")
+
+// ErrProjectNotAllowed is returned when a console operation targets a project ID
+// that is not present in the configured allowed_project_ids allowlist. Callers
+// can check with errors.Is.
+var ErrProjectNotAllowed = errors.New("project not allowed by allowed_project_ids")
 
 const (
 	// maxRetries is the maximum number of retry attempts for rate-limited requests.
@@ -314,6 +320,38 @@ type OryClientConfig struct {
 	ConsoleAPIURL   string
 	ProjectAPIURL   string // URL template with %s placeholder for slug (e.g., "https://%s.projects.oryapis.com")
 	UserAgent       string
+
+	// AllowedProjectIDs optionally restricts which project IDs console
+	// operations may target. When non-empty, any console operation against a
+	// project ID not in this list is refused before the request is sent. When
+	// empty, no restriction is applied. See OryClient.checkProjectAllowed.
+	AllowedProjectIDs []string
+}
+
+// Equal reports whether two configs are equivalent. It is used to decide
+// whether a cached client can be reused. OryClientConfig contains a slice
+// (AllowedProjectIDs) and is therefore not comparable with ==, so this method
+// compares every field explicitly.
+func (c OryClientConfig) Equal(other OryClientConfig) bool {
+	if c.WorkspaceAPIKey != other.WorkspaceAPIKey ||
+		c.ProjectAPIKey != other.ProjectAPIKey ||
+		c.ProjectID != other.ProjectID ||
+		c.ProjectSlug != other.ProjectSlug ||
+		c.WorkspaceID != other.WorkspaceID ||
+		c.ConsoleAPIURL != other.ConsoleAPIURL ||
+		c.ProjectAPIURL != other.ProjectAPIURL ||
+		c.UserAgent != other.UserAgent {
+		return false
+	}
+	if len(c.AllowedProjectIDs) != len(other.AllowedProjectIDs) {
+		return false
+	}
+	for i := range c.AllowedProjectIDs {
+		if c.AllowedProjectIDs[i] != other.AllowedProjectIDs[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // OryClient wraps the Ory SDK clients.
@@ -322,6 +360,10 @@ type OryClientConfig struct {
 // 2. Project API ({slug}.projects.oryapis.com) - for identities, OAuth2 clients
 type OryClient struct {
 	config OryClientConfig
+
+	// allowedProjects is the set of project IDs console operations may target,
+	// derived from config.AllowedProjectIDs. When empty, no restriction applies.
+	allowedProjects map[string]struct{}
 
 	// Console API client (for organizations, projects, workspaces)
 	consoleClient *ory.APIClient
@@ -362,7 +404,7 @@ func (c *OryClient) patchProjectMutex(projectID string) *sync.Mutex {
 
 // NewOryClient creates a new Ory API client.
 func NewOryClient(cfg OryClientConfig) (*OryClient, error) {
-	client := &OryClient{config: cfg}
+	client := &OryClient{config: cfg, allowedProjects: buildProjectSet(cfg.AllowedProjectIDs)}
 
 	// Initialize console client if workspace API key is provided
 	if cfg.WorkspaceAPIKey != "" {
@@ -489,6 +531,9 @@ func (c *OryClient) ResolveProjectSlug(ctx context.Context, projectID string) (s
 	if projectID == "" {
 		return "", fmt.Errorf("project_id must not be empty")
 	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return "", err
+	}
 	if slug, ok := c.cachedSlugs.Load(projectID); ok {
 		return slug.(string), nil
 	}
@@ -530,11 +575,57 @@ func (c *OryClient) WithProjectCredentials(slug, apiKey string) *OryClient {
 	newConfig.ProjectAPIKey = apiKey
 
 	return &OryClient{
-		config:        newConfig,
-		consoleClient: c.consoleClient,
+		config:          newConfig,
+		allowedProjects: c.allowedProjects,
+		consoleClient:   c.consoleClient,
 		// projectClient is nil — ensureProjectClient will lazily initialize it
 		// projectClientMu and cachedProjects are zero-valued (valid)
 	}
+}
+
+// buildProjectSet converts a slice of project IDs into a lookup set, trimming
+// whitespace and dropping empty entries. Returns nil for an empty input so the
+// allowlist is treated as "unset" (no restriction).
+func buildProjectSet(ids []string) map[string]struct{} {
+	if len(ids) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			set[id] = struct{}{}
+		}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	return set
+}
+
+// checkProjectAllowed enforces the optional allowed_project_ids allowlist.
+// When the allowlist is non-empty, any console operation targeting a project ID
+// outside the list is refused before the request is sent. This bounds the blast
+// radius of a workspace API key: a mis-pointed project_id (for example a
+// production project) cannot be read or modified. When the allowlist is empty
+// the check is a no-op and behavior is unchanged.
+func (c *OryClient) checkProjectAllowed(projectID string) error {
+	if len(c.allowedProjects) == 0 {
+		return nil
+	}
+	if _, ok := c.allowedProjects[projectID]; ok {
+		return nil
+	}
+	allowed := make([]string, 0, len(c.allowedProjects))
+	for id := range c.allowedProjects {
+		allowed = append(allowed, id)
+	}
+	sort.Strings(allowed)
+	return fmt.Errorf("%w: project %q is not in the allowed_project_ids allowlist [%s]. "+
+		"This guardrail prevents accidental changes to projects outside the allowlist, "+
+		"such as production. Add the project ID to allowed_project_ids, or remove the "+
+		"allowlist to disable this check",
+		ErrProjectNotAllowed, projectID, strings.Join(allowed, ", "))
 }
 
 // ensureProjectClient lazily initializes the project API client.
@@ -584,7 +675,12 @@ func (c *OryClient) ensureProjectClient() error {
 func (c *OryClient) requireConsoleClient(operation string) error {
 	if c.consoleClient == nil {
 		return fmt.Errorf("%s: %w. "+
-			"Set workspace_api_key (ORY_WORKSPACE_API_KEY) in the provider configuration",
+			"This operation manages project configuration, which the Ory Console API "+
+			"requires a workspace API key (ORY_WORKSPACE_API_KEY, ory_wak_...) to perform. "+
+			"A project API key (ory_pat_...) can manage project data such as identities and "+
+			"OAuth2 clients, but cannot read or change project configuration. "+
+			"To limit which projects a workspace key may touch, set allowed_project_ids. "+
+			"See https://www.ory.com/docs/guides/manage-project-via-api",
 			operation, ErrConsoleClientNotConfigured)
 	}
 	return nil
@@ -620,6 +716,9 @@ func (c *OryClient) GetProject(ctx context.Context, projectID string) (*ory.Proj
 	if err := c.requireConsoleClient("getting project"); err != nil {
 		return nil, err
 	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
 	project, httpResp, err := c.consoleClient.ProjectAPI.GetProject(ctx, projectID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -630,6 +729,9 @@ func (c *OryClient) GetProject(ctx context.Context, projectID string) (*ory.Proj
 // DeleteProject purges a project.
 func (c *OryClient) DeleteProject(ctx context.Context, projectID string) error {
 	if err := c.requireConsoleClient("deleting project"); err != nil {
+		return err
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
 		return err
 	}
 	httpResp, err := c.consoleClient.ProjectAPI.PurgeProject(ctx, projectID).Execute()
@@ -646,6 +748,9 @@ func (c *OryClient) DeleteProject(ctx context.Context, projectID string) error {
 // silently drop writes from a stale revision.
 func (c *OryClient) PatchProject(ctx context.Context, projectID string, patches []ory.JsonPatch) (*ory.SuccessfulProjectUpdate, error) {
 	if err := c.requireConsoleClient("patching project"); err != nil {
+		return nil, err
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
 		return nil, err
 	}
 	mu := c.patchProjectMutex(projectID)
@@ -759,6 +864,9 @@ func (c *OryClient) GetProjectEnvironment(ctx context.Context, projectID string)
 	if c.consoleClient == nil {
 		return "", fmt.Errorf("console API client not configured")
 	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return "", err
+	}
 	project, httpResp, err := c.consoleClient.ProjectAPI.GetProject(ctx, projectID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -782,6 +890,9 @@ func (c *OryClient) CreateOrganization(ctx context.Context, projectID, label str
 	if c.consoleClient == nil {
 		return nil, fmt.Errorf("creating organization: console API client not configured. " +
 			"Organizations require workspace_api_key (ORY_WORKSPACE_API_KEY) to be set")
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
 	}
 
 	// Ory API requires domains to be an array, not null
@@ -810,6 +921,9 @@ func (c *OryClient) GetOrganization(ctx context.Context, projectID, orgID string
 	if c.consoleClient == nil {
 		return nil, fmt.Errorf("reading organization: console API client not configured. " +
 			"Set workspace_api_key (ORY_WORKSPACE_API_KEY)")
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
 	}
 
 	// Retry with backoff for 404 errors (eventual consistency)
@@ -850,6 +964,9 @@ func (c *OryClient) UpdateOrganization(ctx context.Context, projectID, orgID, la
 	if c.consoleClient == nil {
 		return nil, fmt.Errorf("updating organization: console API client not configured. " +
 			"Set workspace_api_key (ORY_WORKSPACE_API_KEY)")
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
 	}
 
 	// Ory API requires domains to be an array, not null
@@ -900,6 +1017,9 @@ func (c *OryClient) DeleteOrganization(ctx context.Context, projectID, orgID str
 	if c.consoleClient == nil {
 		return fmt.Errorf("deleting organization: console API client not configured. " +
 			"Set workspace_api_key (ORY_WORKSPACE_API_KEY)")
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return err
 	}
 	httpResp, err := c.consoleClient.ProjectAPI.DeleteOrganization(ctx, projectID, orgID).Execute()
 	if httpResp != nil {
@@ -1030,6 +1150,9 @@ func (c *OryClient) CreateProjectAPIKey(ctx context.Context, projectID string, b
 	if err := c.requireConsoleClient("creating project API key"); err != nil {
 		return nil, err
 	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
 	key, httpResp, err := c.consoleClient.ProjectAPI.CreateProjectApiKey(ctx, projectID).CreateProjectApiKeyRequest(body).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1042,6 +1165,9 @@ func (c *OryClient) ListProjectAPIKeys(ctx context.Context, projectID string) ([
 	if err := c.requireConsoleClient("listing project API keys"); err != nil {
 		return nil, err
 	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
 	keys, httpResp, err := c.consoleClient.ProjectAPI.ListProjectApiKeys(ctx, projectID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1052,6 +1178,9 @@ func (c *OryClient) ListProjectAPIKeys(ctx context.Context, projectID string) ([
 // DeleteProjectAPIKey deletes an API key with retry logic for transient errors.
 func (c *OryClient) DeleteProjectAPIKey(ctx context.Context, projectID, keyID string) error {
 	if err := c.requireConsoleClient("deleting project API key"); err != nil {
+		return err
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
 		return err
 	}
 	var lastErr error
@@ -1199,6 +1328,9 @@ func (c *OryClient) CreateEventStream(ctx context.Context, projectID string, bod
 	if err := c.requireConsoleClient("creating event stream"); err != nil {
 		return nil, err
 	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
 	stream, httpResp, err := c.consoleClient.EventsAPI.CreateEventStream(ctx, projectID).CreateEventStreamBody(body).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1213,6 +1345,9 @@ func (c *OryClient) CreateEventStream(ctx context.Context, projectID string, bod
 // The Ory API does not have a direct GET endpoint for event streams.
 func (c *OryClient) GetEventStream(ctx context.Context, projectID, streamID string) (*ory.EventStream, error) {
 	if err := c.requireConsoleClient("getting event stream"); err != nil {
+		return nil, err
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
 		return nil, err
 	}
 	list, httpResp, err := c.consoleClient.EventsAPI.ListEventStreams(ctx, projectID).Execute()
@@ -1236,6 +1371,9 @@ func (c *OryClient) SetEventStream(ctx context.Context, projectID, streamID stri
 	if err := c.requireConsoleClient("updating event stream"); err != nil {
 		return nil, err
 	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
 	stream, httpResp, err := c.consoleClient.EventsAPI.SetEventStream(ctx, projectID, streamID).SetEventStreamBody(body).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1251,6 +1389,9 @@ func (c *OryClient) DeleteEventStream(ctx context.Context, projectID, streamID s
 	if err := c.requireConsoleClient("deleting event stream"); err != nil {
 		return err
 	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return err
+	}
 	httpResp, err := c.consoleClient.EventsAPI.DeleteEventStream(ctx, projectID, streamID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1261,6 +1402,9 @@ func (c *OryClient) DeleteEventStream(ctx context.Context, projectID, streamID s
 // ListEventStreams lists all event streams for a project.
 func (c *OryClient) ListEventStreams(ctx context.Context, projectID string) ([]ory.EventStream, error) {
 	if err := c.requireConsoleClient("listing event streams"); err != nil {
+		return nil, err
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
 		return nil, err
 	}
 	list, httpResp, err := c.consoleClient.EventsAPI.ListEventStreams(ctx, projectID).Execute()
@@ -1422,6 +1566,9 @@ func (c *OryClient) ListOAuth2Clients(ctx context.Context) ([]ory.OAuth2Client, 
 // ListOrganizations lists all organizations in a project.
 func (c *OryClient) ListOrganizations(ctx context.Context, projectID string) ([]ory.Organization, error) {
 	if err := c.requireConsoleClient("listing organizations"); err != nil {
+		return nil, err
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
 		return nil, err
 	}
 	resp, httpResp, err := c.consoleClient.ProjectAPI.ListOrganizations(ctx, projectID).Execute()
@@ -1931,6 +2078,9 @@ func (c *OryClient) consoleHTTPDo(ctx context.Context, method, path string, body
 
 // ListCustomDomains lists all custom domains for a project.
 func (c *OryClient) ListCustomDomains(ctx context.Context, projectID string) ([]ory.CustomDomain, error) {
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
 	httpResp, err := c.consoleHTTPDo(ctx, http.MethodGet, "/projects/"+projectID+"/cname", nil)
 	if err != nil {
 		return nil, wrapAPIError(err, "listing custom domains")
@@ -1968,6 +2118,9 @@ func (c *OryClient) GetCustomDomain(ctx context.Context, projectID, domainID str
 
 // CreateCustomDomain creates a new custom domain for a project.
 func (c *OryClient) CreateCustomDomain(ctx context.Context, projectID string, body ory.CreateCustomDomainBody) (*ory.CustomDomain, error) {
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("creating custom domain: marshaling body: %w", err)
@@ -1996,6 +2149,9 @@ func (c *OryClient) CreateCustomDomain(ctx context.Context, projectID string, bo
 
 // UpdateCustomDomain updates an existing custom domain.
 func (c *OryClient) UpdateCustomDomain(ctx context.Context, projectID, domainID string, body ory.SetCustomDomainBody) (*ory.CustomDomain, error) {
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("updating custom domain: marshaling body: %w", err)
@@ -2024,6 +2180,9 @@ func (c *OryClient) UpdateCustomDomain(ctx context.Context, projectID, domainID 
 
 // DeleteCustomDomain deletes a custom domain.
 func (c *OryClient) DeleteCustomDomain(ctx context.Context, projectID, domainID string) error {
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return err
+	}
 	httpResp, err := c.consoleHTTPDo(ctx, http.MethodDelete, "/projects/"+projectID+"/cname/"+domainID, nil)
 	if err != nil {
 		return wrapAPIError(err, "deleting custom domain")
