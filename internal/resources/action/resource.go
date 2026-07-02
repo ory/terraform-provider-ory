@@ -1140,100 +1140,82 @@ func (r *ActionResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	}
 }
 
+// isImportHTTPMethod reports whether s is one of the HTTP methods accepted in
+// the optional method segment of an import ID.
+func isImportHTTPMethod(s string) bool {
+	switch s {
+	case "POST", "GET", "PUT", "PATCH", "DELETE":
+		return true
+	}
+	return false
+}
+
 func (r *ActionResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	// Import format includes HTTP method to support non-POST webhooks:
-	// - For "after" timing: project_id:flow:after:auth_method:method:url (6 parts)
-	// - For "before" timing: project_id:flow:before:method:url (5 parts)
+	// Import ID layouts (colon-separated, the url is always the tail):
+	// - For "after" timing: project_id:flow:after:auth_method:method:url
+	// - For "before" timing: project_id:flow:before:method:url
 	//
-	// Legacy formats without method are still supported (defaults to POST):
-	// - For "after" timing: project_id:flow:after:auth_method:url (5 parts)
-	// - For "before" timing: project_id:flow:before:url (4 parts)
-	parts := strings.SplitN(req.ID, ":", 6)
+	// The method segment is optional and defaults to POST (legacy formats).
+	//
+	// The url itself contains colons (https://...), so the ID cannot be parsed
+	// by counting segments (issue #280). Parse the fixed segments from the
+	// left instead, and recognize the optional method segment by matching it
+	// against the known HTTP verbs.
+	const importFormatHelp = "Import ID must be in one of these formats:\n" +
+		"  - For 'after' timing: project_id:flow:after:auth_method:method:url\n" +
+		"  - For 'before' timing: project_id:flow:before:method:url\n" +
+		"The method segment is optional and defaults to POST.\n\n" +
+		"Examples:\n" +
+		"  550e8400-...:registration:after:password:POST:https://api.example.com/webhook\n" +
+		"  550e8400-...:login:before:PATCH:https://api.example.com/validate"
 
-	var projectID, flow, timing, authMethod, httpMethod, url string
+	parts := strings.SplitN(req.ID, ":", 4)
+	if len(parts) != 4 {
+		resp.Diagnostics.AddError("Invalid Import ID", importFormatHelp)
+		return
+	}
+	projectID, flow, timing, rest := parts[0], parts[1], parts[2], parts[3]
 
-	switch len(parts) {
-	case 4:
-		// Legacy 4-part format: project_id:flow:before:url (for "before" timing only)
-		projectID = parts[0]
-		flow = parts[1]
-		timing = parts[2]
-		url = parts[3]
-
-		if timing != timingBefore {
-			resp.Diagnostics.AddError("Invalid Import ID",
-				"4-part import format (project_id:flow:timing:url) is only valid for 'before' timing.\n"+
-					"For 'after' timing, use: project_id:flow:after:auth_method:method:url")
-			return
-		}
-		authMethod = defaultAuthMethod // Default, not used for "before" timing
-		httpMethod = defaultHTTPMethod // Default
-	case 5:
-		// Could be:
-		// - Legacy 5-part for "after": project_id:flow:after:auth_method:url (no method, defaults to POST)
-		// - New 5-part for "before": project_id:flow:before:method:url
-		projectID = parts[0]
-		flow = parts[1]
-		timing = parts[2]
-
-		if timing == timingBefore {
-			// New format: project_id:flow:before:method:url
-			httpMethod = parts[3]
-			url = parts[4]
-			authMethod = defaultAuthMethod // Default, not used for "before" timing
-
-			// Validate HTTP method
-			if httpMethod != "POST" && httpMethod != "GET" && httpMethod != "PUT" && httpMethod != "PATCH" && httpMethod != "DELETE" {
-				resp.Diagnostics.AddError("Invalid Import ID",
-					fmt.Sprintf("Invalid HTTP method '%s'. Must be one of: POST, GET, PUT, PATCH, DELETE", httpMethod))
-				return
-			}
-		} else {
-			// Legacy format: project_id:flow:after:auth_method:url (no method)
-			authMethod = parts[3]
-			url = parts[4]
-			httpMethod = defaultHTTPMethod // Default
-
-			// Allow "_" or "none" as placeholder for auth_method
-			if authMethod == "_" || authMethod == "none" || authMethod == "" {
-				authMethod = defaultAuthMethod
-			}
-		}
-	case 6:
-		// New 6-part format for "after": project_id:flow:after:auth_method:method:url
-		projectID = parts[0]
-		flow = parts[1]
-		timing = parts[2]
-		authMethod = parts[3]
-		httpMethod = parts[4]
-		url = parts[5]
-
-		if timing == timingBefore {
-			resp.Diagnostics.AddError("Invalid Import ID",
-				"6-part import format is only valid for 'after' timing.\n"+
-					"For 'before' timing, use: project_id:flow:before:method:url")
-			return
-		}
-
-		// Validate HTTP method
-		if httpMethod != "POST" && httpMethod != "GET" && httpMethod != "PUT" && httpMethod != "PATCH" && httpMethod != "DELETE" {
-			resp.Diagnostics.AddError("Invalid Import ID",
-				fmt.Sprintf("Invalid HTTP method '%s'. Must be one of: POST, GET, PUT, PATCH, DELETE", httpMethod))
-			return
-		}
-
-		// Allow "_" or "none" as placeholder for auth_method
-		if authMethod == "_" || authMethod == "none" || authMethod == "" {
-			authMethod = defaultAuthMethod
-		}
-	default:
+	if timing != timingBefore && timing != timingAfter {
 		resp.Diagnostics.AddError("Invalid Import ID",
-			"Import ID must be in one of these formats:\n"+
-				"  - For 'after' timing: project_id:flow:after:auth_method:method:url\n"+
-				"  - For 'before' timing: project_id:flow:before:method:url\n\n"+
-				"Examples:\n"+
-				"  550e8400-...:registration:after:password:POST:https://api.example.com/webhook\n"+
-				"  550e8400-...:login:before:PATCH:https://api.example.com/validate")
+			fmt.Sprintf("Invalid timing '%s'. Must be 'before' or 'after'.\n\n%s", timing, importFormatHelp))
+		return
+	}
+
+	authMethod := defaultAuthMethod
+	if timing == timingAfter {
+		// The auth_method segment is required for "after" timing. "_", "none",
+		// and "" are accepted as placeholders for flows that ignore it.
+		segment, tail, found := strings.Cut(rest, ":")
+		if !found {
+			resp.Diagnostics.AddError("Invalid Import ID",
+				"Missing url after auth_method for 'after' timing.\n\n"+importFormatHelp)
+			return
+		}
+		if segment != "_" && segment != "none" && segment != "" {
+			authMethod = segment
+		}
+		rest = tail
+	}
+
+	httpMethod := defaultHTTPMethod
+	if segment, tail, found := strings.Cut(rest, ":"); found {
+		if isImportHTTPMethod(strings.ToUpper(segment)) {
+			httpMethod = strings.ToUpper(segment)
+			rest = tail
+		} else if strings.Contains(tail, "://") {
+			// A url still follows, so this segment was meant to be the method.
+			resp.Diagnostics.AddError("Invalid Import ID",
+				fmt.Sprintf("Invalid HTTP method '%s'. Must be one of: POST, GET, PUT, PATCH, DELETE", segment))
+			return
+		}
+		// Otherwise the colon belongs to the url scheme (e.g. https://...):
+		// the method was omitted and rest is already the full url.
+	}
+
+	url := rest
+	if url == "" {
+		resp.Diagnostics.AddError("Invalid Import ID", "Missing url.\n\n"+importFormatHelp)
 		return
 	}
 

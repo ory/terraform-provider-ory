@@ -1,0 +1,6 @@
+resource "ory_action" "test" {
+  flow   = "login"
+  timing = "before"
+  url    = "[[ .WebhookURL ]]/before-login"
+  method = "POST"
+}

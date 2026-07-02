@@ -246,6 +246,68 @@ func TestAccActionResource_basic(t *testing.T) {
 	})
 }
 
+// TestAccActionResource_beforeTiming is the regression test for issue #280:
+// before-timing actions could not be imported because the url's own colons
+// (https://...) broke the segment-counting import ID parser. Both documented
+// before formats are exercised: with an explicit method and the legacy form
+// without one.
+func TestAccActionResource_beforeTiming(t *testing.T) {
+	webhookURL := testutil.ExampleWebhookURL + "/before-login"
+	hookPath := "/services/identity/config/selfservice/flows/login/before/hooks"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			cleanupDanglingWebhook(t, hookPath, webhookURL)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create and Read
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/before_login.tf.tmpl", map[string]string{"WebhookURL": testutil.ExampleWebhookURL}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_action.test", "id"),
+					resource.TestCheckResourceAttr("ory_action.test", "flow", "login"),
+					resource.TestCheckResourceAttr("ory_action.test", "timing", "before"),
+					resource.TestCheckResourceAttr("ory_action.test", "method", "POST"),
+				),
+			},
+			// Import using the documented format: project_id:flow:before:method:url
+			{
+				ResourceName:      "ory_action.test",
+				ImportState:       true,
+				ImportStateIdFunc: beforeActionImportStateIDFunc(true),
+				ImportStateVerify: true,
+			},
+			// Import using the legacy format without method: project_id:flow:before:url
+			{
+				ResourceName:      "ory_action.test",
+				ImportState:       true,
+				ImportStateIdFunc: beforeActionImportStateIDFunc(false),
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+// beforeActionImportStateIDFunc builds a before-timing import ID from state,
+// with or without the optional method segment.
+func beforeActionImportStateIDFunc(includeMethod bool) resource.ImportStateIdFunc {
+	return func(s *terraform.State) (string, error) {
+		rs, ok := s.RootModule().Resources["ory_action.test"]
+		if !ok {
+			return "", fmt.Errorf("resource not found: ory_action.test")
+		}
+		projectID := rs.Primary.Attributes["project_id"]
+		flow := rs.Primary.Attributes["flow"]
+		url := rs.Primary.Attributes["url"]
+		if includeMethod {
+			return fmt.Sprintf("%s:%s:before:%s:%s", projectID, flow, rs.Primary.Attributes["method"], url), nil
+		}
+		return fmt.Sprintf("%s:%s:before:%s", projectID, flow, url), nil
+	}
+}
+
 // TestAccActionResource_verificationFlow is the regression test for issue #241:
 // the verification flow's "after" hooks are stored in a flat array at
 // .../verification/after/hooks (no auth_method level). Before the fix, the
