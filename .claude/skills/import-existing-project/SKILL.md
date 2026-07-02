@@ -26,11 +26,20 @@ touching the live project.
 - A **workspace API key** (`ory_wak_...`, create under Workspace Settings > API
   keys) and, to cover OAuth2 clients / JWKS / trusted issuers, a **project API
   key** (`ory_pat_...`).
-- The project UUID. List projects for a workspace with
-  `ory list projects --workspace <workspace-id> --format json` or
-  `GET {console-api}/workspaces/{workspace-id}/projects`.
-  (`GET /projects` requires a session token and returns 403 for API keys —
-  always use the workspace-scoped list.)
+- The project UUID. List a workspace's projects with the workspace API key:
+
+  ```bash
+  curl -sH "Authorization: Bearer $ORY_WORKSPACE_API_KEY" \
+    "${ORY_CONSOLE_API_URL:-https://api.console.ory.sh}/workspaces/$ORY_WORKSPACE_ID/projects" \
+    | jq -r '.projects[] | "\(.id)  \(.slug)  \(.name)"'
+  ```
+
+  Use this workspace-scoped endpoint, not `GET /projects` (that path needs a
+  browser session token and returns 403 for an API key). The `ory list
+  projects` CLI also works, but only against Ory's **production** console with
+  an interactive `ory auth` session — it ignores `ORY_CONSOLE_API_URL`, so it
+  cannot reach other environments, and it rejects `--workspace` when
+  `ORY_WORKSPACE_API_KEY` is set. The curl call above is environment-agnostic.
 
 Export the credentials as environment variables; the provider and the
 inventory script both read them:
@@ -179,7 +188,7 @@ Project API = `https://{slug}.projects.oryapis.com` with the project API key.
 | `ory_json_web_key_set` | `GET /admin/keys/{set}` (project); no list-all endpoint, set IDs must be known | `{project_id}/{set_id}` |
 | `ory_trusted_oauth2_jwt_grant_issuer` | `GET /admin/trust/grants/jwt-bearer/issuers` (project) | `{grant_id}` |
 | `ory_identity` | `GET /admin/identities` (project) | `{identity_id}` |
-| `ory_relationship` | `GET /namespaces` + `GET /relation-tuples?namespace=` (project) | `namespace:object#relation@subject_id` or `...@(ns:obj#rel)` |
+| `ory_relationship` | `GET /namespaces` + `GET /relation-tuples?namespace=` (project) | `namespace:object#relation@subject_id`, or a subject set `namespace:object#relation@subject_ns:subject_obj#subject_rel` |
 | `ory_identity_schema` | revision: `...identity.schemas[]` | **not importable** (immutable by design) |
 
 Single-segment forms (`{domain_id}`, `{org_id}`, `{key_id}`, `{stream_id}`,
