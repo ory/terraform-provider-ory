@@ -207,6 +207,14 @@ explicit `{project_id}/...` form in generated files.
 - **`ory_project_api_key` values** exist only at creation time. Importing one
   yields a resource whose `value` is null; rotating it through Terraform means
   destroy + create (a brand-new key).
+- **`ory_trusted_oauth2_jwt_grant_issuer.jwk` forces a one-time replace on
+  import.** The public-key `jwk` is required, forces replacement when changed,
+  and is never returned by the read endpoint, so import leaves it empty. Supply
+  the issuer's original public JWK in config; the first apply then destroys and
+  re-creates the trust once to store it (a functional no-op re-registration —
+  the issuer/subject/scope are unchanged). Plans after that first apply are
+  clean. If a transient re-registration is unacceptable, leave the issuer
+  unmanaged.
 - **Default `hydra.*` JWKS sets** (`hydra.openid.id-token`,
   `hydra.jwt.access-token`) are system-managed — do not import them. Importing
   any JWKS puts private key material into state.
@@ -250,3 +258,10 @@ explicit `{project_id}/...` form in generated files.
 - **Generated attribute rejected on plan** — delete it; it is computed-only.
   `-generate-config-out` emits every attribute it saw in state, including ones
   that are not valid to configure.
+- **`Missing Required Attribute` / `Missing Configuration for Required
+  Attribute` on plan (config generation succeeded)** — the attribute is
+  required but the API never returns it, so `-generate-config-out` left it
+  null. This hits `ory_social_provider.client_secret` (per provider type),
+  `ory_trusted_oauth2_jwt_grant_issuer.jwk`, and similar. Supply the value in
+  config (a `variable`, a `*_wo` argument, or the literal you originally
+  provisioned). See the `jwk` caveat above for the one-time replace it causes.
