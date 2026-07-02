@@ -147,6 +147,19 @@ resource "ory_social_provider" "google_fedcm" {
   fedcm_config_url = "https://accounts.google.com/gsi/fedcm.json"
 }
 
+# Google Sign-In that refreshes identity traits from OIDC claims on every login
+resource "ory_social_provider" "google_sync_on_login" {
+  provider_id   = "google-sync"
+  provider_type = "google"
+  client_id     = var.google_client_id
+  client_secret = var.google_client_secret
+  scope         = ["email", "profile"]
+
+  # "automatic" re-runs the claims mapper on each login and updates the identity.
+  # Omit or set "never" (the default) to keep the identity unchanged after sign-up.
+  update_identity_on_login = "automatic"
+}
+
 # Generic OIDC with a custom base redirect URI (e.g., when using a custom domain)
 resource "ory_social_provider" "corporate_sso_custom_domain" {
   provider_id       = "corporate-sso-custom-domain"
@@ -314,7 +327,7 @@ The `mapper_url` attribute controls how OIDC claims are mapped to Ory identity t
 
 If not set, the provider uses a default mapper that extracts the email claim.
 
-~> **Note:** The `mapper_url` value may be transformed by the API (e.g., stored as a GCS URL). The provider only tracks this field if you explicitly set it in your configuration to avoid false drift detection.
+~> **Note:** Ory rewrites the `mapper_url` you configure into an opaque, content-addressed URL (for example `https://storage.googleapis.com/.../<hash>.jsonnet`). The provider preserves the value exactly as you wrote it in your configuration and does **not** read the transformed value back into state, so a configured `mapper_url` no longer produces a perpetual diff. Because the transformed URL cannot be reversed, `mapper_url` is not populated on `terraform import`; add it back to your configuration after importing.
 
 ## Label
 
@@ -430,6 +443,29 @@ resource "ory_social_provider" "google" {
 
 Leave the attribute unset to disable FedCM for the provider. Removing it from your configuration clears the value server-side.
 
+## Update Identity on Login
+
+The `update_identity_on_login` attribute controls whether an identity's traits and metadata are refreshed from the upstream OIDC claims every time the user signs in:
+
+| Value | Description |
+|-------|-------------|
+| `never` (default) | The identity is populated from the claims mapper on first sign-up and left unchanged on subsequent logins. |
+| `automatic` | Ory re-runs the Jsonnet claims mapper on every login and updates the identity's traits and metadata to match the latest upstream claims. |
+
+```hcl
+resource "ory_social_provider" "google" {
+  provider_id   = "google"
+  provider_type = "google"
+  client_id     = var.google_client_id
+  client_secret = var.google_client_secret
+  scope         = ["email", "profile"]
+
+  update_identity_on_login = "automatic"
+}
+```
+
+Leave the attribute unset to use the Ory default (`never`). The API accepts only the values `never` and `automatic`.
+
 ## Base Redirect URI
 
 The `base_redirect_uri` attribute overrides the base URL Ory uses when constructing OIDC callback URLs. Use this when your project is accessible under a custom domain and you want callbacks to go to that domain rather than the default Ory project URL.
@@ -506,6 +542,7 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 - `scope` (List of String) OAuth2 scopes to request.
 - `tenant` (String) Tenant ID (for Microsoft/Azure providers).
 - `token_url` (String) Custom token URL (for non-standard providers).
+- `update_identity_on_login` (String) Controls whether the identity's traits and metadata are refreshed from the upstream OIDC claims on every login. "never" (the API default) keeps the identity as-is after the initial sign-up. "automatic" re-runs the Jsonnet claims mapper on each login and updates the identity accordingly. Leave unset to use the Ory default ("never").
 
 ### Read-Only
 

@@ -60,6 +60,19 @@ resource "ory_social_provider" "google_fedcm" {
   fedcm_config_url = "https://accounts.google.com/gsi/fedcm.json"
 }
 
+# Google Sign-In that refreshes identity traits from OIDC claims on every login
+resource "ory_social_provider" "google_sync_on_login" {
+  provider_id   = "google-sync"
+  provider_type = "google"
+  client_id     = var.google_client_id
+  client_secret = var.google_client_secret
+  scope         = ["email", "profile"]
+
+  # "automatic" re-runs the claims mapper on each login and updates the identity.
+  # Omit or set "never" (the default) to keep the identity unchanged after sign-up.
+  update_identity_on_login = "automatic"
+}
+
 # Generic OIDC with a custom base redirect URI (e.g., when using a custom domain)
 resource "ory_social_provider" "corporate_sso_custom_domain" {
   provider_id       = "corporate-sso-custom-domain"

@@ -88,6 +88,7 @@ type SocialProviderResourceModel struct {
 	Aal2AmrValues              types.List   `tfsdk:"aal2_amr_values"`
 	Pkce                       types.String `tfsdk:"pkce"`
 	FedcmConfigURL             types.String `tfsdk:"fedcm_config_url"`
+	UpdateIdentityOnLogin      types.String `tfsdk:"update_identity_on_login"`
 }
 
 func (r *SocialProviderResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -281,6 +282,13 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 			"fedcm_config_url": schema.StringAttribute{
 				Description: "URL of the provider's FedCM (Federated Credential Management) configuration file. When set, Ory can use the browser's FedCM API for sign-in with this provider instead of a full-page redirect. For example, Google's FedCM configuration is served at \"https://accounts.google.com/gsi/fedcm.json\". Leave unset to disable FedCM for this provider.",
 				Optional:    true,
+			},
+			"update_identity_on_login": schema.StringAttribute{
+				Description: "Controls whether the identity's traits and metadata are refreshed from the upstream OIDC claims on every login. \"never\" (the API default) keeps the identity as-is after the initial sign-up. \"automatic\" re-runs the Jsonnet claims mapper on each login and updates the identity accordingly. Leave unset to use the Ory default (\"never\").",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("never", "automatic"),
+				},
 			},
 		},
 	}
@@ -511,6 +519,13 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 
 	if !plan.Pkce.IsNull() && !plan.Pkce.IsUnknown() {
 		config["pkce"] = plan.Pkce.ValueString()
+	}
+
+	// update_identity_on_login — only send when set. Omitting it on the
+	// full-object replace performed by Update lets the API fall back to its
+	// default ("never"), which Read collapses to null.
+	if !plan.UpdateIdentityOnLogin.IsNull() && !plan.UpdateIdentityOnLogin.IsUnknown() {
+		config["update_identity_on_login"] = plan.UpdateIdentityOnLogin.ValueString()
 	}
 
 	// fedcm_config_url — only send when set to a non-empty value. Omitting it on
@@ -878,14 +893,16 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		}
 	}
 
-	// Read mapper_url only if user explicitly configured it
-	// When user doesn't set mapper_url, we use a default which gets transformed to a GCS URL by the API
-	// We only read it back if it was already in state (user configured it)
-	if !state.MapperURL.IsNull() && !state.MapperURL.IsUnknown() {
-		if mapper, ok := provider["mapper_url"].(string); ok && mapper != "" {
-			state.MapperURL = types.StringValue(mapper)
-		}
-	}
+	// mapper_url is intentionally NOT read back from the API. Ory rewrites the
+	// configured value (a base64://... blob or a hosted URL) into an opaque,
+	// content-addressed GCS URL (https://storage.googleapis.com/.../<hash>.jsonnet).
+	// Reading that transformed value into state makes it differ from the value in
+	// configuration on every plan, producing a perpetual diff that repeatedly
+	// replaces the whole provider object. Instead we preserve the configured value
+	// already held in state (written by Create/Update). A genuine change to
+	// mapper_url in configuration is still applied because Update writes the new
+	// value to state; only the API's cosmetic rewrite is ignored.
+	// See: https://github.com/ory/terraform-provider-ory/issues/278
 
 	// Read auth_url for custom providers
 	if authURL, ok := provider["auth_url"].(string); ok && authURL != "" {
@@ -930,6 +947,15 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		state.Pkce = types.StringValue(pkce)
 	} else {
 		state.Pkce = types.StringNull()
+	}
+
+	// Read update_identity_on_login from the API (returned on read), clearing
+	// stale state when the API omits it (which it does only when the attribute
+	// was never set; an explicit "never" round-trips as "never").
+	if uiol, ok := provider["update_identity_on_login"].(string); ok && uiol != "" {
+		state.UpdateIdentityOnLogin = types.StringValue(uiol)
+	} else {
+		state.UpdateIdentityOnLogin = types.StringNull()
 	}
 
 	// Read fedcm_config_url from the API (returned on read), clearing stale state
