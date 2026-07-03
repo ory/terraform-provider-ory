@@ -402,11 +402,12 @@ These require hand-written code in `resource.go` because they have non-trivial s
 - `default_return_url` / `allowed_return_urls` (remove-on-empty semantics)
 - `mfa_enforcement` (maps string values to different API fields)
 
-> **Note:** `smtp_connection_uri` is fully codegen'd, but uses `write_only: true`
-> (see the mappings table above). The Ory API never returns the connection URI in
-> project-config responses, so the provider sends it on create/update but never
-> reads it back — this keeps it from showing a perpetual diff if the API returns an
-> empty value or a masked sentinel.
+> **Note:** `smtp_connection_uri`, `courier_http_request_config_auth_basic_auth_password`,
+> and `courier_http_request_config_auth_api_key_value` are fully codegen'd, but use
+> `write_only: true` (see the mappings table above). The Ory API does not return these
+> secrets in project-config responses, so the provider sends them on create/update but
+> never reads them back — this keeps them from showing a perpetual diff if the API
+> returns an empty value or a masked sentinel.
 
 ### Adding a New Resource
 
