@@ -7,6 +7,83 @@ resource "ory_social_provider" "google" {
   scope         = ["email", "profile"]
 }
 
+# Google Sign-In with write-only (ephemeral) credentials sourced from Vault.
+# Write-only arguments (Terraform 1.11+) send the value to Ory without ever
+# storing it in state or plan — ideal for secrets read from an ephemeral
+# resource such as Vault. Bump the matching *_wo_version whenever a secret
+# changes so Terraform re-sends it (write-only values cannot be diffed).
+ephemeral "vault_kv_secret_v2" "google_oauth" {
+  mount = "secret"
+  name  = "ory/google-oauth"
+}
+
+resource "ory_social_provider" "google_write_only" {
+  provider_id   = "google-wo"
+  provider_type = "google"
+
+  client_id_wo             = ephemeral.vault_kv_secret_v2.google_oauth.data["client_id"]
+  client_id_wo_version     = "1"
+  client_secret_wo         = ephemeral.vault_kv_secret_v2.google_oauth.data["client_secret"]
+  client_secret_wo_version = "1"
+
+  scope = ["email", "profile"]
+}
+
+# Google Sign-In with automatic account linking
+resource "ory_social_provider" "google_auto_link" {
+  provider_id   = "google-auto-link"
+  provider_type = "google"
+  client_id     = var.google_client_id
+  client_secret = var.google_client_secret
+  scope         = ["email", "profile"]
+  auto_link     = true # Requires enable_oidc_auto_link_policy = true in ory_project_config
+}
+
+# Google Sign-In with custom label and account linking
+resource "ory_social_provider" "google_labeled" {
+  provider_id          = "google-labeled"
+  provider_type        = "google"
+  client_id            = var.google_client_id
+  client_secret        = var.google_client_secret
+  scope                = ["email", "profile"]
+  label                = "Sign in with Corporate Google"
+  account_linking_mode = "automatic"
+}
+
+# Google Sign-In with FedCM (browser Federated Credential Management)
+resource "ory_social_provider" "google_fedcm" {
+  provider_id      = "google-fedcm"
+  provider_type    = "google"
+  client_id        = var.google_client_id
+  client_secret    = var.google_client_secret
+  scope            = ["email", "profile"]
+  fedcm_config_url = "https://accounts.google.com/gsi/fedcm.json"
+}
+
+# Google Sign-In that refreshes identity traits from OIDC claims on every login
+resource "ory_social_provider" "google_sync_on_login" {
+  provider_id   = "google-sync"
+  provider_type = "google"
+  client_id     = var.google_client_id
+  client_secret = var.google_client_secret
+  scope         = ["email", "profile"]
+
+  # "automatic" re-runs the claims mapper on each login and updates the identity.
+  # Omit or set "never" (the default) to keep the identity unchanged after sign-up.
+  update_identity_on_login = "automatic"
+}
+
+# Generic OIDC with a custom base redirect URI (e.g., when using a custom domain)
+resource "ory_social_provider" "corporate_sso_custom_domain" {
+  provider_id       = "corporate-sso-custom-domain"
+  provider_type     = "generic"
+  client_id         = var.sso_client_id
+  client_secret     = var.sso_client_secret
+  issuer_url        = "https://sso.example.com"
+  scope             = ["openid", "profile", "email"]
+  base_redirect_uri = "https://iam.example.com"
+}
+
 # GitHub
 resource "ory_social_provider" "github" {
   provider_id   = "github"
@@ -35,6 +112,27 @@ resource "ory_social_provider" "apple" {
   apple_private_key_id = var.apple_private_key_id
   apple_private_key    = var.apple_private_key
   scope                = ["email", "name"]
+}
+
+# Enterprise SSO that elevates the Ory session to AAL2 when the upstream
+# provider asserts MFA via the `acr` or `amr` claims (works with Auth0, Okta,
+# Keycloak, PingFederate, Entra ID v1, and other OIDC providers).
+resource "ory_social_provider" "enterprise_sso" {
+  provider_id   = "enterprise-sso"
+  provider_type = "generic"
+  client_id     = var.sso_client_id
+  client_secret = var.sso_client_secret
+  issuer_url    = "https://sso.example.com"
+  scope         = ["openid", "profile", "email"]
+
+  # Mark the Ory session as AAL2 when the ID token's `acr` claim matches any of these.
+  aal2_acr_values = [
+    "urn:mace:incommon:iap:silver",
+    "https://refeds.org/profile/mfa",
+  ]
+
+  # Mark the Ory session as AAL2 when any of these values appear in the `amr` array (per RFC 8176).
+  aal2_amr_values = ["mfa", "otp", "hwk"]
 }
 
 # Generic OIDC Provider with custom claims mapping

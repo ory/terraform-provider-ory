@@ -72,8 +72,21 @@ clean: ## Remove build artifacts
 # Code quality tool binaries
 .bin/golangci-lint: .deps/golangci-lint.yaml .bin/ory
 	@VERSION=$$(.bin/ory dev ci deps url -o $(OS) -a $(ARCH) -c .deps/golangci-lint.yaml); \
-	echo "Installing golangci-lint $${VERSION}..."; \
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b .bin $${VERSION}
+	V=$${VERSION#v}; \
+	TARBALL=golangci-lint-$${V}-$(OS)-$(ARCH).tar.gz; \
+	BASE=https://github.com/golangci/golangci-lint/releases/download/v$${V}; \
+	echo "Installing golangci-lint v$${V}..."; \
+	mkdir -p .bin; \
+	TMP=$$(mktemp -d); \
+	curl -sSfL "$${BASE}/$${TARBALL}" -o "$${TMP}/$${TARBALL}"; \
+	curl -sSfL "$${BASE}/golangci-lint-$${V}-checksums.txt" -o "$${TMP}/checksums.txt"; \
+	WANT=$$(awk -v f="$${TARBALL}" '$$2 == f {print $$1}' "$${TMP}/checksums.txt"); \
+	GOT=$$(shasum -a 256 "$${TMP}/$${TARBALL}" | awk '{print $$1}'); \
+	if [ "$${WANT}" != "$${GOT}" ]; then echo "checksum mismatch: want $${WANT} got $${GOT}"; exit 1; fi; \
+	tar -xzf "$${TMP}/$${TARBALL}" -C "$${TMP}"; \
+	cp "$${TMP}/golangci-lint-$${V}-$(OS)-$(ARCH)/golangci-lint" .bin/golangci-lint; \
+	chmod +x .bin/golangci-lint; \
+	rm -rf "$${TMP}"
 
 .bin/tfplugindocs: .deps/tfplugindocs.yaml .bin/ory
 	@mkdir -p .bin
@@ -89,6 +102,31 @@ clean: ## Remove build artifacts
 	echo "Installing go-licenses $${VERSION}..."; \
 	GOBIN=$(PWD)/.bin go install github.com/google/go-licenses@$${VERSION}
 
+.PHONY: generate
+generate: ## Generate code from mappings.yaml (auto-uses OpenAPI spec if present for governs-based validation)
+	@SPEC_FLAG=""; \
+	if [ -f ./internal/codegen/openapi.yaml ]; then \
+		SPEC_FLAG="-spec ./internal/codegen/openapi.yaml"; \
+		echo "Using OpenAPI spec for governs-based path validation..."; \
+	fi; \
+	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml $$SPEC_FLAG -out ./internal/resources/projectconfig/
+
+.PHONY: download-spec
+download-spec: ## Download OpenAPI spec from client-go version pinned in go.mod
+	@VERSION=$$(go list -m -f '{{.Version}}' github.com/ory/client-go); \
+	echo "Downloading OpenAPI spec from ory/client-go@$$VERSION..."; \
+	curl -sSfL "https://raw.githubusercontent.com/ory/client-go/$$VERSION/api/openapi.yaml" -o ./internal/codegen/openapi.yaml
+
+.PHONY: discover
+discover: download-spec ## Discover new unmapped properties from the OpenAPI spec and output YAML entries
+	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml -spec ./internal/codegen/openapi.yaml -discover
+
+.PHONY: check-coverage
+check-coverage: download-spec ## Check that all spec properties are mapped (fails if unmapped properties found)
+	@TMPDIR=$$(mktemp -d) && \
+	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml -spec ./internal/codegen/openapi.yaml -strict -out "$$TMPDIR" && \
+	rm -rf "$$TMPDIR"
+
 .PHONY: format
 format: .bin/tfplugindocs .bin/golangci-lint ## Format all code (Go, Terraform, modules, docs, lint fixes)
 	go fmt ./...
@@ -101,6 +139,10 @@ format: .bin/tfplugindocs .bin/golangci-lint ## Format all code (Go, Terraform, 
 .PHONY: lint
 lint: .bin/golangci-lint ## Run Go linter (without fixes)
 	.bin/golangci-lint run ./...
+
+.PHONY: lint-actions
+lint-actions: ## Lint GitHub Actions workflow files (requires actionlint: brew install actionlint)
+	actionlint
 
 .PHONY: licenses
 licenses: .bin/go-licenses ## Check dependency licenses

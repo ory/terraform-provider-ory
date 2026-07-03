@@ -1,0 +1,4 @@
+resource "ory_project_config" "test" {
+  selfservice_flows_login_style           = "[[ .LoginStyle ]]"
+  selfservice_methods_password_enabled    = true
+}

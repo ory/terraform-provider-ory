@@ -13,7 +13,7 @@ JSON Web Keys are used for signing and encrypting tokens. This resource generate
 
 -> **Plan:** Available on all Ory Network plans.
 
-~> **Note:** This resource is **immutable**. Any change to `set_id`, `key_id`, `algorithm`, or `use` will destroy the existing key set and create a new one. Private keys in the old set will be permanently lost.
+~> **Note:** This resource is **immutable**. Any change to `project_id`, `set_id`, `key_id`, `algorithm`, or `use` will destroy the existing key set and create a new one. Private keys in the old set will be permanently lost.
 
 ## Algorithms
 
@@ -46,7 +46,7 @@ Most configurations only need `use = "sig"`.
 ## Example Usage
 
 ```terraform
-# RSA signing key set
+# RSA signing key set (project_id from provider config)
 resource "ory_json_web_key_set" "signing" {
   set_id    = "token-signing-keys"
   key_id    = "rsa-sig-1"
@@ -54,12 +54,13 @@ resource "ory_json_web_key_set" "signing" {
   use       = "sig"
 }
 
-# ECDSA signing key set (smaller, faster)
+# ECDSA signing key set with explicit project_id
 resource "ory_json_web_key_set" "ecdsa_signing" {
-  set_id    = "ecdsa-signing-keys"
-  key_id    = "ec-sig-1"
-  algorithm = "ES256"
-  use       = "sig"
+  project_id = var.ory_project_id
+  set_id     = "ecdsa-signing-keys"
+  key_id     = "ec-sig-1"
+  algorithm  = "ES256"
+  use        = "sig"
 }
 
 # Encryption key set
@@ -73,11 +74,31 @@ resource "ory_json_web_key_set" "encryption" {
 output "signing_key_set_id" {
   value = ory_json_web_key_set.signing.id
 }
+
+# Access the full JWKS (includes private key material)
+output "signing_jwks" {
+  value     = ory_json_web_key_set.signing.keys
+  sensitive = true
+}
+
+# Same-apply: Create project and JWK set together
+# Use resource-level credentials when the project doesn't exist yet
+resource "ory_json_web_key_set" "same_apply" {
+  project_slug    = ory_project.main.slug
+  project_api_key = ory_project_api_key.main.value
+
+  set_id    = "token-signing-keys"
+  key_id    = "rsa-sig-1"
+  algorithm = "RS256"
+  use       = "sig"
+}
 ```
 
 ## Keys Output
 
-The `keys` attribute contains the JSON Web Key Set as a JSON string with **public parts only**. Private keys are never exposed in Terraform state. The output follows the standard JWKS format:
+The `keys` attribute contains the full JSON Web Key Set as a JSON string, **including private key material**. This attribute is marked as sensitive, so Terraform redacts it from plan and apply output. However, it is still persisted in state and can be retrieved via `terraform output` or remote state access. The output follows the standard JWKS format:
+
+### RSA key (`RS256`)
 
 ```json
 {
@@ -88,19 +109,107 @@ The `keys` attribute contains the JSON Web Key Set as a JSON string with **publi
       "use": "sig",
       "alg": "RS256",
       "n": "...",
-      "e": "..."
+      "e": "...",
+      "d": "...",
+      "p": "...",
+      "q": "...",
+      "dp": "...",
+      "dq": "...",
+      "qi": "..."
     }
   ]
 }
 ```
 
+### EC key (`ES256` / `ES512`)
+
+```json
+{
+  "keys": [
+    {
+      "kty": "EC",
+      "kid": "sig-key-1",
+      "use": "sig",
+      "alg": "ES256",
+      "crv": "P-256",
+      "x": "...",
+      "y": "...",
+      "d": "..."
+    }
+  ]
+}
+```
+
+### HMAC key (`HS256` / `HS512`)
+
+```json
+{
+  "keys": [
+    {
+      "kty": "oct",
+      "kid": "sig-key-1",
+      "use": "sig",
+      "alg": "HS256",
+      "k": "..."
+    }
+  ]
+}
+```
+
+~> **Security:** The `keys` attribute contains private key material and is marked as sensitive. Terraform will not display it in plan output, but it is stored in state. Use [remote state encryption](https://developer.hashicorp.com/terraform/language/state/sensitive-data) in production.
+
 On read, the provider extracts `algorithm`, `use`, and `key_id` from the **first key** in the set.
+
+## Resource-Level Credentials (Same-Apply with Project Creation)
+
+When creating an `ory_json_web_key_set` in the same `terraform apply` as the `ory_project` it belongs to, the provider may not have project credentials at configuration time. Use the `project_slug` and `project_api_key` attributes to pass credentials directly to the resource:
+
+```hcl
+resource "ory_project" "main" {
+  name        = "my-project"
+  environment = "prod"
+}
+
+resource "ory_project_api_key" "main" {
+  project_id = ory_project.main.id
+  name       = "terraform-key"
+}
+
+resource "ory_json_web_key_set" "signing" {
+  project_slug    = ory_project.main.slug
+  project_api_key = ory_project_api_key.main.value
+
+  set_id    = "token-signing-keys"
+  key_id    = "rsa-sig-1"
+  algorithm = "RS256"
+  use       = "sig"
+}
+```
+
+These attributes override the provider-level `project_slug` and `project_api_key`. If the provider already has valid project credentials, you do not need to set them on the resource.
+
+This also enables `for_each` across multiple projects without provider aliases:
+
+```hcl
+resource "ory_json_web_key_set" "signing" {
+  for_each = ory_project.this
+
+  project_slug    = each.value.slug
+  project_api_key = ory_project_api_key.this[each.key].value
+
+  set_id    = "token-signing-keys"
+  key_id    = "rsa-sig-1"
+  algorithm = "RS256"
+  use       = "sig"
+}
+```
 
 ## Import
 
-Import using the set ID:
+Import using the format `project_id/set_id` or just `set_id` (uses the provider's configured project context, either `project_id` or `project_slug`):
 
 ```shell
+terraform import ory_json_web_key_set.signing <project-id>/token-signing-keys
 terraform import ory_json_web_key_set.signing token-signing-keys
 ```
 
@@ -116,7 +225,13 @@ After import, `key_id` is populated from the first key in the set. If the set co
 - `set_id` (String) The ID of the JSON Web Key Set.
 - `use` (String) The intended use: sig (signature) or enc (encryption).
 
+### Optional
+
+- `project_api_key` (String, Sensitive) Project API key for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and JWK set in the same apply). Overrides the provider-level project_api_key.
+- `project_id` (String) The project ID. If not set, uses the provider's project_id or project_slug.
+- `project_slug` (String) Project slug for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and JWK set in the same apply). Overrides the provider-level project_slug.
+
 ### Read-Only
 
 - `id` (String) Internal Terraform ID (same as set_id).
-- `keys` (String, Sensitive) The JSON Web Key Set as a JSON string (public parts only).
+- `keys` (String, Sensitive) The JSON Web Key Set as a JSON string, including private key material. This is a sensitive value.

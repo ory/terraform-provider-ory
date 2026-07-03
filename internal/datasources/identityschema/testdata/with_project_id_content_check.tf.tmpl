@@ -1,9 +1,9 @@
-resource "ory_identity_schema" "dedup" {
+resource "ory_identity_schema" "test" {
   schema_id = "[[ .SchemaID ]]"
   schema    = jsonencode({
-    "$id": "[[ .AppURL ]]/[[ .ContentID ]].json",
+    "$id": "[[ .AppURL ]]/test-schema-email.json",
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "Test Schema [[ .ContentID ]]",
+    "title": "Test Email Schema",
     "type": "object",
     "properties": {
       "traits": {
@@ -26,4 +26,14 @@ resource "ory_identity_schema" "dedup" {
       }
     }
   })
+}
+
+# Look up the same schema via both API paths and compare
+data "ory_identity_schema" "via_project_id" {
+  id         = ory_identity_schema.test.id
+  project_id = "[[ .ProjectID ]]"
+}
+
+data "ory_identity_schema" "via_kratos_api" {
+  id = ory_identity_schema.test.id
 }

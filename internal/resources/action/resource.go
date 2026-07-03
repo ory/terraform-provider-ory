@@ -3,11 +3,14 @@ package action
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -16,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
 
@@ -40,6 +44,19 @@ var (
 	_ resource.ResourceWithValidateConfig = &ActionResource{}
 )
 
+// projectMutexes serializes Create, Update, and Delete operations per project.
+// The Ory API stores action hooks as arrays nested in the project config. Every
+// mutation is a read-modify-write (read hooks → append/replace/remove → PatchProject).
+// Without serialization, concurrent operations read the same stale hooks array
+// and the last write wins, silently dropping the other hooks.
+// See: https://github.com/ory/terraform-provider-ory/issues/189
+var projectMutexes sync.Map // map[projectID]*sync.Mutex
+
+func projectMutex(projectID string) *sync.Mutex {
+	v, _ := projectMutexes.LoadOrStore(projectID, &sync.Mutex{})
+	return v.(*sync.Mutex)
+}
+
 func NewResource() resource.Resource {
 	return &ActionResource{}
 }
@@ -62,12 +79,16 @@ type ActionResourceModel struct {
 	CanInterrupt   types.Bool   `tfsdk:"can_interrupt"`
 
 	// Webhook authentication configuration
-	WebhookAuthType              types.String `tfsdk:"webhook_auth_type"`
-	WebhookAuthBasicAuthUser     types.String `tfsdk:"webhook_auth_basic_auth_user"`
-	WebhookAuthBasicAuthPassword types.String `tfsdk:"webhook_auth_basic_auth_password"`
-	WebhookAuthAPIKeyName        types.String `tfsdk:"webhook_auth_api_key_name"`
-	WebhookAuthAPIKeyValue       types.String `tfsdk:"webhook_auth_api_key_value"`
-	WebhookAuthAPIKeyIn          types.String `tfsdk:"webhook_auth_api_key_in"`
+	WebhookAuthType                       types.String `tfsdk:"webhook_auth_type"`
+	WebhookAuthBasicAuthUser              types.String `tfsdk:"webhook_auth_basic_auth_user"`
+	WebhookAuthBasicAuthPassword          types.String `tfsdk:"webhook_auth_basic_auth_password"`
+	WebhookAuthBasicAuthPasswordWO        types.String `tfsdk:"webhook_auth_basic_auth_password_wo"`
+	WebhookAuthBasicAuthPasswordWOVersion types.String `tfsdk:"webhook_auth_basic_auth_password_wo_version"`
+	WebhookAuthAPIKeyName                 types.String `tfsdk:"webhook_auth_api_key_name"`
+	WebhookAuthAPIKeyValue                types.String `tfsdk:"webhook_auth_api_key_value"`
+	WebhookAuthAPIKeyValueWO              types.String `tfsdk:"webhook_auth_api_key_value_wo"`
+	WebhookAuthAPIKeyValueWOVersion       types.String `tfsdk:"webhook_auth_api_key_value_wo_version"`
+	WebhookAuthAPIKeyIn                   types.String `tfsdk:"webhook_auth_api_key_in"`
 }
 
 const actionMarkdownDescription = `
@@ -111,7 +132,7 @@ The ` + "`auth_method`" + ` attribute specifies which authentication method trig
 | ` + "`totp`" + ` | Time-based one-time password | "TOTP" |
 | ` + "`lookup_secret`" + ` | Recovery/backup codes | "Backup Codes" |
 
-**Note:** ` + "`auth_method`" + ` is only used for ` + "`timing = \"after\"`" + ` webhooks. For ` + "`timing = \"before\"`" + ` hooks, the webhook runs before any authentication method.
+**Note:** ` + "`auth_method`" + ` only applies to ` + "`timing = \"after\"`" + ` webhooks on the ` + "`login`" + `, ` + "`registration`" + `, and ` + "`settings`" + ` flows. The ` + "`recovery`" + ` and ` + "`verification`" + ` flows are not scoped by authentication method, so ` + "`auth_method`" + ` is ignored for them and should be omitted. For ` + "`timing = \"before\"`" + ` hooks, the webhook runs before any authentication method.
 
 ## Webhook Authentication
 
@@ -227,8 +248,8 @@ func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				},
 			},
 			"auth_method": schema.StringAttribute{
-				Description:         "Authentication method to hook into (password, oidc, code, webauthn, passkey, totp, lookup_secret). Required for 'after' timing. Defaults to 'password'.",
-				MarkdownDescription: "Authentication method that triggers the webhook. In the Ory Console UI, this is the \"Method\" selector. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`. Only used for `timing = \"after\"` webhooks.",
+				Description:         "Authentication method to hook into (password, oidc, code, webauthn, passkey, totp, lookup_secret). Defaults to 'password'. Only applies to 'after' timing on the login, registration, and settings flows; ignored for the recovery and verification flows.",
+				MarkdownDescription: "Authentication method that triggers the webhook. In the Ory Console UI, this is the \"Method\" selector. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`. Only applies to `timing = \"after\"` webhooks on the `login`, `registration`, and `settings` flows; it is ignored for the `recovery` and `verification` flows.",
 				Optional:            true,
 				Computed:            true,
 				Default:             stringdefault.StaticString("password"),
@@ -294,7 +315,7 @@ func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				},
 			},
 			"webhook_auth_basic_auth_password": schema.StringAttribute{
-				Description: "Password for basic auth webhook authentication.",
+				Description: "Password for basic auth webhook authentication. Stored in Terraform state; for an ephemeral alternative that is never persisted, use webhook_auth_basic_auth_password_wo.",
 				Optional:    true,
 				Sensitive:   true,
 				Validators: []validator.String{
@@ -304,6 +325,28 @@ func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest,
 						path.MatchRoot("webhook_auth_api_key_value"),
 						path.MatchRoot("webhook_auth_api_key_in"),
 					),
+				},
+			},
+			"webhook_auth_basic_auth_password_wo": schema.StringAttribute{
+				Description: "Write-only equivalent of webhook_auth_basic_auth_password (Terraform 1.11+ write-only argument): the value is sent to Ory but never stored in Terraform state or plan. Use this to source the password from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change webhook_auth_basic_auth_password_wo_version to rotate it. Mutually exclusive with webhook_auth_basic_auth_password.",
+				Optional:    true,
+				WriteOnly:   true,
+				Sensitive:   true,
+				Validators: []validator.String{
+					stringvalidator.AlsoRequires(path.MatchRoot("webhook_auth_type")),
+					stringvalidator.ConflictsWith(
+						path.MatchRoot("webhook_auth_basic_auth_password"),
+						path.MatchRoot("webhook_auth_api_key_name"),
+						path.MatchRoot("webhook_auth_api_key_value"),
+						path.MatchRoot("webhook_auth_api_key_in"),
+					),
+				},
+			},
+			"webhook_auth_basic_auth_password_wo_version": schema.StringAttribute{
+				Description: "Version trigger for webhook_auth_basic_auth_password_wo. Change this value whenever the write-only password changes so Terraform sends the new value to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless webhook_auth_basic_auth_password_wo is set.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.AlsoRequires(path.MatchRoot("webhook_auth_basic_auth_password_wo")),
 				},
 			},
 			"webhook_auth_api_key_name": schema.StringAttribute{
@@ -318,7 +361,7 @@ func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				},
 			},
 			"webhook_auth_api_key_value": schema.StringAttribute{
-				Description: "API key value for API key webhook authentication.",
+				Description: "API key value for API key webhook authentication. Stored in Terraform state; for an ephemeral alternative that is never persisted, use webhook_auth_api_key_value_wo.",
 				Optional:    true,
 				Sensitive:   true,
 				Validators: []validator.String{
@@ -327,6 +370,28 @@ func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest,
 						path.MatchRoot("webhook_auth_basic_auth_user"),
 						path.MatchRoot("webhook_auth_basic_auth_password"),
 					),
+				},
+			},
+			"webhook_auth_api_key_value_wo": schema.StringAttribute{
+				Description: "Write-only equivalent of webhook_auth_api_key_value (Terraform 1.11+ write-only argument): the value is sent to Ory but never stored in Terraform state or plan. Use this to source the API key from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change webhook_auth_api_key_value_wo_version to rotate it. Mutually exclusive with webhook_auth_api_key_value.",
+				Optional:    true,
+				WriteOnly:   true,
+				Sensitive:   true,
+				Validators: []validator.String{
+					stringvalidator.AlsoRequires(path.MatchRoot("webhook_auth_type")),
+					stringvalidator.ConflictsWith(
+						path.MatchRoot("webhook_auth_api_key_value"),
+						path.MatchRoot("webhook_auth_basic_auth_user"),
+						path.MatchRoot("webhook_auth_basic_auth_password"),
+						path.MatchRoot("webhook_auth_basic_auth_password_wo"),
+					),
+				},
+			},
+			"webhook_auth_api_key_value_wo_version": schema.StringAttribute{
+				Description: "Version trigger for webhook_auth_api_key_value_wo. Change this value whenever the write-only API key changes so Terraform sends the new value to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless webhook_auth_api_key_value_wo is set.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.AlsoRequires(path.MatchRoot("webhook_auth_api_key_value_wo")),
 				},
 			},
 			"webhook_auth_api_key_in": schema.StringAttribute{
@@ -365,43 +430,81 @@ func (r *ActionResource) ValidateConfig(ctx context.Context, req resource.Valida
 		return
 	}
 
+	// auth_method only takes effect for "after" hooks on the login, registration,
+	// and settings flows. It is ignored for "before" hooks (all flows) and for the
+	// recovery and verification flows, which store their after-hooks in a single
+	// flat array. Warn when it is set explicitly but will have no effect, so users
+	// aren't surprised. Timing is only considered when known, to avoid false
+	// positives for auth-scoped flows whose timing is resolved at apply time.
+	if !config.AuthMethod.IsNull() && !config.AuthMethod.IsUnknown() &&
+		!config.Flow.IsNull() && !config.Flow.IsUnknown() {
+		flow := config.Flow.ValueString()
+		ignoredByFlow := !flowSupportsAuthMethod(flow)
+		ignoredByTiming := !config.Timing.IsNull() && !config.Timing.IsUnknown() &&
+			config.Timing.ValueString() != timingAfter
+		if ignoredByFlow || ignoredByTiming {
+			detail := fmt.Sprintf("The %q flow does not scope its hooks by authentication method, so "+
+				"auth_method is ignored. You can safely remove auth_method from this resource.", flow)
+			if !ignoredByFlow {
+				detail = "auth_method only applies to \"after\" hooks, so it is ignored for \"before\" hooks. " +
+					"You can safely remove auth_method from this resource."
+			}
+			resp.Diagnostics.AddAttributeWarning(
+				path.Root("auth_method"),
+				"auth_method has no effect for this configuration",
+				detail,
+			)
+		}
+	}
+
 	if config.WebhookAuthType.IsNull() || config.WebhookAuthType.IsUnknown() {
 		return
 	}
 
+	// Per-field unknown checks: when a value is sourced from a data source (e.g. AWS Secrets
+	// Manager), it is unknown at plan time and will become known at apply time. We skip the
+	// required-field check only for the specific field that is unknown, allowing validation of
+	// other fields that are already known. See:
+	// https://developer.hashicorp.com/terraform/plugin/framework/validation
 	authType := config.WebhookAuthType.ValueString()
 	switch authType {
 	case webhookAuthBasicAuth:
-		if config.WebhookAuthBasicAuthUser.IsNull() || config.WebhookAuthBasicAuthUser.IsUnknown() {
+		if !config.WebhookAuthBasicAuthUser.IsUnknown() && config.WebhookAuthBasicAuthUser.IsNull() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("webhook_auth_basic_auth_user"),
 				"Missing Required Attribute",
 				"webhook_auth_basic_auth_user is required when webhook_auth_type is \"basic_auth\".",
 			)
 		}
-		if config.WebhookAuthBasicAuthPassword.IsNull() || config.WebhookAuthBasicAuthPassword.IsUnknown() {
+		// The password may be supplied via webhook_auth_basic_auth_password or its
+		// write-only counterpart. Only error when both are known and null.
+		if !config.WebhookAuthBasicAuthPassword.IsUnknown() && config.WebhookAuthBasicAuthPassword.IsNull() &&
+			!config.WebhookAuthBasicAuthPasswordWO.IsUnknown() && config.WebhookAuthBasicAuthPasswordWO.IsNull() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("webhook_auth_basic_auth_password"),
 				"Missing Required Attribute",
-				"webhook_auth_basic_auth_password is required when webhook_auth_type is \"basic_auth\".",
+				"webhook_auth_basic_auth_password (or webhook_auth_basic_auth_password_wo) is required when webhook_auth_type is \"basic_auth\".",
 			)
 		}
 	case webhookAuthAPIKey:
-		if config.WebhookAuthAPIKeyName.IsNull() || config.WebhookAuthAPIKeyName.IsUnknown() {
+		if !config.WebhookAuthAPIKeyName.IsUnknown() && config.WebhookAuthAPIKeyName.IsNull() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("webhook_auth_api_key_name"),
 				"Missing Required Attribute",
 				"webhook_auth_api_key_name is required when webhook_auth_type is \"api_key\".",
 			)
 		}
-		if config.WebhookAuthAPIKeyValue.IsNull() || config.WebhookAuthAPIKeyValue.IsUnknown() {
+		// The API key value may be supplied via webhook_auth_api_key_value or its
+		// write-only counterpart. Only error when both are known and null.
+		if !config.WebhookAuthAPIKeyValue.IsUnknown() && config.WebhookAuthAPIKeyValue.IsNull() &&
+			!config.WebhookAuthAPIKeyValueWO.IsUnknown() && config.WebhookAuthAPIKeyValueWO.IsNull() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("webhook_auth_api_key_value"),
 				"Missing Required Attribute",
-				"webhook_auth_api_key_value is required when webhook_auth_type is \"api_key\".",
+				"webhook_auth_api_key_value (or webhook_auth_api_key_value_wo) is required when webhook_auth_type is \"api_key\".",
 			)
 		}
-		if config.WebhookAuthAPIKeyIn.IsNull() || config.WebhookAuthAPIKeyIn.IsUnknown() {
+		if !config.WebhookAuthAPIKeyIn.IsUnknown() && config.WebhookAuthAPIKeyIn.IsNull() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("webhook_auth_api_key_in"),
 				"Missing Required Attribute",
@@ -411,7 +514,12 @@ func (r *ActionResource) ValidateConfig(ctx context.Context, req resource.Valida
 	}
 }
 
-func (r *ActionResource) buildHookValue(plan *ActionResourceModel) map[string]interface{} {
+// buildHookValue builds the Ory web_hook config map. basicAuthPassword and
+// apiKeyValue carry the resolved secret values (the write-only _wo value when
+// set, otherwise the stateful attribute), read from req.Config by
+// resolveAuthSecrets. They are used only to build the API payload and are never
+// written back into the model, so they never reach Terraform state.
+func (r *ActionResource) buildHookValue(plan *ActionResourceModel, basicAuthPassword, apiKeyValue types.String) map[string]interface{} {
 	hookConfig := map[string]interface{}{
 		"url":    plan.URL.ValueString(),
 		"method": plan.HTTPMethod.ValueString(),
@@ -450,17 +558,17 @@ func (r *ActionResource) buildHookValue(plan *ActionResourceModel) map[string]in
 		switch authType {
 		case webhookAuthBasicAuth:
 			if !plan.WebhookAuthBasicAuthUser.IsNull() && !plan.WebhookAuthBasicAuthUser.IsUnknown() &&
-				!plan.WebhookAuthBasicAuthPassword.IsNull() && !plan.WebhookAuthBasicAuthPassword.IsUnknown() {
+				!basicAuthPassword.IsNull() && !basicAuthPassword.IsUnknown() {
 				authCfg["user"] = plan.WebhookAuthBasicAuthUser.ValueString()
-				authCfg["password"] = plan.WebhookAuthBasicAuthPassword.ValueString()
+				authCfg["password"] = basicAuthPassword.ValueString()
 				hasValidAuthConfig = true
 			}
 		case webhookAuthAPIKey:
 			if !plan.WebhookAuthAPIKeyName.IsNull() && !plan.WebhookAuthAPIKeyName.IsUnknown() &&
-				!plan.WebhookAuthAPIKeyValue.IsNull() && !plan.WebhookAuthAPIKeyValue.IsUnknown() &&
+				!apiKeyValue.IsNull() && !apiKeyValue.IsUnknown() &&
 				!plan.WebhookAuthAPIKeyIn.IsNull() && !plan.WebhookAuthAPIKeyIn.IsUnknown() {
 				authCfg["name"] = plan.WebhookAuthAPIKeyName.ValueString()
-				authCfg["value"] = plan.WebhookAuthAPIKeyValue.ValueString()
+				authCfg["value"] = apiKeyValue.ValueString()
 				authCfg["in"] = plan.WebhookAuthAPIKeyIn.ValueString()
 				hasValidAuthConfig = true
 			}
@@ -480,61 +588,56 @@ func (r *ActionResource) buildHookValue(plan *ActionResourceModel) map[string]in
 	}
 }
 
+// resolveAuthSecrets returns the effective basic-auth password and api-key value
+// for an apply, preferring the write-only (_wo) value when the user supplied one.
+// Write-only attribute values are nullified in the plan and state, so they must
+// be read from the configuration (req.Config) at Create and Update time.
+func (r *ActionResource) resolveAuthSecrets(ctx context.Context, config tfsdk.Config, plan *ActionResourceModel, diags *diag.Diagnostics) (basicAuthPassword, apiKeyValue types.String) {
+	basicAuthPassword = plan.WebhookAuthBasicAuthPassword
+	apiKeyValue = plan.WebhookAuthAPIKeyValue
+
+	var passwordWO, valueWO types.String
+	diags.Append(config.GetAttribute(ctx, path.Root("webhook_auth_basic_auth_password_wo"), &passwordWO)...)
+	diags.Append(config.GetAttribute(ctx, path.Root("webhook_auth_api_key_value_wo"), &valueWO)...)
+
+	if !passwordWO.IsNull() && !passwordWO.IsUnknown() {
+		basicAuthPassword = passwordWO
+	}
+	if !valueWO.IsNull() && !valueWO.IsUnknown() {
+		apiKeyValue = valueWO
+	}
+	return basicAuthPassword, apiKeyValue
+}
+
+// copyHooks returns a deep copy of the hooks slice via a JSON round-trip so
+// callers cannot accidentally mutate the cached project state shared with
+// other resources in the same Terraform run.
+func copyHooks(hooks []map[string]interface{}) []map[string]interface{} {
+	b, err := json.Marshal(hooks)
+	if err != nil {
+		// Should never happen — the data was decoded from JSON.
+		return hooks
+	}
+	var cp []map[string]interface{}
+	if err := json.Unmarshal(b, &cp); err != nil {
+		return hooks
+	}
+	return cp
+}
+
 func (r *ActionResource) getHooks(ctx context.Context, projectID, flow, timing, authMethod string) ([]map[string]interface{}, error) {
+	// Prefer cached project state from a previous PatchProject call in this
+	// Terraform run. This avoids reading stale data from the eventually-consistent
+	// GetProject API, which is critical when the mutex serializes back-to-back
+	// mutations — the second operation must see the first operation's result.
+	if cached := r.client.GetCachedProject(projectID); cached != nil {
+		return copyHooks(r.getHooksFromProject(cached, flow, timing, authMethod)), nil
+	}
 	project, err := r.client.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get project %s: %w", projectID, err)
 	}
-
-	if project.Services.Identity == nil {
-		return []map[string]interface{}{}, nil
-	}
-
-	configMap := project.Services.Identity.Config
-	if configMap == nil {
-		return []map[string]interface{}{}, nil
-	}
-
-	selfservice, ok := configMap["selfservice"].(map[string]interface{})
-	if !ok {
-		return []map[string]interface{}{}, nil
-	}
-
-	flows, ok := selfservice["flows"].(map[string]interface{})
-	if !ok {
-		return []map[string]interface{}{}, nil
-	}
-
-	flowConfig, ok := flows[flow].(map[string]interface{})
-	if !ok {
-		return []map[string]interface{}{}, nil
-	}
-
-	timingConfig, ok := flowConfig[timing].(map[string]interface{})
-	if !ok {
-		return []map[string]interface{}{}, nil
-	}
-
-	// For 'after' timing, hooks are nested under the auth method
-	// For 'before' timing, hooks are directly under timing
-	var hooks []interface{}
-	if timing == timingAfter {
-		authMethodConfig, ok := timingConfig[authMethod].(map[string]interface{})
-		if !ok {
-			return []map[string]interface{}{}, nil
-		}
-		hooks, _ = authMethodConfig["hooks"].([]interface{})
-	} else {
-		hooks, _ = timingConfig["hooks"].([]interface{})
-	}
-
-	result := make([]map[string]interface{}, 0, len(hooks))
-	for _, h := range hooks {
-		if hm, ok := h.(map[string]interface{}); ok {
-			result = append(result, hm)
-		}
-	}
-	return result, nil
+	return r.getHooksFromProject(project, flow, timing, authMethod), nil
 }
 
 func (r *ActionResource) findHookIndex(hooks []map[string]interface{}, url, method string) int {
@@ -555,8 +658,24 @@ func (r *ActionResource) findHookIndex(hooks []map[string]interface{}, url, meth
 	return -1
 }
 
+// flowSupportsAuthMethod reports whether a flow's "after" hooks are scoped by
+// authentication method (e.g. .../after/password/hooks). Only the login,
+// registration, and settings flows have method-scoped after-hooks in the Ory
+// Kratos config. The recovery and verification flows store their after-hooks in
+// a single flat array at .../after/hooks with no auth-method level, so PATCHing
+// to .../after/<auth_method>/hooks for them returns 200 but silently drops the
+// hook. See https://github.com/ory/terraform-provider-ory/issues/241
+func flowSupportsAuthMethod(flow string) bool {
+	switch flow {
+	case "login", "registration", "settings":
+		return true
+	default:
+		return false
+	}
+}
+
 func (r *ActionResource) hookPath(flow, timing, authMethod string) string {
-	if timing == timingAfter {
+	if timing == timingAfter && flowSupportsAuthMethod(flow) {
 		return fmt.Sprintf("/services/identity/config/selfservice/flows/%s/%s/%s/hooks", flow, timing, authMethod)
 	}
 	return fmt.Sprintf("/services/identity/config/selfservice/flows/%s/%s/hooks", flow, timing)
@@ -593,7 +712,7 @@ func (r *ActionResource) getHooksFromProject(project *ory.Project, flow, timing,
 	}
 
 	var hooks []interface{}
-	if timing == timingAfter {
+	if timing == timingAfter && flowSupportsAuthMethod(flow) {
 		authMethodConfig, ok := timingConfig[authMethod].(map[string]interface{})
 		if !ok {
 			return []map[string]interface{}{}
@@ -630,6 +749,11 @@ func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest,
 	url := plan.URL.ValueString()
 	httpMethod := plan.HTTPMethod.ValueString()
 
+	// Serialize mutations to prevent concurrent read-modify-write races.
+	mu := projectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
+
 	// Check if hook already exists
 	hooks, err := r.getHooks(ctx, projectID, flow, timing, authMethod)
 	if err != nil {
@@ -643,12 +767,16 @@ func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	hookValue := r.buildHookValue(&plan)
+	basicAuthPassword, apiKeyValue := r.resolveAuthSecrets(ctx, req.Config, &plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	hookValue := r.buildHookValue(&plan, basicAuthPassword, apiKeyValue)
 	hookPath := r.hookPath(flow, timing, authMethod)
 
 	// Append the new hook to existing hooks and replace the entire array
 	// This handles the case where the hooks array might not exist
-	newHooks := make([]interface{}, 0, len(hooks)+1)
+	newHooks := make([]interface{}, 0, len(hooks))
 	for _, h := range hooks {
 		newHooks = append(newHooks, h)
 	}
@@ -831,8 +959,13 @@ func (r *ActionResource) Read(ctx context.Context, req resource.ReadRequest, res
 				}
 				// Password is sensitive - the API may not return it.
 				// Preserve the existing state value to avoid drift when omitted.
-				if password, ok := authCfg["password"].(string); ok && password != "" {
-					state.WebhookAuthBasicAuthPassword = types.StringValue(password)
+				// Only refresh when already tracked in state: when supplied via the
+				// write-only webhook_auth_basic_auth_password_wo it is null in state
+				// and must stay null so the secret never lands in state.
+				if !state.WebhookAuthBasicAuthPassword.IsNull() {
+					if password, ok := authCfg["password"].(string); ok && password != "" {
+						state.WebhookAuthBasicAuthPassword = types.StringValue(password)
+					}
 				}
 				// Clear unrelated auth-type fields
 				state.WebhookAuthAPIKeyName = types.StringNull()
@@ -846,8 +979,13 @@ func (r *ActionResource) Read(ctx context.Context, req resource.ReadRequest, res
 				}
 				// Value is sensitive - the API may not return it.
 				// Preserve the existing state value to avoid drift when omitted.
-				if value, ok := authCfg["value"].(string); ok && value != "" {
-					state.WebhookAuthAPIKeyValue = types.StringValue(value)
+				// Only refresh when already tracked in state: when supplied via the
+				// write-only webhook_auth_api_key_value_wo it is null in state and
+				// must stay null so the secret never lands in state.
+				if !state.WebhookAuthAPIKeyValue.IsNull() {
+					if value, ok := authCfg["value"].(string); ok && value != "" {
+						state.WebhookAuthAPIKeyValue = types.StringValue(value)
+					}
 				}
 				if in, ok := authCfg["in"].(string); ok && in != "" {
 					state.WebhookAuthAPIKeyIn = types.StringValue(in)
@@ -906,6 +1044,11 @@ func (r *ActionResource) Update(ctx context.Context, req resource.UpdateRequest,
 	url := state.URL.ValueString() // Use old URL to find
 	httpMethod := state.HTTPMethod.ValueString()
 
+	// Serialize mutations to prevent concurrent read-modify-write races.
+	mu := projectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
+
 	hooks, err := r.getHooks(ctx, projectID, flow, timing, authMethod)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Getting Hooks", err.Error())
@@ -919,7 +1062,11 @@ func (r *ActionResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	hookValue := r.buildHookValue(&plan)
+	basicAuthPassword, apiKeyValue := r.resolveAuthSecrets(ctx, req.Config, &plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	hookValue := r.buildHookValue(&plan, basicAuthPassword, apiKeyValue)
 	hookPath := r.hookPath(flow, timing, authMethod)
 
 	patches := []ory.JsonPatch{{
@@ -964,6 +1111,11 @@ func (r *ActionResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	url := state.URL.ValueString()
 	httpMethod := state.HTTPMethod.ValueString()
 
+	// Serialize mutations to prevent concurrent read-modify-write races.
+	mu := projectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
+
 	hooks, err := r.getHooks(ctx, projectID, flow, timing, authMethod)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Getting Hooks", err.Error())
@@ -988,111 +1140,118 @@ func (r *ActionResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	}
 }
 
+// isImportHTTPMethod reports whether s is one of the HTTP methods accepted in
+// the optional method segment of an import ID.
+func isImportHTTPMethod(s string) bool {
+	switch s {
+	case "POST", "GET", "PUT", "PATCH", "DELETE":
+		return true
+	}
+	return false
+}
+
+// actionImportID holds the fields parsed from an ory_action import ID.
+type actionImportID struct {
+	projectID  string
+	flow       string
+	timing     string
+	authMethod string
+	httpMethod string
+	url        string
+}
+
+// parseActionImportID parses an ory_action import ID. On success it returns the
+// parsed fields and an empty detail; on failure it returns a non-empty
+// diagnostic detail describing the problem (suitable as the detail of an
+// "Invalid Import ID" diagnostic).
+//
+// Import ID layouts (colon-separated, the url is always the tail):
+//   - For "after" timing:  project_id:flow:after:auth_method:method:url
+//   - For "before" timing: project_id:flow:before:method:url
+//
+// The method segment is optional and defaults to POST (legacy formats).
+//
+// The url itself contains colons (https://...), so the ID cannot be parsed by
+// counting segments (issue #280). The fixed segments are parsed from the left,
+// and the optional method segment is recognized by matching it against the
+// known HTTP verbs.
+func parseActionImportID(id string) (actionImportID, string) {
+	const importFormatHelp = "Import ID must be in one of these formats:\n" +
+		"  - For 'after' timing: project_id:flow:after:auth_method:method:url\n" +
+		"  - For 'before' timing: project_id:flow:before:method:url\n" +
+		"The method segment is optional and defaults to POST.\n\n" +
+		"Examples:\n" +
+		"  550e8400-...:registration:after:password:POST:https://api.example.com/webhook\n" +
+		"  550e8400-...:login:before:PATCH:https://api.example.com/validate"
+
+	parts := strings.SplitN(id, ":", 4)
+	if len(parts) != 4 {
+		return actionImportID{}, importFormatHelp
+	}
+	parsed := actionImportID{
+		projectID:  parts[0],
+		flow:       parts[1],
+		timing:     parts[2],
+		authMethod: defaultAuthMethod,
+		httpMethod: defaultHTTPMethod,
+	}
+	rest := parts[3]
+
+	if parsed.timing != timingBefore && parsed.timing != timingAfter {
+		return actionImportID{}, fmt.Sprintf("Invalid timing '%s'. Must be 'before' or 'after'.\n\n%s", parsed.timing, importFormatHelp)
+	}
+
+	if parsed.timing == timingAfter {
+		// The auth_method segment is required for "after" timing. "_", "none",
+		// and "" are accepted as placeholders for flows that ignore it.
+		segment, tail, found := strings.Cut(rest, ":")
+		if !found {
+			return actionImportID{}, "Missing url after auth_method for 'after' timing.\n\n" + importFormatHelp
+		}
+		if segment != "_" && segment != "none" && segment != "" {
+			parsed.authMethod = segment
+		}
+		rest = tail
+	}
+
+	// Optional method segment. A leading segment before the first ':' is only a
+	// method if it matches a known HTTP verb; otherwise the ':' belongs to the
+	// url's own scheme separator (https://...) and the method was omitted.
+	// Detect the scheme case by the "//" authority prefix rather than scanning
+	// the whole tail for "://", which would false-positive on urls with an
+	// embedded scheme in a query param (e.g. ?redirect=https://other).
+	if segment, tail, found := strings.Cut(rest, ":"); found {
+		if isImportHTTPMethod(strings.ToUpper(segment)) {
+			parsed.httpMethod = strings.ToUpper(segment)
+			rest = tail
+		} else if !strings.HasPrefix(tail, "//") {
+			// A url still follows, so this segment was meant to be the method.
+			return actionImportID{}, fmt.Sprintf("Invalid HTTP method '%s'. Must be one of: POST, GET, PUT, PATCH, DELETE", segment)
+		}
+	}
+
+	parsed.url = rest
+	if parsed.url == "" {
+		return actionImportID{}, "Missing url.\n\n" + importFormatHelp
+	}
+	return parsed, ""
+}
+
 func (r *ActionResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	// Import format includes HTTP method to support non-POST webhooks:
-	// - For "after" timing: project_id:flow:after:auth_method:method:url (6 parts)
-	// - For "before" timing: project_id:flow:before:method:url (5 parts)
-	//
-	// Legacy formats without method are still supported (defaults to POST):
-	// - For "after" timing: project_id:flow:after:auth_method:url (5 parts)
-	// - For "before" timing: project_id:flow:before:url (4 parts)
-	parts := strings.SplitN(req.ID, ":", 6)
-
-	var projectID, flow, timing, authMethod, httpMethod, url string
-
-	switch len(parts) {
-	case 4:
-		// Legacy 4-part format: project_id:flow:before:url (for "before" timing only)
-		projectID = parts[0]
-		flow = parts[1]
-		timing = parts[2]
-		url = parts[3]
-
-		if timing != timingBefore {
-			resp.Diagnostics.AddError("Invalid Import ID",
-				"4-part import format (project_id:flow:timing:url) is only valid for 'before' timing.\n"+
-					"For 'after' timing, use: project_id:flow:after:auth_method:method:url")
-			return
-		}
-		authMethod = defaultAuthMethod // Default, not used for "before" timing
-		httpMethod = defaultHTTPMethod // Default
-	case 5:
-		// Could be:
-		// - Legacy 5-part for "after": project_id:flow:after:auth_method:url (no method, defaults to POST)
-		// - New 5-part for "before": project_id:flow:before:method:url
-		projectID = parts[0]
-		flow = parts[1]
-		timing = parts[2]
-
-		if timing == timingBefore {
-			// New format: project_id:flow:before:method:url
-			httpMethod = parts[3]
-			url = parts[4]
-			authMethod = defaultAuthMethod // Default, not used for "before" timing
-
-			// Validate HTTP method
-			if httpMethod != "POST" && httpMethod != "GET" && httpMethod != "PUT" && httpMethod != "PATCH" && httpMethod != "DELETE" {
-				resp.Diagnostics.AddError("Invalid Import ID",
-					fmt.Sprintf("Invalid HTTP method '%s'. Must be one of: POST, GET, PUT, PATCH, DELETE", httpMethod))
-				return
-			}
-		} else {
-			// Legacy format: project_id:flow:after:auth_method:url (no method)
-			authMethod = parts[3]
-			url = parts[4]
-			httpMethod = defaultHTTPMethod // Default
-
-			// Allow "_" or "none" as placeholder for auth_method
-			if authMethod == "_" || authMethod == "none" || authMethod == "" {
-				authMethod = defaultAuthMethod
-			}
-		}
-	case 6:
-		// New 6-part format for "after": project_id:flow:after:auth_method:method:url
-		projectID = parts[0]
-		flow = parts[1]
-		timing = parts[2]
-		authMethod = parts[3]
-		httpMethod = parts[4]
-		url = parts[5]
-
-		if timing == timingBefore {
-			resp.Diagnostics.AddError("Invalid Import ID",
-				"6-part import format is only valid for 'after' timing.\n"+
-					"For 'before' timing, use: project_id:flow:before:method:url")
-			return
-		}
-
-		// Validate HTTP method
-		if httpMethod != "POST" && httpMethod != "GET" && httpMethod != "PUT" && httpMethod != "PATCH" && httpMethod != "DELETE" {
-			resp.Diagnostics.AddError("Invalid Import ID",
-				fmt.Sprintf("Invalid HTTP method '%s'. Must be one of: POST, GET, PUT, PATCH, DELETE", httpMethod))
-			return
-		}
-
-		// Allow "_" or "none" as placeholder for auth_method
-		if authMethod == "_" || authMethod == "none" || authMethod == "" {
-			authMethod = defaultAuthMethod
-		}
-	default:
-		resp.Diagnostics.AddError("Invalid Import ID",
-			"Import ID must be in one of these formats:\n"+
-				"  - For 'after' timing: project_id:flow:after:auth_method:method:url\n"+
-				"  - For 'before' timing: project_id:flow:before:method:url\n\n"+
-				"Examples:\n"+
-				"  550e8400-...:registration:after:password:POST:https://api.example.com/webhook\n"+
-				"  550e8400-...:login:before:PATCH:https://api.example.com/validate")
+	parsed, detail := parseActionImportID(req.ID)
+	if detail != "" {
+		resp.Diagnostics.AddError("Invalid Import ID", detail)
 		return
 	}
 
 	// Construct the full ID for state
-	fullID := fmt.Sprintf("%s:%s:%s:%s:%s", projectID, flow, timing, authMethod, url)
+	fullID := fmt.Sprintf("%s:%s:%s:%s:%s", parsed.projectID, parsed.flow, parsed.timing, parsed.authMethod, parsed.url)
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), fullID)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), projectID)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("flow"), flow)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("timing"), timing)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("auth_method"), authMethod)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("url"), url)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("method"), httpMethod)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), parsed.projectID)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("flow"), parsed.flow)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("timing"), parsed.timing)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("auth_method"), parsed.authMethod)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("url"), parsed.url)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("method"), parsed.httpMethod)...)
 }

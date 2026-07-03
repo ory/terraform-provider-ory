@@ -41,6 +41,27 @@ resource "ory_action" "validate_login" {
   can_interrupt = true # Allow webhook to block login
 }
 
+# Webhook with write-only (ephemeral) authentication secrets sourced from Vault.
+# The *_wo secrets are never stored in Terraform state or plan (Terraform 1.11+).
+# Bump the matching *_wo_version whenever a secret rotates so Terraform re-sends it.
+ephemeral "vault_kv_secret_v2" "webhook_auth" {
+  mount = "secret"
+  name  = "ory/webhook-auth"
+}
+
+resource "ory_action" "secured_webhook" {
+  flow        = "registration"
+  timing      = "after"
+  auth_method = "password"
+  url         = "https://api.example.com/webhooks/secured"
+  method      = "POST"
+
+  webhook_auth_type                           = "basic_auth"
+  webhook_auth_basic_auth_user                = "webhook-user"
+  webhook_auth_basic_auth_password_wo         = ephemeral.vault_kv_secret_v2.webhook_auth.data["password"]
+  webhook_auth_basic_auth_password_wo_version = "1"
+}
+
 # Async audit log (fire and forget)
 resource "ory_action" "audit_log" {
   flow            = "settings"
@@ -52,12 +73,13 @@ resource "ory_action" "audit_log" {
 }
 
 # Post-verification sync
+# The verification (and recovery) flow is not scoped by authentication method,
+# so auth_method is omitted here — the hook always runs after verification.
 resource "ory_action" "sync_verified" {
-  flow        = "verification"
-  timing      = "after"
-  auth_method = "code"
-  url         = "https://api.example.com/webhooks/user-verified"
-  method      = "POST"
+  flow   = "verification"
+  timing = "after"
+  url    = "https://api.example.com/webhooks/user-verified"
+  method = "POST"
 }
 
 # Post-registration enrichment (parse response to modify identity)
@@ -106,7 +128,7 @@ resource "ory_action" "with_api_key" {
 
 ## Authentication Methods
 
-The `auth_method` attribute specifies which authentication method triggers the webhook. This is only used for `timing = "after"` webhooks.
+The `auth_method` attribute specifies which authentication method triggers the webhook. It applies only to `timing = "after"` webhooks on the `login`, `registration`, and `settings` flows.
 
 | Value | Description |
 |-------|-------------|
@@ -118,7 +140,7 @@ The `auth_method` attribute specifies which authentication method triggers the w
 | `totp` | Time-based one-time password |
 | `lookup_secret` | Recovery/backup codes |
 
-~> **Note:** `auth_method` is only used for `timing = "after"` webhooks. For `timing = "before"` hooks, the webhook runs before any authentication method is invoked.
+~> **Note:** `auth_method` only applies to `timing = "after"` webhooks on the `login`, `registration`, and `settings` flows. The `recovery` and `verification` flows are **not** scoped by authentication method — their after-hooks always run — so `auth_method` is ignored for them and should be omitted. For `timing = "before"` hooks, the webhook runs before any authentication method is invoked.
 
 ## Webhook Authentication
 
@@ -180,7 +202,8 @@ The `method` attribute specifies the HTTP method used when calling the webhook:
 
 ## Import
 
-Actions must be imported with the HTTP method included in the import ID.
+Actions are imported with the HTTP method included in the import ID. The
+method segment is optional and defaults to `POST` when omitted.
 
 **For "after" timing (post-hooks):**
 ```shell
@@ -213,7 +236,7 @@ terraform import ory_action.validate \
 1. **project_id**: Settings → General → Project ID
 2. **flow**: The flow type (login, registration, recovery, settings, verification)
 3. **timing**: "before" or "after"
-4. **auth_method** (for "after" only): password, oidc, code, webauthn, passkey, totp, lookup_secret
+4. **auth_method**: for `login`/`registration`/`settings` "after" hooks, one of password, oidc, code, webauthn, passkey, totp, lookup_secret. For `recovery`/`verification` "after" hooks the value is ignored, but the import ID format still requires this segment — use `password` to match the provider default and avoid a post-import diff (keep `auth_method` omitted from the resource configuration itself).
 5. **method**: The HTTP method (POST, GET, PUT, PATCH, DELETE)
 6. **url**: The exact webhook URL - must match exactly including protocol and trailing slashes
 
@@ -238,7 +261,9 @@ Common issues:
 
 ### Optional
 
-- `auth_method` (String) Authentication method that triggers the webhook. In the Ory Console UI, this is the "Method" selector. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`. Only used for `timing = "after"` webhooks.
+> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
+
+- `auth_method` (String) Authentication method that triggers the webhook. In the Ory Console UI, this is the "Method" selector. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`. Only applies to `timing = "after"` webhooks on the `login`, `registration`, and `settings` flows; it is ignored for the `recovery` and `verification` flows.
 - `body` (String) Jsonnet template for the request body.
 - `can_interrupt` (Boolean) Allow webhook to interrupt/block the flow (default: false).
 - `method` (String) HTTP method (default: POST).
@@ -247,8 +272,12 @@ Common issues:
 - `response_parse` (Boolean) Parse response to modify identity (default: false).
 - `webhook_auth_api_key_in` (String) Where to send the API key: 'header' or 'cookie'.
 - `webhook_auth_api_key_name` (String) Header or cookie name for API key webhook authentication.
-- `webhook_auth_api_key_value` (String, Sensitive) API key value for API key webhook authentication.
-- `webhook_auth_basic_auth_password` (String, Sensitive) Password for basic auth webhook authentication.
+- `webhook_auth_api_key_value` (String, Sensitive) API key value for API key webhook authentication. Stored in Terraform state; for an ephemeral alternative that is never persisted, use webhook_auth_api_key_value_wo.
+- `webhook_auth_api_key_value_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of webhook_auth_api_key_value (Terraform 1.11+ write-only argument): the value is sent to Ory but never stored in Terraform state or plan. Use this to source the API key from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change webhook_auth_api_key_value_wo_version to rotate it. Mutually exclusive with webhook_auth_api_key_value.
+- `webhook_auth_api_key_value_wo_version` (String) Version trigger for webhook_auth_api_key_value_wo. Change this value whenever the write-only API key changes so Terraform sends the new value to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless webhook_auth_api_key_value_wo is set.
+- `webhook_auth_basic_auth_password` (String, Sensitive) Password for basic auth webhook authentication. Stored in Terraform state; for an ephemeral alternative that is never persisted, use webhook_auth_basic_auth_password_wo.
+- `webhook_auth_basic_auth_password_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of webhook_auth_basic_auth_password (Terraform 1.11+ write-only argument): the value is sent to Ory but never stored in Terraform state or plan. Use this to source the password from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change webhook_auth_basic_auth_password_wo_version to rotate it. Mutually exclusive with webhook_auth_basic_auth_password.
+- `webhook_auth_basic_auth_password_wo_version` (String) Version trigger for webhook_auth_basic_auth_password_wo. Change this value whenever the write-only password changes so Terraform sends the new value to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless webhook_auth_basic_auth_password_wo is set.
 - `webhook_auth_basic_auth_user` (String) Username for basic auth webhook authentication.
 - `webhook_auth_type` (String) Webhook authentication type: 'basic_auth' or 'api_key'.
 

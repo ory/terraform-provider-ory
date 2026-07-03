@@ -6,6 +6,9 @@ on:
     # https://crontab.guru/#0_8,11,14,17_*_*_*
     - cron: '0 8,11,14,17 * * *'
 
+permissions:
+  contents: read
+
 concurrency:
   group: renovate-${{ github.ref }}
   cancel-in-progress: true
@@ -17,10 +20,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       - name: Self-hosted Renovate
-        uses: renovatebot/github-action@7b4b65bf31e07d4e3e51708d07700fb41bc03166 # v46.1.3
+        uses: renovatebot/github-action@dd5302ec17783b2fc721b19ae7209b57b1587765 # v46.1.17
         with:
           configurationFile: 'renovate-self-hosted.json'
           env-regex: "^(?:RENOVATE_\\w+|LOG_LEVEL|GITHUB_COM_TOKEN|NODE_OPTIONS|AWS_TOKEN)$"

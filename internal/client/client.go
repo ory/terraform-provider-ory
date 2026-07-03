@@ -3,12 +3,16 @@ package client
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +23,15 @@ import (
 
 // ErrCustomDomainNotFound is returned when a custom domain ID is not found in the project's domain list.
 var ErrCustomDomainNotFound = errors.New("custom domain not found")
+
+// ErrConsoleClientNotConfigured is returned when a console API method is called
+// without a workspace API key configured. Callers can check with errors.Is.
+var ErrConsoleClientNotConfigured = errors.New("console API client not configured")
+
+// ErrProjectNotAllowed is returned when a console operation targets a project ID
+// that is not present in the configured allowed_project_ids allowlist. Callers
+// can check with errors.Is.
+var ErrProjectNotAllowed = errors.New("project not allowed by allowed_project_ids")
 
 const (
 	// maxRetries is the maximum number of retry attempts for rate-limited requests.
@@ -258,6 +271,13 @@ func isRetryableError(err error) bool {
 		strings.Contains(errStr, "Gateway Timeout")
 }
 
+// IsTransientError reports whether err is a transient API error (5xx or 429)
+// that is safe to retry, as opposed to a permanent error (4xx auth/permission)
+// that should fail fast.
+func IsTransientError(err error) bool {
+	return isRetryableError(err) || isRateLimitError(err)
+}
+
 // retryWithBackoff executes a function with exponential backoff on rate limit errors.
 func retryWithBackoff[T any](ctx context.Context, operation string, fn func() (T, error)) (T, error) {
 	var result T
@@ -300,6 +320,38 @@ type OryClientConfig struct {
 	ConsoleAPIURL   string
 	ProjectAPIURL   string // URL template with %s placeholder for slug (e.g., "https://%s.projects.oryapis.com")
 	UserAgent       string
+
+	// AllowedProjectIDs optionally restricts which project IDs console
+	// operations may target. When non-empty, any console operation against a
+	// project ID not in this list is refused before the request is sent. When
+	// empty, no restriction is applied. See OryClient.checkProjectAllowed.
+	AllowedProjectIDs []string
+}
+
+// Equal reports whether two configs are equivalent. It is used to decide
+// whether a cached client can be reused. OryClientConfig contains a slice
+// (AllowedProjectIDs) and is therefore not comparable with ==, so this method
+// compares every field explicitly.
+func (c OryClientConfig) Equal(other OryClientConfig) bool {
+	if c.WorkspaceAPIKey != other.WorkspaceAPIKey ||
+		c.ProjectAPIKey != other.ProjectAPIKey ||
+		c.ProjectID != other.ProjectID ||
+		c.ProjectSlug != other.ProjectSlug ||
+		c.WorkspaceID != other.WorkspaceID ||
+		c.ConsoleAPIURL != other.ConsoleAPIURL ||
+		c.ProjectAPIURL != other.ProjectAPIURL ||
+		c.UserAgent != other.UserAgent {
+		return false
+	}
+	if len(c.AllowedProjectIDs) != len(other.AllowedProjectIDs) {
+		return false
+	}
+	for i := range c.AllowedProjectIDs {
+		if c.AllowedProjectIDs[i] != other.AllowedProjectIDs[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // OryClient wraps the Ory SDK clients.
@@ -308,6 +360,10 @@ type OryClientConfig struct {
 // 2. Project API ({slug}.projects.oryapis.com) - for identities, OAuth2 clients
 type OryClient struct {
 	config OryClientConfig
+
+	// allowedProjects is the set of project IDs console operations may target,
+	// derived from config.AllowedProjectIDs. When empty, no restriction applies.
+	allowedProjects map[string]struct{}
 
 	// Console API client (for organizations, projects, workspaces)
 	consoleClient *ory.APIClient
@@ -321,11 +377,34 @@ type OryClient struct {
 	// immediately after PatchProject. This cache ensures Read operations
 	// see the latest state after Create/Update.
 	cachedProjects sync.Map
+
+	// cachedSlugs caches project ID -> slug mappings resolved via the console API.
+	// This avoids redundant API calls when multiple CRUD operations resolve the
+	// same project_id within a single Terraform run.
+	cachedSlugs sync.Map
+
+	// patchProjectMus holds a per-project mutex. The Ory API merges patches
+	// against the project's current revision, so concurrent PATCHes against
+	// the same project can lose writes (e.g. two parallel `remove` ops where
+	// one resource's deletion is silently dropped). Serializing patches per
+	// project — different projects still run in parallel — eliminates that
+	// race without changing the SDK call sites. See issue #213.
+	patchProjectMus sync.Map // map[string]*sync.Mutex
+}
+
+// patchProjectMutex returns the (lazily allocated) mutex for serializing
+// PatchProject calls for a given project ID.
+func (c *OryClient) patchProjectMutex(projectID string) *sync.Mutex {
+	if v, ok := c.patchProjectMus.Load(projectID); ok {
+		return v.(*sync.Mutex)
+	}
+	actual, _ := c.patchProjectMus.LoadOrStore(projectID, &sync.Mutex{})
+	return actual.(*sync.Mutex)
 }
 
 // NewOryClient creates a new Ory API client.
 func NewOryClient(cfg OryClientConfig) (*OryClient, error) {
-	client := &OryClient{config: cfg}
+	client := &OryClient{config: cfg, allowedProjects: buildProjectSet(cfg.AllowedProjectIDs)}
 
 	// Initialize console client if workspace API key is provided
 	if cfg.WorkspaceAPIKey != "" {
@@ -446,6 +525,45 @@ func (c *OryClient) WorkspaceID() string {
 	return c.config.WorkspaceID
 }
 
+// ResolveProjectSlug resolves a project ID to its slug via the console API.
+// Results are cached to avoid redundant API calls within a single Terraform run.
+func (c *OryClient) ResolveProjectSlug(ctx context.Context, projectID string) (string, error) {
+	if projectID == "" {
+		return "", fmt.Errorf("project_id must not be empty")
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return "", err
+	}
+	if slug, ok := c.cachedSlugs.Load(projectID); ok {
+		return slug.(string), nil
+	}
+	if c.consoleClient == nil {
+		return "", fmt.Errorf("console API client not configured: workspace_api_key is required to resolve project_id to slug")
+	}
+	project, err := c.GetProject(ctx, projectID)
+	if err != nil {
+		return "", fmt.Errorf("resolving project slug for project %s: %w", projectID, err)
+	}
+	slug := project.GetSlug()
+	c.cachedSlugs.Store(projectID, slug)
+	return slug, nil
+}
+
+// ProjectClientForProject returns a project-scoped client for the given project ID.
+// It resolves the project slug via the console API and uses the provider's project API key.
+func (c *OryClient) ProjectClientForProject(ctx context.Context, projectID string) (*OryClient, error) {
+	slug, err := c.ResolveProjectSlug(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	apiKey := c.config.ProjectAPIKey
+	if apiKey == "" {
+		return nil, fmt.Errorf("project_api_key is required for project API operations (JWK, OAuth2, etc.): " +
+			"set it on the provider or via ORY_PROJECT_API_KEY environment variable")
+	}
+	return c.WithProjectCredentials(slug, apiKey), nil
+}
+
 // WithProjectCredentials returns a new OryClient that uses the given project
 // credentials. The returned client shares the console client with the parent
 // but has its own isolated project client (lazily initialized).
@@ -457,11 +575,57 @@ func (c *OryClient) WithProjectCredentials(slug, apiKey string) *OryClient {
 	newConfig.ProjectAPIKey = apiKey
 
 	return &OryClient{
-		config:        newConfig,
-		consoleClient: c.consoleClient,
+		config:          newConfig,
+		allowedProjects: c.allowedProjects,
+		consoleClient:   c.consoleClient,
 		// projectClient is nil — ensureProjectClient will lazily initialize it
 		// projectClientMu and cachedProjects are zero-valued (valid)
 	}
+}
+
+// buildProjectSet converts a slice of project IDs into a lookup set, trimming
+// whitespace and dropping empty entries. Returns nil for an empty input so the
+// allowlist is treated as "unset" (no restriction).
+func buildProjectSet(ids []string) map[string]struct{} {
+	if len(ids) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			set[id] = struct{}{}
+		}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	return set
+}
+
+// checkProjectAllowed enforces the optional allowed_project_ids allowlist.
+// When the allowlist is non-empty, any console operation targeting a project ID
+// outside the list is refused before the request is sent. This bounds the blast
+// radius of a workspace API key: a mis-pointed project_id (for example a
+// production project) cannot be read or modified. When the allowlist is empty
+// the check is a no-op and behavior is unchanged.
+func (c *OryClient) checkProjectAllowed(projectID string) error {
+	if len(c.allowedProjects) == 0 {
+		return nil
+	}
+	if _, ok := c.allowedProjects[projectID]; ok {
+		return nil
+	}
+	allowed := make([]string, 0, len(c.allowedProjects))
+	for id := range c.allowedProjects {
+		allowed = append(allowed, id)
+	}
+	sort.Strings(allowed)
+	return fmt.Errorf("%w: project %q is not in the allowed_project_ids allowlist [%s]. "+
+		"This guardrail prevents accidental changes to projects outside the allowlist, "+
+		"such as production. Add the project ID to allowed_project_ids, or remove the "+
+		"allowlist to disable this check",
+		ErrProjectNotAllowed, projectID, strings.Join(allowed, ", "))
 }
 
 // ensureProjectClient lazily initializes the project API client.
@@ -505,6 +669,23 @@ func (c *OryClient) ensureProjectClient() error {
 	return nil
 }
 
+// requireConsoleClient returns an error wrapping ErrConsoleClientNotConfigured
+// if the console API client is not initialized (no workspace API key).
+// This prevents nil pointer panics when methods are called without credentials.
+func (c *OryClient) requireConsoleClient(operation string) error {
+	if c.consoleClient == nil {
+		return fmt.Errorf("%s: %w. "+
+			"This operation manages project configuration, which the Ory Console API "+
+			"requires a workspace API key (ORY_WORKSPACE_API_KEY, ory_wak_...) to perform. "+
+			"A project API key (ory_pat_...) can manage project data such as identities and "+
+			"OAuth2 clients, but cannot read or change project configuration. "+
+			"To limit which projects a workspace key may touch, set allowed_project_ids. "+
+			"See https://www.ory.com/docs/guides/manage-project-via-api",
+			operation, ErrConsoleClientNotConfigured)
+	}
+	return nil
+}
+
 // =============================================================================
 // Project Operations (Console API)
 // =============================================================================
@@ -512,6 +693,9 @@ func (c *OryClient) ensureProjectClient() error {
 // CreateProject creates a new Ory project.
 // Returns the project, HTTP response (for status code inspection), and any error.
 func (c *OryClient) CreateProject(ctx context.Context, name, environment, homeRegion string) (*ory.Project, *http.Response, error) {
+	if err := c.requireConsoleClient("creating project"); err != nil {
+		return nil, nil, err
+	}
 	body := ory.CreateProjectBody{
 		Name:        name,
 		Environment: environment,
@@ -529,6 +713,12 @@ func (c *OryClient) CreateProject(ctx context.Context, name, environment, homeRe
 
 // GetProject retrieves a project by ID.
 func (c *OryClient) GetProject(ctx context.Context, projectID string) (*ory.Project, error) {
+	if err := c.requireConsoleClient("getting project"); err != nil {
+		return nil, err
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
 	project, httpResp, err := c.consoleClient.ProjectAPI.GetProject(ctx, projectID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -538,6 +728,12 @@ func (c *OryClient) GetProject(ctx context.Context, projectID string) (*ory.Proj
 
 // DeleteProject purges a project.
 func (c *OryClient) DeleteProject(ctx context.Context, projectID string) error {
+	if err := c.requireConsoleClient("deleting project"); err != nil {
+		return err
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return err
+	}
 	httpResp, err := c.consoleClient.ProjectAPI.PurgeProject(ctx, projectID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -547,18 +743,41 @@ func (c *OryClient) DeleteProject(ctx context.Context, projectID string) error {
 
 // PatchProject applies JSON Patch operations to a project.
 // The response is automatically cached to avoid stale GetProject reads.
+// Calls against the same project_id are serialized because the API merges
+// patches against the current project revision and concurrent requests can
+// silently drop writes from a stale revision.
 func (c *OryClient) PatchProject(ctx context.Context, projectID string, patches []ory.JsonPatch) (*ory.SuccessfulProjectUpdate, error) {
+	if err := c.requireConsoleClient("patching project"); err != nil {
+		return nil, err
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
+	mu := c.patchProjectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
 	result, httpResp, err := c.consoleClient.ProjectAPI.PatchProject(ctx, projectID).
 		JsonPatch(patches).
 		Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
-	if err == nil && result != nil {
+	if err != nil {
+		// The raw SDK error for a project patch is just the bare HTTP status
+		// (e.g. "403 Forbidden") with no body, so a rejected setting surfaces
+		// with zero diagnostic detail. wrapAPIError parses the response body and
+		// recognizes feature_not_available errors — e.g. enabling the OIDC
+		// auto-link policy on a project whose plan lacks the "Auto Link Policy"
+		// feature returns a 403 whose reason names the feature and links to
+		// pricing. Wrap it so that reason and the request ID reach the user, the
+		// same treatment every other console operation already gets.
+		return result, wrapAPIError(err, "patching project")
+	}
+	if result != nil {
 		project := result.GetProject()
 		c.cachedProjects.Store(projectID, &project)
 	}
-	return result, err
+	return result, nil
 }
 
 // GetCachedProject returns the cached project state from the last PatchProject call.
@@ -576,6 +795,9 @@ func (c *OryClient) GetCachedProject(projectID string) *ory.Project {
 
 // CreateWorkspace creates a new workspace.
 func (c *OryClient) CreateWorkspace(ctx context.Context, name string) (*ory.Workspace, error) {
+	if err := c.requireConsoleClient("creating workspace"); err != nil {
+		return nil, err
+	}
 	body := ory.CreateWorkspaceBody{
 		Name: name,
 	}
@@ -591,6 +813,9 @@ func (c *OryClient) CreateWorkspace(ctx context.Context, name string) (*ory.Work
 // but not get a specific workspace. We fall back to listing and filtering if
 // the direct GET fails with 403.
 func (c *OryClient) GetWorkspace(ctx context.Context, workspaceID string) (*ory.Workspace, error) {
+	if err := c.requireConsoleClient("getting workspace"); err != nil {
+		return nil, err
+	}
 	workspace, httpResp, err := c.consoleClient.WorkspaceAPI.GetWorkspace(ctx, workspaceID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -621,6 +846,9 @@ func (c *OryClient) GetWorkspace(ctx context.Context, workspaceID string) (*ory.
 
 // UpdateWorkspace updates a workspace.
 func (c *OryClient) UpdateWorkspace(ctx context.Context, workspaceID, name string) (*ory.Workspace, error) {
+	if err := c.requireConsoleClient("updating workspace"); err != nil {
+		return nil, err
+	}
 	body := ory.UpdateWorkspaceBody{
 		Name: name,
 	}
@@ -635,6 +863,9 @@ func (c *OryClient) UpdateWorkspace(ctx context.Context, workspaceID, name strin
 func (c *OryClient) GetProjectEnvironment(ctx context.Context, projectID string) (string, error) {
 	if c.consoleClient == nil {
 		return "", fmt.Errorf("console API client not configured")
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return "", err
 	}
 	project, httpResp, err := c.consoleClient.ProjectAPI.GetProject(ctx, projectID).Execute()
 	if httpResp != nil {
@@ -659,6 +890,9 @@ func (c *OryClient) CreateOrganization(ctx context.Context, projectID, label str
 	if c.consoleClient == nil {
 		return nil, fmt.Errorf("creating organization: console API client not configured. " +
 			"Organizations require workspace_api_key (ORY_WORKSPACE_API_KEY) to be set")
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
 	}
 
 	// Ory API requires domains to be an array, not null
@@ -687,6 +921,9 @@ func (c *OryClient) GetOrganization(ctx context.Context, projectID, orgID string
 	if c.consoleClient == nil {
 		return nil, fmt.Errorf("reading organization: console API client not configured. " +
 			"Set workspace_api_key (ORY_WORKSPACE_API_KEY)")
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
 	}
 
 	// Retry with backoff for 404 errors (eventual consistency)
@@ -727,6 +964,9 @@ func (c *OryClient) UpdateOrganization(ctx context.Context, projectID, orgID, la
 	if c.consoleClient == nil {
 		return nil, fmt.Errorf("updating organization: console API client not configured. " +
 			"Set workspace_api_key (ORY_WORKSPACE_API_KEY)")
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
 	}
 
 	// Ory API requires domains to be an array, not null
@@ -777,6 +1017,9 @@ func (c *OryClient) DeleteOrganization(ctx context.Context, projectID, orgID str
 	if c.consoleClient == nil {
 		return fmt.Errorf("deleting organization: console API client not configured. " +
 			"Set workspace_api_key (ORY_WORKSPACE_API_KEY)")
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return err
 	}
 	httpResp, err := c.consoleClient.ProjectAPI.DeleteOrganization(ctx, projectID, orgID).Execute()
 	if httpResp != nil {
@@ -904,6 +1147,12 @@ func (c *OryClient) DeleteOAuth2Client(ctx context.Context, clientID string) err
 
 // CreateProjectAPIKey creates a new API key for a project.
 func (c *OryClient) CreateProjectAPIKey(ctx context.Context, projectID string, body ory.CreateProjectApiKeyRequest) (*ory.ProjectApiKey, error) {
+	if err := c.requireConsoleClient("creating project API key"); err != nil {
+		return nil, err
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
 	key, httpResp, err := c.consoleClient.ProjectAPI.CreateProjectApiKey(ctx, projectID).CreateProjectApiKeyRequest(body).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -913,6 +1162,12 @@ func (c *OryClient) CreateProjectAPIKey(ctx context.Context, projectID string, b
 
 // ListProjectAPIKeys lists all API keys for a project.
 func (c *OryClient) ListProjectAPIKeys(ctx context.Context, projectID string) ([]ory.ProjectApiKey, error) {
+	if err := c.requireConsoleClient("listing project API keys"); err != nil {
+		return nil, err
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
 	keys, httpResp, err := c.consoleClient.ProjectAPI.ListProjectApiKeys(ctx, projectID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -922,6 +1177,12 @@ func (c *OryClient) ListProjectAPIKeys(ctx context.Context, projectID string) ([
 
 // DeleteProjectAPIKey deletes an API key with retry logic for transient errors.
 func (c *OryClient) DeleteProjectAPIKey(ctx context.Context, projectID, keyID string) error {
+	if err := c.requireConsoleClient("deleting project API key"); err != nil {
+		return err
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return err
+	}
 	var lastErr error
 	backoff := initialBackoff
 
@@ -1064,6 +1325,12 @@ func (c *OryClient) DeleteRelationships(ctx context.Context, namespace string, o
 
 // CreateEventStream creates a new event stream for a project.
 func (c *OryClient) CreateEventStream(ctx context.Context, projectID string, body ory.CreateEventStreamBody) (*ory.EventStream, error) {
+	if err := c.requireConsoleClient("creating event stream"); err != nil {
+		return nil, err
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
 	stream, httpResp, err := c.consoleClient.EventsAPI.CreateEventStream(ctx, projectID).CreateEventStreamBody(body).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1077,6 +1344,12 @@ func (c *OryClient) CreateEventStream(ctx context.Context, projectID string, bod
 // GetEventStream retrieves an event stream by listing all and filtering by ID.
 // The Ory API does not have a direct GET endpoint for event streams.
 func (c *OryClient) GetEventStream(ctx context.Context, projectID, streamID string) (*ory.EventStream, error) {
+	if err := c.requireConsoleClient("getting event stream"); err != nil {
+		return nil, err
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
 	list, httpResp, err := c.consoleClient.EventsAPI.ListEventStreams(ctx, projectID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1095,6 +1368,12 @@ func (c *OryClient) GetEventStream(ctx context.Context, projectID, streamID stri
 
 // SetEventStream updates an event stream.
 func (c *OryClient) SetEventStream(ctx context.Context, projectID, streamID string, body ory.SetEventStreamBody) (*ory.EventStream, error) {
+	if err := c.requireConsoleClient("updating event stream"); err != nil {
+		return nil, err
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
 	stream, httpResp, err := c.consoleClient.EventsAPI.SetEventStream(ctx, projectID, streamID).SetEventStreamBody(body).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1107,6 +1386,12 @@ func (c *OryClient) SetEventStream(ctx context.Context, projectID, streamID stri
 
 // DeleteEventStream deletes an event stream.
 func (c *OryClient) DeleteEventStream(ctx context.Context, projectID, streamID string) error {
+	if err := c.requireConsoleClient("deleting event stream"); err != nil {
+		return err
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return err
+	}
 	httpResp, err := c.consoleClient.EventsAPI.DeleteEventStream(ctx, projectID, streamID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1116,6 +1401,12 @@ func (c *OryClient) DeleteEventStream(ctx context.Context, projectID, streamID s
 
 // ListEventStreams lists all event streams for a project.
 func (c *OryClient) ListEventStreams(ctx context.Context, projectID string) ([]ory.EventStream, error) {
+	if err := c.requireConsoleClient("listing event streams"); err != nil {
+		return nil, err
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
 	list, httpResp, err := c.consoleClient.EventsAPI.ListEventStreams(ctx, projectID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1274,6 +1565,12 @@ func (c *OryClient) ListOAuth2Clients(ctx context.Context) ([]ory.OAuth2Client, 
 
 // ListOrganizations lists all organizations in a project.
 func (c *OryClient) ListOrganizations(ctx context.Context, projectID string) ([]ory.Organization, error) {
+	if err := c.requireConsoleClient("listing organizations"); err != nil {
+		return nil, err
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
 	resp, httpResp, err := c.consoleClient.ProjectAPI.ListOrganizations(ctx, projectID).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
@@ -1284,19 +1581,468 @@ func (c *OryClient) ListOrganizations(ctx context.Context, projectID string) ([]
 	return resp.Organizations, nil
 }
 
-// ListIdentitySchemas lists all identity schemas for a project.
+// ListIdentitySchemas lists all identity schemas for a project, paginating
+// through all pages using the Link header page_token cursor.
 func (c *OryClient) ListIdentitySchemas(ctx context.Context) ([]ory.IdentitySchemaContainer, error) {
 	if err := c.ensureProjectClient(); err != nil {
 		return nil, fmt.Errorf("listing identity schemas: %w", err)
 	}
-	schemas, httpResp, err := c.projectClient.IdentityAPI.ListIdentitySchemas(ctx).Execute()
-	if httpResp != nil {
-		_ = httpResp.Body.Close()
+
+	const pageSize = int64(250)
+	var all []ory.IdentitySchemaContainer
+	var pageToken *string
+
+	for {
+		req := c.projectClient.IdentityAPI.ListIdentitySchemas(ctx).PageSize(pageSize)
+		if pageToken != nil {
+			req = req.PageToken(*pageToken)
+		}
+		page, httpResp, err := req.Execute()
+		if httpResp != nil {
+			_ = httpResp.Body.Close()
+		}
+		if err != nil {
+			return nil, wrapAPIError(err, "listing identity schemas")
+		}
+		all = append(all, page...)
+		// Primary termination signal: absence of a "next" page_token in the
+		// Link header. This is authoritative regardless of page size, so we
+		// check it first. Using only len(page) < pageSize would stop early
+		// if the API returns a partial page while still providing a cursor.
+		next := parseLinkNextPageToken(httpResp)
+		if next == "" {
+			break
+		}
+		// Safety guard: if the server somehow returns an empty page with a
+		// next cursor, stop to avoid an infinite loop.
+		if len(page) == 0 {
+			break
+		}
+		pageToken = &next
 	}
+	return all, nil
+}
+
+// parseLinkNextPageToken extracts the page_token query parameter from the
+// "next" relation in an HTTP Link header. Returns "" if not present.
+func parseLinkNextPageToken(resp *http.Response) string {
+	if resp == nil {
+		return ""
+	}
+	for _, link := range resp.Header.Values("Link") {
+		for _, part := range strings.Split(link, ",") {
+			part = strings.TrimSpace(part)
+			// Format: <URL>; rel="next"
+			semi := strings.Index(part, ";")
+			if semi < 0 {
+				continue
+			}
+			rawURL := strings.Trim(strings.TrimSpace(part[:semi]), "<>")
+			rel := strings.TrimSpace(part[semi+1:])
+			if !strings.Contains(rel, `"next"`) {
+				continue
+			}
+			u, err := url.Parse(rawURL)
+			if err != nil {
+				continue
+			}
+			if tok := u.Query().Get("page_token"); tok != "" {
+				return tok
+			}
+		}
+	}
+	return ""
+}
+
+// HasProjectClient reports whether the project API client is configured.
+func (c *OryClient) HasProjectClient() bool {
+	return c.config.ProjectSlug != "" && c.config.ProjectAPIKey != ""
+}
+
+// HasConsoleClient reports whether the console API client is configured.
+func (c *OryClient) HasConsoleClient() bool {
+	return c.consoleClient != nil
+}
+
+// ListIdentitySchemasViaProject extracts identity schemas from the project
+// config using the console API (workspace key). This does not require project
+// API credentials and can be used during project bootstrap.
+func (c *OryClient) ListIdentitySchemasViaProject(ctx context.Context, projectID string) ([]ory.IdentitySchemaContainer, error) {
+	if c.consoleClient == nil {
+		return nil, fmt.Errorf("console API client not configured: set workspace_api_key to use project_id lookups")
+	}
+	project, err := c.GetProject(ctx, projectID)
 	if err != nil {
-		return nil, wrapAPIError(err, "listing identity schemas")
+		return nil, fmt.Errorf("getting project for schema lookup: %w", err)
 	}
-	return schemas, nil
+	return extractSchemasFromProjectConfig(ctx, project)
+}
+
+// consoleHTTPClient is used for direct calls to the console API (the workspace
+// identity-schemas endpoint) that the SDK does not yet expose. It carries an
+// explicit timeout so a stalled upstream cannot block reads indefinitely, and
+// is a variable so tests can override it.
+var consoleHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
+// managedIdentitySchema mirrors the response of the backoffice
+// GET /identity-schemas endpoint. It is defined locally so the method does not
+// depend on a specific client-go release exposing the operation.
+type managedIdentitySchema struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	ContentHash string `json:"content_hash"`
+	BlobURL     string `json:"blob_url"`
+}
+
+// ListWorkspaceIdentitySchemas lists the workspace-managed identity schemas
+// created by the workspace API key's owner via the console API
+// (GET /identity-schemas). Unlike the project-config and Kratos strategies, it
+// works during project bootstrap when only a workspace API key is configured:
+// it returns workspace-scoped schemas that have not been added to any project.
+//
+// Schemas are keyed by their content hash (the canonical hash-based ID that the
+// Kratos and project-config strategies also expose), and the full schema body
+// is fetched from each entry's blob URL.
+func (c *OryClient) ListWorkspaceIdentitySchemas(ctx context.Context) ([]ory.IdentitySchemaContainer, error) {
+	if c.consoleClient == nil {
+		return nil, fmt.Errorf("listing workspace identity schemas: %w. "+
+			"Set workspace_api_key (ORY_WORKSPACE_API_KEY)", ErrConsoleClientNotConfigured)
+	}
+
+	endpoint := strings.TrimRight(c.config.ConsoleAPIURL, "/") + "/identity-schemas"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request for workspace identity schemas: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.config.WorkspaceAPIKey)
+	req.Header.Set("Accept", "application/json")
+	if c.config.UserAgent != "" {
+		req.Header.Set("User-Agent", c.config.UserAgent)
+	}
+
+	resp, err := retryWithBackoff(ctx, "listing workspace identity schemas", func() (*http.Response, error) {
+		r, doErr := consoleHTTPClient.Do(req)
+		if doErr != nil {
+			return nil, doErr
+		}
+		if r.StatusCode == http.StatusTooManyRequests {
+			body, _ := io.ReadAll(r.Body)
+			_ = r.Body.Close()
+			return nil, fmt.Errorf("429 Too Many Requests: %s", strings.TrimSpace(string(body)))
+		}
+		return r, nil
+	})
+	if err != nil {
+		return nil, wrapAPIError(err, "listing workspace identity schemas")
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading workspace identity schemas response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, wrapAPIError(fmt.Errorf("unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(body))),
+			"listing workspace identity schemas")
+	}
+
+	var managed []managedIdentitySchema
+	if err := json.Unmarshal(body, &managed); err != nil {
+		return nil, fmt.Errorf("parsing workspace identity schemas response: %w", err)
+	}
+
+	result := make([]ory.IdentitySchemaContainer, 0, len(managed))
+	for _, m := range managed {
+		// Prefer the content hash so results match the canonical hash IDs that
+		// the Kratos and project-config strategies expose. Fall back to the row
+		// ID if the API ever omits the hash.
+		id := m.ContentHash
+		if id == "" {
+			id = m.ID
+		}
+		container := ory.IdentitySchemaContainer{Id: id, Schema: map[string]interface{}{}}
+		if strings.HasPrefix(m.BlobURL, schemeHTTPS+"://") {
+			schemaObj, fetchErr := fetchSchemaFromURL(ctx, m.BlobURL)
+			if fetchErr != nil {
+				return nil, fmt.Errorf("fetching workspace schema %q content: %w", id, fetchErr)
+			}
+			container.Schema = schemaObj
+		}
+		result = append(result, container)
+	}
+	return result, nil
+}
+
+// extractSchemasFromProjectConfig reads the identity schemas array from the
+// project's kratos config and converts each entry into an
+// IdentitySchemaContainer. For base64-encoded schemas the content is decoded
+// inline; for HTTPS URLs the content is fetched over HTTPS; preset schemas
+// are returned with an empty schema body.
+func extractSchemasFromProjectConfig(ctx context.Context, project *ory.Project) ([]ory.IdentitySchemaContainer, error) {
+	if project.Services.Identity == nil {
+		return nil, nil
+	}
+	configMap := project.Services.Identity.Config
+	if configMap == nil {
+		return nil, nil
+	}
+	identity, _ := configMap["identity"].(map[string]interface{})
+	rawSchemas, _ := identity["schemas"].([]interface{})
+
+	// First pass: decode base64/preset schemas synchronously and collect
+	// HTTPS schemas that need network fetching.
+	type httpsEntry struct {
+		index int
+		id    string
+		url   string
+	}
+	result := make([]ory.IdentitySchemaContainer, 0, len(rawSchemas))
+	var httpsFetches []httpsEntry
+
+	for _, raw := range rawSchemas {
+		s, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		id, _ := s["id"].(string)
+		rawURL, _ := s["url"].(string)
+
+		container := ory.IdentitySchemaContainer{Id: id}
+
+		switch {
+		case strings.HasPrefix(rawURL, "base64://"):
+			decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(rawURL, "base64://"))
+			if err != nil {
+				return nil, fmt.Errorf("decoding base64 schema %q: %w", id, err)
+			}
+			var schemaObj map[string]interface{}
+			if err := json.Unmarshal(decoded, &schemaObj); err != nil {
+				return nil, fmt.Errorf("parsing JSON for schema %q: %w", id, err)
+			}
+			container.Schema = schemaObj
+
+		case strings.HasPrefix(rawURL, schemeHTTPS+"://"):
+			// Mark for parallel fetching below.
+			httpsFetches = append(httpsFetches, httpsEntry{index: len(result), id: id, url: rawURL})
+
+		default:
+			// Preset or unrecognized URL schemes: return an empty object so
+			// json.Marshal produces "{}" instead of "null".
+			container.Schema = map[string]interface{}{}
+		}
+
+		result = append(result, container)
+	}
+
+	// Second pass: fetch HTTPS schemas in parallel (bounded to avoid
+	// excessive concurrency). Projects typically have 1-3 schemas.
+	if len(httpsFetches) > 0 {
+		type fetchResult struct {
+			schema map[string]interface{}
+			err    error
+		}
+		results := make([]fetchResult, len(httpsFetches))
+		var wg sync.WaitGroup
+		// Limit concurrency to 5 to avoid excessive socket usage.
+		sem := make(chan struct{}, 5)
+
+		for i, entry := range httpsFetches {
+			wg.Add(1)
+			go func(i int, entry httpsEntry) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				schemaObj, err := fetchSchemaFromURL(ctx, entry.url)
+				results[i] = fetchResult{schema: schemaObj, err: err}
+			}(i, entry)
+		}
+		wg.Wait()
+
+		for i, entry := range httpsFetches {
+			if results[i].err != nil {
+				return nil, fmt.Errorf("fetching schema %q from URL: %w", entry.id, results[i].err)
+			}
+			result[entry.index].Schema = results[i].schema
+		}
+	}
+
+	return result, nil
+}
+
+// hostChecker is the function used to check whether a host is private.
+// It accepts a context for DNS resolution and is a variable so tests can
+// override it. Returns (isPrivate, error) — error indicates DNS failure.
+var hostChecker = isPrivateHost
+
+// schemaFetchClient is a shared HTTP client for fetching schema content from
+// trusted URLs returned by the Ory API. It is thread-safe and reuses
+// connections. It uses req.Context() in CheckRedirect so per-request
+// cancellation is respected without creating a new client per call.
+// It is a variable so tests can override it.
+var schemaFetchClient = &http.Client{
+	Timeout: 10 * time.Second,
+	Transport: &http.Transport{
+		// Validate the actual resolved IP at connection time to prevent
+		// DNS rebinding: a hostname may resolve to a public IP during the
+		// pre-flight check but to a private IP when the connection is made.
+		DialContext: safeDialContext,
+	},
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 2 {
+			return fmt.Errorf("too many redirects fetching schema")
+		}
+		if req.URL.Scheme != "https" {
+			return fmt.Errorf("refusing non-HTTPS redirect for schema URL")
+		}
+		// Validate the redirect target to prevent SSRF bypass via a
+		// public HTTPS URL that redirects to a private/loopback host.
+		// Use req.Context() so the check respects per-request cancellation.
+		redirectIsPrivate, checkErr := hostChecker(req.Context(), req.URL.Hostname())
+		if checkErr != nil {
+			return checkErr
+		}
+		if redirectIsPrivate {
+			return fmt.Errorf("refusing redirect to private/loopback host %q", req.URL.Hostname())
+		}
+		return nil
+	},
+}
+
+// safeDialContext wraps the default dialer and validates that the resolved IP
+// address is not private/loopback/link-local before establishing the connection.
+// This prevents DNS rebinding attacks where a hostname resolves to a public IP
+// during pre-flight checks but to a private IP at connection time.
+func safeDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid address %q: %w", addr, err)
+	}
+
+	// Resolve the hostname to IP addresses.
+	resolver := &net.Resolver{}
+	ips, err := resolver.LookupHost(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("resolving host %q: %w", host, err)
+	}
+
+	// Filter out private/loopback IPs — only connect to public addresses.
+	var dialer net.Dialer
+	for _, ip := range ips {
+		parsed, parseErr := netip.ParseAddr(ip)
+		if parseErr != nil {
+			continue
+		}
+		if isPrivateAddr(parsed) {
+			continue
+		}
+		// Try connecting to this public IP.
+		conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip, port))
+		if dialErr == nil {
+			return conn, nil
+		}
+	}
+	return nil, fmt.Errorf("all resolved addresses for %q are private or unreachable", host)
+}
+
+// FetchSafeHTTPSMaxBytes is the per-response cap applied to FetchSafeHTTPS.
+// Mirrors the historic 1 MiB cap on fetchSchemaFromURL.
+const FetchSafeHTTPSMaxBytes = 1 << 20
+
+// FetchSafeHTTPS performs an HTTPS GET against an URL returned by the Ory
+// API with full SSRF protection (private/loopback hosts and redirects to them
+// are rejected, non-HTTPS schemes refused, response size capped). The kind
+// argument is a short label used in error messages ("schema", "email
+// template", ...) so callers don't have to wrap errors themselves.
+func FetchSafeHTTPS(ctx context.Context, kind, rawURL string) ([]byte, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("parsing %s URL %q: %w", kind, rawURL, err)
+	}
+	if parsed.Scheme != "https" {
+		return nil, fmt.Errorf("refusing non-HTTPS %s URL %q", kind, rawURL)
+	}
+	host := parsed.Hostname()
+	isPrivate, err := hostChecker(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	if isPrivate {
+		return nil, fmt.Errorf("refusing %s URL with private/loopback host %q", kind, host)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request for %s %q: %w", kind, rawURL, err)
+	}
+
+	resp, err := schemaFetchClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetching %s from %q: %w", kind, rawURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetching %s from %q: HTTP %d", kind, rawURL, resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, FetchSafeHTTPSMaxBytes))
+	if err != nil {
+		return nil, fmt.Errorf("reading %s from %q: %w", kind, rawURL, err)
+	}
+	return body, nil
+}
+
+// fetchSchemaFromURL retrieves a JSON schema from an HTTPS URL. The URL must
+// use the https scheme (enforced by the caller's switch statement) and must not
+// resolve to a private/loopback address.
+func fetchSchemaFromURL(ctx context.Context, schemaURL string) (map[string]interface{}, error) {
+	body, err := FetchSafeHTTPS(ctx, "schema", schemaURL)
+	if err != nil {
+		return nil, err
+	}
+	var schemaObj map[string]interface{}
+	if err := json.Unmarshal(body, &schemaObj); err != nil {
+		return nil, fmt.Errorf("parsing schema JSON from %q: %w", schemaURL, err)
+	}
+	return schemaObj, nil
+}
+
+// isPrivateHost checks whether a host is a loopback, private, or link-local
+// address. For DNS names it resolves the host and checks all resulting IPs.
+// Returns (true, nil) for private hosts, (false, nil) for public hosts, and
+// (false, error) when DNS resolution fails — callers can then surface an
+// actionable "DNS resolution failed" error instead of a misleading
+// "private/loopback host" message. The actual DNS rebinding protection is
+// enforced by safeDialContext which validates the resolved IP at connection time.
+func isPrivateHost(ctx context.Context, host string) (bool, error) {
+	if host == "localhost" {
+		return true, nil
+	}
+
+	// Try parsing as an IP literal first.
+	if addr, err := netip.ParseAddr(host); err == nil {
+		return isPrivateAddr(addr), nil
+	}
+
+	// It's a DNS name — resolve and check all A/AAAA records.
+	resolver := &net.Resolver{}
+	addrs, err := resolver.LookupHost(ctx, host)
+	if err != nil {
+		return false, fmt.Errorf("resolving host %q: %w", host, err)
+	}
+	for _, a := range addrs {
+		if addr, err := netip.ParseAddr(a); err == nil && isPrivateAddr(addr) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// isPrivateAddr checks whether an IP address is loopback, private, link-local,
+// or unspecified using proper CIDR range checks.
+func isPrivateAddr(addr netip.Addr) bool {
+	return addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() ||
+		addr.IsLinkLocalMulticast() || addr.IsUnspecified()
 }
 
 // Custom Domain (CNAME) operations
@@ -1332,6 +2078,9 @@ func (c *OryClient) consoleHTTPDo(ctx context.Context, method, path string, body
 
 // ListCustomDomains lists all custom domains for a project.
 func (c *OryClient) ListCustomDomains(ctx context.Context, projectID string) ([]ory.CustomDomain, error) {
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
 	httpResp, err := c.consoleHTTPDo(ctx, http.MethodGet, "/projects/"+projectID+"/cname", nil)
 	if err != nil {
 		return nil, wrapAPIError(err, "listing custom domains")
@@ -1369,6 +2118,9 @@ func (c *OryClient) GetCustomDomain(ctx context.Context, projectID, domainID str
 
 // CreateCustomDomain creates a new custom domain for a project.
 func (c *OryClient) CreateCustomDomain(ctx context.Context, projectID string, body ory.CreateCustomDomainBody) (*ory.CustomDomain, error) {
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("creating custom domain: marshaling body: %w", err)
@@ -1397,6 +2149,9 @@ func (c *OryClient) CreateCustomDomain(ctx context.Context, projectID string, bo
 
 // UpdateCustomDomain updates an existing custom domain.
 func (c *OryClient) UpdateCustomDomain(ctx context.Context, projectID, domainID string, body ory.SetCustomDomainBody) (*ory.CustomDomain, error) {
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("updating custom domain: marshaling body: %w", err)
@@ -1425,6 +2180,9 @@ func (c *OryClient) UpdateCustomDomain(ctx context.Context, projectID, domainID 
 
 // DeleteCustomDomain deletes a custom domain.
 func (c *OryClient) DeleteCustomDomain(ctx context.Context, projectID, domainID string) error {
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return err
+	}
 	httpResp, err := c.consoleHTTPDo(ctx, http.MethodDelete, "/projects/"+projectID+"/cname/"+domainID, nil)
 	if err != nil {
 		return wrapAPIError(err, "deleting custom domain")
@@ -1443,6 +2201,9 @@ func (c *OryClient) DeleteCustomDomain(ctx context.Context, projectID, domainID 
 
 // ListWorkspaces lists all workspaces.
 func (c *OryClient) ListWorkspaces(ctx context.Context) ([]ory.Workspace, error) {
+	if err := c.requireConsoleClient("listing workspaces"); err != nil {
+		return nil, err
+	}
 	resp, httpResp, err := c.consoleClient.WorkspaceAPI.ListWorkspaces(ctx).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()

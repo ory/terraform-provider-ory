@@ -19,7 +19,7 @@ Actions allow you to trigger webhooks at specific points in identity flows (logi
 
 ## Authentication Methods
 
-The `auth_method` attribute specifies which authentication method triggers the webhook. This is only used for `timing = "after"` webhooks.
+The `auth_method` attribute specifies which authentication method triggers the webhook. It applies only to `timing = "after"` webhooks on the `login`, `registration`, and `settings` flows.
 
 | Value | Description |
 |-------|-------------|
@@ -31,7 +31,7 @@ The `auth_method` attribute specifies which authentication method triggers the w
 | `totp` | Time-based one-time password |
 | `lookup_secret` | Recovery/backup codes |
 
-~> **Note:** `auth_method` is only used for `timing = "after"` webhooks. For `timing = "before"` hooks, the webhook runs before any authentication method is invoked.
+~> **Note:** `auth_method` only applies to `timing = "after"` webhooks on the `login`, `registration`, and `settings` flows. The `recovery` and `verification` flows are **not** scoped by authentication method — their after-hooks always run — so `auth_method` is ignored for them and should be omitted. For `timing = "before"` hooks, the webhook runs before any authentication method is invoked.
 
 ## Webhook Authentication
 
@@ -93,7 +93,8 @@ The `method` attribute specifies the HTTP method used when calling the webhook:
 
 ## Import
 
-Actions must be imported with the HTTP method included in the import ID.
+Actions are imported with the HTTP method included in the import ID. The
+method segment is optional and defaults to `POST` when omitted.
 
 **For "after" timing (post-hooks):**
 ```shell
@@ -126,7 +127,7 @@ terraform import ory_action.validate \
 1. **project_id**: Settings → General → Project ID
 2. **flow**: The flow type (login, registration, recovery, settings, verification)
 3. **timing**: "before" or "after"
-4. **auth_method** (for "after" only): password, oidc, code, webauthn, passkey, totp, lookup_secret
+4. **auth_method**: for `login`/`registration`/`settings` "after" hooks, one of password, oidc, code, webauthn, passkey, totp, lookup_secret. For `recovery`/`verification` "after" hooks the value is ignored, but the import ID format still requires this segment — use `password` to match the provider default and avoid a post-import diff (keep `auth_method` omitted from the resource configuration itself).
 5. **method**: The HTTP method (POST, GET, PUT, PATCH, DELETE)
 6. **url**: The exact webhook URL - must match exactly including protocol and trailing slashes
 

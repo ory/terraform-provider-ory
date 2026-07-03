@@ -2,14 +2,21 @@ package socialprovider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
 
@@ -24,6 +31,24 @@ var (
 	_ resource.ResourceWithValidateConfig = &SocialProviderResource{}
 )
 
+// projectMutexes serializes Create, Update, and Delete operations per project.
+// The Ory API stores social providers as an array in the project config. All
+// mutations use a read-modify-write pattern (read providers → build patch →
+// PatchProject). Without serialization, concurrent operations read the same
+// stale state and the last write wins, silently discarding the others.
+// See: https://github.com/ory/terraform-provider-ory/issues/165
+//
+// This map is never pruned, but Terraform provider processes are short-lived
+// (one per apply/plan) and typically target a single project, so the map
+// holds at most a handful of entries before the process exits.
+var projectMutexes sync.Map // map[projectID]*sync.Mutex
+
+// projectMutex returns the mutex for the given project, creating one if needed.
+func projectMutex(projectID string) *sync.Mutex {
+	v, _ := projectMutexes.LoadOrStore(projectID, &sync.Mutex{})
+	return v.(*sync.Mutex)
+}
+
 func NewResource() resource.Resource {
 	return &SocialProviderResource{}
 }
@@ -33,21 +58,37 @@ type SocialProviderResource struct {
 }
 
 type SocialProviderResourceModel struct {
-	ID                types.String `tfsdk:"id"`
-	ProjectID         types.String `tfsdk:"project_id"`
-	ProviderID        types.String `tfsdk:"provider_id"`
-	ProviderType      types.String `tfsdk:"provider_type"`
-	ClientID          types.String `tfsdk:"client_id"`
-	ClientSecret      types.String `tfsdk:"client_secret"`
-	IssuerURL         types.String `tfsdk:"issuer_url"`
-	Scope             types.List   `tfsdk:"scope"`
-	MapperURL         types.String `tfsdk:"mapper_url"`
-	AuthURL           types.String `tfsdk:"auth_url"`
-	TokenURL          types.String `tfsdk:"token_url"`
-	Tenant            types.String `tfsdk:"tenant"`
-	AppleTeamID       types.String `tfsdk:"apple_team_id"`
-	ApplePrivateKeyID types.String `tfsdk:"apple_private_key_id"`
-	ApplePrivateKey   types.String `tfsdk:"apple_private_key"`
+	ID                         types.String `tfsdk:"id"`
+	ProjectID                  types.String `tfsdk:"project_id"`
+	ProviderID                 types.String `tfsdk:"provider_id"`
+	ProviderType               types.String `tfsdk:"provider_type"`
+	ClientID                   types.String `tfsdk:"client_id"`
+	ClientIDWO                 types.String `tfsdk:"client_id_wo"`
+	ClientIDWOVersion          types.String `tfsdk:"client_id_wo_version"`
+	ClientSecret               types.String `tfsdk:"client_secret"`
+	ClientSecretWO             types.String `tfsdk:"client_secret_wo"`
+	ClientSecretWOVersion      types.String `tfsdk:"client_secret_wo_version"`
+	IssuerURL                  types.String `tfsdk:"issuer_url"`
+	Scope                      types.List   `tfsdk:"scope"`
+	MapperURL                  types.String `tfsdk:"mapper_url"`
+	AuthURL                    types.String `tfsdk:"auth_url"`
+	TokenURL                   types.String `tfsdk:"token_url"`
+	Tenant                     types.String `tfsdk:"tenant"`
+	AppleTeamID                types.String `tfsdk:"apple_team_id"`
+	ApplePrivateKeyID          types.String `tfsdk:"apple_private_key_id"`
+	ApplePrivateKey            types.String `tfsdk:"apple_private_key"`
+	ApplePrivateKeyWO          types.String `tfsdk:"apple_private_key_wo"`
+	ApplePrivateKeyWOVersion   types.String `tfsdk:"apple_private_key_wo_version"`
+	AutoLink                   types.Bool   `tfsdk:"auto_link"`
+	Label                      types.String `tfsdk:"label"`
+	AccountLinkingMode         types.String `tfsdk:"account_linking_mode"`
+	BaseRedirectURI            types.String `tfsdk:"base_redirect_uri"`
+	AdditionalIDTokenAudiences types.List   `tfsdk:"additional_id_token_audiences"`
+	Aal2AcrValues              types.List   `tfsdk:"aal2_acr_values"`
+	Aal2AmrValues              types.List   `tfsdk:"aal2_amr_values"`
+	Pkce                       types.String `tfsdk:"pkce"`
+	FedcmConfigURL             types.String `tfsdk:"fedcm_config_url"`
+	UpdateIdentityOnLogin      types.String `tfsdk:"update_identity_on_login"`
 }
 
 func (r *SocialProviderResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -89,13 +130,50 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				},
 			},
 			"client_id": schema.StringAttribute{
-				Description: "OAuth2 client ID from the provider.",
-				Required:    true,
+				Description: "OAuth2 client ID from the provider. Exactly one of client_id or client_id_wo must be set.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("client_id_wo")),
+				},
+			},
+			"client_id_wo": schema.StringAttribute{
+				Description: "Write-only equivalent of client_id (Terraform 1.11+ write-only argument): the value is sent to Ory but never stored in Terraform state or plan. Use this to source the client ID from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change client_id_wo_version to force the new value to be sent. Mutually exclusive with client_id.",
+				Optional:    true,
+				WriteOnly:   true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("client_id")),
+				},
+			},
+			"client_id_wo_version": schema.StringAttribute{
+				Description: "Version trigger for client_id_wo. Change this value whenever the write-only client_id_wo changes so Terraform sends the new value to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless client_id_wo is set.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.AlsoRequires(path.MatchRoot("client_id_wo")),
+				},
 			},
 			"client_secret": schema.StringAttribute{
-				Description: "OAuth2 client secret from the provider. Required for all providers except Apple (where Ory generates the secret from apple_team_id, apple_private_key_id, and apple_private_key).",
+				Description: "OAuth2 client secret from the provider. Required for all providers except Apple (where Ory generates the secret from apple_team_id, apple_private_key_id, and apple_private_key). Exactly one of client_secret or client_secret_wo may be set.",
 				Optional:    true,
 				Sensitive:   true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("client_secret_wo")),
+				},
+			},
+			"client_secret_wo": schema.StringAttribute{
+				Description: "Write-only equivalent of client_secret (Terraform 1.11+ write-only argument): the value is sent to Ory but never stored in Terraform state or plan. Use this to source the client secret from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change client_secret_wo_version to rotate it. Mutually exclusive with client_secret.",
+				Optional:    true,
+				WriteOnly:   true,
+				Sensitive:   true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("client_secret")),
+				},
+			},
+			"client_secret_wo_version": schema.StringAttribute{
+				Description: "Version trigger for client_secret_wo. Change this value whenever the write-only client_secret_wo changes so Terraform sends the new secret to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless client_secret_wo is set.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.AlsoRequires(path.MatchRoot("client_secret_wo")),
+				},
 			},
 			"issuer_url": schema.StringAttribute{
 				Description: "OIDC issuer URL (required for generic providers).",
@@ -131,9 +209,86 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				Optional:    true,
 			},
 			"apple_private_key": schema.StringAttribute{
-				Description: "Apple private key in PEM format (contents of the .p8 file). Required when provider_type is \"apple\" and client_secret is not set. Ory uses this to generate the JWT client secret automatically.",
+				Description: "Apple private key in PEM format (contents of the .p8 file). Required when provider_type is \"apple\" and client_secret is not set. Ory uses this to generate the JWT client secret automatically. Exactly one of apple_private_key or apple_private_key_wo may be set.",
 				Optional:    true,
 				Sensitive:   true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("apple_private_key_wo")),
+				},
+			},
+			"apple_private_key_wo": schema.StringAttribute{
+				Description: "Write-only equivalent of apple_private_key (Terraform 1.11+ write-only argument): the value is sent to Ory but never stored in Terraform state or plan. Use this to source the Apple private key from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change apple_private_key_wo_version to rotate it. Mutually exclusive with apple_private_key.",
+				Optional:    true,
+				WriteOnly:   true,
+				Sensitive:   true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("apple_private_key")),
+				},
+			},
+			"apple_private_key_wo_version": schema.StringAttribute{
+				Description: "Version trigger for apple_private_key_wo. Change this value whenever the write-only apple_private_key_wo changes so Terraform sends the new key to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless apple_private_key_wo is set.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.AlsoRequires(path.MatchRoot("apple_private_key_wo")),
+				},
+			},
+			"auto_link": schema.BoolAttribute{
+				Description: "Enable automatic account linking for this provider. When true, if an identity with the same identifier (e.g., email) already exists, the social sign-in will automatically link to that identity instead of failing. Requires enable_oidc_auto_link_policy to be true in the project config (ory_project_config). This attribute is write-only — the API accepts it on create/update but does not return it on read, so Terraform preserves the value from state. On import, the value will not be populated. Removing this attribute from your configuration will automatically disable auto-linking server-side.",
+				Optional:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"label": schema.StringAttribute{
+				Description: "Human-readable label for the provider, displayed on the login button (e.g., \"Sign in with Corporate SSO\").",
+				Optional:    true,
+			},
+			"account_linking_mode": schema.StringAttribute{
+				Description: "Controls how accounts are linked when a user signs in with this provider and a matching identity already exists. \"automatic\" links without user interaction; \"confirm_with_existing_credential\" requires the user to verify ownership of the existing account first.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("automatic", "confirm_with_existing_credential"),
+				},
+			},
+			"base_redirect_uri": schema.StringAttribute{
+				Description: "Override the base redirect URI for OIDC callbacks (e.g., \"https://iam.example.com\"). When set, Ory constructs callback URLs using this base instead of the default project domain. This is a global OIDC config setting — if multiple social providers set different values, the last applied value wins.",
+				Optional:    true,
+				DeprecationMessage: "Use ory_project_config.selfservice_methods_oidc_config_base_redirect_uri instead. " +
+					"This attribute sets a global OIDC config value, not a per-provider setting, " +
+					"and is better managed at the project level.",
+			},
+			"additional_id_token_audiences": schema.ListAttribute{
+				Description: "Additional audiences allowed in the ID Token. Only relevant in OIDC flows that submit an ID Token directly instead of using the callback from the OIDC provider (e.g., native mobile apps signing in with Google or Apple where the app and the OIDC client are registered with different audiences).",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"aal2_acr_values": schema.ListAttribute{
+				Description: "Upstream OpenID Connect `acr` claim values that elevate the resulting Ory session to AAL2. If the ID token returned by the upstream provider contains an `acr` claim matching any of these values, the user is not prompted for a second factor. Leave unset to always issue AAL1 sessions through this provider. Works with providers that return the `acr` claim (Auth0, Okta, Keycloak, PingFederate, Entra ID v1, generic enterprise IdPs).",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"aal2_amr_values": schema.ListAttribute{
+				Description: "Upstream OpenID Connect `amr` values (per RFC 8176, for example `mfa`, `otp`, `hwk`) that mark the session AAL2 when they appear in the upstream `amr` array. Leave unset to ignore the `amr` claim.",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"pkce": schema.StringAttribute{
+				Description: "PKCE (Proof Key for Code Exchange) behavior for the OAuth2 authorization code flow. \"auto\" (default) enables PKCE when the upstream provider advertises support via OIDC discovery; \"force\" always sends PKCE (use only with providers known to support it); \"never\" disables PKCE.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("auto", "force", "never"),
+				},
+			},
+			"fedcm_config_url": schema.StringAttribute{
+				Description: "URL of the provider's FedCM (Federated Credential Management) configuration file. When set, Ory can use the browser's FedCM API for sign-in with this provider instead of a full-page redirect. For example, Google's FedCM configuration is served at \"https://accounts.google.com/gsi/fedcm.json\". Leave unset to disable FedCM for this provider.",
+				Optional:    true,
+			},
+			"update_identity_on_login": schema.StringAttribute{
+				Description: "Controls whether the identity's traits and metadata are refreshed from the upstream OIDC claims on every login. \"never\" (the API default) keeps the identity as-is after the initial sign-up. \"automatic\" re-runs the Jsonnet claims mapper on each login and updates the identity accordingly. Leave unset to use the Ory default (\"never\").",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("never", "automatic"),
+				},
 			},
 		},
 	}
@@ -175,18 +330,59 @@ func (r *SocialProviderResource) ValidateConfig(ctx context.Context, req resourc
 
 	providerType := config.ProviderType.ValueString()
 
-	// Treat attributes as "configured" only when they are both non-null and non-unknown.
-	// This ensures validation aligns with buildProviderConfig, which drops unknown values.
-	hasClientSecret := !config.ClientSecret.IsNull() && !config.ClientSecret.IsUnknown()
-	hasAppleTeamID := !config.AppleTeamID.IsNull() && !config.AppleTeamID.IsUnknown()
-	hasApplePrivateKeyID := !config.ApplePrivateKeyID.IsNull() && !config.ApplePrivateKeyID.IsUnknown()
-	hasApplePrivateKey := !config.ApplePrivateKey.IsNull() && !config.ApplePrivateKey.IsUnknown()
+	// client_id is required for every provider type. It may be supplied either
+	// via client_id (stored in state) or client_id_wo (write-only). The mutual
+	// exclusion is enforced by ConflictsWith validators on the schema; here we
+	// only require that at least one is set. IsNull is false for unknown values,
+	// so an unknown value defers this check to apply time automatically.
+	if config.ClientID.IsNull() && config.ClientIDWO.IsNull() {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("client_id"),
+			"Missing Required Attribute",
+			"Either client_id or client_id_wo must be set.",
+		)
+	}
+
+	// When any attribute value is unknown (e.g. sourced from a data source like
+	// AWS Secrets Manager, or an ephemeral resource feeding a write-only field),
+	// we cannot validate cross-field requirements yet. Unknown values will become
+	// known at apply time, so we defer validation.
+	// See: https://developer.hashicorp.com/terraform/plugin/framework/validation
+	if config.ClientSecret.IsUnknown() ||
+		config.ClientSecretWO.IsUnknown() ||
+		config.AppleTeamID.IsUnknown() ||
+		config.ApplePrivateKeyID.IsUnknown() ||
+		config.ApplePrivateKey.IsUnknown() ||
+		config.ApplePrivateKeyWO.IsUnknown() {
+		return
+	}
+
+	// A secret may be provided either via the normal attribute or its write-only
+	// (_wo) counterpart; treat either as "present" for the requirement checks.
+	hasClientSecret := !config.ClientSecret.IsNull() || !config.ClientSecretWO.IsNull()
+	hasAppleTeamID := !config.AppleTeamID.IsNull()
+	hasApplePrivateKeyID := !config.ApplePrivateKeyID.IsNull()
+	hasApplePrivateKey := !config.ApplePrivateKey.IsNull() || !config.ApplePrivateKeyWO.IsNull()
 	hasAnyAppleField := hasAppleTeamID || hasApplePrivateKeyID || hasApplePrivateKey
 	hasAllAppleFields := hasAppleTeamID && hasApplePrivateKeyID && hasApplePrivateKey
 
-	// Validate that known values are not empty strings
-	if hasClientSecret && config.ClientSecret.ValueString() == "" {
+	// Validate that known values are not empty strings. client_id and
+	// client_id_wo are not covered by the unknown-deferral block above, so guard
+	// against unknown values here (an unknown value reports ValueString() == "").
+	if !config.ClientID.IsNull() && !config.ClientID.IsUnknown() && config.ClientID.ValueString() == "" {
+		resp.Diagnostics.AddAttributeError(path.Root("client_id"), "Invalid Attribute Value", "client_id must not be an empty string.")
+	}
+	if !config.ClientIDWO.IsNull() && !config.ClientIDWO.IsUnknown() && config.ClientIDWO.ValueString() == "" {
+		resp.Diagnostics.AddAttributeError(path.Root("client_id_wo"), "Invalid Attribute Value", "client_id_wo must not be an empty string.")
+	}
+	if !config.ClientSecret.IsNull() && config.ClientSecret.ValueString() == "" {
 		resp.Diagnostics.AddAttributeError(path.Root("client_secret"), "Invalid Attribute Value", "client_secret must not be an empty string.")
+	}
+	if !config.ClientSecretWO.IsNull() && config.ClientSecretWO.ValueString() == "" {
+		resp.Diagnostics.AddAttributeError(path.Root("client_secret_wo"), "Invalid Attribute Value", "client_secret_wo must not be an empty string.")
+	}
+	if !config.ApplePrivateKeyWO.IsNull() && config.ApplePrivateKeyWO.ValueString() == "" {
+		resp.Diagnostics.AddAttributeError(path.Root("apple_private_key_wo"), "Invalid Attribute Value", "apple_private_key_wo must not be an empty string.")
 	}
 	if hasAppleTeamID && config.AppleTeamID.ValueString() == "" {
 		resp.Diagnostics.AddAttributeError(path.Root("apple_team_id"), "Invalid Attribute Value", "apple_team_id must not be an empty string.")
@@ -194,8 +390,14 @@ func (r *SocialProviderResource) ValidateConfig(ctx context.Context, req resourc
 	if hasApplePrivateKeyID && config.ApplePrivateKeyID.ValueString() == "" {
 		resp.Diagnostics.AddAttributeError(path.Root("apple_private_key_id"), "Invalid Attribute Value", "apple_private_key_id must not be an empty string.")
 	}
-	if hasApplePrivateKey && config.ApplePrivateKey.ValueString() == "" {
+	if !config.ApplePrivateKey.IsNull() && config.ApplePrivateKey.ValueString() == "" {
 		resp.Diagnostics.AddAttributeError(path.Root("apple_private_key"), "Invalid Attribute Value", "apple_private_key must not be an empty string.")
+	}
+	if !config.BaseRedirectURI.IsNull() && !config.BaseRedirectURI.IsUnknown() && config.BaseRedirectURI.ValueString() == "" {
+		resp.Diagnostics.AddAttributeError(path.Root("base_redirect_uri"), "Invalid Attribute Value", "base_redirect_uri must not be an empty string.")
+	}
+	if !config.FedcmConfigURL.IsNull() && !config.FedcmConfigURL.IsUnknown() && config.FedcmConfigURL.ValueString() == "" {
+		resp.Diagnostics.AddAttributeError(path.Root("fedcm_config_url"), "Invalid Attribute Value", "fedcm_config_url must not be an empty string.")
 	}
 
 	if providerType == "apple" {
@@ -239,15 +441,20 @@ func (r *SocialProviderResource) ValidateConfig(ctx context.Context, req resourc
 // The base64-encoded Jsonnet maps claims to identity traits.
 const defaultMapperURL = "base64://bG9jYWwgY2xhaW1zID0gc3RkLmV4dFZhcignY2xhaW1zJyk7CnsKICBpZGVudGl0eTogewogICAgdHJhaXRzOiB7CiAgICAgIGVtYWlsOiBjbGFpbXMuZW1haWwsCiAgICB9LAogIH0sCn0="
 
-func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *SocialProviderResourceModel) map[string]interface{} {
+// buildProviderConfig builds the Ory provider config map. The clientID,
+// clientSecret, and applePrivateKey arguments carry the resolved credential
+// values (the write-only _wo value when set, otherwise the stateful attribute),
+// since write-only values live only in the configuration and must be read from
+// req.Config rather than the plan. See resolveCredentials.
+func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *SocialProviderResourceModel, clientID, clientSecret, applePrivateKey types.String) map[string]interface{} {
 	config := map[string]interface{}{
 		"id":        plan.ProviderID.ValueString(),
 		"provider":  plan.ProviderType.ValueString(),
-		"client_id": plan.ClientID.ValueString(),
+		"client_id": clientID.ValueString(),
 	}
 
-	if !plan.ClientSecret.IsNull() && !plan.ClientSecret.IsUnknown() && plan.ClientSecret.ValueString() != "" {
-		config["client_secret"] = plan.ClientSecret.ValueString()
+	if !clientSecret.IsNull() && !clientSecret.IsUnknown() && clientSecret.ValueString() != "" {
+		config["client_secret"] = clientSecret.ValueString()
 	}
 	if !plan.IssuerURL.IsNull() && !plan.IssuerURL.IsUnknown() {
 		config["issuer_url"] = plan.IssuerURL.ValueString()
@@ -273,6 +480,60 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 		config["microsoft_tenant"] = plan.Tenant.ValueString()
 	}
 
+	// Auto-link — only send when explicitly set
+	if !plan.AutoLink.IsNull() && !plan.AutoLink.IsUnknown() {
+		config["auto_link"] = plan.AutoLink.ValueBool()
+	}
+
+	if !plan.Label.IsNull() && !plan.Label.IsUnknown() {
+		config["label"] = plan.Label.ValueString()
+	}
+	if !plan.AccountLinkingMode.IsNull() && !plan.AccountLinkingMode.IsUnknown() {
+		config["account_linking_mode"] = plan.AccountLinkingMode.ValueString()
+	}
+
+	if !plan.AdditionalIDTokenAudiences.IsNull() && !plan.AdditionalIDTokenAudiences.IsUnknown() {
+		var audiences []string
+		plan.AdditionalIDTokenAudiences.ElementsAs(ctx, &audiences, false)
+		config["additional_id_token_audiences"] = audiences
+	}
+
+	// AAL2 elevation lists — send only when the user configured a non-empty
+	// list. Empty lists are skipped to match Read, which collapses missing and
+	// empty arrays to null; sending [] would otherwise produce a perpetual diff
+	// for users who explicitly write `aal2_acr_values = []`.
+	if !plan.Aal2AcrValues.IsNull() && !plan.Aal2AcrValues.IsUnknown() {
+		var values []string
+		plan.Aal2AcrValues.ElementsAs(ctx, &values, false)
+		if len(values) > 0 {
+			config["aal2_acr_values"] = values
+		}
+	}
+	if !plan.Aal2AmrValues.IsNull() && !plan.Aal2AmrValues.IsUnknown() {
+		var values []string
+		plan.Aal2AmrValues.ElementsAs(ctx, &values, false)
+		if len(values) > 0 {
+			config["aal2_amr_values"] = values
+		}
+	}
+
+	if !plan.Pkce.IsNull() && !plan.Pkce.IsUnknown() {
+		config["pkce"] = plan.Pkce.ValueString()
+	}
+
+	// update_identity_on_login — only send when set. Omitting it on the
+	// full-object replace performed by Update lets the API fall back to its
+	// default ("never"), which Read collapses to null.
+	if !plan.UpdateIdentityOnLogin.IsNull() && !plan.UpdateIdentityOnLogin.IsUnknown() {
+		config["update_identity_on_login"] = plan.UpdateIdentityOnLogin.ValueString()
+	}
+
+	// fedcm_config_url — only send when set to a non-empty value. Omitting it on
+	// the full-object replace performed by Update clears it server-side.
+	if !plan.FedcmConfigURL.IsNull() && !plan.FedcmConfigURL.IsUnknown() && plan.FedcmConfigURL.ValueString() != "" {
+		config["fedcm_config_url"] = plan.FedcmConfigURL.ValueString()
+	}
+
 	// Apple-specific fields — skip empty strings to avoid sending blank credentials
 	if !plan.AppleTeamID.IsNull() && !plan.AppleTeamID.IsUnknown() && plan.AppleTeamID.ValueString() != "" {
 		config["apple_team_id"] = plan.AppleTeamID.ValueString()
@@ -280,48 +541,101 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 	if !plan.ApplePrivateKeyID.IsNull() && !plan.ApplePrivateKeyID.IsUnknown() && plan.ApplePrivateKeyID.ValueString() != "" {
 		config["apple_private_key_id"] = plan.ApplePrivateKeyID.ValueString()
 	}
-	if !plan.ApplePrivateKey.IsNull() && !plan.ApplePrivateKey.IsUnknown() && plan.ApplePrivateKey.ValueString() != "" {
-		config["apple_private_key"] = plan.ApplePrivateKey.ValueString()
+	if !applePrivateKey.IsNull() && !applePrivateKey.IsUnknown() && applePrivateKey.ValueString() != "" {
+		config["apple_private_key"] = applePrivateKey.ValueString()
 	}
 
 	return config
 }
 
-func extractProvidersFromProject(project *ory.Project) []map[string]interface{} {
-	if project.Services.Identity == nil {
-		return []map[string]interface{}{}
-	}
+// resolveCredentials returns the effective client_id, client_secret, and
+// apple_private_key for an apply, preferring the write-only (_wo) value when the
+// user supplied one. Write-only attribute values are nullified in the plan and
+// state, so they must be read from the configuration (req.Config) at Create and
+// Update time. Resolved values are used only to build the API payload; they are
+// never written back into the model, so they never reach Terraform state.
+func (r *SocialProviderResource) resolveCredentials(ctx context.Context, config tfsdk.Config, plan *SocialProviderResourceModel, diags *diag.Diagnostics) (clientID, clientSecret, applePrivateKey types.String) {
+	clientID = plan.ClientID
+	clientSecret = plan.ClientSecret
+	applePrivateKey = plan.ApplePrivateKey
 
+	var clientIDWO, clientSecretWO, applePrivateKeyWO types.String
+	diags.Append(config.GetAttribute(ctx, path.Root("client_id_wo"), &clientIDWO)...)
+	diags.Append(config.GetAttribute(ctx, path.Root("client_secret_wo"), &clientSecretWO)...)
+	diags.Append(config.GetAttribute(ctx, path.Root("apple_private_key_wo"), &applePrivateKeyWO)...)
+
+	if !clientIDWO.IsNull() && !clientIDWO.IsUnknown() {
+		clientID = clientIDWO
+	}
+	if !clientSecretWO.IsNull() && !clientSecretWO.IsUnknown() {
+		clientSecret = clientSecretWO
+	}
+	if !applePrivateKeyWO.IsNull() && !applePrivateKeyWO.IsUnknown() {
+		applePrivateKey = applePrivateKeyWO
+	}
+	return clientID, clientSecret, applePrivateKey
+}
+
+// readStringList converts a JSON-decoded string array from the API into a
+// types.List, returning null when the API omits the field or returns an empty
+// array. Empty/null are treated identically so removing all entries from
+// Terraform config matches the API's "missing" state on the next read.
+func readStringList(ctx context.Context, diagnostics *diag.Diagnostics, raw interface{}) types.List {
+	values, ok := raw.([]interface{})
+	if !ok || len(values) == 0 {
+		return types.ListNull(types.StringType)
+	}
+	strs := make([]string, 0, len(values))
+	for _, v := range values {
+		if s, ok := v.(string); ok {
+			strs = append(strs, s)
+		}
+	}
+	list, d := types.ListValueFrom(ctx, types.StringType, strs)
+	diagnostics.Append(d...)
+	if d.HasError() {
+		return types.ListNull(types.StringType)
+	}
+	return list
+}
+
+// extractOIDCConfigFromProject navigates to the OIDC method config map.
+func extractOIDCConfigFromProject(project *ory.Project) map[string]interface{} {
+	if project.Services.Identity == nil {
+		return nil
+	}
 	configMap := project.Services.Identity.Config
 	if configMap == nil {
-		return []map[string]interface{}{}
+		return nil
 	}
-
 	selfservice, ok := configMap["selfservice"].(map[string]interface{})
 	if !ok {
-		return []map[string]interface{}{}
+		return nil
 	}
-
 	methods, ok := selfservice["methods"].(map[string]interface{})
 	if !ok {
-		return []map[string]interface{}{}
+		return nil
 	}
-
 	oidc, ok := methods["oidc"].(map[string]interface{})
 	if !ok {
-		return []map[string]interface{}{}
+		return nil
 	}
-
 	oidcConfig, ok := oidc["config"].(map[string]interface{})
 	if !ok {
+		return nil
+	}
+	return oidcConfig
+}
+
+func extractProvidersFromProject(project *ory.Project) []map[string]interface{} {
+	oidcConfig := extractOIDCConfigFromProject(project)
+	if oidcConfig == nil {
 		return []map[string]interface{}{}
 	}
-
 	providers, ok := oidcConfig["providers"].([]interface{})
 	if !ok {
 		return []map[string]interface{}{}
 	}
-
 	result := make([]map[string]interface{}, 0, len(providers))
 	for _, p := range providers {
 		if pm, ok := p.(map[string]interface{}); ok {
@@ -331,7 +645,31 @@ func extractProvidersFromProject(project *ory.Project) []map[string]interface{} 
 	return result
 }
 
+// copyProviders returns a deep copy of the provider slice via a JSON
+// round-trip so callers cannot accidentally mutate the cached project state.
+// This data originates from JSON, so the round-trip is lossless and handles
+// all container types without a hand-rolled recursive copy.
+func copyProviders(providers []map[string]interface{}) []map[string]interface{} {
+	b, err := json.Marshal(providers)
+	if err != nil {
+		// Should never happen — the data was decoded from JSON.
+		return providers
+	}
+	var cp []map[string]interface{}
+	if err := json.Unmarshal(b, &cp); err != nil {
+		return providers
+	}
+	return cp
+}
+
 func (r *SocialProviderResource) getProviders(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
+	// Prefer cached project state from a previous PatchProject call in this
+	// Terraform run. This avoids reading stale data from the eventually-consistent
+	// GetProject API, which is critical when the mutex serializes back-to-back
+	// mutations — the second operation must see the first operation's result.
+	if cached := r.client.GetCachedProject(projectID); cached != nil {
+		return copyProviders(extractProvidersFromProject(cached)), nil
+	}
 	project, err := r.client.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get project %s: %w", projectID, err)
@@ -360,7 +698,16 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 		projectID = r.client.ProjectID()
 	}
 
-	providerConfig := r.buildProviderConfig(ctx, &plan)
+	clientID, clientSecret, applePrivateKey := r.resolveCredentials(ctx, req.Config, &plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	providerConfig := r.buildProviderConfig(ctx, &plan, clientID, clientSecret, applePrivateKey)
+
+	// Serialize mutations to prevent concurrent read-modify-write races.
+	mu := projectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
 
 	// Get current providers
 	providers, err := r.getProviders(ctx, projectID)
@@ -379,18 +726,28 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 			Path:  fmt.Sprintf("/services/identity/config/selfservice/methods/oidc/config/providers/%d", existingIndex),
 			Value: providerConfig,
 		})
+		if !plan.BaseRedirectURI.IsNull() && !plan.BaseRedirectURI.IsUnknown() && plan.BaseRedirectURI.ValueString() != "" {
+			patches = append(patches, ory.JsonPatch{
+				Op:    "add",
+				Path:  "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
+				Value: plan.BaseRedirectURI.ValueString(),
+			})
+		}
 	} else {
 		// When adding the first provider, we need to initialize the entire OIDC config structure
 		if len(providers) == 0 {
-			// Initialize OIDC config with the provider in one operation
+			oidcConfig := map[string]interface{}{
+				"providers": []interface{}{providerConfig},
+			}
+			if !plan.BaseRedirectURI.IsNull() && !plan.BaseRedirectURI.IsUnknown() && plan.BaseRedirectURI.ValueString() != "" {
+				oidcConfig["base_redirect_uri"] = plan.BaseRedirectURI.ValueString()
+			}
 			patches = append(patches, ory.JsonPatch{
 				Op:   "add",
 				Path: "/services/identity/config/selfservice/methods/oidc",
 				Value: map[string]interface{}{
 					"enabled": true,
-					"config": map[string]interface{}{
-						"providers": []interface{}{providerConfig},
-					},
+					"config":  oidcConfig,
 				},
 			})
 		} else {
@@ -400,6 +757,14 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 				Path:  "/services/identity/config/selfservice/methods/oidc/config/providers/-",
 				Value: providerConfig,
 			})
+			// Set base_redirect_uri as a separate patch when OIDC config already exists
+			if !plan.BaseRedirectURI.IsNull() && !plan.BaseRedirectURI.IsUnknown() && plan.BaseRedirectURI.ValueString() != "" {
+				patches = append(patches, ory.JsonPatch{
+					Op:    "add",
+					Path:  "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
+					Value: plan.BaseRedirectURI.ValueString(),
+				})
+			}
 		}
 	}
 
@@ -455,21 +820,24 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 
 	var providers []map[string]interface{}
 	var index = -1
+	var lastProject *ory.Project // retained so base_redirect_uri can reuse it
 
 	if cached := r.client.GetCachedProject(projectID); cached != nil {
+		lastProject = cached
 		providers = extractProvidersFromProject(cached)
 		index = r.findProviderIndex(providers, providerID)
 	}
 
 	if index < 0 {
 		for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
-			var err error
-			providers, err = r.getProviders(ctx, projectID)
+			project, err := r.client.GetProject(ctx, projectID)
 			if err != nil {
 				resp.Diagnostics.AddError("Error Reading Social Provider",
 					fmt.Sprintf("Failed to get providers for project %s: %v", projectID, err))
 				return
 			}
+			lastProject = project
+			providers = extractProvidersFromProject(project)
 
 			index = r.findProviderIndex(providers, providerID)
 			if index >= 0 {
@@ -495,8 +863,16 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 
 	provider := providers[index]
 	state.ProviderType = types.StringValue(fmt.Sprintf("%v", provider["provider"]))
-	state.ClientID = types.StringValue(fmt.Sprintf("%v", provider["client_id"]))
-	// Don't read back client_secret for security - it's sensitive
+	// Refresh client_id from the API only when it is already tracked in state.
+	// When the provider is managed via the write-only client_id_wo, client_id is
+	// null in state and must stay null — otherwise the API value would be written
+	// to state and produce a perpetual diff against the (write-only) config.
+	// ImportState seeds client_id so normal imports still round-trip it.
+	if !state.ClientID.IsNull() {
+		state.ClientID = types.StringValue(fmt.Sprintf("%v", provider["client_id"]))
+	}
+	// Don't read back client_secret for security - it's sensitive (and may be
+	// supplied write-only via client_secret_wo, which is never stored).
 
 	if issuer, ok := provider["issuer_url"].(string); ok {
 		state.IssuerURL = types.StringValue(issuer)
@@ -517,14 +893,16 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		}
 	}
 
-	// Read mapper_url only if user explicitly configured it
-	// When user doesn't set mapper_url, we use a default which gets transformed to a GCS URL by the API
-	// We only read it back if it was already in state (user configured it)
-	if !state.MapperURL.IsNull() && !state.MapperURL.IsUnknown() {
-		if mapper, ok := provider["mapper_url"].(string); ok && mapper != "" {
-			state.MapperURL = types.StringValue(mapper)
-		}
-	}
+	// mapper_url is intentionally NOT read back from the API. Ory rewrites the
+	// configured value (a base64://... blob or a hosted URL) into an opaque,
+	// content-addressed GCS URL (https://storage.googleapis.com/.../<hash>.jsonnet).
+	// Reading that transformed value into state makes it differ from the value in
+	// configuration on every plan, producing a perpetual diff that repeatedly
+	// replaces the whole provider object. Instead we preserve the configured value
+	// already held in state (written by Create/Update). A genuine change to
+	// mapper_url in configuration is still applied because Update writes the new
+	// value to state; only the API's cosmetic rewrite is ignored.
+	// See: https://github.com/ory/terraform-provider-ory/issues/278
 
 	// Read auth_url for custom providers
 	if authURL, ok := provider["auth_url"].(string); ok && authURL != "" {
@@ -541,6 +919,53 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		state.Tenant = types.StringValue(tenant)
 	}
 
+	// auto_link is write-only — the API does not return it in responses.
+	// Preserve the existing state value (same approach as client_secret).
+
+	// Read label from API (returned on read)
+	if label, ok := provider["label"].(string); ok && label != "" {
+		state.Label = types.StringValue(label)
+	} else {
+		state.Label = types.StringNull()
+	}
+
+	// Read account_linking_mode from API (returned on read)
+	if mode, ok := provider["account_linking_mode"].(string); ok && mode != "" {
+		state.AccountLinkingMode = types.StringValue(mode)
+	} else {
+		state.AccountLinkingMode = types.StringNull()
+	}
+
+	// Read additional_id_token_audiences from API (returned on read)
+	state.AdditionalIDTokenAudiences = readStringList(ctx, &resp.Diagnostics, provider["additional_id_token_audiences"])
+
+	// Read AAL2 elevation lists, clearing state when the API omits them.
+	state.Aal2AcrValues = readStringList(ctx, &resp.Diagnostics, provider["aal2_acr_values"])
+	state.Aal2AmrValues = readStringList(ctx, &resp.Diagnostics, provider["aal2_amr_values"])
+
+	if pkce, ok := provider["pkce"].(string); ok && pkce != "" {
+		state.Pkce = types.StringValue(pkce)
+	} else {
+		state.Pkce = types.StringNull()
+	}
+
+	// Read update_identity_on_login from the API (returned on read), clearing
+	// stale state when the API omits it (which it does only when the attribute
+	// was never set; an explicit "never" round-trips as "never").
+	if uiol, ok := provider["update_identity_on_login"].(string); ok && uiol != "" {
+		state.UpdateIdentityOnLogin = types.StringValue(uiol)
+	} else {
+		state.UpdateIdentityOnLogin = types.StringNull()
+	}
+
+	// Read fedcm_config_url from the API (returned on read), clearing stale state
+	// when the API omits it.
+	if fedcmURL, ok := provider["fedcm_config_url"].(string); ok && fedcmURL != "" {
+		state.FedcmConfigURL = types.StringValue(fedcmURL)
+	} else {
+		state.FedcmConfigURL = types.StringNull()
+	}
+
 	// Read Apple-specific fields, clearing stale state when not returned by the API
 	if teamID, ok := provider["apple_team_id"].(string); ok && teamID != "" {
 		state.AppleTeamID = types.StringValue(teamID)
@@ -554,6 +979,22 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 	}
 	// Don't read back apple_private_key for security - it's sensitive
 
+	// Read base_redirect_uri — a global OIDC config field, not per-provider.
+	// Only track it when the user has configured it in state, to avoid cross-resource
+	// conflicts from this global setting being managed by multiple providers.
+	// Reuse lastProject (already fetched above) to avoid an extra API call.
+	if !state.BaseRedirectURI.IsNull() && !state.BaseRedirectURI.IsUnknown() {
+		if oidcConfig := extractOIDCConfigFromProject(lastProject); oidcConfig != nil {
+			if uri, ok := oidcConfig["base_redirect_uri"].(string); ok && uri != "" {
+				state.BaseRedirectURI = types.StringValue(uri)
+			} else {
+				state.BaseRedirectURI = types.StringNull()
+			}
+		} else {
+			state.BaseRedirectURI = types.StringNull()
+		}
+	}
+
 	// Always ensure ID and ProjectID are set in state
 	state.ID = types.StringValue(providerID)
 	state.ProjectID = types.StringValue(projectID)
@@ -562,8 +1003,9 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 }
 
 func (r *SocialProviderResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan SocialProviderResourceModel
+	var plan, state SocialProviderResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -572,6 +1014,24 @@ func (r *SocialProviderResource) Update(ctx context.Context, req resource.Update
 	if projectID == "" {
 		projectID = r.client.ProjectID()
 	}
+
+	clientID, clientSecret, applePrivateKey := r.resolveCredentials(ctx, req.Config, &plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	providerConfig := r.buildProviderConfig(ctx, &plan, clientID, clientSecret, applePrivateKey)
+
+	// If auto_link was previously set but is now removed from config,
+	// explicitly send false to disable it server-side (auto_link is write-only
+	// and has security implications, so removal should reliably disable it).
+	if plan.AutoLink.IsNull() && !state.AutoLink.IsNull() {
+		providerConfig["auto_link"] = false
+	}
+
+	// Serialize mutations to prevent concurrent read-modify-write races.
+	mu := projectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
 
 	providers, err := r.getProviders(ctx, projectID)
 	if err != nil {
@@ -586,12 +1046,38 @@ func (r *SocialProviderResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
-	providerConfig := r.buildProviderConfig(ctx, &plan)
 	patches := []ory.JsonPatch{{
 		Op:    "replace",
 		Path:  fmt.Sprintf("/services/identity/config/selfservice/methods/oidc/config/providers/%d", index),
 		Value: providerConfig,
 	}}
+
+	// Handle base_redirect_uri changes.
+	// Skip patching when the planned value is unknown — Terraform hasn't resolved it yet
+	// and acting on it could send a spurious remove op.
+	if !plan.BaseRedirectURI.IsUnknown() {
+		planURI := plan.BaseRedirectURI.ValueString()
+		stateURI := ""
+		if !state.BaseRedirectURI.IsUnknown() && !state.BaseRedirectURI.IsNull() {
+			stateURI = state.BaseRedirectURI.ValueString()
+		}
+		if !plan.BaseRedirectURI.IsNull() && planURI != "" {
+			// Only patch when value actually changed to avoid unnecessary global config churn.
+			if planURI != stateURI {
+				patches = append(patches, ory.JsonPatch{
+					Op:    "add",
+					Path:  "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
+					Value: planURI,
+				})
+			}
+		} else if !state.BaseRedirectURI.IsNull() && stateURI != "" {
+			// User removed base_redirect_uri from config — remove it from the API too.
+			patches = append(patches, ory.JsonPatch{
+				Op:   "remove",
+				Path: "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
+			})
+		}
+	}
 
 	_, err = r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
@@ -616,6 +1102,11 @@ func (r *SocialProviderResource) Delete(ctx context.Context, req resource.Delete
 	if projectID == "" {
 		projectID = r.client.ProjectID()
 	}
+
+	// Serialize mutations to prevent concurrent read-modify-write races.
+	mu := projectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
 
 	providers, err := r.getProviders(ctx, projectID)
 	if err != nil {
@@ -662,4 +1153,26 @@ func (r *SocialProviderResource) Delete(ctx context.Context, req resource.Delete
 func (r *SocialProviderResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("provider_id"), req.ID)...)
+
+	// Seed client_id from the API. Read only refreshes client_id when it is
+	// already present in state (so providers managed via the write-only
+	// client_id_wo keep it out of state). Without seeding it here, the
+	// post-import refresh would leave client_id null for a normally-managed
+	// provider. Best-effort: if the lookup fails, Read still recovers everything
+	// except client_id, and the next apply reconciles it.
+	projectID := r.client.ProjectID()
+	if projectID == "" {
+		return
+	}
+	providers, err := r.getProviders(ctx, projectID)
+	if err != nil {
+		return
+	}
+	index := r.findProviderIndex(providers, req.ID)
+	if index < 0 {
+		return
+	}
+	if clientID, ok := providers[index]["client_id"].(string); ok && clientID != "" {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("client_id"), clientID)...)
+	}
 }

@@ -18,9 +18,9 @@ import (
 	"github.com/ory/terraform-provider-ory/internal/provider"
 )
 
-// testProjectPrefix is used to name ephemeral test projects so that stale
+// TestProjectPrefix is used to name ephemeral test projects so that stale
 // ones can be automatically purged. DO NOT CHANGE.
-const testProjectPrefix = "ory-cy-e2e-da2f162d-af61-42dd-90dc-e3fcfa7c84a0"
+const TestProjectPrefix = "ory-cy-e2e-da2f162d-af61-42dd-90dc-e3fcfa7c84a0"
 
 // TestProject holds information about a test project created for acceptance tests.
 type TestProject struct {
@@ -103,6 +103,12 @@ func GetTestProject(t *testing.T) *TestProject {
 	return sharedTestProject
 }
 
+// GetTestProjectID returns the project ID of the shared test project.
+func GetTestProjectID(t *testing.T) string {
+	t.Helper()
+	return GetTestProject(t).ID
+}
+
 // initTestProject initializes the test project, either from env vars or by creating a new one.
 func initTestProject(t *testing.T) {
 	// If project credentials are provided, use the pre-created project
@@ -135,7 +141,7 @@ func loadProjectFromEnv(t *testing.T) {
 }
 
 // createSharedProject creates an ephemeral test project as a fallback when no
-// pre-created project is configured. The project uses the testProjectPrefix so
+// pre-created project is configured. The project uses the TestProjectPrefix so
 // stale projects can be automatically purged. Cleanup is best-effort via
 // CleanupEphemeralProject().
 func createSharedProject(t *testing.T) {
@@ -146,7 +152,7 @@ func createSharedProject(t *testing.T) {
 		return
 	}
 
-	projectName := fmt.Sprintf("%s-tf-%d", testProjectPrefix, time.Now().UnixNano())
+	projectName := fmt.Sprintf("%s-tf-%d", TestProjectPrefix, time.Now().UnixNano())
 	t.Logf("Creating test project: %s (environment: prod)", projectName)
 
 	// Create as "prod" environment to support all features including organizations
@@ -319,6 +325,15 @@ func RequireProjectTests(t *testing.T) {
 func RequireEventStreamTests(t *testing.T) {
 	t.Helper()
 	SkipIfFeatureDisabled(t, "ORY_EVENT_STREAM_TESTS_ENABLED", "event stream")
+}
+
+// RequireAutoLinkTests skips the test if ORY_AUTO_LINK_TESTS_ENABLED is not "true".
+// The OIDC auto-link policy is an enterprise feature that Ory enables per project
+// (the use_auto_link flag); without the entitlement the API rejects it with a 403
+// feature_not_available, so the test only runs against an entitled project.
+func RequireAutoLinkTests(t *testing.T) {
+	t.Helper()
+	SkipIfFeatureDisabled(t, "ORY_AUTO_LINK_TESTS_ENABLED", "OIDC auto-link policy")
 }
 
 // RunTest runs an acceptance test.

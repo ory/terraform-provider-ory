@@ -1,0 +1,34 @@
+resource "ory_identity_schema" "test" {
+  schema_id = "[[ .SchemaID ]]"
+  schema    = jsonencode({
+    "$id": "[[ .AppURL ]]/test-schema-email.json",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Test Email Schema",
+    "type": "object",
+    "properties": {
+      "traits": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email",
+            "ory.sh/kratos": {
+              "credentials": {
+                "password": {"identifier": true}
+              },
+              "verification": {"via": "email"},
+              "recovery": {"via": "email"}
+            }
+          }
+        },
+        "required": ["email"]
+      }
+    }
+  })
+}
+
+data "ory_identity_schema" "test" {
+  id         = ory_identity_schema.test.id
+  project_id = "[[ .ProjectID ]]"
+}

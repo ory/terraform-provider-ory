@@ -123,6 +123,24 @@ resource "ory_relationship" "bob_views_public" {
 - **Relationships are immutable.** Any change to any field forces a new resource (destroy + create).
 - **All three `subject_set_*` fields must be set together.** Setting only `subject_set_namespace` without `subject_set_object` and `subject_set_relation` will produce an error.
 
+## Resource-Level Credentials
+
+When creating relationships in the same `terraform apply` as the project they belong to, use `project_slug` and `project_api_key` to pass credentials directly to the resource:
+
+```hcl
+resource "ory_relationship" "user_can_view" {
+  project_slug    = ory_project.main.slug
+  project_api_key = ory_project_api_key.main.value
+
+  namespace  = "documents"
+  object     = "doc-123"
+  relation   = "viewer"
+  subject_id = "user-456"
+}
+```
+
+This also enables `for_each` across multiple projects without provider aliases.
+
 ## Import
 
 Import using Zanzibar-style tuple notation:
@@ -172,6 +190,8 @@ curl -s -H "Authorization: Bearer $ORY_PROJECT_API_KEY" \
 
 ### Optional
 
+- `project_api_key` (String, Sensitive) Project API key for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and relationship in the same apply). Overrides the provider-level project_api_key.
+- `project_slug` (String) Project slug for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and relationship in the same apply). Overrides the provider-level project_slug.
 - `subject_id` (String) The subject ID (user ID). Mutually exclusive with subject_set_* attributes.
 - `subject_set_namespace` (String) The namespace for a subject set. Use with subject_set_object and subject_set_relation.
 - `subject_set_object` (String) The object ID for a subject set.

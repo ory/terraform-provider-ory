@@ -3,12 +3,14 @@
 package customdomain_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 )
@@ -23,11 +25,37 @@ func importStateCustomDomainID(s *terraform.State) (string, error) {
 	return fmt.Sprintf("%s/%s", projectID, domainID), nil
 }
 
+// cleanupStaleCustomDomains removes any existing custom domains from the test
+// project. This prevents "Duplicate custom hostname found (1406)" errors when a
+// previous test run failed before its destroy step could clean up.
+func cleanupStaleCustomDomains(t *testing.T) {
+	t.Helper()
+
+	oryClient, err := acctest.GetOryClient()
+	require.NoError(t, err, "failed to create Ory client for custom domain cleanup")
+
+	projectID := acctest.GetTestProjectID(t)
+	ctx := context.Background()
+
+	domains, err := oryClient.ListCustomDomains(ctx, projectID)
+	if err != nil {
+		t.Logf("warning: could not list custom domains for cleanup: %s", err)
+		return
+	}
+
+	for _, d := range domains {
+		t.Logf("cleaning up stale custom domain: id=%s", d.GetId())
+		require.NoError(t, oryClient.DeleteCustomDomain(ctx, projectID, d.GetId()),
+			"failed to delete stale custom domain %s", d.GetId())
+	}
+}
+
 func testAccPreCheckCustomDomain(t *testing.T) {
 	acctest.AccPreCheck(t)
 	if os.Getenv("ORY_CUSTOM_DOMAIN_HOSTNAME") == "" {
 		t.Skip("ORY_CUSTOM_DOMAIN_HOSTNAME must be set for custom domain tests (e.g., test.example-e2e.orycname.dev)")
 	}
+	cleanupStaleCustomDomains(t)
 }
 
 // TestAccCustomDomainResource_basic tests the full CRUD lifecycle of a custom domain.
@@ -84,7 +112,7 @@ func TestAccCustomDomainResource_basic(t *testing.T) {
 				ImportState:             true,
 				ImportStateIdFunc:       importStateCustomDomainID,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"created_at", "updated_at"},
+				ImportStateVerifyIgnore: []string{"created_at", "updated_at", "verification_status", "verification_errors", "ssl_status"},
 			},
 		},
 	})

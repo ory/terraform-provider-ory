@@ -5,22 +5,26 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-ory/internal/client"
+	"github.com/ory/terraform-provider-ory/internal/helpers"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &RelationshipResource{}
-	_ resource.ResourceWithConfigure   = &RelationshipResource{}
-	_ resource.ResourceWithImportState = &RelationshipResource{}
+	_ resource.Resource                   = &RelationshipResource{}
+	_ resource.ResourceWithConfigure      = &RelationshipResource{}
+	_ resource.ResourceWithImportState    = &RelationshipResource{}
+	_ resource.ResourceWithValidateConfig = &RelationshipResource{}
 )
 
 // NewResource returns a new Relationship resource.
@@ -36,6 +40,8 @@ type RelationshipResource struct {
 // RelationshipResourceModel describes the resource data model.
 type RelationshipResourceModel struct {
 	ID                  types.String `tfsdk:"id"`
+	ProjectSlug         types.String `tfsdk:"project_slug"`
+	ProjectAPIKey       types.String `tfsdk:"project_api_key"`
 	Namespace           types.String `tfsdk:"namespace"`
 	Object              types.String `tfsdk:"object"`
 	Relation            types.String `tfsdk:"relation"`
@@ -113,6 +119,21 @@ func (r *RelationshipResource) Schema(ctx context.Context, req resource.SchemaRe
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"project_slug": schema.StringAttribute{
+				Description: "Project slug for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and relationship in the same apply). Overrides the provider-level project_slug.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
+			"project_api_key": schema.StringAttribute{
+				Description: "Project API key for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and relationship in the same apply). Overrides the provider-level project_api_key.",
+				Optional:    true,
+				Sensitive:   true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
 			"namespace": schema.StringAttribute{
 				Description: "The namespace of the relationship (e.g., 'documents', 'folders').",
 				Required:    true,
@@ -183,6 +204,15 @@ func (r *RelationshipResource) Configure(ctx context.Context, req resource.Confi
 	r.client = oryClient
 }
 
+func (r *RelationshipResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var config RelationshipResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(helpers.ValidateProjectCredentialPair(config.ProjectSlug, config.ProjectAPIKey)...)
+}
+
 func (r *RelationshipResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan RelationshipResourceModel
 
@@ -190,6 +220,9 @@ func (r *RelationshipResource) Create(ctx context.Context, req resource.CreateRe
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := helpers.ResolveProjectClient(r.client, plan.ProjectSlug, plan.ProjectAPIKey)
 
 	// Validate that either subject_id or subject_set is provided, not both
 	hasSubjectID := !plan.SubjectID.IsNull() && !plan.SubjectID.IsUnknown()
@@ -240,7 +273,7 @@ func (r *RelationshipResource) Create(ctx context.Context, req resource.CreateRe
 		}
 	}
 
-	rel, err := r.client.CreateRelationship(ctx, body)
+	rel, err := client.CreateRelationship(ctx, body)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Relationship",
@@ -263,6 +296,9 @@ func (r *RelationshipResource) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := helpers.ResolveProjectClient(r.client, state.ProjectSlug, state.ProjectAPIKey)
+
 	// Query for the specific relationship
 	var subjectID *string
 	if !state.SubjectID.IsNull() && !state.SubjectID.IsUnknown() {
@@ -273,7 +309,7 @@ func (r *RelationshipResource) Read(ctx context.Context, req resource.ReadReques
 	object := state.Object.ValueString()
 	relation := state.Relation.ValueString()
 
-	rels, err := r.client.GetRelationships(ctx, state.Namespace.ValueString(), &object, &relation, subjectID)
+	rels, err := client.GetRelationships(ctx, state.Namespace.ValueString(), &object, &relation, subjectID)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading Relationship",
@@ -317,6 +353,9 @@ func (r *RelationshipResource) Delete(ctx context.Context, req resource.DeleteRe
 		return
 	}
 
+	// Derive a request-scoped client, using resource-level credentials if provided
+	client := helpers.ResolveProjectClient(r.client, state.ProjectSlug, state.ProjectAPIKey)
+
 	var subjectID *string
 	if !state.SubjectID.IsNull() && !state.SubjectID.IsUnknown() {
 		s := state.SubjectID.ValueString()
@@ -326,7 +365,7 @@ func (r *RelationshipResource) Delete(ctx context.Context, req resource.DeleteRe
 	object := state.Object.ValueString()
 	relation := state.Relation.ValueString()
 
-	err := r.client.DeleteRelationships(ctx, state.Namespace.ValueString(), &object, &relation, subjectID)
+	err := client.DeleteRelationships(ctx, state.Namespace.ValueString(), &object, &relation, subjectID)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting Relationship",

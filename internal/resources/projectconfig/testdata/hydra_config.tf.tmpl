@@ -1,30 +1,27 @@
 resource "ory_project_config" "test" {
   # Token lifespans (use the normalized Go duration format returned by the API)
-  oauth2_access_token_lifespan          = "1h0m0s"
-  oauth2_refresh_token_lifespan         = "720h0m0s"
-  oauth2_auth_code_lifespan             = "30m0s"
-  oauth2_id_token_lifespan              = "1h0m0s"
-  oauth2_login_consent_request_lifespan = "30m0s"
+  oauth2_ttl_access_token          = "1h0m0s"
+  oauth2_ttl_refresh_token         = "720h0m0s"
+  oauth2_ttl_auth_code             = "30m0s"
+  oauth2_ttl_id_token              = "1h0m0s"
+  oauth2_ttl_login_consent_request = "30m0s"
 
   # Access token strategy
-  oauth2_access_token_strategy = "jwt"
-  oauth2_jwt_scope_claim       = "list"
-  oauth2_scope_strategy        = "wildcard"
+  oauth2_strategies_access_token    = "jwt"
+  oauth2_strategies_jwt_scope_claim = "list"
+  oauth2_strategies_scope           = "wildcard"
 
   # PKCE
   oauth2_pkce_enforced                    = false
   oauth2_pkce_enforced_for_public_clients = false
-
-  # Session
-  oauth2_session_encrypt_at_rest = true
 
   # Claims
   oauth2_allowed_top_level_claims = ["amr", "acr"]
   oauth2_mirror_top_level_claims  = false
 
   # OAuth2 flow URLs
-  oauth2_login_url   = "https://example.com/login"
-  oauth2_consent_url = "https://example.com/consent"
-  oauth2_logout_url  = "https://example.com/logout"
-  oauth2_error_url   = "https://example.com/error"
+  oauth2_urls_login   = "https://example.com/login"
+  oauth2_urls_consent = "https://example.com/consent"
+  oauth2_urls_logout  = "https://example.com/logout"
+  oauth2_urls_error   = "https://example.com/error"
 }

@@ -63,10 +63,20 @@ linters:
       - path: internal/resources/
         linters:
           - dupl
+          - goconst
 
       - path: internal/datasources/
         linters:
           - dupl
+          - goconst
+
+      - path: internal/acctest/
+        linters:
+          - goconst
+
+      - path: internal/codegen/
+        linters:
+          - goconst
 
 formatters:
   enable:

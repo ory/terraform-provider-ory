@@ -1,0 +1,6 @@
+resource "ory_project_config" "test" {
+  selfservice_flows_recovery_enabled                    = true
+  selfservice_flows_recovery_use                        = "code"
+  selfservice_flows_recovery_lifespan                   = "30m0s"
+  selfservice_flows_recovery_notify_unknown_recipients  = true
+}

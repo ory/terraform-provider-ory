@@ -60,6 +60,24 @@ The `schema_id` attribute specifies which identity schema defines the structure 
 - **Traits must match schema:** The JSON structure of `traits` must match the identity schema definition. Mismatched traits will cause API errors.
 - **Metadata visibility:** `metadata_public` is visible to the identity owner. `metadata_admin` is only visible via the admin API and is marked sensitive in Terraform.
 
+## Resource-Level Credentials
+
+When creating identities in the same `terraform apply` as the project they belong to, the provider may not have project credentials at configuration time. Use `project_slug` and `project_api_key` to pass credentials directly to the resource:
+
+```hcl
+resource "ory_identity" "user" {
+  project_slug    = ory_project.main.slug
+  project_api_key = ory_project_api_key.main.value
+
+  schema_id = "preset://email"
+  traits = jsonencode({
+    email = "user@example.com"
+  })
+}
+```
+
+This also enables `for_each` across multiple projects without provider aliases.
+
 ## Import
 
 ```shell

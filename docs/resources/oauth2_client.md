@@ -15,6 +15,21 @@ OAuth2 clients are used for machine-to-machine authentication or user-facing OAu
 
 ~> **Important:** The `client_secret` is only returned when the client is first created. Store it securely immediately after creation. It cannot be retrieved later, including after `terraform import`.
 
+## Custom Client ID
+
+By default, a random `client_id` is generated when the client is created. You can specify a custom `client_id` for consistency across environments:
+
+```hcl
+resource "ory_oauth2_client" "api" {
+  client_id   = "my-api-client"
+  client_name = "API Client"
+  grant_types = ["client_credentials"]
+  scope       = "read write"
+}
+```
+
+~> **Note:** Changing the `client_id` after creation forces the resource to be destroyed and recreated. The `client_id` must be unique within the project.
+
 ## Example Usage
 
 ```terraform
@@ -30,6 +45,23 @@ resource "ory_oauth2_client" "api_service" {
 
   # Custom token lifespans for this client
   client_credentials_grant_access_token_lifespan = "30m"
+}
+
+# Client using private_key_jwt with a write-only (ephemeral) JWKS from Vault.
+# jwks_wo is never stored in Terraform state or plan (Terraform 1.11+). Bump
+# jwks_wo_version whenever the key set rotates so Terraform re-sends it.
+ephemeral "vault_kv_secret_v2" "client_jwks" {
+  mount = "secret"
+  name  = "ory/client-jwks"
+}
+
+resource "ory_oauth2_client" "private_key_jwt_client" {
+  client_name                = "Private Key JWT Client"
+  grant_types                = ["client_credentials"]
+  token_endpoint_auth_method = "private_key_jwt"
+
+  jwks_wo         = ephemeral.vault_kv_secret_v2.client_jwks.data["jwks"]
+  jwks_wo_version = "1"
 }
 
 # Web application (Authorization Code flow) with OIDC logout and metadata
@@ -139,6 +171,14 @@ resource "ory_oauth2_client" "cli_tool" {
   response_types             = ["code"]
   token_endpoint_auth_method = "none"
   scope                      = "openid offline_access"
+}
+
+# Client with a custom client_id (useful for consistency across environments)
+resource "ory_oauth2_client" "custom_id" {
+  client_id   = "my-api-client"
+  client_name = "API Client with Custom ID"
+  grant_types = ["client_credentials"]
+  scope       = "api:read api:write"
 }
 
 # Same-apply: Create project and OAuth2 client together
@@ -320,6 +360,8 @@ terraform import ory_oauth2_client.api <client-id>
 
 ### Optional
 
+> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
+
 - `access_token_strategy` (String) Access token strategy: jwt or opaque.
 - `allowed_cors_origins` (List of String) List of allowed CORS origins for this client.
 - `audience` (List of String) List of allowed audiences for tokens.
@@ -329,6 +371,7 @@ terraform import ory_oauth2_client.api <client-id>
 - `backchannel_logout_session_required` (Boolean) Whether the client requires a session identifier in back-channel logout notifications.
 - `backchannel_logout_uri` (String) OpenID Connect back-channel logout URI.
 - `client_credentials_grant_access_token_lifespan` (String) Access token lifespan for client credentials grant (e.g., '1h', '30m').
+- `client_id` (String) The OAuth2 client ID. If not specified, a random ID will be generated. Once set, changing this value forces recreation of the resource.
 - `client_uri` (String) URL of the client's homepage.
 - `contacts` (List of String) List of contact email addresses for the client maintainers.
 - `device_authorization_grant_access_token_lifespan` (String) Access token lifespan for device authorization grant (e.g., '1h').
@@ -339,8 +382,10 @@ terraform import ory_oauth2_client.api <client-id>
 - `grant_types` (List of String) OAuth2 grant types: authorization_code, implicit, client_credentials, refresh_token.
 - `implicit_grant_access_token_lifespan` (String) Access token lifespan for implicit grant (e.g., '1h', '30m').
 - `implicit_grant_id_token_lifespan` (String) ID token lifespan for implicit grant (e.g., '1h', '30m').
-- `jwks` (String, Sensitive) Inline JSON Web Key Set (JWKS) as a JSON string. Use this to provide keys directly instead of via jwks_uri. Mutually exclusive with jwks_uri. Marked sensitive because JWKS may contain private key material.
+- `jwks` (String, Sensitive) Inline JSON Web Key Set (JWKS) as a JSON string. Use this to provide keys directly instead of via jwks_uri. Mutually exclusive with jwks_uri. Marked sensitive because JWKS may contain private key material. Stored in Terraform state; for an ephemeral alternative that is never persisted, use jwks_wo.
 - `jwks_uri` (String) URL of the client's JSON Web Key Set for private_key_jwt authentication. Mutually exclusive with jwks.
+- `jwks_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of jwks (Terraform 1.11+ write-only argument): the inline JSON Web Key Set is sent to Ory but never stored in Terraform state or plan. Use this to source private key material from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change jwks_wo_version to rotate it. Mutually exclusive with jwks and jwks_uri.
+- `jwks_wo_version` (String) Version trigger for jwks_wo. Change this value whenever the write-only jwks_wo changes so Terraform sends the new key set to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless jwks_wo is set.
 - `jwt_bearer_grant_access_token_lifespan` (String) Access token lifespan for JWT bearer grant (e.g., '1h', '30m').
 - `logo_uri` (String) URL of the client's logo.
 - `metadata` (String) Custom metadata as JSON string.
@@ -364,6 +409,5 @@ terraform import ory_oauth2_client.api <client-id>
 
 ### Read-Only
 
-- `client_id` (String) The OAuth2 client ID.
 - `client_secret` (String, Sensitive) The OAuth2 client secret. Only returned on creation.
 - `id` (String) Internal Terraform ID (same as client_id).

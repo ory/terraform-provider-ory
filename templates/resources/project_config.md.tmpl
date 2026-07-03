@@ -18,6 +18,8 @@ This resource supports drift detection — `terraform plan` will detect changes 
 
 ~> **Note:** Only attributes present in your Terraform configuration are tracked for drift. Attributes you have not configured will not appear in plan output, even if they have non-default values in the API.
 
+~> **Plan-gated features:** Some settings require a feature that your project's subscription must include, and the Ory API rejects them with an `HTTP 403 (feature_not_available)` otherwise. Notably, `selfservice_methods_oidc_enable_auto_link_policy = true` requires the OIDC auto-link policy (`use_auto_link`), an enterprise feature that Ory enables per project on request — being on an enterprise plan does not enable it automatically. If an apply fails with a `feature_not_available` error, the provider surfaces the feature name and a request ID; contact Ory support or your account executive to enable the feature.
+
 ## Example Usage
 
 {{ tffile "examples/resources/ory_project_config/resource.tf" }}
@@ -74,6 +76,73 @@ This resource supports CORS configuration for both public and admin endpoints:
 - **Public CORS** (`cors_enabled`, `cors_origins`) — Controls CORS for public-facing endpoints (login, registration, etc.)
 - **Admin CORS** (`cors_admin_enabled`, `cors_admin_origins`) — Controls CORS for admin API endpoints
 
+## SMTP Security Modes
+
+The `smtp_connection_uri` attribute selects the SMTP security mode through the URI scheme and query parameters. The Ory API stores the SMTP configuration as a single URI, so there is no separate security-mode attribute — the scheme and query string fully describe the connection.
+
+| Security mode | URI format | Typical port | When to use |
+|---------------|------------|--------------|-------------|
+| STARTTLS (recommended) | `smtp://user:pass@host:port/` | 587 | Most modern SMTP relays (SendGrid, Mailgun, SES SMTP, Postfix submission) |
+| STARTTLS, skip certificate verification | `smtp://user:pass@host:port/?skip_ssl_verify=true` | 587 | Development or self-signed certs only |
+| Cleartext (no encryption) | `smtp://user:pass@host:port/?disable_starttls=true` | 25, 1025 | Local development with [MailHog](https://github.com/mailhog/MailHog), [MailCatcher](https://mailcatcher.me), or similar |
+| Implicit TLS | `smtps://user:pass@host:port/` | 465 | Legacy SMTPS endpoints that negotiate TLS before any plaintext |
+| Implicit TLS, skip certificate verification | `smtps://user:pass@host:port/?skip_ssl_verify=true` | 465 | Development or self-signed certs only |
+| Implicit TLS with server-name override | `smtps://user:pass@host:port/?server_name=mail.example.com` | 465 | When the SMTP host's certificate is issued for a different hostname (non-wildcard certs) |
+
+~> **Common mistake:** Using `smtps://...:587` forces implicit TLS on a port that expects STARTTLS, which causes most providers to reject the connection or return TLS handshake errors. Use `smtp://...:587` for STARTTLS on port 587.
+
+-> **Credential encoding:** Usernames and passwords must be URI-encoded if they contain special characters (e.g., `@`, `:`, `/`, `?`, `#`). Use [`urlencode`](https://developer.hashicorp.com/terraform/language/functions/urlencode) in Terraform to encode them safely.
+
+-> **Write-only:** The Ory API does not return the SMTP connection URI in project-config responses (it contains credentials). The provider therefore treats `smtp_connection_uri` as write-only — it is sent on create and update but never read back, so the value in your configuration is authoritative. As a result, out-of-band changes to the SMTP URI are not detected, and the attribute will not show a diff if the API omits or masks the value.
+
+For more detail, see the [Ory Kratos SMTP documentation](https://www.ory.com/docs/kratos/emails-sms/sending-emails-smtp).
+
+## Verification After Registration / Settings
+
+Three boolean attributes toggle the [`show_verification_ui`](https://www.ory.com/docs/kratos/self-service/flows/user-registration) post-flow hook for each authentication method:
+
+- `selfservice_flows_registration_after_password_hook_show_verification_ui`
+- `selfservice_flows_registration_after_oidc_hook_show_verification_ui`
+- `selfservice_flows_settings_after_profile_hook_show_verification_ui`
+
+When `true`, the provider adds the `show_verification_ui` hook to the corresponding flow; when `false`, it removes only that hook. Other hooks at the same path (for example `session` or `organization`) are preserved by reading the current hook list before each apply.
+
+To require a verified address before a user can log in (the "Require verified address for login" toggle in the Ory Console), set `feature_flags_legacy_require_verified_login_error = true`. When that flag is `false`, an unverified user is shown the `show_verification_ui` continuation step instead of receiving a form error.
+
+## Account Experience Branding
+
+The hosted Account Experience pages (login, registration, recovery, ...) can be branded with a logo, favicon, and theme colors.
+
+**Logos and favicons** (`account_experience_logo_light`, `account_experience_logo_dark`, `account_experience_favicon_light`, `account_experience_favicon_dark`) must be provided as an inline data URI — the Ory API does not fetch remote URLs. Use [`filebase64`](https://developer.hashicorp.com/terraform/language/functions/filebase64) to embed a local image:
+
+```hcl
+resource "ory_project_config" "main" {
+  account_experience_logo_light    = "data:image/png;base64,${filebase64("${path.module}/assets/logo.png")}"
+  account_experience_favicon_light = "data:image/png;base64,${filebase64("${path.module}/assets/favicon.png")}"
+}
+```
+
+Supported content types: `image/png`, `image/svg+xml`, `image/x-icon`, `image/vnd.microsoft.icon`, `image/gif`, `image/jpeg`, `image/webp`. The API uploads the image and serves it from a content-addressed storage URL; the provider compares that URL's content hash against your data URI, so an unchanged image never shows a diff. Set the attribute to an empty string (`""`) to remove the image.
+
+**Theme colors** (`account_experience_theme_variables_light`, `account_experience_theme_variables_dark`) are maps of color tokens to CSS color values:
+
+```hcl
+resource "ory_project_config" "main" {
+  account_experience_theme_variables_light = {
+    ax_background_default             = "#fafafa"
+    brand_500                         = "#0066ff"
+    button_primary_background_default = "#0066ff"
+    button_primary_background_hover   = "#0052cc"
+  }
+}
+```
+
+Valid tokens are the fields of the [`AccountExperienceColors`](https://github.com/ory/client-go/blob/master/docs/AccountExperienceColors.md) API model (for example `ax_background_default`, `brand_50` through `brand_950`, `button_primary_*`, `input_*`, `interface_*`). The Ory Console theme editor (Branding → Theme) is an easy way to discover token names: configure colors there, then run `ory get project <id> --format json` and copy the `theme_variables_light`/`theme_variables_dark` objects.
+
+~> **Note:** The API silently discards unrecognized color tokens. If a token you set keeps reappearing in `terraform plan`, check its spelling against the model linked above.
+
+Set a theme map to `{}` to reset all colors to the defaults.
+
 ## Clearing Return URLs
 
 To explicitly clear `default_return_url` and `allowed_return_urls` (e.g., for native-only flows with no browser redirects), set them to empty values:
@@ -94,27 +163,19 @@ Omitting these attributes entirely (or setting them to `null`) leaves the existi
 - The `project_id` attribute forces replacement if changed (you cannot move config to a different project)
 - After `terraform import`, run `terraform plan` to reconcile your configuration with the current API state
 
-## Coverage and Limitations
+## Coverage
 
-This resource exposes **75+ attributes** across these configuration categories:
+This resource covers most simple (scalar and list) project configuration properties. Some settings are managed by dedicated resources (e.g., ory_social_provider, ory_identity_schema) or require custom handling.
 
-| Category | Examples |
-|----------|---------|
-| Password settings | min length, identifier similarity, max breaches, haveibeenpwned |
-| Session settings | cookie same site, lifespan, whoami-required AAL |
-| CORS | public and admin origins, enabled/disabled |
-| Authentication | passwordless, code, OIDC (social sign-in), TOTP, passkey, WebAuthn, lookup secrets |
-| OAuth2/Hydra | token lifespans, access token strategy, PKCE, claims, scope strategy, consent/login URLs |
-| Recovery / Verification | enabled, methods, notify unknown recipients |
-| Account enumeration | mitigation enabled |
-| Keto | namespace configuration |
+### Migrating Deprecated Attribute Names
 
-### Not Yet Exposed
+Some attributes have been renamed for consistency with the API spec. The old names still work but show deprecation warnings. A [migration script](https://github.com/ory/terraform-provider-ory/blob/main/scripts/migrate-deprecated-attrs.sh) is provided:
 
-Some Ory project settings are not yet available through this resource. For settings not listed above, use one of these workarounds:
-
-- **Ory Console** — [console.ory.sh](https://console.ory.sh)
-- **Ory CLI** — `ory patch project --replace '/services/identity/config/...'`
-- **API** — `PATCH /projects/{project_id}` with JSON Patch operations
+```bash
+curl -sSfL https://raw.githubusercontent.com/ory/terraform-provider-ory/main/scripts/migrate-deprecated-attrs.sh -o migrate.sh
+chmod +x migrate.sh
+./migrate.sh .
+terraform plan  # verify no changes
+```
 
 {{ .SchemaMarkdown | trimspace }}

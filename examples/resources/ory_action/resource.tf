@@ -23,6 +23,27 @@ resource "ory_action" "validate_login" {
   can_interrupt = true # Allow webhook to block login
 }
 
+# Webhook with write-only (ephemeral) authentication secrets sourced from Vault.
+# The *_wo secrets are never stored in Terraform state or plan (Terraform 1.11+).
+# Bump the matching *_wo_version whenever a secret rotates so Terraform re-sends it.
+ephemeral "vault_kv_secret_v2" "webhook_auth" {
+  mount = "secret"
+  name  = "ory/webhook-auth"
+}
+
+resource "ory_action" "secured_webhook" {
+  flow        = "registration"
+  timing      = "after"
+  auth_method = "password"
+  url         = "https://api.example.com/webhooks/secured"
+  method      = "POST"
+
+  webhook_auth_type                           = "basic_auth"
+  webhook_auth_basic_auth_user                = "webhook-user"
+  webhook_auth_basic_auth_password_wo         = ephemeral.vault_kv_secret_v2.webhook_auth.data["password"]
+  webhook_auth_basic_auth_password_wo_version = "1"
+}
+
 # Async audit log (fire and forget)
 resource "ory_action" "audit_log" {
   flow            = "settings"
@@ -34,12 +55,13 @@ resource "ory_action" "audit_log" {
 }
 
 # Post-verification sync
+# The verification (and recovery) flow is not scoped by authentication method,
+# so auth_method is omitted here — the hook always runs after verification.
 resource "ory_action" "sync_verified" {
-  flow        = "verification"
-  timing      = "after"
-  auth_method = "code"
-  url         = "https://api.example.com/webhooks/user-verified"
-  method      = "POST"
+  flow   = "verification"
+  timing = "after"
+  url    = "https://api.example.com/webhooks/user-verified"
+  method = "POST"
 }
 
 # Post-registration enrichment (parse response to modify identity)

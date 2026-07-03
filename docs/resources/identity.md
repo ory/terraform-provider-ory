@@ -70,6 +70,24 @@ resource "ory_identity" "user_with_password" {
   state    = "active"
 }
 
+# Identity with a write-only (ephemeral) password sourced from Vault.
+# password_wo is never stored in Terraform state or plan (Terraform 1.11+).
+# Bump password_wo_version whenever the password rotates so Terraform re-sends it.
+ephemeral "vault_kv_secret_v2" "user_password" {
+  mount = "secret"
+  name  = "ory/user-password"
+}
+
+resource "ory_identity" "user_with_write_only_password" {
+  schema_id = "preset://email"
+  traits = jsonencode({
+    email = "ephemeral-user@example.com"
+  })
+  password_wo         = ephemeral.vault_kv_secret_v2.user_password.data["password"]
+  password_wo_version = "1"
+  state               = "active"
+}
+
 # Identity with custom schema and metadata
 resource "ory_identity" "customer" {
   schema_id = ory_identity_schema.customer.schema_id
@@ -102,6 +120,24 @@ variable "user_password" {
 - **Traits must match schema:** The JSON structure of `traits` must match the identity schema definition. Mismatched traits will cause API errors.
 - **Metadata visibility:** `metadata_public` is visible to the identity owner. `metadata_admin` is only visible via the admin API and is marked sensitive in Terraform.
 
+## Resource-Level Credentials
+
+When creating identities in the same `terraform apply` as the project they belong to, the provider may not have project credentials at configuration time. Use `project_slug` and `project_api_key` to pass credentials directly to the resource:
+
+```hcl
+resource "ory_identity" "user" {
+  project_slug    = ory_project.main.slug
+  project_api_key = ory_project_api_key.main.value
+
+  schema_id = "preset://email"
+  traits = jsonencode({
+    email = "user@example.com"
+  })
+}
+```
+
+This also enables `for_each` across multiple projects without provider aliases.
+
 ## Import
 
 ```shell
@@ -120,9 +156,15 @@ terraform import ory_identity.user <identity-id>
 
 ### Optional
 
+> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
+
 - `metadata_admin` (String, Sensitive) Admin metadata as JSON string. Only visible to admins.
 - `metadata_public` (String) Public metadata as JSON string. Visible to the identity.
-- `password` (String, Sensitive) Password for the identity. Write-only, not returned on read.
+- `password` (String, Sensitive) Password for the identity. Not returned on read. Stored in Terraform state; for an ephemeral alternative that is never persisted, use password_wo. Exactly one of password or password_wo may be set.
+- `password_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of password (Terraform 1.11+ write-only argument): the value is sent to Ory but never stored in Terraform state or plan. Use this to source the password from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change password_wo_version to rotate it. Mutually exclusive with password.
+- `password_wo_version` (String) Version trigger for password_wo. Change this value whenever the write-only password_wo changes so Terraform sends the new password to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless password_wo is set.
+- `project_api_key` (String, Sensitive) Project API key for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and identity in the same apply). Overrides the provider-level project_api_key.
+- `project_slug` (String) Project slug for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and identity in the same apply). Overrides the provider-level project_slug.
 - `state` (String) Identity state: active or inactive.
 
 ### Read-Only

@@ -3,12 +3,14 @@
 package identityschema_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 	"github.com/ory/terraform-provider-ory/internal/testutil"
@@ -62,15 +64,13 @@ func TestAccIdentitySchemaResource_basic(t *testing.T) {
 	})
 }
 
-func TestAccIdentitySchemaResource_deduplication(t *testing.T) {
+// TestAccIdentitySchemaResource_hashIDResolution verifies that Create resolves the
+// canonical hash-based ID (not the user-provided schema_id) and that Read can find
+// the schema after the API transforms both the ID and URL. This exercises the
+// content-based fallback in Read that was added to handle the API transformation.
+func TestAccIdentitySchemaResource_hashIDResolution(t *testing.T) {
 	suffix := time.Now().UnixNano()
-	// ContentID stays the same across steps so the schema JSON is identical.
-	// SchemaID changes to prove dedup is based on content, not schema_id.
-	contentID := fmt.Sprintf("tf-test-dedup-%d", suffix)
-	schemaID1 := fmt.Sprintf("tf-test-dedup1-%d", suffix)
-	schemaID2 := fmt.Sprintf("tf-test-dedup2-%d", suffix)
-
-	var firstID string
+	schemaID := fmt.Sprintf("tf-test-hash-%d", suffix)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -79,30 +79,17 @@ func TestAccIdentitySchemaResource_deduplication(t *testing.T) {
 		},
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
-			// Step 1: Create a schema and capture its API-assigned ID
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/dedup.tf.tmpl", map[string]string{"SchemaID": schemaID1, "ContentID": contentID, "AppURL": testutil.ExampleAppURL}),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{"SchemaID": schemaID, "AppURL": testutil.ExampleAppURL}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet("ory_identity_schema.dedup", "id"),
-					resource.TestCheckResourceAttrWith("ory_identity_schema.dedup", "id", func(value string) error {
-						firstID = value
-						return nil
-					}),
-				),
-			},
-			// Step 2: Destroy the resource (removes from state, schema stays in Ory)
-			{
-				Config:  " ", // empty config triggers destroy of previous resources
-				Destroy: false,
-			},
-			// Step 3: Re-create with a DIFFERENT schema_id but SAME content — should reuse the same schema
-			{
-				Config: acctest.LoadTestConfig(t, "testdata/dedup.tf.tmpl", map[string]string{"SchemaID": schemaID2, "ContentID": contentID, "AppURL": testutil.ExampleAppURL}),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet("ory_identity_schema.dedup", "id"),
-					resource.TestCheckResourceAttrWith("ory_identity_schema.dedup", "id", func(value string) error {
-						if value != firstID {
-							return fmt.Errorf("expected deduplication to reuse ID %q, but got new ID %q", firstID, value)
+					resource.TestCheckResourceAttrSet("ory_identity_schema.test", "id"),
+					resource.TestCheckResourceAttr("ory_identity_schema.test", "schema_id", schemaID),
+					// Verify the stored ID is the canonical hash, not the user-provided schema_id.
+					// This proves Create resolved the hash and Read can find the schema after
+					// the API transforms the ID and URL.
+					resource.TestCheckResourceAttrWith("ory_identity_schema.test", "id", func(value string) error {
+						if value == schemaID {
+							return fmt.Errorf("expected canonical hash ID, but got user-provided schema_id %q", value)
 						}
 						return nil
 					}),
@@ -145,6 +132,13 @@ func TestAccIdentitySchemaResource_setDefault(t *testing.T) {
 	suffix := time.Now().UnixNano()
 	schemaID := fmt.Sprintf("tf-test-default-%d", suffix)
 
+	// Reset the default schema to preset://username after the test so that
+	// cleanup of tf-test-* schemas doesn't leave the project with a
+	// dangling default_schema_id reference.
+	t.Cleanup(func() {
+		resetDefaultSchemaToPreset(t)
+	})
+
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.AccPreCheck(t)
@@ -172,4 +166,33 @@ func TestAccIdentitySchemaResource_setDefault(t *testing.T) {
 			},
 		},
 	})
+}
+
+// resetDefaultSchemaToPreset resets the project's default_schema_id back to
+// preset://username. This prevents cleanup of tf-test-* schemas from
+// leaving the project with a broken default reference.
+func resetDefaultSchemaToPreset(t *testing.T) {
+	t.Helper()
+
+	c, err := acctest.GetOryClient()
+	if err != nil {
+		t.Logf("Warning: could not create client for default schema reset: %v", err)
+		return
+	}
+
+	projectID := acctest.GetTestProjectID(t)
+	patches := []ory.JsonPatch{
+		{
+			Op:    "replace",
+			Path:  "/services/identity/config/identity/default_schema_id",
+			Value: "preset://username",
+		},
+	}
+
+	if _, err := c.PatchProject(context.Background(), projectID, patches); err != nil {
+		t.Logf("Warning: failed to reset default schema to preset://username: %v", err)
+		return
+	}
+
+	t.Log("Reset default_schema_id to preset://username")
 }

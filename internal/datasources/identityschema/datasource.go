@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -29,8 +30,9 @@ type IdentitySchemaDataSource struct {
 }
 
 type IdentitySchemaDataSourceModel struct {
-	ID     types.String `tfsdk:"id"`
-	Schema types.String `tfsdk:"schema"`
+	ID        types.String `tfsdk:"id"`
+	ProjectID types.String `tfsdk:"project_id"`
+	Schema    types.String `tfsdk:"schema"`
 }
 
 const identitySchemaDataSourceMarkdownDescription = `
@@ -49,7 +51,8 @@ to discover available schema IDs, or use the ` + "`id`" + ` output from an ` + "
 
 ` + "```hcl" + `
 data "ory_identity_schema" "customer" {
-  id = "preset://username"
+  id         = "preset://username"
+  project_id = "your-project-uuid"
 }
 
 output "schema_content" {
@@ -84,6 +87,14 @@ func (d *IdentitySchemaDataSource) Schema(ctx context.Context, req datasource.Sc
 				Description: "The ID of the schema to look up. This is the API-assigned ID (which may be a hash) or a preset ID like 'preset://username'.",
 				Required:    true,
 			},
+			"project_id": schema.StringAttribute{
+				Description: "The ID of the project. If not set, uses the provider's project_id. " +
+					"The Kratos API is preferred when project_slug and project_api_key are configured " +
+					"(returns canonical hash IDs with full schema content). When only a workspace key is " +
+					"available, schemas are read from the project config via the console API.",
+				Optional: true,
+				Computed: true,
+			},
 			"schema": schema.StringAttribute{
 				Description: "The JSON Schema definition for the identity traits.",
 				Computed:    true,
@@ -115,29 +126,113 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 
 	targetID := data.ID.ValueString()
 
-	// Retry to handle eventual consistency — newly created schemas may not
-	// appear in ListIdentitySchemas immediately.
-	var schemas []ory.IdentitySchemaContainer
-	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
-		var err error
-		schemas, err = d.client.ListIdentitySchemas(ctx)
-		if err != nil {
-			resp.Diagnostics.AddError("Error Listing Identity Schemas", err.Error())
-			return
-		}
+	// Resolve project_id: use config value if known, fall back to provider.
+	projectID := d.resolveProjectID(data.ProjectID)
 
-		for _, s := range schemas {
-			if s.GetId() == targetID {
-				schemaJSON, err := json.Marshal(s.GetSchema())
-				if err != nil {
-					resp.Diagnostics.AddError("Error Marshaling Schema",
-						fmt.Sprintf("Could not marshal schema %s: %s", s.GetId(), err.Error()))
+	// Determine which APIs are available for this lookup.
+	//
+	// Identity schemas are workspace-scoped: any project in the workspace can
+	// access all schemas. The Kratos API (ListIdentitySchemas) returns canonical
+	// hash-based IDs with full schema content and works regardless of which
+	// project_id is specified, so we always prefer it when available.
+	//
+	// The console API (ListIdentitySchemasViaProject) reads from the project
+	// config, which only contains schemas explicitly added to that project and
+	// may return empty schema bodies when the API has transformed schema URLs
+	// from base64:// to https://.
+	canUseKratosAPI := d.client.HasProjectClient()
+	canUseConsoleAPI := d.client.HasConsoleClient() && projectID != ""
+	// The workspace endpoint (GET /identity-schemas) needs only a workspace API
+	// key — no project_id and no project credentials. This is the bootstrap
+	// case: a brand-new project has only preset://username in its config, but
+	// the workspace-scoped custom schema the caller is looking up is visible
+	// here.
+	canUseWorkspaceAPI := d.client.HasConsoleClient()
+
+	if !canUseKratosAPI && !canUseConsoleAPI && !canUseWorkspaceAPI {
+		resp.Diagnostics.AddError("Missing Credentials",
+			"Looking up an identity schema requires either project credentials "+
+				"(project_slug and project_api_key) or a workspace_api_key. "+
+				"Configure one on the provider, or set project_id on the data source.")
+		return
+	}
+
+	var allSchemas []ory.IdentitySchemaContainer
+	var found *ory.IdentitySchemaContainer
+
+	for attempt := 0; attempt < helpers.ReadRetryMaxAttempts; attempt++ {
+		// Strategy 1: Try Kratos API (preferred — canonical hash IDs + full content).
+		if canUseKratosAPI && found == nil {
+			schemas, err := d.client.ListIdentitySchemas(ctx)
+			if err != nil {
+				if !canUseConsoleAPI && !canUseWorkspaceAPI {
+					resp.Diagnostics.AddError("Error Listing Identity Schemas", err.Error())
 					return
 				}
-				data.Schema = types.StringValue(string(schemaJSON))
-				resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-				return
+				// Kratos API failed but the console or workspace strategy is
+				// available — continue to the fallbacks below.
+			} else {
+				allSchemas = schemas
+				for i := range schemas {
+					if schemas[i].GetId() == targetID {
+						found = &schemas[i]
+						break
+					}
+				}
 			}
+		}
+
+		// Strategy 2: Try console API (works for any project, fallback for Kratos failures).
+		if canUseConsoleAPI && found == nil {
+			schemas, err := d.client.ListIdentitySchemasViaProject(ctx, projectID)
+			if err != nil {
+				if len(allSchemas) == 0 && !canUseWorkspaceAPI {
+					resp.Diagnostics.AddError("Error Listing Identity Schemas", err.Error())
+					return
+				}
+				// Console API failed but we already have Kratos results or can
+				// still try the workspace endpoint — the schema just isn't here.
+			} else {
+				if len(allSchemas) == 0 {
+					allSchemas = schemas
+				}
+				for i := range schemas {
+					if schemas[i].GetId() == targetID {
+						found = &schemas[i]
+						break
+					}
+				}
+			}
+		}
+
+		// Strategy 3: Try the workspace endpoint (bootstrap — workspace key
+		// only, no project_id or project credentials required). This is the
+		// case in issue #138: a new project sees only preset://username via the
+		// project config, but the workspace-scoped schema is visible here.
+		if canUseWorkspaceAPI && found == nil {
+			schemas, err := d.client.ListWorkspaceIdentitySchemas(ctx)
+			if err != nil {
+				if len(allSchemas) == 0 {
+					resp.Diagnostics.AddError("Error Listing Identity Schemas", err.Error())
+					return
+				}
+				// Workspace endpoint failed but earlier strategies returned
+				// results — the schema just isn't there.
+			} else {
+				if len(allSchemas) == 0 {
+					allSchemas = schemas
+				}
+				for i := range schemas {
+					if schemas[i].GetId() == targetID {
+						found = &schemas[i]
+						break
+					}
+				}
+			}
+		}
+
+		if found != nil {
+			break
 		}
 
 		if attempt < helpers.ReadRetryMaxAttempts-1 {
@@ -149,19 +244,78 @@ func (d *IdentitySchemaDataSource) Read(ctx context.Context, req datasource.Read
 		}
 	}
 
-	// Schema not found after retries — list a sample of available IDs for debugging
+	if found != nil {
+		// If the schema was found via the console API, the content may be empty
+		// (the API transforms base64:// URLs to https:// URLs, making the content
+		// undecodable from the project config alone). Try the Kratos API to resolve
+		// the full content when possible.
+		schemaJSON, err := json.Marshal(found.GetSchema())
+		if err != nil {
+			resp.Diagnostics.AddError("Error Marshaling Schema",
+				fmt.Sprintf("Could not marshal schema %s: %s", found.GetId(), err.Error()))
+			return
+		}
+		if isEmptySchemaBody(schemaJSON) && canUseKratosAPI {
+			kratosSchemas, err := d.client.ListIdentitySchemas(ctx)
+			if err == nil {
+				for i := range kratosSchemas {
+					if kratosSchemas[i].GetId() == targetID {
+						found = &kratosSchemas[i]
+						break
+					}
+				}
+			}
+		}
+
+		schemaJSON, err = json.Marshal(found.GetSchema())
+		if err != nil {
+			resp.Diagnostics.AddError("Error Marshaling Schema",
+				fmt.Sprintf("Could not marshal schema %s: %s", found.GetId(), err.Error()))
+			return
+		}
+		data.Schema = types.StringValue(string(schemaJSON))
+		if projectID != "" {
+			data.ProjectID = types.StringValue(projectID)
+		}
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+		return
+	}
+
 	var sampleIDs []string
-	for i, s := range schemas {
+	for i, s := range allSchemas {
 		if i >= 5 {
-			sampleIDs = append(sampleIDs, fmt.Sprintf("... and %d more", len(schemas)-5))
+			sampleIDs = append(sampleIDs, fmt.Sprintf("... and %d more", len(allSchemas)-5))
 			break
 		}
 		sampleIDs = append(sampleIDs, s.GetId())
 	}
+	var scopeMsg string
+	if projectID != "" {
+		scopeMsg = fmt.Sprintf(" in project %q", projectID)
+	}
+	verifyHint := "Verify that the schema exists in the workspace."
+	if projectID != "" {
+		verifyHint = fmt.Sprintf("Schemas are workspace-scoped. Verify that the schema exists in the workspace "+
+			"associated with project %q, or check the project_id value.", projectID)
+	}
 	resp.Diagnostics.AddError(
 		"Identity Schema Not Found",
-		fmt.Sprintf("No identity schema found with id=%q. Available schema IDs (sample): %v\n\n"+
-			"Use the ory_identity_schemas (plural) data source to discover all available schema IDs.",
-			targetID, sampleIDs),
+		fmt.Sprintf("No identity schema found with id=%q%s. Available schema IDs (sample): %v\n\n"+
+			"Use the ory_identity_schemas (plural) data source to discover all available schema IDs.\n"+
+			"%s",
+			targetID, scopeMsg, sampleIDs, verifyHint),
 	)
+}
+
+// isEmptySchemaBody returns true if the JSON represents an empty or null schema body.
+func isEmptySchemaBody(jsonBytes []byte) bool {
+	s := strings.TrimSpace(string(jsonBytes))
+	return s == "{}" || s == "null" || s == ""
+}
+
+func (d *IdentitySchemaDataSource) resolveProjectID(tfProjectID types.String) string {
+	if !tfProjectID.IsNull() && !tfProjectID.IsUnknown() {
+		return tfProjectID.ValueString()
+	}
+	return d.client.ProjectID()
 }

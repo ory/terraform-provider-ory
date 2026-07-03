@@ -1,0 +1,252 @@
+name: Regenerate Project Config
+
+on:
+  workflow_dispatch:
+    inputs:
+      create_pr:
+        description: 'Create a PR with changes (if any)'
+        type: boolean
+        default: true
+  push:
+    branches: [main]
+    paths:
+      - 'go.sum'
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Terraform CLI (required by make format)
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        with:
+          terraform_wrapper: false
+
+      - name: Download OpenAPI spec (pinned to go.mod version)
+        run: make download-spec
+
+      - name: Download latest spec for drift detection
+        run: |
+          # ory/client-go uses 'master' as its default branch
+          curl -sSfL "https://raw.githubusercontent.com/ory/client-go/master/api/openapi.yaml" \
+            -o /tmp/openapi-master.yaml
+
+      - name: Run codegen with spec validation
+        id: generate
+        run: |
+          set -o pipefail
+          go run ./internal/codegen/cmd/generate/ \
+            -mappings ./internal/codegen/mappings.yaml \
+            -spec ./internal/codegen/openapi.yaml \
+            -out ./internal/resources/projectconfig/ 2>&1 | tee /tmp/codegen-output.txt
+
+      - name: Check for unmapped properties (against latest master spec)
+        id: unmapped
+        run: |
+          set -o pipefail
+          TMPDIR=$(mktemp -d)
+          if ! go run ./internal/codegen/cmd/generate/ \
+            -mappings ./internal/codegen/mappings.yaml \
+            -spec /tmp/openapi-master.yaml \
+            -strict \
+            -out "$TMPDIR" 2>&1 | tee /tmp/strict-output.txt; then
+            # Expected strict-mode failure (unmapped properties) is not a job error.
+            # Unexpected failures (e.g., network, Go tooling) should fail the job.
+            if ! grep -q "STRICT MODE" /tmp/strict-output.txt; then
+              rm -rf "$TMPDIR"
+              exit 1
+            fi
+          fi
+          rm -rf "$TMPDIR"
+
+          if grep -q "STRICT MODE" /tmp/strict-output.txt; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            COUNT=$(grep -oP '\d+ unmapped' /tmp/strict-output.txt | head -n1 | grep -oP '\d+' || true)
+            if [ -z "$COUNT" ]; then
+              COUNT=0
+            fi
+            echo "count=${COUNT}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Auto-apply unmapped properties from pinned spec
+        id: apply
+        run: |
+          set -o pipefail
+          if ! go run ./internal/codegen/cmd/generate/ \
+            -mappings ./internal/codegen/mappings.yaml \
+            -spec ./internal/codegen/openapi.yaml \
+            -discover-apply \
+            -out ./internal/resources/projectconfig/ 2>&1 | tee /tmp/apply-output.txt; then
+            exit 1
+          fi
+          COUNT=$(grep -oP 'discover-apply: \K\d+' /tmp/apply-output.txt | tail -n1 || true)
+          echo "count=${COUNT:-0}" >> "$GITHUB_OUTPUT"
+          if [ "${COUNT:-0}" -gt 0 ]; then
+            # Regenerate _gen.go files to reflect the newly-appended entries.
+            go run ./internal/codegen/cmd/generate/ \
+              -mappings ./internal/codegen/mappings.yaml \
+              -spec ./internal/codegen/openapi.yaml \
+              -out ./internal/resources/projectconfig/
+          fi
+
+      - name: Check for codegen changes (pre-format)
+        id: codegen_diff
+        run: |
+          if [ -n "$(git status --porcelain --untracked-files=all -- internal/codegen/mappings.yaml internal/resources/projectconfig/)" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run make format (regenerate docs, gofmt, lint --fix)
+        if: steps.codegen_diff.outputs.changed == 'true'
+        run: make format
+
+      - name: Check for any file changes (post-format)
+        id: diff
+        run: |
+          if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and test
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          go build ./...
+          go test ./internal/resources/projectconfig/
+
+      - name: Prepare PR body
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          APPLIED="${{ steps.apply.outputs.count }}"
+          {
+            echo "## Summary"
+            echo "- Auto-regenerated project_config schema, patches, and read tables from the latest OpenAPI spec"
+            if [ "${APPLIED:-0}" -gt 0 ]; then
+              echo "- Auto-discovered **${APPLIED} new attribute(s)** from the spec and appended entries to \`mappings.yaml\` + \`ProjectConfigResourceModel\`"
+            fi
+            echo "- Build and unit tests verified"
+            echo ""
+            if [ "${APPLIED:-0}" -gt 0 ]; then
+              echo "## Review checklist for auto-discovered attributes"
+              echo "- [ ] Verify attribute names follow the existing naming convention"
+              echo "- [ ] Review truncated descriptions (some may need rewording)"
+              echo "- [ ] Confirm types (bool/string/int64/list_string/map_string) are correct"
+              echo "- [ ] Decide if any new attribute should be \`sensitive\` or \`skip_empty_read\`"
+              echo "- [ ] Add acceptance test coverage if applicable"
+              echo ""
+            fi
+            echo "## Codegen Output"
+            echo '```'
+            cat /tmp/codegen-output.txt
+            echo '```'
+            if [ "${APPLIED:-0}" -gt 0 ]; then
+              echo ""
+              echo "## Discover-Apply Output"
+              echo '```'
+              cat /tmp/apply-output.txt
+              echo '```'
+            fi
+          } > /tmp/pr-body.md
+
+      - name: Compute PR title
+        id: pr_meta
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          APPLIED="${{ steps.apply.outputs.count }}"
+          if [ "${APPLIED:-0}" -gt 0 ]; then
+            echo "title=feat: auto-discover ${APPLIED} new project_config attribute(s) + regenerate" >> "$GITHUB_OUTPUT"
+            echo "draft=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "title=feat: regenerate project_config from latest OpenAPI spec" >> "$GITHUB_OUTPUT"
+            echo "draft=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create PR for generated file changes
+        if: steps.diff.outputs.changed == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.create_pr == 'true')
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
+        with:
+          # Use ORY_BOT_PAT so the resulting PR triggers downstream workflows
+          # (lint, unit tests, acceptance tests, security). PRs created with the
+          # default GITHUB_TOKEN do not trigger workflows that listen on the
+          # `pull_request` event. See:
+          # https://github.com/peter-evans/create-pull-request/blob/main/docs/concepts-guidelines.md#triggering-further-workflow-runs
+          token: ${{ secrets.ORY_BOT_PAT }}
+          commit-message: ${{ steps.pr_meta.outputs.title }}
+          title: ${{ steps.pr_meta.outputs.title }}
+          body-path: /tmp/pr-body.md
+          branch: chore/regenerate-project-config
+          delete-branch: true
+          draft: ${{ steps.pr_meta.outputs.draft == 'true' }}
+
+      - name: Create issue for master-ahead-of-pinned drift
+        if: steps.unmapped.outputs.found == 'true' && steps.apply.outputs.count == '0'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const fs = require('fs');
+            const output = fs.readFileSync('/tmp/strict-output.txt', 'utf8');
+            const count = '${{ steps.unmapped.outputs.count }}';
+
+            // Check if an open issue already exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'codegen-drift',
+            });
+
+            const body = `The daily OpenAPI spec check found **${count} new properties** in the \`normalizedProjectRevision\` schema (master branch of ory/client-go) that are not yet mapped in the Terraform provider. These are not yet in the pinned client-go version, so auto-discovery could not append them.\n\n\`\`\`\n${output}\n\`\`\`\n\n## Next steps\n\n- Wait for Renovate to bump client-go to a version that includes these properties. On merge, the regenerate workflow will auto-append them to \`mappings.yaml\` and open a draft PR.\n- Or, bump client-go manually and run \`make discover\` locally.\n\nSee [CONTRIBUTING.md](CONTRIBUTING.md#project-config-codegen) for details.`;
+
+            if (issues.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues.data[0].number,
+                body: `Daily spec check found ${count} unmapped master-only properties.\n\n\`\`\`\n${output}\n\`\`\``,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `feat: ${count} new API properties detected in master OpenAPI spec`,
+                labels: ['codegen-drift'],
+                body: body,
+              });
+            }
+
+      - name: Report summary
+        if: always()
+        run: |
+          {
+            echo "### Codegen Summary"
+            echo ""
+            if [ -f /tmp/codegen-output.txt ]; then
+              echo '```'
+              cat /tmp/codegen-output.txt
+              echo '```'
+            fi
+            if [ "${{ steps.apply.outputs.count }}" != "" ] && [ "${{ steps.apply.outputs.count }}" != "0" ]; then
+              echo ""
+              echo "**${{ steps.apply.outputs.count }} new attributes auto-appended** from pinned spec"
+            fi
+            if [ "${{ steps.diff.outputs.changed }}" == "true" ]; then
+              echo "Generated files have changes -- PR ${{ steps.pr_meta.outputs.draft == 'true' && 'draft ' || '' }}created"
+            else
+              echo "No changes detected in generated files"
+            fi
+            if [ "${{ steps.unmapped.outputs.found }}" == "true" ] && [ "${{ steps.apply.outputs.count }}" == "0" ]; then
+              echo ""
+              echo "**${{ steps.unmapped.outputs.count }} unmapped master-only properties detected** -- issue created/updated"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -3,9 +3,13 @@
 package emailtemplate_test
 
 import (
+	"context"
+	"encoding/base64"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	ory "github.com/ory/client-go"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 )
@@ -60,4 +64,70 @@ func TestAccEmailTemplateResource_noSubject(t *testing.T) {
 			},
 		},
 	})
+}
+
+// TestAccEmailTemplateResource_drift covers the regression from issue #213:
+// when an Ory project stores template content at a storage URL (subject/body
+// returned as https://.../<sha512>.{txt,html}), an out-of-band change made
+// via the Console used to be invisible to `terraform plan`. We now hash-check
+// the URL and fall back to a fetch on mismatch, so drift must be detected
+// and a subsequent apply must restore the configured value.
+func TestAccEmailTemplateResource_drift(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Step 1: create the template with subject "Original subject".
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{
+					"Subject":  "Original subject",
+					"BodyHTML": "<p>Original body</p>",
+				}),
+				Check: resource.TestCheckResourceAttr("ory_email_template.test", "subject", "Original subject"),
+			},
+			// Step 2: rewrite the subject directly via the API. Apply with the
+			// original config must detect drift (would have been a silent
+			// "no changes" before the fix) and write the original subject back.
+			{
+				PreConfig: rewriteRecoveryCodeSubjectOutOfBand(t, "OUT-OF-BAND CONSOLE EDIT"),
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{
+					"Subject":  "Original subject",
+					"BodyHTML": "<p>Original body</p>",
+				}),
+				Check: resource.TestCheckResourceAttr("ory_email_template.test", "subject", "Original subject"),
+			},
+			// Step 3: re-applying the same config must be a no-op (no
+			// perpetual diff from the URL/value comparison).
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{
+					"Subject":  "Original subject",
+					"BodyHTML": "<p>Original body</p>",
+				}),
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
+// rewriteRecoveryCodeSubjectOutOfBand patches the recovery_code_valid
+// subject directly via the Console API to simulate someone editing the
+// template in the dashboard.
+func rewriteRecoveryCodeSubjectOutOfBand(t *testing.T, newSubject string) func() {
+	t.Helper()
+	return func() {
+		c, err := acctest.GetOryClient()
+		require.NoError(t, err, "Failed to create Ory client")
+		projectID := acctest.GetTestProjectID(t)
+		encoded := "base64://" + base64.StdEncoding.EncodeToString([]byte(newSubject))
+		patches := []ory.JsonPatch{
+			{
+				Op:    "replace",
+				Path:  "/services/identity/config/courier/templates/recovery_code/valid/email/subject",
+				Value: encoded,
+			},
+		}
+		_, err = c.PatchProject(context.Background(), projectID, patches)
+		require.NoError(t, err, "Failed to rewrite subject out-of-band")
+		t.Logf("Rewrote subject out-of-band to %q", newSubject)
+	}
 }

@@ -51,6 +51,24 @@ A relationship tuple consists of:
 - **Relationships are immutable.** Any change to any field forces a new resource (destroy + create).
 - **All three `subject_set_*` fields must be set together.** Setting only `subject_set_namespace` without `subject_set_object` and `subject_set_relation` will produce an error.
 
+## Resource-Level Credentials
+
+When creating relationships in the same `terraform apply` as the project they belong to, use `project_slug` and `project_api_key` to pass credentials directly to the resource:
+
+```hcl
+resource "ory_relationship" "user_can_view" {
+  project_slug    = ory_project.main.slug
+  project_api_key = ory_project_api_key.main.value
+
+  namespace  = "documents"
+  object     = "doc-123"
+  relation   = "viewer"
+  subject_id = "user-456"
+}
+```
+
+This also enables `for_each` across multiple projects without provider aliases.
+
 ## Import
 
 Import using Zanzibar-style tuple notation:

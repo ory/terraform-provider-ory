@@ -1,0 +1,5 @@
+resource "ory_project_config" "test" {
+  feature_flags_cacheable_sessions = true
+  feature_flags_cacheable_sessions_max_age = "5m0s"
+  feature_flags_use_continue_with_transitions = true
+}
