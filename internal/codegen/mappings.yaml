@@ -725,6 +725,11 @@ attributes:
     openapi_property: kratos_courier_http_request_config_auth_api_key_value
     description: "API key value for HTTP courier authentication."
     sensitive: true
+    # The API does not return this secret — it is stripped/masked server-side.
+    # Reading it back would clobber the configured value with an empty string or a
+    # sentinel (e.g. "****") and cause a perpetual diff, so it is write-only:
+    # sent on create/update, never read into state.
+    write_only: true
 
   - name: courier_http_request_config_auth_basic_auth_password
     go_field: CourierHTTPRequestConfigAuthBasicAuthPassword
@@ -732,6 +737,11 @@ attributes:
     openapi_property: kratos_courier_http_request_config_auth_basic_auth_password
     description: "Password for HTTP courier basic authentication."
     sensitive: true
+    # The API does not return this secret — it is stripped/masked server-side.
+    # Reading it back would clobber the configured value with an empty string or a
+    # sentinel (e.g. "****") and cause a perpetual diff, so it is write-only:
+    # sent on create/update, never read into state.
+    write_only: true
 
   - name: courier_http_request_config_auth_basic_auth_user
     go_field: CourierHTTPRequestConfigAuthBasicAuthUser

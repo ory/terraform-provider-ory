@@ -38,7 +38,7 @@ masked as sensitive. Because the provider does not refresh these from the API, i
 tolerates the API omitting the value or returning a masked sentinel (such as
 `****`) without producing a spurious diff:
 
-- `smtp_connection_uri` in `ory_project_config`
+- `smtp_connection_uri`, `courier_http_request_config_auth_basic_auth_password`, and `courier_http_request_config_auth_api_key_value` in `ory_project_config`
 - `client_secret` and `apple_private_key` in `ory_social_provider`
 - `password` in `ory_identity`
 - `client_secret` in `ory_oauth2_client` (server-generated; returned only on create, never on subsequent reads)

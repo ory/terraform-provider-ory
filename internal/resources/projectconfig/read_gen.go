@@ -408,8 +408,6 @@ func identityStringReadEntries(state *ProjectConfigResourceModel) []StringReadEn
 		{&state.CookiesSameSite, nil, []string{"cookies", "same_site"}, false},
 		{&state.CourierHTTPRequestConfigAuthAPIKeyIn, nil, []string{"courier", "http", "request_config", "auth", "config", "in"}, false},
 		{&state.CourierHTTPRequestConfigAuthAPIKeyName, nil, []string{"courier", "http", "request_config", "auth", "config", "name"}, false},
-		{&state.CourierHTTPRequestConfigAuthAPIKeyValue, nil, []string{"courier", "http", "request_config", "auth", "config", "value"}, false},
-		{&state.CourierHTTPRequestConfigAuthBasicAuthPassword, nil, []string{"courier", "http", "request_config", "auth", "config", "password"}, false},
 		{&state.CourierHTTPRequestConfigAuthBasicAuthUser, nil, []string{"courier", "http", "request_config", "auth", "config", "user"}, false},
 		{&state.CourierHTTPRequestConfigBody, nil, []string{"courier", "http", "request_config", "body"}, false},
 		{&state.CourierHTTPRequestConfigURL, nil, []string{"courier", "http", "request_config", "url"}, false},

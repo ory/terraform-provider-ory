@@ -286,6 +286,63 @@ func TestSMTPConnectionURI_WriteOnly(t *testing.T) {
 	}
 }
 
+// TestCourierHTTPRequestConfigAuth_WriteOnly verifies the flat HTTP courier auth
+// secrets (basic-auth password and API-key value) are treated as write-only: they
+// are sent on create/update (they remain in the schema and patch tables) but are
+// never read back from the API. A value the API returns — empty or a masked
+// sentinel such as "****" — must never overwrite the configured value, otherwise
+// every plan would show a perpetual diff between the real secret in HCL and the
+// masked value in state.
+//
+// This is the provider-side guard for the Ory API stripping HTTP courier
+// credentials from project-config responses.
+func TestCourierHTTPRequestConfigAuth_WriteOnly(t *testing.T) {
+	const (
+		configuredPassword = "basic-auth-secret" //nolint:gosec // G101 false positive: test fixture, not a real credential
+		configuredAPIKey   = "api-key-secret"    //nolint:gosec // G101 false positive: test fixture, not a real credential
+	)
+
+	// 1. Both must be excluded from the generated read entries entirely.
+	state := &ProjectConfigResourceModel{
+		CourierHTTPRequestConfigAuthBasicAuthPassword: types.StringValue(configuredPassword),
+		CourierHTTPRequestConfigAuthAPIKeyValue:       types.StringValue(configuredAPIKey),
+	}
+	for _, e := range identityStringReadEntries(state) {
+		assert.NotSame(t, &state.CourierHTTPRequestConfigAuthBasicAuthPassword, e.Field,
+			"courier_http_request_config_auth_basic_auth_password must not appear in read entries — it is write-only")
+		assert.NotSame(t, &state.CourierHTTPRequestConfigAuthAPIKeyValue, e.Field,
+			"courier_http_request_config_auth_api_key_value must not appear in read entries — it is write-only")
+	}
+
+	// 2. readSimpleFields must preserve the configured values regardless of what
+	//    the API returns for the auth config secrets (absent, empty, or masked).
+	for _, apiValue := range []string{"", "****"} {
+		st := &ProjectConfigResourceModel{
+			CourierHTTPRequestConfigAuthBasicAuthPassword: types.StringValue(configuredPassword),
+			CourierHTTPRequestConfigAuthAPIKeyValue:       types.StringValue(configuredAPIKey),
+		}
+		project := projectWithIdentityConfig(map[string]interface{}{
+			"courier": map[string]interface{}{
+				"http": map[string]interface{}{
+					"request_config": map[string]interface{}{
+						"auth": map[string]interface{}{
+							"config": map[string]interface{}{
+								"password": apiValue,
+								"value":    apiValue,
+							},
+						},
+					},
+				},
+			},
+		})
+		readSimpleFields(context.Background(), project, st)
+		assert.Equal(t, configuredPassword, st.CourierHTTPRequestConfigAuthBasicAuthPassword.ValueString(),
+			"configured courier basic-auth password must be preserved when the API returns %q", apiValue)
+		assert.Equal(t, configuredAPIKey, st.CourierHTTPRequestConfigAuthAPIKeyValue.ValueString(),
+			"configured courier api-key value must be preserved when the API returns %q", apiValue)
+	}
+}
+
 // TestGeneratedSchemaAttributes_Count verifies generation produced a non-trivial
 // number of attributes. The AllOptional and ValidAndUnique tests verify correctness;
 // this test catches catastrophic generation failures (e.g., empty output).
