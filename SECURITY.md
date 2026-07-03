@@ -2,7 +2,7 @@
 
 ## Reporting Vulnerabilities
 
-If you discover a security vulnerability, please report it responsibly by emailing [security@ory.sh](mailto:security@ory.sh). Do **not** open a public GitHub issue for security vulnerabilities.
+If you discover a security vulnerability, please report it responsibly by emailing [security@ory.com](mailto:security@ory.com). Do **not** open a public GitHub issue for security vulnerabilities.
 
 We will acknowledge receipt within 3 business days and work with you to understand and address the issue.
 
