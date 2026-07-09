@@ -1126,5 +1126,23 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Device authentication accepts relaxed attestations for testing. Only allowed on development projects and forced off otherwise.",
 			Optional:    true,
 		},
+		"oauth2_grant_jwt_omit_assertion_audience": schema.BoolAttribute{
+			Description: "The audience (`aud`) claim from the assertion JSON Web Token (JWT) in the JWT Profile for OAuth 2.0 Client Authentication and Authorization Grants (RFC7523) is omitted from the resulting access token",
+			Optional:    true,
+		},
+		"feature_flags_refresh_login_choose_address": schema.BoolAttribute{
+			Description: "Render an address picker on the code refresh login screen",
+			Optional:    true,
+		},
+		"selfservice_methods_deviceauthn_config_android_app_ids": schema.ListAttribute{
+			Description: "Allow-list of Android app signing-certificate digests that a device key may be bound to.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"selfservice_methods_deviceauthn_config_ios_app_ids": schema.ListAttribute{
+			Description: "Allow-list of Apple App IDs that a device key may be bound to.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
 	}
 }
