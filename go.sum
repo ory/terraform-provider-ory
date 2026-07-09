@@ -173,8 +173,6 @@ github.com/nyaruka/phonenumbers v1.5.0 h1:0M+Gd9zl53QC4Nl5z1Yj1O/zPk2XXBUwR/vlzd
 github.com/nyaruka/phonenumbers v1.5.0/go.mod h1:gv+CtldaFz+G3vHHnasBSirAi3O2XLqZzVWz4V1pl2E=
 github.com/oklog/run v1.2.0 h1:O8x3yXwah4A73hJdlrwo/2X6J62gE5qTMusH0dvz60E=
 github.com/oklog/run v1.2.0/go.mod h1:mgDbKRSwPhJfesJ4PntqFUbKQRZ50NgmZTSPlFA0YFk=
-github.com/ory/client-go v1.22.58 h1:9zZ8JBUtj4/oF4AsOsq5b67Y5nAwbsjubHI4nphQFrI=
-github.com/ory/client-go v1.22.58/go.mod h1:G1f+5+m/PJVvl40bsRn0QuyVIcXe7EHiWeM7iWpIDjw=
 github.com/ory/client-go v1.22.61 h1:wiu95f7+Q/fAMAoOsrWj+GnNwM+ZGfHiO+5T17Jwuqg=
 github.com/ory/client-go v1.22.61/go.mod h1:G1f+5+m/PJVvl40bsRn0QuyVIcXe7EHiWeM7iWpIDjw=
 github.com/ory/herodot v0.10.3-0.20250318104651-3179543efba8 h1:bBFBzJ+sy1l/9+uYaz5TLGNNe0GWeXPMyqLhUEy9gPg=
