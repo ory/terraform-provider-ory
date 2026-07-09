@@ -431,6 +431,12 @@ type ProjectConfigResourceModel struct {
 
 	// Auto-discovered (review naming before release)
 	SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation types.Bool `tfsdk:"selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation"`
+
+	// Auto-discovered (review naming before release)
+	OAuth2GrantJWTOmitAssertionAudience              types.Bool `tfsdk:"oauth2_grant_jwt_omit_assertion_audience"`
+	FeatureFlagsRefreshLoginChooseAddress            types.Bool `tfsdk:"feature_flags_refresh_login_choose_address"`
+	SelfserviceMethodsDeviceauthnConfigAndroidAppIds types.List `tfsdk:"selfservice_methods_deviceauthn_config_android_app_ids"`
+	SelfserviceMethodsDeviceauthnConfigIosAppIds     types.List `tfsdk:"selfservice_methods_deviceauthn_config_ios_app_ids"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---
