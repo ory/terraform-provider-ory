@@ -85,7 +85,32 @@ The ` + "`dev`" + ` environment does not support B2B features.
 | ` + "`asia-northeast`" + ` | Asia Pacific (Tokyo) |
 | ` + "`global`" + ` | Global (multi-region) |
 
-**Note:** Home region cannot be changed after project creation.
+**Note:** Home region cannot be changed after project creation. Changing
+` + "`home_region`" + ` forces the project to be destroyed and recreated.
+
+## Changing the Environment
+
+Unlike ` + "`home_region`" + `, ` + "`environment`" + ` **can be changed in place**. Updating the
+value changes the project's tier without destroying the project or any of the
+resources that depend on it (OAuth2 clients, identity schemas, actions, social
+providers, custom domains, email templates, and so on):
+
+` + "```hcl" + `
+resource "ory_project" "main" {
+  name        = "My Application"
+  environment = "stage" # change to "prod" and apply — the project is updated, not replaced
+}
+` + "```" + `
+
+The change is validated server-side and fails (without modifying the project)
+if any of the following are not met:
+
+- The project belongs to a workspace.
+- The workspace subscription permits the target tier (for example, moving to
+  ` + "`prod`" + ` consumes a production-project slot in the subscription).
+- The project configuration does not enable options that are unavailable in the
+  target environment (for example, ` + "`dev`" + `-only settings must be disabled before
+  moving to ` + "`stage`" + ` or ` + "`prod`" + `).
 
 ## Import
 
@@ -127,14 +152,11 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 				Required:            true,
 			},
 			"environment": schema.StringAttribute{
-				Description:         "The environment type: prod, stage, or dev. Defaults to prod. Cannot be changed after creation.",
-				MarkdownDescription: "The environment type. Must be one of: `prod` (production), `stage` (staging), or `dev` (development). Defaults to `prod`. **Cannot be changed after creation** - changing this will force a new resource. Note: `dev` environment does not support B2B Organizations.",
+				Description:         "The environment type: prod, stage, or dev. Defaults to prod. Can be changed in place after creation.",
+				MarkdownDescription: "The environment type. Must be one of: `prod` (production), `stage` (staging), or `dev` (development). Defaults to `prod`. **Can be changed in place** — updating this value changes the project's tier without destroying the project, provided the project belongs to a workspace, the workspace subscription permits the target tier, and the project configuration has no options that are unavailable in the target environment. Note: `dev` environment does not support B2B Organizations.",
 				Optional:            true,
 				Computed:            true,
 				Default:             stringdefault.StaticString("prod"),
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"home_region": schema.StringAttribute{
 				Description:         "The home region of the project. Defaults to eu-central. Cannot be changed after creation.",
@@ -266,6 +288,23 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 	}
 
+	// Update the environment tier if changed. This is a dedicated in-place
+	// operation: PatchProject silently ignores the top-level environment field,
+	// so the provider calls the Console's PUT /projects/{id}/environment endpoint
+	// instead. The API rejects the change (without modifying the project) if the
+	// project is not in a workspace, the subscription does not permit the target
+	// tier, or the current configuration is incompatible with it.
+	if !plan.Environment.Equal(state.Environment) {
+		if err := r.client.SetProjectEnvironment(ctx, state.ID.ValueString(), plan.Environment.ValueString()); err != nil {
+			resp.Diagnostics.AddError(
+				"Error Updating Project Environment",
+				"Could not change project environment from "+state.Environment.ValueString()+
+					" to "+plan.Environment.ValueString()+": "+err.Error(),
+			)
+			return
+		}
+	}
+
 	// Read back the current state
 	project, err := r.client.GetProject(ctx, state.ID.ValueString())
 	if err != nil {
@@ -276,6 +315,10 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
+	// environment and home_region carry their planned values: environment was
+	// confirmed by the successful SetProjectEnvironment call above (a possibly
+	// eventually-consistent GetProject could momentarily report the old tier),
+	// and home_region is immutable. Name/slug/state come from the API read-back.
 	plan.ID = state.ID
 	plan.Name = types.StringValue(project.GetName())
 	plan.Slug = types.StringValue(project.GetSlug())

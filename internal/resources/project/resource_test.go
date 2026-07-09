@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 )
@@ -117,6 +118,70 @@ func TestAccProjectResource_regions(t *testing.T) {
 				},
 			})
 		})
+	}
+}
+
+// TestAccProjectResource_environmentInPlaceUpdate verifies that changing the
+// environment tier on an existing project updates it in place — the project
+// keeps its ID (and therefore all of its child resources) — instead of
+// destroying and recreating it. Regression test for issue #289, where a
+// one-line environment change forced a full project replacement.
+func TestAccProjectResource_environmentInPlaceUpdate(t *testing.T) {
+	projectName := testProjectName("env-inplace")
+	var projectID string
+
+	config := func(env string) string {
+		return acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{"Name": projectName, "Environment": env})
+	}
+
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create a stage project and remember its ID.
+			{
+				Config: config("stage"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project.test", "environment", "stage"),
+					captureAttr("ory_project.test", "id", &projectID),
+				),
+			},
+			// Upgrade stage -> prod in place: environment changes, ID does not.
+			{
+				Config: config("prod"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project.test", "environment", "prod"),
+					resource.TestCheckResourceAttrPtr("ory_project.test", "id", &projectID),
+				),
+			},
+			// Downgrade prod -> dev in place: still the same project.
+			{
+				Config: config("dev"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project.test", "environment", "dev"),
+					resource.TestCheckResourceAttrPtr("ory_project.test", "id", &projectID),
+				),
+			},
+			// Import round-trips cleanly after the in-place changes.
+			{
+				ResourceName:      "ory_project.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+// captureAttr stores the value of a resource attribute so it can be compared
+// across later test steps (e.g. to assert an ID did not change).
+func captureAttr(resourceName, attr string, dest *string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return fmt.Errorf("resource not found: %s", resourceName)
+		}
+		*dest = rs.Primary.Attributes[attr]
+		return nil
 	}
 }
 

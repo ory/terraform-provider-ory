@@ -789,6 +789,80 @@ func (c *OryClient) GetCachedProject(projectID string) *ory.Project {
 	return nil
 }
 
+// SetProjectEnvironment changes a project's environment tier (dev, stage, prod)
+// in place via the Console API's PUT /projects/{id}/environment endpoint — the
+// same call the Ory Console makes.
+//
+// PatchProject cannot do this: it patches the project *configuration* and
+// silently ignores the top-level environment field (it returns 200 without
+// changing anything). This dedicated endpoint updates the environment directly.
+// The change is validated server-side: the project must belong to a workspace,
+// the workspace subscription must permit the target tier, and any
+// environment-specific configuration options must be compatible with the target
+// environment. A workspace API key is an accepted caller.
+//
+// The endpoint is not part of the generated client-go SDK, so the request is
+// issued directly against the console API, mirroring ListWorkspaceIdentitySchemas.
+// A successful (HTTP 200) call is the success signal; callers read the resulting
+// state via GetProject, which reflects the new environment immediately.
+func (c *OryClient) SetProjectEnvironment(ctx context.Context, projectID, environment string) error {
+	if c.consoleClient == nil {
+		return fmt.Errorf("setting project environment: %w. "+
+			"Set workspace_api_key (ORY_WORKSPACE_API_KEY)", ErrConsoleClientNotConfigured)
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return err
+	}
+
+	endpoint := strings.TrimRight(c.config.ConsoleAPIURL, "/") + "/projects/" + url.PathEscape(projectID) + "/environment"
+	payload, err := json.Marshal(map[string]string{"environment": environment})
+	if err != nil {
+		return fmt.Errorf("encoding set-environment request: %w", err)
+	}
+
+	resp, err := retryWithBackoff(ctx, "setting project environment", func() (*http.Response, error) {
+		// Build the request inside the retry closure so each attempt gets a
+		// fresh, unconsumed request body.
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodPut, endpoint, bytes.NewReader(payload))
+		if reqErr != nil {
+			return nil, reqErr
+		}
+		req.Header.Set("Authorization", "Bearer "+c.config.WorkspaceAPIKey)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		if c.config.UserAgent != "" {
+			req.Header.Set("User-Agent", c.config.UserAgent)
+		}
+		r, doErr := consoleHTTPClient.Do(req)
+		if doErr != nil {
+			return nil, doErr
+		}
+		if r.StatusCode == http.StatusTooManyRequests {
+			body, _ := io.ReadAll(r.Body)
+			_ = r.Body.Close()
+			return nil, fmt.Errorf("429 Too Many Requests: %s", strings.TrimSpace(string(body)))
+		}
+		return r, nil
+	})
+	if err != nil {
+		return wrapAPIError(err, "setting project environment")
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("reading set-environment response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return wrapAPIError(fmt.Errorf("unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(body))),
+			"setting project environment")
+	}
+	// The endpoint returns the updated project, but its serialization omits
+	// fields the SDK's Project model requires, so the body is intentionally not
+	// parsed — the 200 status is authoritative.
+	return nil
+}
+
 // =============================================================================
 // Workspace Operations (Console API)
 // =============================================================================
