@@ -214,6 +214,8 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 		{&plan.AccountExperienceHideRegistrationLink, nil, "/services/account_experience/config/hide_registration_link"},
 		{&plan.SelfserviceMethodsDeviceauthnEnabled, nil, "/services/identity/config/selfservice/methods/deviceauthn/enabled"},
 		{&plan.SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/insecure_allow_relaxed_attestation"},
+		{&plan.OAuth2GrantJWTOmitAssertionAudience, nil, "/services/oauth2/config/oauth2/grant/jwt/omit_assertion_audience"},
+		{&plan.FeatureFlagsRefreshLoginChooseAddress, nil, "/services/identity/config/feature_flags/refresh_login_choose_address"},
 	}
 }
 
@@ -248,6 +250,8 @@ func simpleListStringPatchEntries(plan *ProjectConfigResourceModel) []ListString
 		{&plan.SelfserviceMethodsPasskeyConfigRPOrigins, nil, "/services/identity/config/selfservice/methods/passkey/config/rp/origins"},
 		{&plan.OAuth2AllowedTopLevelClaims, nil, "/services/oauth2/config/oauth2/allowed_top_level_claims"},
 		{&plan.WebAuthnRPOrigins, nil, "/services/identity/config/selfservice/methods/webauthn/config/rp/origins"},
+		{&plan.SelfserviceMethodsDeviceauthnConfigAndroidAppIds, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/android_app_ids"},
+		{&plan.SelfserviceMethodsDeviceauthnConfigIosAppIds, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/ios_app_ids"},
 	}
 }
 

@@ -502,6 +502,7 @@ func identityBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry 
 		{&state.SelfserviceMethodsCaptchaEnabled, nil, []string{"selfservice", "methods", "captcha", "enabled"}},
 		{&state.SelfserviceMethodsDeviceauthnEnabled, nil, []string{"selfservice", "methods", "deviceauthn", "enabled"}},
 		{&state.SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation, nil, []string{"selfservice", "methods", "deviceauthn", "config", "insecure_allow_relaxed_attestation"}},
+		{&state.FeatureFlagsRefreshLoginChooseAddress, nil, []string{"feature_flags", "refresh_login_choose_address"}},
 	}
 }
 
@@ -522,6 +523,8 @@ func identityListStringReadEntries(state *ProjectConfigResourceModel) []ListStri
 		{&state.SelfserviceMethodsCaptchaConfigAllowedDomains, nil, []string{"selfservice", "methods", "captcha", "config", "allowed_domains"}},
 		{&state.SelfserviceMethodsPasskeyConfigRPOrigins, nil, []string{"selfservice", "methods", "passkey", "config", "rp", "origins"}},
 		{&state.WebAuthnRPOrigins, nil, []string{"selfservice", "methods", "webauthn", "config", "rp", "origins"}},
+		{&state.SelfserviceMethodsDeviceauthnConfigAndroidAppIds, nil, []string{"selfservice", "methods", "deviceauthn", "config", "android_app_ids"}},
+		{&state.SelfserviceMethodsDeviceauthnConfigIosAppIds, nil, []string{"selfservice", "methods", "deviceauthn", "config", "ios_app_ids"}},
 	}
 }
 
@@ -576,6 +579,7 @@ func oauth2BoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry {
 		{&state.OAuth2GrantJWTJTIOptional, nil, []string{"oauth2", "grant", "jwt", "jti_optional"}},
 		{&state.OIDCDynamicClientRegistrationEnabled, nil, []string{"oidc", "dynamic_client_registration", "enabled"}},
 		{&state.OAuth2PreserveExtClaims, nil, []string{"oauth2", "preserve_ext_claims"}},
+		{&state.OAuth2GrantJWTOmitAssertionAudience, nil, []string{"oauth2", "grant", "jwt", "omit_assertion_audience"}},
 	}
 }
 

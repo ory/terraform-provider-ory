@@ -548,6 +548,7 @@ terraform plan  # verify no changes
 - `feature_flags_legacy_oidc_registration_node_group` (Boolean) Use legacy 'oidc' node group for OIDC registration when required fields are missing.
 - `feature_flags_legacy_require_verified_login_error` (Boolean) Deprecated. Return a form error instead of continue_with when the login identifier is not verified.
 - `feature_flags_password_profile_registration_node_group` (Boolean) Use password method group for profile registration node group.
+- `feature_flags_refresh_login_choose_address` (Boolean) Render an address picker on the code refresh login screen
 - `feature_flags_use_continue_with_transitions` (Boolean) Enable continue_with transitions for session flows.
 - `identity_secrets_cipher` (List of String, Sensitive) Encryption secrets for identity data at rest.
 - `identity_secrets_cookie` (List of String, Sensitive) Cookie signing secrets for the identity service.
@@ -572,6 +573,7 @@ terraform plan  # verify no changes
 - `oauth2_grant_jwt_iat_optional` (Boolean) Make the `iat` claim optional in JWT assertion grants (RFC 7523).
 - `oauth2_grant_jwt_jti_optional` (Boolean) Make the `jti` claim optional in JWT assertion grants (RFC 7523).
 - `oauth2_grant_jwt_max_ttl` (String) Maximum TTL for JWT assertions in grant flows (e.g. '720h').
+- `oauth2_grant_jwt_omit_assertion_audience` (Boolean) The audience (`aud`) claim from the assertion JSON Web Token (JWT) in the JWT Profile for OAuth 2.0 Client Authentication and Authorization Grants (RFC7523) is omitted from the resulting access token
 - `oauth2_grant_refresh_token_rotation_grace_period` (String) Grace period for refresh token rotation (e.g. '5s'). Set to '0s' to disable.
 - `oauth2_grant_refresh_token_rotation_grace_reuse_count` (Number) OAuth2 Grant Refresh Token Rotation Grace Reuse Count. The maximum number of times a refresh token can be reused within the grace period. If set to `null` or `0`, the limit is disabled.
 - `oauth2_id_token_lifespan` (String, Deprecated) OAuth2 ID token lifespan (e.g., '1h'). Requires Hydra service.
@@ -701,7 +703,9 @@ terraform plan  # verify no changes
 - `selfservice_methods_code_mfa_enabled` (Boolean) Enable the code method as a second factor for MFA. When enabled, users can use one-time codes as a second authentication factor.
 - `selfservice_methods_code_passwordless_enabled` (Boolean) Enable passwordless login via the code method.
 - `selfservice_methods_code_passwordless_login_fallback_enabled` (Boolean) Allow code-based login as a fallback for users registered with other methods.
+- `selfservice_methods_deviceauthn_config_android_app_ids` (List of String) Allow-list of Android app signing-certificate digests that a device key may be bound to.
 - `selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation` (Boolean) Device authentication accepts relaxed attestations for testing. Only allowed on development projects and forced off otherwise.
+- `selfservice_methods_deviceauthn_config_ios_app_ids` (List of String) Allow-list of Apple App IDs that a device key may be bound to.
 - `selfservice_methods_deviceauthn_enabled` (Boolean) Device authentication is enabled
 - `selfservice_methods_link_config_base_url` (String) Base URL for recovery, verification, and login links. Leave empty for automatic detection.
 - `selfservice_methods_link_config_lifespan` (String) Lifespan of magic links (e.g. '1h').
