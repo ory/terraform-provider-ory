@@ -1449,3 +1449,22 @@ attributes:
     openapi_property: kratos_selfservice_methods_deviceauthn_config_ios_app_ids
     description: "Allow-list of Apple App IDs that a device key may be bound to."
 
+  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  - name: selfservice_methods_deviceauthn_config_first_factor
+    go_field: SelfserviceMethodsDeviceauthnConfigFirstFactor
+    type: bool
+    openapi_property: kratos_selfservice_methods_deviceauthn_config_first_factor
+    description: "Device authentication may be used as the sole first factor."
+
+  - name: selfservice_methods_deviceauthn_config_ios_biometric_first_factor
+    go_field: SelfserviceMethodsDeviceauthnConfigIosBiometricFirstFactor
+    type: bool
+    openapi_property: kratos_selfservice_methods_deviceauthn_config_ios_biometric_first_factor
+    description: "An iOS biometric device key may be used as the sole first factor."
+
+  - name: selfservice_methods_deviceauthn_config_pin_max_attempts
+    go_field: SelfserviceMethodsDeviceauthnConfigPinMaxAttempts
+    type: int64
+    openapi_property: kratos_selfservice_methods_deviceauthn_config_pin_max_attempts
+    description: "Consecutive wrong-PIN limit before a device key is locked."
+

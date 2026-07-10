@@ -503,6 +503,8 @@ func identityBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry 
 		{&state.SelfserviceMethodsDeviceauthnEnabled, nil, []string{"selfservice", "methods", "deviceauthn", "enabled"}},
 		{&state.SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation, nil, []string{"selfservice", "methods", "deviceauthn", "config", "insecure_allow_relaxed_attestation"}},
 		{&state.FeatureFlagsRefreshLoginChooseAddress, nil, []string{"feature_flags", "refresh_login_choose_address"}},
+		{&state.SelfserviceMethodsDeviceauthnConfigFirstFactor, nil, []string{"selfservice", "methods", "deviceauthn", "config", "first_factor"}},
+		{&state.SelfserviceMethodsDeviceauthnConfigIosBiometricFirstFactor, nil, []string{"selfservice", "methods", "deviceauthn", "config", "ios_biometric_first_factor"}},
 	}
 }
 
@@ -511,6 +513,7 @@ func identityInt64ReadEntries(state *ProjectConfigResourceModel) []Int64ReadEntr
 		{&state.SelfserviceMethodsPasswordConfigMinPasswordLength, &state.PasswordMinLength, []string{"selfservice", "methods", "password", "config", "min_password_length"}},
 		{&state.SelfserviceMethodsPasswordConfigMaxBreaches, &state.PasswordMaxBreaches, []string{"selfservice", "methods", "password", "config", "max_breaches"}},
 		{&state.SelfserviceMethodsCodeConfigMaxSubmissions, nil, []string{"selfservice", "methods", "code", "max_submissions"}},
+		{&state.SelfserviceMethodsDeviceauthnConfigPinMaxAttempts, nil, []string{"selfservice", "methods", "deviceauthn", "config", "pin_max_attempts"}},
 	}
 }
 

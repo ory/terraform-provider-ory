@@ -704,8 +704,11 @@ terraform plan  # verify no changes
 - `selfservice_methods_code_passwordless_enabled` (Boolean) Enable passwordless login via the code method.
 - `selfservice_methods_code_passwordless_login_fallback_enabled` (Boolean) Allow code-based login as a fallback for users registered with other methods.
 - `selfservice_methods_deviceauthn_config_android_app_ids` (List of String) Allow-list of Android app signing-certificate digests that a device key may be bound to.
+- `selfservice_methods_deviceauthn_config_first_factor` (Boolean) Device authentication may be used as the sole first factor.
 - `selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation` (Boolean) Device authentication accepts relaxed attestations for testing. Only allowed on development projects and forced off otherwise.
 - `selfservice_methods_deviceauthn_config_ios_app_ids` (List of String) Allow-list of Apple App IDs that a device key may be bound to.
+- `selfservice_methods_deviceauthn_config_ios_biometric_first_factor` (Boolean) An iOS biometric device key may be used as the sole first factor.
+- `selfservice_methods_deviceauthn_config_pin_max_attempts` (Number) Consecutive wrong-PIN limit before a device key is locked.
 - `selfservice_methods_deviceauthn_enabled` (Boolean) Device authentication is enabled
 - `selfservice_methods_link_config_base_url` (String) Base URL for recovery, verification, and login links. Leave empty for automatic detection.
 - `selfservice_methods_link_config_lifespan` (String) Lifespan of magic links (e.g. '1h').

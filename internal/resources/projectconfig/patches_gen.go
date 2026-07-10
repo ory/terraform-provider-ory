@@ -216,6 +216,8 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 		{&plan.SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/insecure_allow_relaxed_attestation"},
 		{&plan.OAuth2GrantJWTOmitAssertionAudience, nil, "/services/oauth2/config/oauth2/grant/jwt/omit_assertion_audience"},
 		{&plan.FeatureFlagsRefreshLoginChooseAddress, nil, "/services/identity/config/feature_flags/refresh_login_choose_address"},
+		{&plan.SelfserviceMethodsDeviceauthnConfigFirstFactor, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/first_factor"},
+		{&plan.SelfserviceMethodsDeviceauthnConfigIosBiometricFirstFactor, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/ios_biometric_first_factor"},
 	}
 }
 
@@ -226,6 +228,7 @@ func simpleInt64PatchEntries(plan *ProjectConfigResourceModel) []Int64PatchEntry
 		{&plan.SelfserviceMethodsPasswordConfigMaxBreaches, &plan.PasswordMaxBreaches, "/services/identity/config/selfservice/methods/password/config/max_breaches"},
 		{&plan.SelfserviceMethodsCodeConfigMaxSubmissions, nil, "/services/identity/config/selfservice/methods/code/max_submissions"},
 		{&plan.OAuth2GrantRefreshTokenRotationGraceReuseCount, nil, "/services/oauth2/config/oauth2/grant/refresh_token/rotation_grace_reuse_count"},
+		{&plan.SelfserviceMethodsDeviceauthnConfigPinMaxAttempts, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/pin_max_attempts"},
 	}
 }
 

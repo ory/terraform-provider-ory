@@ -1144,5 +1144,17 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 			ElementType: types.StringType,
 		},
+		"selfservice_methods_deviceauthn_config_first_factor": schema.BoolAttribute{
+			Description: "Device authentication may be used as the sole first factor.",
+			Optional:    true,
+		},
+		"selfservice_methods_deviceauthn_config_ios_biometric_first_factor": schema.BoolAttribute{
+			Description: "An iOS biometric device key may be used as the sole first factor.",
+			Optional:    true,
+		},
+		"selfservice_methods_deviceauthn_config_pin_max_attempts": schema.Int64Attribute{
+			Description: "Consecutive wrong-PIN limit before a device key is locked.",
+			Optional:    true,
+		},
 	}
 }

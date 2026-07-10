@@ -437,6 +437,11 @@ type ProjectConfigResourceModel struct {
 	FeatureFlagsRefreshLoginChooseAddress            types.Bool `tfsdk:"feature_flags_refresh_login_choose_address"`
 	SelfserviceMethodsDeviceauthnConfigAndroidAppIds types.List `tfsdk:"selfservice_methods_deviceauthn_config_android_app_ids"`
 	SelfserviceMethodsDeviceauthnConfigIosAppIds     types.List `tfsdk:"selfservice_methods_deviceauthn_config_ios_app_ids"`
+
+	// Auto-discovered (review naming before release)
+	SelfserviceMethodsDeviceauthnConfigFirstFactor             types.Bool  `tfsdk:"selfservice_methods_deviceauthn_config_first_factor"`
+	SelfserviceMethodsDeviceauthnConfigIosBiometricFirstFactor types.Bool  `tfsdk:"selfservice_methods_deviceauthn_config_ios_biometric_first_factor"`
+	SelfserviceMethodsDeviceauthnConfigPinMaxAttempts          types.Int64 `tfsdk:"selfservice_methods_deviceauthn_config_pin_max_attempts"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---
