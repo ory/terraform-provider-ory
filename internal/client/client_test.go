@@ -524,7 +524,7 @@ func TestOryClient_RequireConsoleClient_NilReturnsError(t *testing.T) {
 
 	// Project API key operations
 	t.Run("CreateProjectAPIKey", func(t *testing.T) {
-		_, err := client.CreateProjectAPIKey(ctx, "any-project-id", ory.CreateProjectApiKeyRequest{Name: "test"})
+		_, err := client.CreateProjectAPIKey(ctx, "any-project-id", ory.CreateProjectApiKeyBody{Name: "test"})
 		requireSentinel(t, err)
 	})
 	t.Run("ListProjectAPIKeys", func(t *testing.T) {

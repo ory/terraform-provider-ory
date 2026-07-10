@@ -166,7 +166,7 @@ func (r *ProjectAPIKeyResource) Create(ctx context.Context, req resource.CreateR
 		projectID = r.client.ProjectID()
 	}
 
-	body := ory.CreateProjectApiKeyRequest{
+	body := ory.CreateProjectApiKeyBody{
 		Name: plan.Name.ValueString(),
 	}
 

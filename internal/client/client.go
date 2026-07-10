@@ -1220,14 +1220,14 @@ func (c *OryClient) DeleteOAuth2Client(ctx context.Context, clientID string) err
 // =============================================================================
 
 // CreateProjectAPIKey creates a new API key for a project.
-func (c *OryClient) CreateProjectAPIKey(ctx context.Context, projectID string, body ory.CreateProjectApiKeyRequest) (*ory.ProjectApiKey, error) {
+func (c *OryClient) CreateProjectAPIKey(ctx context.Context, projectID string, body ory.CreateProjectApiKeyBody) (*ory.ProjectApiKey, error) {
 	if err := c.requireConsoleClient("creating project API key"); err != nil {
 		return nil, err
 	}
 	if err := c.checkProjectAllowed(projectID); err != nil {
 		return nil, err
 	}
-	key, httpResp, err := c.consoleClient.ProjectAPI.CreateProjectApiKey(ctx, projectID).CreateProjectApiKeyRequest(body).Execute()
+	key, httpResp, err := c.consoleClient.ProjectAPI.CreateProjectApiKey(ctx, projectID).CreateProjectApiKeyBody(body).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}

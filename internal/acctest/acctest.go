@@ -166,7 +166,7 @@ func createSharedProject(t *testing.T) {
 	t.Logf("Created test project: %s (slug: %s, environment: %s)", project.GetId(), project.GetSlug(), project.GetEnvironment())
 
 	// Create an API key for the project
-	apiKeyReq := ory.CreateProjectApiKeyRequest{
+	apiKeyReq := ory.CreateProjectApiKeyBody{
 		Name: "tf-acc-test-key",
 	}
 	apiKey, err := c.CreateProjectAPIKey(ctx, project.GetId(), apiKeyReq)
