@@ -1468,3 +1468,58 @@ attributes:
     openapi_property: kratos_selfservice_methods_deviceauthn_config_pin_max_attempts
     description: "Consecutive wrong-PIN limit before a device key is locked."
 
+  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  - name: account_experience_contact_url
+    go_field: AccountExperienceContactURL
+    type: string
+    openapi_property: account_experience_contact_url
+    description: "Holds the URL to the account experience's Contact page."
+
+  - name: account_experience_privacy_policy_url
+    go_field: AccountExperiencePrivacyPolicyURL
+    type: string
+    openapi_property: account_experience_privacy_policy_url
+    description: "Holds the URL to the account experience's Privacy Policy page."
+
+  - name: account_experience_terms_of_service_url
+    go_field: AccountExperienceTermsOfServiceURL
+    type: string
+    openapi_property: account_experience_terms_of_service_url
+    description: "Holds the URL to the account experience's Terms of Service page."
+
+  - name: oauth2_device_authorization_token_polling_interval
+    go_field: OAuth2DeviceAuthorizationTokenPollingInterval
+    type: string
+    openapi_property: hydra_oauth2_device_authorization_token_polling_interval
+    description: "How often a non-interactive device should poll the OAuth 2.0 Device Authorization Grant token endpoint"
+
+  - name: oauth2_device_authorization_user_code_entropy_preset
+    go_field: OAuth2DeviceAuthorizationUserCodeEntropyPreset
+    type: string
+    openapi_property: hydra_oauth2_device_authorization_user_code_entropy_preset
+    description: "Picks a preset for the OAuth 2.0 Device Authorization Grant user_code length and character set"
+
+  - name: oauth2_ttl_device_user_code
+    go_field: OAuth2TTLDeviceUserCode
+    type: string
+    openapi_property: hydra_ttl_device_user_code
+    description: "How long the device_code and user_code in the OAuth 2.0 Device Authorization Grant remain valid"
+
+  - name: oauth2_urls_device_success
+    go_field: OAuth2UrlsDeviceSuccess
+    type: string
+    openapi_property: hydra_urls_device_success
+    description: "Sets the URL the user is redirected to after successfully completing the OAuth 2.0 Device Authorization Grant user verification step"
+
+  - name: oauth2_urls_device_verification
+    go_field: OAuth2UrlsDeviceVerification
+    type: string
+    openapi_property: hydra_urls_device_verification
+    description: "Sets the URL of the user verification page for the OAuth 2.0 Device Authorization Grant (RFC 8628)"
+
+  - name: oauth2_webfinger_oidc_discovery_device_authorization_url
+    go_field: OAuth2WebfingerOIDCDiscoveryDeviceAuthorizationURL
+    type: string
+    openapi_property: hydra_webfinger_oidc_discovery_device_authorization_url
+    description: "Override the OAuth 2.0 Device Authorization Endpoint URL that is advertised in the OpenID Connect discovery document (/.well-known/openid-configuration)"
+

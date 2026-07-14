@@ -442,6 +442,17 @@ type ProjectConfigResourceModel struct {
 	SelfserviceMethodsDeviceauthnConfigFirstFactor             types.Bool  `tfsdk:"selfservice_methods_deviceauthn_config_first_factor"`
 	SelfserviceMethodsDeviceauthnConfigIosBiometricFirstFactor types.Bool  `tfsdk:"selfservice_methods_deviceauthn_config_ios_biometric_first_factor"`
 	SelfserviceMethodsDeviceauthnConfigPinMaxAttempts          types.Int64 `tfsdk:"selfservice_methods_deviceauthn_config_pin_max_attempts"`
+
+	// Auto-discovered (review naming before release)
+	AccountExperienceContactURL                        types.String `tfsdk:"account_experience_contact_url"`
+	AccountExperiencePrivacyPolicyURL                  types.String `tfsdk:"account_experience_privacy_policy_url"`
+	AccountExperienceTermsOfServiceURL                 types.String `tfsdk:"account_experience_terms_of_service_url"`
+	OAuth2DeviceAuthorizationTokenPollingInterval      types.String `tfsdk:"oauth2_device_authorization_token_polling_interval"`
+	OAuth2DeviceAuthorizationUserCodeEntropyPreset     types.String `tfsdk:"oauth2_device_authorization_user_code_entropy_preset"`
+	OAuth2TTLDeviceUserCode                            types.String `tfsdk:"oauth2_ttl_device_user_code"`
+	OAuth2UrlsDeviceSuccess                            types.String `tfsdk:"oauth2_urls_device_success"`
+	OAuth2UrlsDeviceVerification                       types.String `tfsdk:"oauth2_urls_device_verification"`
+	OAuth2WebfingerOIDCDiscoveryDeviceAuthorizationURL types.String `tfsdk:"oauth2_webfinger_oidc_discovery_device_authorization_url"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---
