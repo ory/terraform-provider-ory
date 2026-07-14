@@ -1156,5 +1156,41 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Consecutive wrong-PIN limit before a device key is locked.",
 			Optional:    true,
 		},
+		"account_experience_contact_url": schema.StringAttribute{
+			Description: "Holds the URL to the account experience's Contact page.",
+			Optional:    true,
+		},
+		"account_experience_privacy_policy_url": schema.StringAttribute{
+			Description: "Holds the URL to the account experience's Privacy Policy page.",
+			Optional:    true,
+		},
+		"account_experience_terms_of_service_url": schema.StringAttribute{
+			Description: "Holds the URL to the account experience's Terms of Service page.",
+			Optional:    true,
+		},
+		"oauth2_device_authorization_token_polling_interval": schema.StringAttribute{
+			Description: "How often a non-interactive device should poll the OAuth 2.0 Device Authorization Grant token endpoint",
+			Optional:    true,
+		},
+		"oauth2_device_authorization_user_code_entropy_preset": schema.StringAttribute{
+			Description: "Picks a preset for the OAuth 2.0 Device Authorization Grant user_code length and character set",
+			Optional:    true,
+		},
+		"oauth2_ttl_device_user_code": schema.StringAttribute{
+			Description: "How long the device_code and user_code in the OAuth 2.0 Device Authorization Grant remain valid",
+			Optional:    true,
+		},
+		"oauth2_urls_device_success": schema.StringAttribute{
+			Description: "Sets the URL the user is redirected to after successfully completing the OAuth 2.0 Device Authorization Grant user verification step",
+			Optional:    true,
+		},
+		"oauth2_urls_device_verification": schema.StringAttribute{
+			Description: "Sets the URL of the user verification page for the OAuth 2.0 Device Authorization Grant (RFC 8628)",
+			Optional:    true,
+		},
+		"oauth2_webfinger_oidc_discovery_device_authorization_url": schema.StringAttribute{
+			Description: "Override the OAuth 2.0 Device Authorization Endpoint URL that is advertised in the OpenID Connect discovery document (/.well-known/openid-configuration)",
+			Optional:    true,
+		},
 	}
 }

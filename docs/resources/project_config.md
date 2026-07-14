@@ -489,6 +489,7 @@ terraform plan  # verify no changes
 
 > **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
 
+- `account_experience_contact_url` (String) Holds the URL to the account experience's Contact page.
 - `account_experience_default_locale` (String) Default locale for the hosted login UI (e.g., 'en', 'de').
 - `account_experience_enabled_locales` (List of String) Enabled locales for the hosted login UI.
 - `account_experience_favicon_dark` (String) Favicon for the hosted Account Experience UI (dark theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
@@ -498,6 +499,8 @@ terraform plan  # verify no changes
 - `account_experience_locale_behavior` (String) Locale behavior: 'respect_accept_language' or 'force_default'.
 - `account_experience_logo_dark` (String) Logo for the hosted Account Experience UI (dark theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
 - `account_experience_logo_light` (String) Logo for the hosted Account Experience UI (light theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
+- `account_experience_privacy_policy_url` (String) Holds the URL to the account experience's Privacy Policy page.
+- `account_experience_terms_of_service_url` (String) Holds the URL to the account experience's Terms of Service page.
 - `account_experience_theme_variables_dark` (Map of String) Theme color variables for the hosted Account Experience UI (dark theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset.
 - `account_experience_theme_variables_light` (Map of String) Theme color variables for the hosted Account Experience UI (light theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset.
 - `allowed_return_urls` (List of String) List of allowed return URLs.
@@ -568,6 +571,8 @@ terraform plan  # verify no changes
 - `oauth2_consent_url` (String, Deprecated) OAuth2 consent endpoint URL.
 - `oauth2_cookies_same_site_legacy_workaround` (Boolean, Deprecated) Enable the SameSite=None legacy workaround for OAuth2 cookies. When enabled, a fallback cookie without SameSite is set alongside the main cookie for clients that don't support SameSite=None.
 - `oauth2_cookies_same_site_mode` (String, Deprecated) SameSite attribute for OAuth2 cookies ('Lax', 'Strict', 'None').
+- `oauth2_device_authorization_token_polling_interval` (String) How often a non-interactive device should poll the OAuth 2.0 Device Authorization Grant token endpoint
+- `oauth2_device_authorization_user_code_entropy_preset` (String) Picks a preset for the OAuth 2.0 Device Authorization Grant user_code length and character set
 - `oauth2_error_url` (String, Deprecated) OAuth2 error endpoint URL.
 - `oauth2_exclude_not_before_claim` (Boolean) Exclude the `nbf` (not before) claim from access tokens.
 - `oauth2_grant_jwt_iat_optional` (Boolean) Make the `iat` claim optional in JWT assertion grants (RFC 7523).
@@ -605,10 +610,13 @@ terraform plan  # verify no changes
 - `oauth2_token_prefix` (String) Sets a per-project Access Token, Refresh Token, and Authorization Code prefix
 - `oauth2_ttl_access_token` (String) OAuth2 access token lifespan (e.g., '1h', '30m'). Requires Hydra service.
 - `oauth2_ttl_auth_code` (String) OAuth2 authorization code lifespan (e.g., '30m'). Requires Hydra service.
+- `oauth2_ttl_device_user_code` (String) How long the device_code and user_code in the OAuth 2.0 Device Authorization Grant remain valid
 - `oauth2_ttl_id_token` (String) OAuth2 ID token lifespan (e.g., '1h'). Requires Hydra service.
 - `oauth2_ttl_login_consent_request` (String) OAuth2 login/consent request lifespan (e.g., '30m'). Requires Hydra service.
 - `oauth2_ttl_refresh_token` (String) OAuth2 refresh token lifespan (e.g., '720h' for 30 days). Requires Hydra service.
 - `oauth2_urls_consent` (String) OAuth2 consent endpoint URL.
+- `oauth2_urls_device_success` (String) Sets the URL the user is redirected to after successfully completing the OAuth 2.0 Device Authorization Grant user verification step
+- `oauth2_urls_device_verification` (String) Sets the URL of the user verification page for the OAuth 2.0 Device Authorization Grant (RFC 8628)
 - `oauth2_urls_error` (String) OAuth2 error endpoint URL.
 - `oauth2_urls_login` (String) OAuth2 login endpoint URL.
 - `oauth2_urls_logout` (String) OAuth2 logout endpoint URL.
@@ -618,6 +626,7 @@ terraform plan  # verify no changes
 - `oauth2_webfinger_jwks_broadcast_keys` (List of String) JWK set IDs to broadcast via OIDC discovery.
 - `oauth2_webfinger_oidc_discovery_auth_url` (String) Override the OAuth2 authorization URL in OIDC discovery.
 - `oauth2_webfinger_oidc_discovery_client_registration_url` (String) Override the dynamic client registration URL in OIDC discovery.
+- `oauth2_webfinger_oidc_discovery_device_authorization_url` (String) Override the OAuth 2.0 Device Authorization Endpoint URL that is advertised in the OpenID Connect discovery document (/.well-known/openid-configuration)
 - `oauth2_webfinger_oidc_discovery_jwks_url` (String) Override the JWKS URL in OIDC discovery.
 - `oauth2_webfinger_oidc_discovery_supported_claims` (List of String) Supported claims advertised in OIDC discovery.
 - `oauth2_webfinger_oidc_discovery_supported_scope` (List of String) Supported scopes advertised in OIDC discovery.

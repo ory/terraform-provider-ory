@@ -152,6 +152,15 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.CourierHTTPRequestConfigMethod, nil, "/services/identity/config/courier/http/request_config/method"},
 		{&plan.SMTPConnectionURI, nil, "/services/identity/config/courier/smtp/connection_uri"},
 		{&plan.OAuth2TokenPrefix, nil, "/services/oauth2/config/oauth2/token_prefix"},
+		{&plan.AccountExperienceContactURL, nil, "/services/account_experience/config/contact_url"},
+		{&plan.AccountExperiencePrivacyPolicyURL, nil, "/services/account_experience/config/privacy_policy_url"},
+		{&plan.AccountExperienceTermsOfServiceURL, nil, "/services/account_experience/config/terms_of_service_url"},
+		{&plan.OAuth2DeviceAuthorizationTokenPollingInterval, nil, "/services/oauth2/config/oauth2/device_authorization/token_polling_interval"},
+		{&plan.OAuth2DeviceAuthorizationUserCodeEntropyPreset, nil, "/services/oauth2/config/oauth2/device_authorization/user_code/entropy_preset"},
+		{&plan.OAuth2TTLDeviceUserCode, nil, "/services/oauth2/config/ttl/device_user_code"},
+		{&plan.OAuth2UrlsDeviceSuccess, nil, "/services/oauth2/config/urls/device/success"},
+		{&plan.OAuth2UrlsDeviceVerification, nil, "/services/oauth2/config/urls/device/verification"},
+		{&plan.OAuth2WebfingerOIDCDiscoveryDeviceAuthorizationURL, nil, "/services/oauth2/config/webfinger/oidc_discovery/device_authorization_url"},
 	}
 }
 

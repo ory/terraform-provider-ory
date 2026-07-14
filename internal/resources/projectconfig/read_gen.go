@@ -355,6 +355,9 @@ func account_experienceStringReadEntries(state *ProjectConfigResourceModel) []St
 	return []StringReadEntry{
 		{&state.AccountExperienceLocale, nil, []string{"default_locale"}, true},
 		{&state.AccountExperienceLocaleBehavior, nil, []string{"locale_behavior"}, true},
+		{&state.AccountExperienceContactURL, nil, []string{"contact_url"}, false},
+		{&state.AccountExperiencePrivacyPolicyURL, nil, []string{"privacy_policy_url"}, false},
+		{&state.AccountExperienceTermsOfServiceURL, nil, []string{"terms_of_service_url"}, false},
 	}
 }
 
@@ -567,6 +570,12 @@ func oauth2StringReadEntries(state *ProjectConfigResourceModel) []StringReadEntr
 		{&state.OAuth2WebfingerOIDCDiscoveryTokenURL, nil, []string{"webfinger", "oidc_discovery", "token_url"}, false},
 		{&state.OAuth2WebfingerOIDCDiscoveryUserinfoURL, nil, []string{"webfinger", "oidc_discovery", "userinfo_url"}, false},
 		{&state.OAuth2TokenPrefix, nil, []string{"oauth2", "token_prefix"}, false},
+		{&state.OAuth2DeviceAuthorizationTokenPollingInterval, nil, []string{"oauth2", "device_authorization", "token_polling_interval"}, false},
+		{&state.OAuth2DeviceAuthorizationUserCodeEntropyPreset, nil, []string{"oauth2", "device_authorization", "user_code", "entropy_preset"}, false},
+		{&state.OAuth2TTLDeviceUserCode, nil, []string{"ttl", "device_user_code"}, false},
+		{&state.OAuth2UrlsDeviceSuccess, nil, []string{"urls", "device", "success"}, false},
+		{&state.OAuth2UrlsDeviceVerification, nil, []string{"urls", "device", "verification"}, false},
+		{&state.OAuth2WebfingerOIDCDiscoveryDeviceAuthorizationURL, nil, []string{"webfinger", "oidc_discovery", "device_authorization_url"}, false},
 	}
 }
 
