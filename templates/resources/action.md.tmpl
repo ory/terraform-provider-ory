@@ -30,6 +30,7 @@ The `auth_method` attribute specifies which authentication method triggers the w
 | `passkey` | Passkey authentication |
 | `totp` | Time-based one-time password |
 | `lookup_secret` | Recovery/backup codes |
+| `saml` | SAML single sign-on (SSO) |
 
 ~> **Note:** `auth_method` only applies to `timing = "after"` webhooks on the `login`, `registration`, and `settings` flows. The `recovery` and `verification` flows are **not** scoped by authentication method — their after-hooks always run — so `auth_method` is ignored for them and should be omitted. For `timing = "before"` hooks, the webhook runs before any authentication method is invoked.
 
@@ -127,7 +128,7 @@ terraform import ory_action.validate \
 1. **project_id**: Settings → General → Project ID
 2. **flow**: The flow type (login, registration, recovery, settings, verification)
 3. **timing**: "before" or "after"
-4. **auth_method**: for `login`/`registration`/`settings` "after" hooks, one of password, oidc, code, webauthn, passkey, totp, lookup_secret. For `recovery`/`verification` "after" hooks the value is ignored, but the import ID format still requires this segment — use `password` to match the provider default and avoid a post-import diff (keep `auth_method` omitted from the resource configuration itself).
+4. **auth_method**: for `login`/`registration`/`settings` "after" hooks, one of password, oidc, code, webauthn, passkey, totp, lookup_secret, saml. For `recovery`/`verification` "after" hooks the value is ignored, but the import ID format still requires this segment — use `password` to match the provider default and avoid a post-import diff (keep `auth_method` omitted from the resource configuration itself).
 5. **method**: The HTTP method (POST, GET, PUT, PATCH, DELETE)
 6. **url**: The exact webhook URL - must match exactly including protocol and trailing slashes
 

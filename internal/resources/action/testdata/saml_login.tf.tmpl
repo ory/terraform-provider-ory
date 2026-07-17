@@ -1,0 +1,7 @@
+resource "ory_action" "test" {
+  flow        = "login"
+  timing      = "after"
+  auth_method = "saml"
+  url         = "[[ .WebhookURL ]]/saml-after-login"
+  method      = "POST"
+}

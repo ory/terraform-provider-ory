@@ -246,6 +246,45 @@ func TestAccActionResource_basic(t *testing.T) {
 	})
 }
 
+// TestAccActionResource_samlLogin is the regression test for issue #305: the
+// SAML authentication method is offered in the Ory Console UI for after-login
+// hooks but the provider's auth_method validator rejected "saml". This exercises
+// create, read, import, and delete of a webhook bound to the SAML method on the
+// login flow (stored at .../login/after/saml/hooks, alongside any organization
+// hook already configured for SAML SSO).
+func TestAccActionResource_samlLogin(t *testing.T) {
+	webhookURL := testutil.ExampleWebhookURL + "/saml-after-login"
+	hookPath := "/services/identity/config/selfservice/flows/login/after/saml/hooks"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			cleanupDanglingWebhook(t, hookPath, webhookURL)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create and Read
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/saml_login.tf.tmpl", map[string]string{"WebhookURL": testutil.ExampleWebhookURL}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_action.test", "id"),
+					resource.TestCheckResourceAttr("ory_action.test", "flow", "login"),
+					resource.TestCheckResourceAttr("ory_action.test", "timing", "after"),
+					resource.TestCheckResourceAttr("ory_action.test", "auth_method", "saml"),
+					resource.TestCheckResourceAttr("ory_action.test", "method", "POST"),
+				),
+			},
+			// Import using the 6-part format: project_id:flow:timing:auth_method:method:url
+			{
+				ResourceName:      "ory_action.test",
+				ImportState:       true,
+				ImportStateIdFunc: actionImportStateIDFunc,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
 // TestAccActionResource_beforeTiming is the regression test for issue #280:
 // before-timing actions could not be imported because the url's own colons
 // (https://...) broke the segment-counting import ID parser. Both documented

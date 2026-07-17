@@ -131,6 +131,7 @@ The ` + "`auth_method`" + ` attribute specifies which authentication method trig
 | ` + "`passkey`" + ` | Passkey authentication | "Passkey" |
 | ` + "`totp`" + ` | Time-based one-time password | "TOTP" |
 | ` + "`lookup_secret`" + ` | Recovery/backup codes | "Backup Codes" |
+| ` + "`saml`" + ` | SAML single sign-on (SSO) | "SAML" |
 
 **Note:** ` + "`auth_method`" + ` only applies to ` + "`timing = \"after\"`" + ` webhooks on the ` + "`login`" + `, ` + "`registration`" + `, and ` + "`settings`" + ` flows. The ` + "`recovery`" + ` and ` + "`verification`" + ` flows are not scoped by authentication method, so ` + "`auth_method`" + ` is ignored for them and should be omitted. For ` + "`timing = \"before\"`" + ` hooks, the webhook runs before any authentication method.
 
@@ -248,13 +249,13 @@ func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				},
 			},
 			"auth_method": schema.StringAttribute{
-				Description:         "Authentication method to hook into (password, oidc, code, webauthn, passkey, totp, lookup_secret). Defaults to 'password'. Only applies to 'after' timing on the login, registration, and settings flows; ignored for the recovery and verification flows.",
-				MarkdownDescription: "Authentication method that triggers the webhook. In the Ory Console UI, this is the \"Method\" selector. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`. Only applies to `timing = \"after\"` webhooks on the `login`, `registration`, and `settings` flows; it is ignored for the `recovery` and `verification` flows.",
+				Description:         "Authentication method to hook into (password, oidc, code, webauthn, passkey, totp, lookup_secret, saml). Defaults to 'password'. Only applies to 'after' timing on the login, registration, and settings flows; ignored for the recovery and verification flows.",
+				MarkdownDescription: "Authentication method that triggers the webhook. In the Ory Console UI, this is the \"Method\" selector. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`, `saml` (SAML single sign-on). Only applies to `timing = \"after\"` webhooks on the `login`, `registration`, and `settings` flows; it is ignored for the `recovery` and `verification` flows.",
 				Optional:            true,
 				Computed:            true,
 				Default:             stringdefault.StaticString("password"),
 				Validators: []validator.String{
-					stringvalidator.OneOf("password", "oidc", "code", "webauthn", "passkey", "totp", "lookup_secret"),
+					stringvalidator.OneOf("password", "oidc", "code", "webauthn", "passkey", "totp", "lookup_secret", "saml"),
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
