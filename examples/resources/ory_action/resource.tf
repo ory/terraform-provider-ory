@@ -23,6 +23,15 @@ resource "ory_action" "validate_login" {
   can_interrupt = true # Allow webhook to block login
 }
 
+# Post-login webhook for SAML single sign-on (SSO) logins
+resource "ory_action" "after_login_saml" {
+  flow        = "login"
+  timing      = "after"
+  auth_method = "saml"
+  url         = "https://api.example.com/webhooks/after-login-saml"
+  method      = "POST"
+}
+
 # Webhook with write-only (ephemeral) authentication secrets sourced from Vault.
 # The *_wo secrets are never stored in Terraform state or plan (Terraform 1.11+).
 # Bump the matching *_wo_version whenever a secret rotates so Terraform re-sends it.

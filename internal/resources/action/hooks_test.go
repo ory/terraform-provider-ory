@@ -1,8 +1,15 @@
 package action
 
 import (
+	"context"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,6 +48,44 @@ func afterConfig(flow string, after map[string]interface{}) map[string]interface
 			},
 		},
 	}
+}
+
+// TestAuthMethodValidatorAcceptsSAML is the schema-level regression for issue
+// #305: the Ory Console UI offers "saml" as an after-login authentication
+// method, but the auth_method validator rejected it. Every documented method
+// (including saml) must pass validation, while an unknown method must still be
+// rejected so we know the validator is active.
+func TestAuthMethodValidatorAcceptsSAML(t *testing.T) {
+	ctx := context.Background()
+	r := &ActionResource{}
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+
+	attr, ok := schemaResp.Schema.Attributes["auth_method"].(schema.StringAttribute)
+	require.True(t, ok, "auth_method must be a StringAttribute")
+	validators := attr.StringValidators()
+	require.NotEmpty(t, validators, "auth_method must have validators")
+
+	validate := func(value string) diag.Diagnostics {
+		var diags diag.Diagnostics
+		for _, v := range validators {
+			resp := &validator.StringResponse{}
+			v.ValidateString(ctx, validator.StringRequest{
+				Path:        path.Root("auth_method"),
+				ConfigValue: types.StringValue(value),
+			}, resp)
+			diags.Append(resp.Diagnostics...)
+		}
+		return diags
+	}
+
+	for _, method := range []string{"password", "oidc", "code", "webauthn", "passkey", "totp", "lookup_secret", "saml"} {
+		t.Run(method, func(t *testing.T) {
+			assert.Falsef(t, validate(method).HasError(), "auth_method %q must be accepted", method)
+		})
+	}
+
+	assert.True(t, validate("magic").HasError(), "an unknown auth_method must be rejected")
 }
 
 func TestFlowSupportsAuthMethod(t *testing.T) {
