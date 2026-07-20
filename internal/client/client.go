@@ -246,6 +246,20 @@ func wrapAPIError(err error, operation string) error {
 	return err
 }
 
+// IsNotFound reports whether err is an Ory API 404 (Not Found) — e.g. a project
+// that has been purged. Callers use it to treat a missing resource as already
+// gone rather than a hard failure.
+func IsNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	if extractDebugInfo(err).StatusCode == 404 {
+		return true
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "404") || strings.Contains(errStr, "Not Found")
+}
+
 // isRateLimitError checks if the error is a rate limit (429) error.
 func isRateLimitError(err error) bool {
 	if err == nil {
