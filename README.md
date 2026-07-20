@@ -10,7 +10,7 @@ A Terraform provider for managing [Ory Network](https://www.ory.sh/) resources u
 
 > **Note**: This provider is for **Ory Network** (the managed SaaS offering) only. It does not support self-hosted Ory deployments.
 
-# NOTICE - All remating deprecated attributes will be cleaned up on `v26.4.0`
+# NOTICE - All remaining deprecated attributes will be cleaned up on `v26.4.0`
 
 ## Migrating Deprecated `ory_project_config` Attributes
 
