@@ -268,6 +268,40 @@ func TestPatchProject_WrapsFeatureNotAvailable(t *testing.T) {
 	assert.Contains(t, msg, "ory.com/pricing")
 }
 
+// gatewayUnauthorizedBody has a JSON-object "error" field, which the OAuth2 SDK
+// cannot decode into ErrorOAuth2 (string), so it returns an opaque unmarshal
+// error the wrapper must not surface alone.
+const gatewayUnauthorizedBody = `{"error":{"code":401,"status":"Unauthorized",` +
+	`"request":"a1b2c3d4-0000-1111-2222-333344445555",` +
+	`"message":"Access credentials are invalid"}}`
+
+// TestCreateOAuth2Client_SurfacesErrorBody verifies the wrapped error carries the
+// HTTP status, body, and request ID instead of the SDK decode error.
+func TestCreateOAuth2Client_SurfacesErrorBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(gatewayUnauthorizedBody))
+	}))
+	defer srv.Close()
+
+	client, err := NewOryClient(OryClientConfig{
+		ProjectAPIKey: testutil.TestProjectAPIKey,
+		ProjectSlug:   testutil.TestProjectSlug,
+		ProjectAPIURL: srv.URL + "/%s",
+	})
+	require.NoError(t, err)
+
+	_, createErr := client.CreateOAuth2Client(context.Background(), ory.OAuth2Client{})
+	require.Error(t, createErr)
+
+	msg := createErr.Error()
+	assert.Contains(t, msg, "creating OAuth2 client")
+	assert.Contains(t, msg, "401", "should surface the HTTP status")
+	assert.Contains(t, msg, "Access credentials are invalid", "should surface the raw response body")
+	assert.Contains(t, msg, "a1b2c3d4", "should surface the request ID for Ory support")
+}
+
 func TestNewOryClient_InvalidConsoleURL(t *testing.T) {
 	cfg := OryClientConfig{
 		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
