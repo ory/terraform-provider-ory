@@ -272,6 +272,8 @@ func IsNotFound(err error) bool {
 	}
 	errStr := err.Error()
 	return strings.Contains(errStr, "404") || strings.Contains(errStr, "Not Found")
+}
+
 // truncateErrorBody trims a raw response body to maxErrorBodyBytes so error
 // messages stay readable.
 func truncateErrorBody(body string) string {
