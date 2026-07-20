@@ -211,3 +211,29 @@ func TestGetHooksFromProject_BeforeTiming(t *testing.T) {
 	config, _ := hooks[0]["config"].(map[string]interface{})
 	assert.Equal(t, "https://example.com/pre-login", config["url"])
 }
+
+// TestHooksExcluding verifies Delete rebuilds the hooks array without the
+// removed element, preserving order, for the `replace` patch it sends.
+func TestHooksExcluding(t *testing.T) {
+	a := actionTestWebhook("https://example.com/a")
+	b := actionTestWebhook("https://example.com/b")
+	c := actionTestWebhook("https://example.com/c")
+
+	t.Run("removes middle element, preserves order", func(t *testing.T) {
+		got := hooksExcluding([]map[string]interface{}{a, b, c}, 1)
+		require.Len(t, got, 2)
+		assert.Equal(t, "https://example.com/a", got[0].(map[string]interface{})["config"].(map[string]interface{})["url"])
+		assert.Equal(t, "https://example.com/c", got[1].(map[string]interface{})["config"].(map[string]interface{})["url"])
+	})
+
+	t.Run("removing the only hook yields a non-nil empty slice", func(t *testing.T) {
+		got := hooksExcluding([]map[string]interface{}{a}, 0)
+		assert.NotNil(t, got, "must be non-nil so replace sends [] rather than null")
+		assert.Empty(t, got)
+	})
+
+	t.Run("out-of-range index keeps all hooks", func(t *testing.T) {
+		got := hooksExcluding([]map[string]interface{}{a, b}, -1)
+		assert.Len(t, got, 2)
+	})
+}

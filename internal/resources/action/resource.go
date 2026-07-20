@@ -1129,9 +1129,15 @@ func (r *ActionResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	}
 
 	hookPath := r.hookPath(flow, timing, authMethod)
+
+	// Replace the whole array with the remaining hooks. A `remove` at
+	// `<hookPath>/<index>` is rejected by the project-config PATCH with a 400,
+	// leaving the webhook dangling; replacing the array matches Create.
+	newHooks := hooksExcluding(hooks, index)
 	patches := []ory.JsonPatch{{
-		Op:   "remove",
-		Path: fmt.Sprintf("%s/%d", hookPath, index),
+		Op:    "replace",
+		Path:  hookPath,
+		Value: newHooks,
 	}}
 
 	_, err = r.client.PatchProject(ctx, projectID, patches)
@@ -1139,6 +1145,20 @@ func (r *ActionResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		resp.Diagnostics.AddError("Error Deleting Action", err.Error())
 		return
 	}
+}
+
+// hooksExcluding returns hooks without the element at index, as a non-nil
+// []interface{} for a JSON Patch `replace` value (so removing the last hook
+// sends [] rather than null). An out-of-range index keeps all hooks.
+func hooksExcluding(hooks []map[string]interface{}, index int) []interface{} {
+	newHooks := make([]interface{}, 0, len(hooks))
+	for i, h := range hooks {
+		if i == index {
+			continue
+		}
+		newHooks = append(newHooks, h)
+	}
+	return newHooks
 }
 
 // isImportHTTPMethod reports whether s is one of the HTTP methods accepted in
