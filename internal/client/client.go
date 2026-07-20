@@ -38,6 +38,9 @@ const (
 	maxRetries = 3
 	// initialBackoff is the initial backoff duration before first retry.
 	initialBackoff = 1 * time.Second
+	// maxErrorBodyBytes is the maximum length of a raw response body included in
+	// a wrapped API error before it is truncated.
+	maxErrorBodyBytes = 2048
 )
 
 const (
@@ -238,9 +241,20 @@ func wrapAPIError(err error, operation string) error {
 			operation, debugInfo.RequestID, err)
 	}
 
-	// For any other error, include the request ID if available
+	// For any other error, surface the HTTP status and raw response body so the
+	// underlying cause is not masked by an SDK decode error.
+	detail := operation
+	if debugInfo.StatusCode != 0 {
+		detail += fmt.Sprintf(": HTTP %d", debugInfo.StatusCode)
+	}
 	if debugInfo.RequestID != "" {
-		return fmt.Errorf("%s: %w (Request ID: %s)", operation, err, debugInfo.RequestID)
+		detail += fmt.Sprintf(" (Request ID: %s)", debugInfo.RequestID)
+	}
+	if body := strings.TrimSpace(debugInfo.RawBody); body != "" && body != errStr {
+		return fmt.Errorf("%s: %w\nResponse body: %s", detail, err, truncateErrorBody(body))
+	}
+	if detail != operation {
+		return fmt.Errorf("%s: %w", detail, err)
 	}
 
 	return err
@@ -258,6 +272,13 @@ func IsNotFound(err error) bool {
 	}
 	errStr := err.Error()
 	return strings.Contains(errStr, "404") || strings.Contains(errStr, "Not Found")
+// truncateErrorBody trims a raw response body to maxErrorBodyBytes so error
+// messages stay readable.
+func truncateErrorBody(body string) string {
+	if len(body) <= maxErrorBodyBytes {
+		return body
+	}
+	return body[:maxErrorBodyBytes] + "... (truncated)"
 }
 
 // isRateLimitError checks if the error is a rate limit (429) error.
@@ -1190,7 +1211,7 @@ func (c *OryClient) CreateOAuth2Client(ctx context.Context, oauthClient ory.OAut
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
-	return result, err
+	return result, wrapAPIError(err, "creating OAuth2 client")
 }
 
 // GetOAuth2Client retrieves an OAuth2 client by ID.
@@ -1202,7 +1223,7 @@ func (c *OryClient) GetOAuth2Client(ctx context.Context, clientID string) (*ory.
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
-	return oauthClient, err
+	return oauthClient, wrapAPIError(err, "reading OAuth2 client")
 }
 
 // UpdateOAuth2Client updates an OAuth2 client.
@@ -1214,7 +1235,7 @@ func (c *OryClient) UpdateOAuth2Client(ctx context.Context, clientID string, oau
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
-	return result, err
+	return result, wrapAPIError(err, "updating OAuth2 client")
 }
 
 // DeleteOAuth2Client deletes an OAuth2 client.
@@ -1226,7 +1247,7 @@ func (c *OryClient) DeleteOAuth2Client(ctx context.Context, clientID string) err
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
-	return err
+	return wrapAPIError(err, "deleting OAuth2 client")
 }
 
 // =============================================================================
