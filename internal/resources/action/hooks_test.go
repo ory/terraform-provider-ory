@@ -211,3 +211,18 @@ func TestGetHooksFromProject_BeforeTiming(t *testing.T) {
 	config, _ := hooks[0]["config"].(map[string]interface{})
 	assert.Equal(t, "https://example.com/pre-login", config["url"])
 }
+
+// TestGetHooksFromProject_DeletedProject verifies a soft-deleted project (which
+// GetProject still returns with state "deleted") reports no hooks, so Delete and
+// Read converge during teardown instead of trying to patch a gone project.
+func TestGetHooksFromProject_DeletedProject(t *testing.T) {
+	r := &ActionResource{}
+	cfg := afterConfig("login", map[string]interface{}{
+		"password": map[string]interface{}{
+			"hooks": []interface{}{actionTestWebhook("https://example.com/x")},
+		},
+	})
+	project := actionTestProject(cfg)
+	project.State = projectStateDeleted
+	assert.Empty(t, r.getHooksFromProject(project, "login", "after", "password"))
+}

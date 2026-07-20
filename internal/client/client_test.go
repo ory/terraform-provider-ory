@@ -862,3 +862,14 @@ func TestPatchProject_SerialisedPerProject(t *testing.T) {
 		assert.GreaterOrEqual(t, atomic.LoadInt32(&maxConcurrent), int32(2), "expected concurrent patches across different projects")
 	})
 }
+
+// TestIsNotFound covers the 404 detection used to treat a purged project as
+// already gone (via parsed status code and via the bare status string), and that
+// non-404 errors and nil are not misclassified.
+func TestIsNotFound(t *testing.T) {
+	assert.False(t, IsNotFound(nil))
+	assert.True(t, IsNotFound(errors.New("404 Not Found")))
+	assert.True(t, IsNotFound(errors.New(`{"error":{"code":404,"status":"Not Found","message":"project not found"}}`)))
+	assert.False(t, IsNotFound(errors.New("400 Bad Request")))
+	assert.False(t, IsNotFound(errors.New("500 Internal Server Error")))
+}

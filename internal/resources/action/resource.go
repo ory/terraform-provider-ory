@@ -35,6 +35,9 @@ const (
 	timingAfter          = "after"
 	webhookAuthBasicAuth = "basic_auth"
 	webhookAuthAPIKey    = "api_key"
+	// projectStateDeleted is the state Ory reports for a project that has been
+	// deleted; its config no longer holds any hooks.
+	projectStateDeleted = "deleted"
 )
 
 var (
@@ -636,6 +639,11 @@ func (r *ActionResource) getHooks(ctx context.Context, projectID, flow, timing, 
 	}
 	project, err := r.client.GetProject(ctx, projectID)
 	if err != nil {
+		// A purged project has no hooks; treat it as empty so Delete/Read can
+		// converge instead of erroring during teardown.
+		if client.IsNotFound(err) {
+			return []map[string]interface{}{}, nil
+		}
 		return nil, fmt.Errorf("failed to get project %s: %w", projectID, err)
 	}
 	return r.getHooksFromProject(project, flow, timing, authMethod), nil
@@ -683,6 +691,12 @@ func (r *ActionResource) hookPath(flow, timing, authMethod string) string {
 }
 
 func (r *ActionResource) getHooksFromProject(project *ory.Project, flow, timing, authMethod string) []map[string]interface{} {
+	// A deleted project still returns 200 from GetProject (soft delete) but its
+	// config carries no hooks; report none so Delete/Read converge cleanly.
+	if project.GetState() == projectStateDeleted {
+		return []map[string]interface{}{}
+	}
+
 	if project.Services.Identity == nil {
 		return []map[string]interface{}{}
 	}
