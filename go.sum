@@ -112,6 +112,8 @@ github.com/hashicorp/terraform-plugin-go v0.31.0 h1:0Fz2r9DQ+kNNl6bx8HRxFd1TfMKU
 github.com/hashicorp/terraform-plugin-go v0.31.0/go.mod h1:A88bDhd/cW7FnwqxQRz3slT+QY6yzbHKc6AOTtmdeS8=
 github.com/hashicorp/terraform-plugin-log v0.10.0 h1:eu2kW6/QBVdN4P3Ju2WiB2W3ObjkAsyfBsL3Wh1fj3g=
 github.com/hashicorp/terraform-plugin-log v0.10.0/go.mod h1:/9RR5Cv2aAbrqcTSdNmY1NRHP4E3ekrXRGjqORpXyB0=
+github.com/hashicorp/terraform-plugin-log v0.11.0 h1:WjhcpZIVqP8YRe83+dIZXncwSgtu4vh27i23G33PUQY=
+github.com/hashicorp/terraform-plugin-log v0.11.0/go.mod h1:XygBz8+m5kgwTb73MMyrnUjeNQeVWECEfg+h2opMsj0=
 github.com/hashicorp/terraform-plugin-sdk/v2 v2.40.0 h1:MKS/2URqeJRwJdbOfcbdsZCq/IRrNkqJNN0GtVIsuGs=
 github.com/hashicorp/terraform-plugin-sdk/v2 v2.40.0/go.mod h1:PuG4P97Ju3QXW6c6vRkRadWJbvnEu2Xh+oOuqcYOqX4=
 github.com/hashicorp/terraform-plugin-testing v1.16.0 h1:GB97nGnJ1hESpDrCjqZig38RodSF0gdRzxlDupLXP38=
@@ -175,6 +177,8 @@ github.com/oklog/run v1.2.0 h1:O8x3yXwah4A73hJdlrwo/2X6J62gE5qTMusH0dvz60E=
 github.com/oklog/run v1.2.0/go.mod h1:mgDbKRSwPhJfesJ4PntqFUbKQRZ50NgmZTSPlFA0YFk=
 github.com/ory/client-go v1.22.63 h1:IKnEwd8vJkS7JuDtRuhCBgWGtqQqaOKvW4CcIfwtitg=
 github.com/ory/client-go v1.22.63/go.mod h1:G1f+5+m/PJVvl40bsRn0QuyVIcXe7EHiWeM7iWpIDjw=
+github.com/ory/client-go v1.22.66 h1:Lto0/KHrrpf3ghdKe8JkC8ZZWI/vlwLfsYw5XgdaXyc=
+github.com/ory/client-go v1.22.66/go.mod h1:G1f+5+m/PJVvl40bsRn0QuyVIcXe7EHiWeM7iWpIDjw=
 github.com/ory/herodot v0.10.3-0.20250318104651-3179543efba8 h1:bBFBzJ+sy1l/9+uYaz5TLGNNe0GWeXPMyqLhUEy9gPg=
 github.com/ory/herodot v0.10.3-0.20250318104651-3179543efba8/go.mod h1:aq2fDNzFXlh8wF6+ILtlEin2oZSrqR79/Zdsi05WEVA=
 github.com/ory/jsonschema/v3 v3.0.9-0.20250317235931-280c5fc7bf0e h1:4tUrC7x4YWRVMFp+c64KACNSGchW1zXo4l6Pa9/1hA8=
