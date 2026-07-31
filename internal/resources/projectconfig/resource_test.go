@@ -4,11 +4,13 @@ package projectconfig_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	ory "github.com/ory/client-go"
@@ -624,6 +626,97 @@ func clearTokenizerTemplatesOutOfBand(t *testing.T) func() {
 		_, err = c.PatchProject(context.Background(), projectID, patches)
 		require.NoError(t, err, "Failed to clear tokenizer templates out-of-band")
 		t.Log("Cleared tokenizer templates out-of-band to simulate drift")
+	}
+}
+
+// TestAccProjectConfigResource_baseRedirectURIDriftDetection verifies that a
+// value removed out-of-band is restored on the next apply. Read used to keep
+// the stale state value when the API omitted the key, so plan reported no
+// changes and the removal was never reconciled.
+func TestAccProjectConfigResource_baseRedirectURIDriftDetection(t *testing.T) {
+	const baseRedirectURI = "https://iam.example.com"
+	templateData := map[string]string{"BaseRedirectURI": baseRedirectURI}
+
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oidc_base_redirect_uri.tf.tmpl", templateData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test",
+						"selfservice_methods_oidc_config_base_redirect_uri", baseRedirectURI),
+					checkServerOIDCBaseRedirectURI(t, baseRedirectURI),
+				),
+			},
+			// No perpetual diff — nulling on absence must not cause churn when
+			// the API does return the key.
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/oidc_base_redirect_uri.tf.tmpl", templateData),
+				PlanOnly: true,
+			},
+			// Remove out-of-band, then re-apply the same config. The server-side
+			// assertion is what distinguishes a real fix: Terraform state would
+			// show the configured value either way, but only a refresh that
+			// surfaces the drift restores it on the server.
+			{
+				PreConfig: clearOIDCBaseRedirectURIOutOfBand(t),
+				Config:    acctest.LoadTestConfig(t, "testdata/oidc_base_redirect_uri.tf.tmpl", templateData),
+				Check:     checkServerOIDCBaseRedirectURI(t, baseRedirectURI),
+			},
+		},
+	})
+}
+
+// clearOIDCBaseRedirectURIOutOfBand returns a PreConfig function that removes
+// the OIDC base_redirect_uri directly via the API to simulate external drift.
+func clearOIDCBaseRedirectURIOutOfBand(t *testing.T) func() {
+	t.Helper()
+	return func() {
+		c, err := acctest.GetOryClient()
+		if err != nil {
+			t.Fatalf("Failed to create Ory client: %v", err)
+		}
+		patches := []ory.JsonPatch{
+			{
+				Op:   "remove",
+				Path: "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
+			},
+		}
+		if _, err := c.PatchProject(context.Background(), acctest.GetTestProjectID(t), patches); err != nil {
+			t.Fatalf("Failed to clear base_redirect_uri out-of-band: %v", err)
+		}
+		t.Log("Cleared OIDC base_redirect_uri out-of-band to simulate drift")
+	}
+}
+
+// checkServerOIDCBaseRedirectURI asserts the value stored on the project by
+// reading the API directly, bypassing Terraform state.
+func checkServerOIDCBaseRedirectURI(t *testing.T, want string) resource.TestCheckFunc {
+	t.Helper()
+	return func(*terraform.State) error {
+		c, err := acctest.GetOryClient()
+		if err != nil {
+			return fmt.Errorf("could not create client: %w", err)
+		}
+		p, err := c.GetProject(context.Background(), acctest.GetTestProjectID(t))
+		if err != nil {
+			return fmt.Errorf("could not get project: %w", err)
+		}
+
+		var current interface{} = p.Services.Identity.Config
+		for _, seg := range []string{"selfservice", "methods", "oidc", "config", "base_redirect_uri"} {
+			m, ok := current.(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("OIDC config missing at %q", seg)
+			}
+			current = m[seg]
+		}
+		got, _ := current.(string)
+		if got != want {
+			return fmt.Errorf("server base_redirect_uri = %q, want %q", got, want)
+		}
+		return nil
 	}
 }
 
