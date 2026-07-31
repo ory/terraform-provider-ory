@@ -52,6 +52,8 @@ func TestReadSimpleFields_NullsTrackedFieldWhenAPIOmitsKey(t *testing.T) {
 	}
 }
 
+// The flip side of nulling on absence: a key the API does report must still
+// overwrite state, so the drift fix cannot regress the ordinary refresh path.
 func TestReadSimpleFields_KeepsValueReturnedByAPI(t *testing.T) {
 	state := &ProjectConfigResourceModel{
 		SelfserviceMethodsOIDCConfigBaseRedirectURI: types.StringValue("https://old.example.com"),
@@ -151,22 +153,34 @@ func TestReadSimpleFields_PreservesSkipEmptyReadFieldWhenAPIOmitsKey(t *testing.
 // write_only attributes are omitted from the read tables entirely, so nulling
 // on absence must never reach them — the API is not expected to return them.
 func TestReadSimpleFields_PreservesWriteOnlyFieldWhenAPIOmitsKey(t *testing.T) {
+	// #nosec G101 -- synthetic fixture, not a real credential; the read only needs
+	// a non-null value to have something to preserve.
+	const connectionURI = "smtps://user:pass@smtp.example.com:465"
+
 	state := &ProjectConfigResourceModel{
-		SMTPConnectionURI: types.StringValue("smtps://user:pass@smtp.example.com:465"),
+		SMTPConnectionURI: types.StringValue(connectionURI),
 	}
 
 	readSimpleFields(context.Background(), identityProject(map[string]interface{}{}), state)
 
-	if got := state.SMTPConnectionURI.ValueString(); got != "smtps://user:pass@smtp.example.com:465" {
+	if got := state.SMTPConnectionURI.ValueString(); got != connectionURI {
 		t.Errorf("smtp_connection_uri = %q, want the state value preserved", got)
 	}
 }
 
+// Each attribute type gets its own generated read loop, so nulling on absence
+// has to be proven per type rather than inferred from the string case.
 func TestReadSimpleFields_NullsTrackedFieldsOfEveryType(t *testing.T) {
+	headers, diags := types.MapValueFrom(context.Background(), types.StringType,
+		map[string]string{"X-Tenant": "acme"})
+	if diags.HasError() {
+		t.Fatalf("building the state map: %v", diags)
+	}
 	state := &ProjectConfigResourceModel{
 		SessionLifespan:                    types.StringValue("24h"),
 		SelfserviceMethodsPasswordEnabled:  types.BoolValue(true),
 		SelfserviceMethodsTOTPConfigIssuer: types.StringValue("example.com"),
+		OAuth2ProviderHeaders:              headers,
 	}
 
 	readSimpleFields(context.Background(), identityProject(map[string]interface{}{}), state)
@@ -179,6 +193,11 @@ func TestReadSimpleFields_NullsTrackedFieldsOfEveryType(t *testing.T) {
 	}
 	if !state.SelfserviceMethodsTOTPConfigIssuer.IsNull() {
 		t.Errorf("totp_issuer = %q, want null", state.SelfserviceMethodsTOTPConfigIssuer.ValueString())
+	}
+	// Equal rather than IsNull: the map branch has to null with the right element
+	// type, or the framework rejects the state as type-inconsistent.
+	if !state.OAuth2ProviderHeaders.Equal(types.MapNull(types.StringType)) {
+		t.Errorf("oauth2_provider_headers = %v, want a null map(string)", state.OAuth2ProviderHeaders)
 	}
 }
 
