@@ -93,6 +93,43 @@ func TestReadSimpleFields_PreservesSensitiveFieldWhenAPIOmitsKey(t *testing.T) {
 	}
 }
 
+// The list(string) branch reaches the preserve check through getNestedValue and
+// a []interface{} cast rather than getNestedString, so a secret list needs its
+// own proof that absence keeps the state value.
+func TestReadSimpleFields_PreservesSensitiveListWhenAPIOmitsKey(t *testing.T) {
+	secrets, diags := types.ListValueFrom(context.Background(), types.StringType,
+		[]string{"cipher-secret-a", "cipher-secret-b"})
+	if diags.HasError() {
+		t.Fatalf("building the state list: %v", diags)
+	}
+	state := &ProjectConfigResourceModel{IdentitySecretsCipher: secrets}
+
+	readSimpleFields(context.Background(), identityProject(map[string]interface{}{}), state)
+
+	if !state.IdentitySecretsCipher.Equal(secrets) {
+		t.Errorf("identity_secrets_cipher = %v, want the state value preserved",
+			state.IdentitySecretsCipher)
+	}
+}
+
+// Companion to the test above: without this, that one would also pass if the
+// list branch never nulled anything, which would hide the drift bug for lists.
+func TestReadSimpleFields_NullsNonSensitiveListWhenAPIOmitsKey(t *testing.T) {
+	domains, diags := types.ListValueFrom(context.Background(), types.StringType,
+		[]string{"example.com"})
+	if diags.HasError() {
+		t.Fatalf("building the state list: %v", diags)
+	}
+	state := &ProjectConfigResourceModel{SelfserviceMethodsCaptchaConfigAllowedDomains: domains}
+
+	readSimpleFields(context.Background(), identityProject(map[string]interface{}{}), state)
+
+	if !state.SelfserviceMethodsCaptchaConfigAllowedDomains.IsNull() {
+		t.Errorf("allowed_domains = %v, want null so the removal surfaces as drift",
+			state.SelfserviceMethodsCaptchaConfigAllowedDomains)
+	}
+}
+
 // skip_empty_read attributes are ones the API does not report faithfully.
 func TestReadSimpleFields_PreservesSkipEmptyReadFieldWhenAPIOmitsKey(t *testing.T) {
 	state := &ProjectConfigResourceModel{
