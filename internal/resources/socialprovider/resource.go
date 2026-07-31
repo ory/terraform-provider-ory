@@ -628,7 +628,11 @@ func extractOIDCConfigFromProject(project *ory.Project) map[string]interface{} {
 }
 
 func extractProvidersFromProject(project *ory.Project) []map[string]interface{} {
-	oidcConfig := extractOIDCConfigFromProject(project)
+	return providersFromOIDCConfig(extractOIDCConfigFromProject(project))
+}
+
+// providersFromOIDCConfig extracts the providers array from an OIDC config map.
+func providersFromOIDCConfig(oidcConfig map[string]interface{}) []map[string]interface{} {
 	if oidcConfig == nil {
 		return []map[string]interface{}{}
 	}
@@ -645,36 +649,51 @@ func extractProvidersFromProject(project *ory.Project) []map[string]interface{} 
 	return result
 }
 
-// copyProviders returns a deep copy of the provider slice via a JSON
+// copyOIDCConfig returns a deep copy of the OIDC config map via a JSON
 // round-trip so callers cannot accidentally mutate the cached project state.
 // This data originates from JSON, so the round-trip is lossless and handles
 // all container types without a hand-rolled recursive copy.
-func copyProviders(providers []map[string]interface{}) []map[string]interface{} {
-	b, err := json.Marshal(providers)
+func copyOIDCConfig(oidcConfig map[string]interface{}) map[string]interface{} {
+	if oidcConfig == nil {
+		return nil
+	}
+	b, err := json.Marshal(oidcConfig)
 	if err != nil {
 		// Should never happen — the data was decoded from JSON.
-		return providers
+		return oidcConfig
 	}
-	var cp []map[string]interface{}
+	var cp map[string]interface{}
 	if err := json.Unmarshal(b, &cp); err != nil {
-		return providers
+		return oidcConfig
 	}
 	return cp
 }
 
-func (r *SocialProviderResource) getProviders(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
+// getOIDCConfig returns the project's OIDC method config map, or nil when the
+// project has no OIDC config yet.
+func (r *SocialProviderResource) getOIDCConfig(ctx context.Context, projectID string) (map[string]interface{}, error) {
 	// Prefer cached project state from a previous PatchProject call in this
 	// Terraform run. This avoids reading stale data from the eventually-consistent
 	// GetProject API, which is critical when the mutex serializes back-to-back
 	// mutations — the second operation must see the first operation's result.
 	if cached := r.client.GetCachedProject(projectID); cached != nil {
-		return copyProviders(extractProvidersFromProject(cached)), nil
+		return copyOIDCConfig(extractOIDCConfigFromProject(cached)), nil
 	}
 	project, err := r.client.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get project %s: %w", projectID, err)
 	}
-	return extractProvidersFromProject(project), nil
+	return extractOIDCConfigFromProject(project), nil
+}
+
+// getProviders returns just the provider list, for callers that do not need
+// the surrounding OIDC config.
+func (r *SocialProviderResource) getProviders(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
+	oidcConfig, err := r.getOIDCConfig(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	return providersFromOIDCConfig(oidcConfig), nil
 }
 
 func (r *SocialProviderResource) findProviderIndex(providers []map[string]interface{}, providerID string) int {
@@ -709,12 +728,13 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 	mu.Lock()
 	defer mu.Unlock()
 
-	// Get current providers
-	providers, err := r.getProviders(ctx, projectID)
+	// Get current OIDC config and providers
+	oidcConfig, err := r.getOIDCConfig(ctx, projectID)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Getting Providers", err.Error())
 		return
 	}
+	providers := providersFromOIDCConfig(oidcConfig)
 
 	var patches []ory.JsonPatch
 
@@ -733,23 +753,40 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 				Value: plan.BaseRedirectURI.ValueString(),
 			})
 		}
+	} else if oidcConfig == nil {
+		// No OIDC config exists yet — initialize the entire OIDC config structure
+		newConfig := map[string]interface{}{
+			"providers": []interface{}{providerConfig},
+		}
+		if !plan.BaseRedirectURI.IsNull() && !plan.BaseRedirectURI.IsUnknown() && plan.BaseRedirectURI.ValueString() != "" {
+			newConfig["base_redirect_uri"] = plan.BaseRedirectURI.ValueString()
+		}
+		patches = append(patches, ory.JsonPatch{
+			Op:   "add",
+			Path: "/services/identity/config/selfservice/methods/oidc",
+			Value: map[string]interface{}{
+				"enabled": true,
+				"config":  newConfig,
+			},
+		})
 	} else {
-		// When adding the first provider, we need to initialize the entire OIDC config structure
+		// OIDC config already exists — patch only the providers key so sibling
+		// config keys (e.g. base_redirect_uri, possibly managed by
+		// ory_project_config) are preserved. A JSON Patch "add" on an existing
+		// object member replaces just that member (RFC 6902).
 		if len(providers) == 0 {
-			oidcConfig := map[string]interface{}{
-				"providers": []interface{}{providerConfig},
-			}
-			if !plan.BaseRedirectURI.IsNull() && !plan.BaseRedirectURI.IsUnknown() && plan.BaseRedirectURI.ValueString() != "" {
-				oidcConfig["base_redirect_uri"] = plan.BaseRedirectURI.ValueString()
-			}
-			patches = append(patches, ory.JsonPatch{
-				Op:   "add",
-				Path: "/services/identity/config/selfservice/methods/oidc",
-				Value: map[string]interface{}{
-					"enabled": true,
-					"config":  oidcConfig,
+			patches = append(patches,
+				ory.JsonPatch{
+					Op:    "add",
+					Path:  "/services/identity/config/selfservice/methods/oidc/config/providers",
+					Value: []interface{}{providerConfig},
 				},
-			})
+				ory.JsonPatch{
+					Op:    "add",
+					Path:  "/services/identity/config/selfservice/methods/oidc/enabled",
+					Value: true,
+				},
+			)
 		} else {
 			// Add new provider to existing list
 			patches = append(patches, ory.JsonPatch{
@@ -757,14 +794,13 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 				Path:  "/services/identity/config/selfservice/methods/oidc/config/providers/-",
 				Value: providerConfig,
 			})
-			// Set base_redirect_uri as a separate patch when OIDC config already exists
-			if !plan.BaseRedirectURI.IsNull() && !plan.BaseRedirectURI.IsUnknown() && plan.BaseRedirectURI.ValueString() != "" {
-				patches = append(patches, ory.JsonPatch{
-					Op:    "add",
-					Path:  "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
-					Value: plan.BaseRedirectURI.ValueString(),
-				})
-			}
+		}
+		if !plan.BaseRedirectURI.IsNull() && !plan.BaseRedirectURI.IsUnknown() && plan.BaseRedirectURI.ValueString() != "" {
+			patches = append(patches, ory.JsonPatch{
+				Op:    "add",
+				Path:  "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
+				Value: plan.BaseRedirectURI.ValueString(),
+			})
 		}
 	}
 
@@ -1033,11 +1069,12 @@ func (r *SocialProviderResource) Update(ctx context.Context, req resource.Update
 	mu.Lock()
 	defer mu.Unlock()
 
-	providers, err := r.getProviders(ctx, projectID)
+	oidcConfig, err := r.getOIDCConfig(ctx, projectID)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Getting Providers", err.Error())
 		return
 	}
+	providers := providersFromOIDCConfig(oidcConfig)
 
 	index := r.findProviderIndex(providers, plan.ProviderID.ValueString())
 	if index < 0 {
@@ -1108,11 +1145,12 @@ func (r *SocialProviderResource) Delete(ctx context.Context, req resource.Delete
 	mu.Lock()
 	defer mu.Unlock()
 
-	providers, err := r.getProviders(ctx, projectID)
+	oidcConfig, err := r.getOIDCConfig(ctx, projectID)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Getting Providers", err.Error())
 		return
 	}
+	providers := providersFromOIDCConfig(oidcConfig)
 
 	index := r.findProviderIndex(providers, state.ProviderID.ValueString())
 	if index < 0 {
@@ -1121,20 +1159,36 @@ func (r *SocialProviderResource) Delete(ctx context.Context, req resource.Delete
 
 	var patches []ory.JsonPatch
 
-	// If this is the last provider, we need to reset the entire OIDC config
-	// to avoid leaving an invalid state with an empty providers array
+	// If this is the last provider, disable the OIDC method and clear the
+	// providers array to avoid leaving an invalid state with an empty list
 	if len(providers) == 1 {
-		// Reset the entire OIDC method configuration
-		patches = append(patches, ory.JsonPatch{
-			Op:   "replace",
-			Path: "/services/identity/config/selfservice/methods/oidc",
-			Value: map[string]interface{}{
-				"enabled": false,
-				"config": map[string]interface{}{
-					"providers": []interface{}{},
-				},
+		// Patch enabled and providers individually instead of replacing the
+		// whole OIDC method node, which would wipe sibling config keys such as
+		// base_redirect_uri (possibly managed by ory_project_config). A JSON
+		// Patch "add" on an existing object member replaces just that member
+		// (RFC 6902).
+		patches = append(patches,
+			ory.JsonPatch{
+				Op:    "add",
+				Path:  "/services/identity/config/selfservice/methods/oidc/enabled",
+				Value: false,
 			},
-		})
+			ory.JsonPatch{
+				Op:    "add",
+				Path:  "/services/identity/config/selfservice/methods/oidc/config/providers",
+				Value: []interface{}{},
+			},
+		)
+		// This resource owned the global base_redirect_uri (deprecated
+		// attribute) — clean it up like the previous whole-node reset did.
+		if !state.BaseRedirectURI.IsNull() && state.BaseRedirectURI.ValueString() != "" {
+			if _, ok := oidcConfig["base_redirect_uri"]; ok {
+				patches = append(patches, ory.JsonPatch{
+					Op:   "remove",
+					Path: "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
+				})
+			}
+		}
 	} else {
 		// Remove the specific provider by index
 		patches = append(patches, ory.JsonPatch{
