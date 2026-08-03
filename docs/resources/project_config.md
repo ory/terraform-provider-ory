@@ -18,6 +18,10 @@ This resource supports drift detection — `terraform plan` will detect changes 
 
 ~> **Note:** Only attributes present in your Terraform configuration are tracked for drift. Attributes you have not configured will not appear in plan output, even if they have non-default values in the API.
 
+~> **Not drift-checked:** A few attributes are accepted by the Ory API but never returned by it, so the provider keeps the configured value instead of reporting a change that no apply could settle. Removing one of these outside Terraform is not detected. They are `session_earliest_possible_extend`, `selfservice_methods_webauthn_config_rp_icon`, and `selfservice_methods_captcha_config_byo`. The same applies to secrets the API redacts, such as `smtp_connection_uri` and the courier HTTP auth credentials.
+
+~> **Conditionally reported:** Some attributes are only returned once the feature they belong to is configured. The `courier_smtp_*` attributes are reported after `smtp_connection_uri` is set, and the `courier_http_request_config_*` attributes after `courier_delivery_strategy = "http"`. Setting one without its prerequisite leaves the value unset on the server, which plan then reports on every run.
+
 ~> **Plan-gated features:** Some settings require a feature that your project's subscription must include, and the Ory API rejects them with an `HTTP 403 (feature_not_available)` otherwise. Notably, `selfservice_methods_oidc_enable_auto_link_policy = true` requires the OIDC auto-link policy (`use_auto_link`), an enterprise feature that Ory enables per project on request — being on an enterprise plan does not enable it automatically. If an apply fails with a `feature_not_available` error, the provider surfaces the feature name and a request ID; contact Ory support or your account executive to enable the feature.
 
 ## Example Usage

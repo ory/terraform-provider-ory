@@ -26,24 +26,57 @@ import (
 )
 
 type Attribute struct {
-	Name            string     `yaml:"name"`
-	GoField         string     `yaml:"go_field"`
-	Type            string     `yaml:"type"` // string, bool, int64, list_string, map_string
-	PatchPath       string     `yaml:"patch_path"`
-	OpenAPIProperty string     `yaml:"openapi_property"` // maps to normalizedProjectRevision property name
-	Description     string     `yaml:"description"`
-	Computed        bool       `yaml:"computed"`
-	DefaultBool     *bool      `yaml:"default_bool"`
-	DefaultInt64    *int64     `yaml:"default_int64"`
-	Sensitive       bool       `yaml:"sensitive"`
-	SkipEmptyRead   bool       `yaml:"skip_empty_read"`
-	WriteOnly       bool       `yaml:"write_only"` // omit from the API read path: sent on create/update but never read back into state (for secrets the API does not return, or returns masked)
-	Validators      *Validator `yaml:"validators"`
+	Name            string `yaml:"name"`
+	GoField         string `yaml:"go_field"`
+	Type            string `yaml:"type"` // string, bool, int64, list_string, map_string
+	PatchPath       string `yaml:"patch_path"`
+	OpenAPIProperty string `yaml:"openapi_property"` // maps to normalizedProjectRevision property name
+	Description     string `yaml:"description"`
+	Computed        bool   `yaml:"computed"`
+	DefaultBool     *bool  `yaml:"default_bool"`
+	DefaultInt64    *int64 `yaml:"default_int64"`
+	Sensitive       bool   `yaml:"sensitive"`
+	SkipEmptyRead   bool   `yaml:"skip_empty_read"`
+	WriteOnly       bool   `yaml:"write_only"` // omit from the API read path: sent on create/update but never read back into state (for secrets the API does not return, or returns masked)
+	// PreserveOnMissing keeps the state value when the API response omits this
+	// attribute's key. Set it for attributes the API accepts with HTTP 200 but
+	// never reports back, where nulling state would create a diff that no apply
+	// can settle. Verify with curl before setting it: PATCH the value, then GET
+	// the project and check whether the key is in the response.
+	PreserveOnMissing bool `yaml:"preserve_on_missing"`
+	// ReadPath is the config path the API reports the value under, when that
+	// differs from the path the value is written to. Reads use it instead of
+	// PatchPath. Always record the verification in a comment next to the
+	// attribute.
+	ReadPath   string     `yaml:"read_path"`
+	Validators *Validator `yaml:"validators"`
 
 	// Deprecated alias support: when set, generates a second schema attribute
 	// with the old name that shows a deprecation warning directing users to Name.
 	DeprecatedName    string `yaml:"deprecated_name"`     // old terraform attribute name
 	DeprecatedGoField string `yaml:"deprecated_go_field"` // old Go struct field name
+}
+
+// ReadPreservesOnMissing reports whether Read must keep the value already in
+// state when the API response omits this attribute's key, instead of nulling it
+// to signal drift.
+//
+// Three groups qualify. Sensitive attributes are redacted or dropped by the API
+// by design. skip_empty_read attributes are the ones the API does not report
+// faithfully. preserve_on_missing attributes are the ones the API accepts and
+// then never reports, so nulling them would produce a diff no apply can settle.
+func (a Attribute) ReadPreservesOnMissing() bool {
+	return a.Sensitive || a.SkipEmptyRead || a.PreserveOnMissing
+}
+
+// ReadKeysPath returns the config path the generated Read looks the value up
+// under. It is PatchPath for almost every attribute, and read_path for the few
+// the API reports somewhere other than where it accepts the write.
+func (a Attribute) ReadKeysPath() string {
+	if a.ReadPath != "" {
+		return a.ReadPath
+	}
+	return a.PatchPath
 }
 
 type Validator struct {
@@ -1255,34 +1288,43 @@ type StringReadEntry struct {
 	Deprecated *types.String // fallback: used only when the primary Field is null in state
 	Keys       []string
 	SkipEmpty  bool
+	// PreserveOnMissing keeps the state value when the API omits Keys, instead
+	// of nulling it to surface drift. Set for secrets the API never echoes back
+	// and for attributes it accepts but never reports, where a null would show a
+	// diff on every plan that no apply can settle.
+	PreserveOnMissing bool
 }
 
 // BoolReadEntry maps a bool state field to its config read path.
 type BoolReadEntry struct {
-	Field      *types.Bool
-	Deprecated *types.Bool // fallback: used only when the primary Field is null in state
-	Keys       []string
+	Field             *types.Bool
+	Deprecated        *types.Bool // fallback: used only when the primary Field is null in state
+	Keys              []string
+	PreserveOnMissing bool
 }
 
 // Int64ReadEntry maps an int64 state field to its config read path.
 type Int64ReadEntry struct {
-	Field      *types.Int64
-	Deprecated *types.Int64 // fallback: used only when the primary Field is null in state
-	Keys       []string
+	Field             *types.Int64
+	Deprecated        *types.Int64 // fallback: used only when the primary Field is null in state
+	Keys              []string
+	PreserveOnMissing bool
 }
 
 // ListStringReadEntry maps a list(string) state field to its config read path.
 type ListStringReadEntry struct {
-	Field      *types.List
-	Deprecated *types.List // fallback: used only when the primary Field is null in state
-	Keys       []string
+	Field             *types.List
+	Deprecated        *types.List // fallback: used only when the primary Field is null in state
+	Keys              []string
+	PreserveOnMissing bool
 }
 
 // MapStringReadEntry maps a map(string) state field to its config read path.
 type MapStringReadEntry struct {
-	Field      *types.Map
-	Deprecated *types.Map // fallback: used only when the primary Field is null in state
-	Keys       []string
+	Field             *types.Map
+	Deprecated        *types.Map // fallback: used only when the primary Field is null in state
+	Keys              []string
+	PreserveOnMissing bool
 }
 
 // readSimpleFields reads all simple attributes from the API response into state.
@@ -1304,6 +1346,8 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 					if !e.SkipEmpty || v != "" {
 						*target = types.StringValue(v)
 					}
+				} else if !e.PreserveOnMissing {
+					*target = types.StringNull()
 				}
 			}
 		}
@@ -1318,6 +1362,8 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 			if !target.IsNull() {
 				if v, ok := getNestedBool({{ varName $svc }}Config, e.Keys...); ok {
 					*target = types.BoolValue(v)
+				} else if !e.PreserveOnMissing {
+					*target = types.BoolNull()
 				}
 			}
 		}
@@ -1334,6 +1380,8 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 					if v == math.Trunc(v) {
 						*target = types.Int64Value(int64(v))
 					}
+				} else if !e.PreserveOnMissing {
+					*target = types.Int64Null()
 				}
 			}
 		}
@@ -1365,6 +1413,8 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 							}
 						}
 					}
+				} else if !e.PreserveOnMissing {
+					*target = types.ListNull(types.StringType)
 				}
 			}
 		}
@@ -1396,6 +1446,8 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 							}
 						}
 					}
+				} else if !e.PreserveOnMissing {
+					*target = types.MapNull(types.StringType)
 				}
 			}
 		}
@@ -1413,7 +1465,7 @@ func {{ $svc }}StringReadEntries(state *ProjectConfigResourceModel) []StringRead
 	return []StringReadEntry{
 {{- range $strings }}
 {{- if not .WriteOnly }}
-		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }, {{ .SkipEmptyRead }}},
+		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .SkipEmptyRead }}, {{ .ReadPreservesOnMissing }}},
 {{- end }}
 {{- end }}
 	}
@@ -1427,7 +1479,7 @@ func {{ $svc }}BoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntr
 	return []BoolReadEntry{
 {{- range $bools }}
 {{- if not .WriteOnly }}
-		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }},
+		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .ReadPreservesOnMissing }}},
 {{- end }}
 {{- end }}
 	}
@@ -1441,7 +1493,7 @@ func {{ $svc }}Int64ReadEntries(state *ProjectConfigResourceModel) []Int64ReadEn
 	return []Int64ReadEntry{
 {{- range $ints }}
 {{- if not .WriteOnly }}
-		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }},
+		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .ReadPreservesOnMissing }}},
 {{- end }}
 {{- end }}
 	}
@@ -1455,7 +1507,7 @@ func {{ $svc }}ListStringReadEntries(state *ProjectConfigResourceModel) []ListSt
 	return []ListStringReadEntry{
 {{- range $listStrings }}
 {{- if not .WriteOnly }}
-		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }},
+		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .ReadPreservesOnMissing }}},
 {{- end }}
 {{- end }}
 	}
@@ -1469,7 +1521,7 @@ func {{ $svc }}MapStringReadEntries(state *ProjectConfigResourceModel) []MapStri
 	return []MapStringReadEntry{
 {{- range $mapStrings }}
 {{- if not .WriteOnly }}
-		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }},
+		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .ReadPreservesOnMissing }}},
 {{- end }}
 {{- end }}
 	}

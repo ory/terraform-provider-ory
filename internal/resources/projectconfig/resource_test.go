@@ -299,18 +299,34 @@ func TestAccProjectConfigResource_mfaPolicy(t *testing.T) {
 }
 
 func TestAccProjectConfigResource_codeMFA(t *testing.T) {
+	// max_submissions is here to cover the corrected patch path. The spec's
+	// governs description points at selfservice.methods.code.max_submissions,
+	// which the API accepts and discards; the value only sticks under
+	// selfservice.methods.code.config.max_submissions. The PlanOnly steps are
+	// what prove it, since a discarded value would refresh to null and show a
+	// diff forever.
+	createData := map[string]string{"CodeMFAEnabled": "true", "MaxSubmissions": "5"}
+	updateData := map[string]string{"CodeMFAEnabled": "false", "MaxSubmissions": "3"}
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			// Create with code MFA enabled
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", map[string]string{"CodeMFAEnabled": "true"}),
+				Config: acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", createData),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_enabled", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_mfa_enabled", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_config_max_submissions", "5"),
 				),
+			},
+			// Verify no perpetual diff on create
+			{
+				Config:             acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", createData),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 			// ImportState — config fields are ignored because import only sets
 			// id/project_id; Read only refreshes fields that are non-null in
@@ -321,21 +337,23 @@ func TestAccProjectConfigResource_codeMFA(t *testing.T) {
 				ImportStateVerify: true,
 				ImportStateVerifyIgnore: []string{
 					"selfservice_methods_code_enabled", "selfservice_methods_code_mfa_enabled",
+					"selfservice_methods_code_config_max_submissions",
 					"cors_enabled", "selfservice_methods_password_config_min_password_length",
 					"smtp_connection_uri",
 				},
 			},
 			// Update to disabled
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", map[string]string{"CodeMFAEnabled": "false"}),
+				Config: acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", updateData),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_enabled", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_mfa_enabled", "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_config_max_submissions", "3"),
 				),
 			},
 			// Verify no perpetual diff
 			{
-				Config:             acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", map[string]string{"CodeMFAEnabled": "false"}),
+				Config:             acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", updateData),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
@@ -626,6 +644,21 @@ func clearTokenizerTemplatesOutOfBand(t *testing.T) func() {
 		t.Log("Cleared tokenizer templates out-of-band to simulate drift")
 	}
 }
+
+// Note on drift detection for values removed outside Terraform.
+//
+// There is deliberately no acceptance test that clears a project_config value
+// out-of-band and asserts the next refresh notices. It cannot pass. The client
+// caches the PatchProject response with no expiry, Read prefers that cache over
+// a live GetProject, and Provider.Configure reuses the same client for the whole
+// provider server lifecycle to work around API eventual consistency. Because the
+// test framework builds the provider once per test case, every refresh after the
+// first apply sees the cached pre-drift project, so a PreConfig hook that
+// patches through a second client is invisible.
+//
+// Real terraform runs are unaffected: each CLI command is a fresh process with
+// an empty cache. Coverage lives in read_simple_fields_test.go, which drives
+// readSimpleFields against API responses that omit the key.
 
 func TestAccProjectConfigResource_emptyReturnURLs(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
@@ -1115,18 +1148,33 @@ func TestAccProjectConfigResource_showVerificationUIHooks(t *testing.T) {
 }
 
 func TestAccProjectConfigResource_oauth2Advanced(t *testing.T) {
+	// The pairwise salt is here to cover its read path. The API accepts the write
+	// at oidc.subject_identifiers.pairwise_salt and reports the value back under
+	// the nested oidc.subject_identifiers.pairwise.salt, so reading the write
+	// path would null a value the API did return. The PlanOnly step is what
+	// catches that.
+	const salt = "tf-acc-pairwise-salt"
+	templateData := map[string]string{"PairwiseSalt": salt}
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/oauth2_advanced.tf.tmpl", nil),
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_advanced.tf.tmpl", templateData),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_grant_jwt_jti_optional", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_grant_jwt_iat_optional", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_exclude_not_before_claim", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oidc_subject_identifiers_pairwise_salt", salt),
 				),
+			},
+			// Verify no perpetual diff, which is the read-path assertion
+			{
+				Config:             acctest.LoadTestConfig(t, "testdata/oauth2_advanced.tf.tmpl", templateData),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 			{
 				ResourceName:      "ory_project_config.test",
@@ -1138,6 +1186,8 @@ func TestAccProjectConfigResource_oauth2Advanced(t *testing.T) {
 					"oauth2_grant_jwt_iat_optional",
 					"oauth2_exclude_not_before_claim",
 					"oauth2_client_credentials_default_grant_allowed_scope",
+					"oidc_subject_identifiers_supported_types",
+					"oidc_subject_identifiers_pairwise_salt",
 					"cors_enabled",
 					"selfservice_methods_password_config_min_password_length",
 					"smtp_connection_uri",
