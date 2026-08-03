@@ -1108,11 +1108,17 @@ func (r *SocialProviderResource) Update(ctx context.Context, req resource.Update
 				})
 			}
 		} else if !state.BaseRedirectURI.IsNull() && stateURI != "" {
-			// User removed base_redirect_uri from config — remove it from the API too.
-			patches = append(patches, ory.JsonPatch{
-				Op:   "remove",
-				Path: "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
-			})
+			// User removed base_redirect_uri from config — remove it from the API
+			// too, but only when the key is actually there. A JSON Patch "remove"
+			// on an absent path is rejected with HTTP 400, and the key can already
+			// be gone: cleared out of band, cleared by ory_project_config, or
+			// dropped when another provider was deleted.
+			if _, ok := oidcConfig["base_redirect_uri"]; ok {
+				patches = append(patches, ory.JsonPatch{
+					Op:   "remove",
+					Path: "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
+				})
+			}
 		}
 	}
 
