@@ -150,6 +150,86 @@ func TestReadSimpleFields_PreservesSkipEmptyReadFieldWhenAPIOmitsKey(t *testing.
 	}
 }
 
+// preserve_on_missing attributes are the ones the API accepts with HTTP 200 and
+// then never reports back. Nulling them would trade a hidden removal for a diff
+// no apply can settle, because the value cannot be made to come back.
+func TestReadSimpleFields_PreservesPreserveOnMissingFieldsWhenAPIOmitsKey(t *testing.T) {
+	state := &ProjectConfigResourceModel{
+		// The normalized project revision has no column for this one, so the
+		// Console API drops it during normalization.
+		SessionEarliestPossibleExtend: types.StringValue("24h"),
+		// Kratos ignores the WebAuthn relying party icon and the API never
+		// echoes the key.
+		SelfserviceMethodsWebAuthnConfigRPIcon: types.StringValue("https://example.com/icon.png"),
+		// Account-gated feature: accepted and dropped on projects without it.
+		SelfserviceMethodsCaptchaConfigBYO: types.BoolValue(true),
+	}
+
+	readSimpleFields(context.Background(), identityProject(map[string]interface{}{}), state)
+
+	if got := state.SessionEarliestPossibleExtend.ValueString(); got != "24h" {
+		t.Errorf("session_earliest_possible_extend = %q, want the state value preserved", got)
+	}
+	if got := state.SelfserviceMethodsWebAuthnConfigRPIcon.ValueString(); got != "https://example.com/icon.png" {
+		t.Errorf("webauthn rp icon = %q, want the state value preserved", got)
+	}
+	if !state.SelfserviceMethodsCaptchaConfigBYO.ValueBool() {
+		t.Errorf("captcha byo = %v, want the state value preserved", state.SelfserviceMethodsCaptchaConfigBYO)
+	}
+}
+
+// The pairwise salt is written to oidc.subject_identifiers.pairwise_salt but
+// reported back under the nested oidc.subject_identifiers.pairwise.salt, so the
+// read table uses read_path. Reading the write path instead would null a value
+// the API did return and produce a diff on every plan.
+func TestReadSimpleFields_ReadsPairwiseSaltFromReportedPath(t *testing.T) {
+	const salt = "reported-pairwise-salt"
+
+	state := &ProjectConfigResourceModel{
+		OIDCSubjectIdentifiersPairwiseSalt: types.StringValue("stale-salt"),
+	}
+
+	project := &ory.Project{
+		Services: ory.ProjectServices{
+			Oauth2: &ory.ProjectServiceOAuth2{Config: map[string]interface{}{
+				"oidc": map[string]interface{}{
+					"subject_identifiers": map[string]interface{}{
+						"pairwise": map[string]interface{}{"salt": salt},
+					},
+				},
+			}},
+		},
+	}
+	readSimpleFields(context.Background(), project, state)
+
+	if got := state.OIDCSubjectIdentifiersPairwiseSalt.ValueString(); got != salt {
+		t.Errorf("pairwise_salt = %q, want the value the API reported at pairwise.salt", got)
+	}
+}
+
+// Same asymmetry for max_submissions: written to
+// selfservice.methods.code.max_submissions, reported one level deeper under
+// selfservice.methods.code.config.max_submissions.
+func TestReadSimpleFields_ReadsMaxSubmissionsFromReportedPath(t *testing.T) {
+	state := &ProjectConfigResourceModel{
+		SelfserviceMethodsCodeConfigMaxSubmissions: types.Int64Value(5),
+	}
+
+	readSimpleFields(context.Background(), identityProject(map[string]interface{}{
+		"selfservice": map[string]interface{}{
+			"methods": map[string]interface{}{
+				"code": map[string]interface{}{
+					"config": map[string]interface{}{"max_submissions": float64(3)},
+				},
+			},
+		},
+	}), state)
+
+	if got := state.SelfserviceMethodsCodeConfigMaxSubmissions.ValueInt64(); got != 3 {
+		t.Errorf("max_submissions = %d, want 3, the value the API reported at code.config.max_submissions", got)
+	}
+}
+
 // write_only attributes are omitted from the read tables entirely, so nulling
 // on absence must never reach them — the API is not expected to return them.
 func TestReadSimpleFields_PreservesWriteOnlyFieldWhenAPIOmitsKey(t *testing.T) {

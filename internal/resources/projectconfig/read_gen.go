@@ -27,7 +27,9 @@ type StringReadEntry struct {
 	Keys       []string
 	SkipEmpty  bool
 	// PreserveOnMissing keeps the state value when the API omits Keys, instead
-	// of nulling it to surface drift. Set for secrets the API never echoes back.
+	// of nulling it to surface drift. Set for secrets the API never echoes back
+	// and for attributes it accepts but never reports, where a null would show a
+	// diff on every plan that no apply can settle.
 	PreserveOnMissing bool
 }
 
@@ -423,7 +425,7 @@ func account_experienceMapStringReadEntries(state *ProjectConfigResourceModel) [
 func identityStringReadEntries(state *ProjectConfigResourceModel) []StringReadEntry {
 	return []StringReadEntry{
 		{&state.SessionLifespan, nil, []string{"session", "lifespan"}, false, false},
-		{&state.SessionEarliestPossibleExtend, nil, []string{"session", "earliest_possible_extend"}, false, false},
+		{&state.SessionEarliestPossibleExtend, nil, []string{"session", "earliest_possible_extend"}, false, true},
 		{&state.SessionCookieSameSite, nil, []string{"session", "cookie", "same_site"}, false, false},
 		{&state.SessionWhoamiRequiredAAL, nil, []string{"session", "whoami", "required_aal"}, false, false},
 		{&state.SelfserviceFlowsLoginUIURL, &state.LoginUIURL, []string{"selfservice", "flows", "login", "ui_url"}, false, false},
@@ -489,7 +491,7 @@ func identityStringReadEntries(state *ProjectConfigResourceModel) []StringReadEn
 		{&state.SelfserviceMethodsOIDCConfigBaseRedirectURI, nil, []string{"selfservice", "methods", "oidc", "config", "base_redirect_uri"}, false, false},
 		{&state.SelfserviceMethodsPasskeyConfigRPDisplayName, nil, []string{"selfservice", "methods", "passkey", "config", "rp", "display_name"}, false, false},
 		{&state.SelfserviceMethodsPasskeyConfigRPID, nil, []string{"selfservice", "methods", "passkey", "config", "rp", "id"}, false, false},
-		{&state.SelfserviceMethodsWebAuthnConfigRPIcon, nil, []string{"selfservice", "methods", "webauthn", "config", "rp", "icon"}, false, false},
+		{&state.SelfserviceMethodsWebAuthnConfigRPIcon, nil, []string{"selfservice", "methods", "webauthn", "config", "rp", "icon"}, false, true},
 		{&state.PreviewDefaultReadConsistencyLevel, nil, []string{"preview", "default_read_consistency_level"}, false, false},
 		{&state.SelfserviceMethodsCaptchaConfigCFTurnstileSecret, nil, []string{"selfservice", "methods", "captcha", "config", "cf_turnstile", "secret"}, false, true},
 		{&state.SelfserviceMethodsCaptchaConfigCFTurnstileSitekey, nil, []string{"selfservice", "methods", "captcha", "config", "cf_turnstile", "sitekey"}, false, false},
@@ -537,7 +539,7 @@ func identityBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry 
 		{&state.FeatureFlagsPasswordProfileRegistrationNodeGroup, nil, []string{"feature_flags", "password_profile_registration_node_group"}, false},
 		{&state.OAuth2ProviderOverrideReturnTo, nil, []string{"oauth2_provider", "override_return_to"}, false},
 		{&state.SecurityAccountEnumerationMitigate, nil, []string{"security", "account_enumeration", "mitigate"}, false},
-		{&state.SelfserviceMethodsCaptchaConfigBYO, nil, []string{"selfservice", "methods", "captcha", "config", "byo"}, false},
+		{&state.SelfserviceMethodsCaptchaConfigBYO, nil, []string{"selfservice", "methods", "captcha", "config", "byo"}, true},
 		{&state.SelfserviceMethodsCaptchaConfigLegacyInjectNode, nil, []string{"selfservice", "methods", "captcha", "config", "legacy_inject_node"}, false},
 		{&state.SelfserviceMethodsCaptchaEnabled, nil, []string{"selfservice", "methods", "captcha", "enabled"}, false},
 		{&state.SelfserviceMethodsDeviceauthnEnabled, nil, []string{"selfservice", "methods", "deviceauthn", "enabled"}, false},
@@ -552,7 +554,7 @@ func identityInt64ReadEntries(state *ProjectConfigResourceModel) []Int64ReadEntr
 	return []Int64ReadEntry{
 		{&state.SelfserviceMethodsPasswordConfigMinPasswordLength, &state.PasswordMinLength, []string{"selfservice", "methods", "password", "config", "min_password_length"}, false},
 		{&state.SelfserviceMethodsPasswordConfigMaxBreaches, &state.PasswordMaxBreaches, []string{"selfservice", "methods", "password", "config", "max_breaches"}, false},
-		{&state.SelfserviceMethodsCodeConfigMaxSubmissions, nil, []string{"selfservice", "methods", "code", "max_submissions"}, false},
+		{&state.SelfserviceMethodsCodeConfigMaxSubmissions, nil, []string{"selfservice", "methods", "code", "config", "max_submissions"}, false},
 		{&state.SelfserviceMethodsDeviceauthnConfigPinMaxAttempts, nil, []string{"selfservice", "methods", "deviceauthn", "config", "pin_max_attempts"}, false},
 	}
 }
@@ -598,7 +600,7 @@ func oauth2StringReadEntries(state *ProjectConfigResourceModel) []StringReadEntr
 		{&state.OAuth2GrantRefreshTokenRotationGracePeriod, nil, []string{"oauth2", "grant", "refresh_token", "rotation_grace_period"}, false, false},
 		{&state.OAuth2RefreshTokenHook, nil, []string{"oauth2", "refresh_token_hook"}, false, false},
 		{&state.OAuth2TokenHook, nil, []string{"oauth2", "token_hook", "url"}, false, false},
-		{&state.OIDCSubjectIdentifiersPairwiseSalt, nil, []string{"oidc", "subject_identifiers", "pairwise_salt"}, false, false},
+		{&state.OIDCSubjectIdentifiersPairwiseSalt, nil, []string{"oidc", "subject_identifiers", "pairwise", "salt"}, false, false},
 		{&state.OAuth2UrlsPostLogoutRedirect, nil, []string{"urls", "post_logout_redirect"}, false, false},
 		{&state.OAuth2UrlsRegistration, nil, []string{"urls", "registration"}, false, false},
 		{&state.OAuth2WebfingerOIDCDiscoveryAuthURL, nil, []string{"webfinger", "oidc_discovery", "auth_url"}, false, false},
