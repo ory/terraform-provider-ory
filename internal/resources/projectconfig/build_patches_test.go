@@ -1027,3 +1027,65 @@ func TestBuildHookPatches_EmailVerificationHooksMergedAtProfilePath(t *testing.T
 	assert.Equal(t, 1, seen["show_verification_ui"])
 	assert.Equal(t, 1, seen["organization"])
 }
+
+// Kratos runs a flow's hooks in list order, so the order the provider writes is
+// part of its contract rather than an accident of the merge. Every hook is
+// prepended as it is added, which is what the Ory Console does too, so the
+// merged array comes out in reverse hookEntries order with pre-existing hooks
+// last. Changing hookEntries order therefore changes execution order.
+func TestBuildHookPatches_MergedProfileHookOrderIsStable(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		SelfserviceFlowsSettingsAfterProfileHookShowVerificationUI:      types.BoolValue(true),
+		SelfserviceFlowsSettingsAfterProfileHookVerifyNewAddress:        types.BoolValue(true),
+		SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddresses: types.BoolValue(true),
+	}
+	current := settingsAfterProfileProject(map[string]interface{}{"hook": "organization"})
+
+	patches := buildHookPatches(plan, current)
+	require.Len(t, patches, 1)
+	hooks, _ := patches[0].Value.([]map[string]interface{})
+
+	names := make([]string, 0, len(hooks))
+	for _, h := range hooks {
+		name, _ := h["hook"].(string)
+		names = append(names, name)
+	}
+	assert.Equal(t, []string{
+		"notify_previous_addresses",
+		"verify_new_address",
+		"show_verification_ui",
+		"organization",
+	}, names)
+}
+
+// require_verified_address must run before anything else on its login flow, so
+// it stays at the head of the array even when other hooks are already there.
+func TestBuildHookPatches_RequireVerifiedAddressStaysFirstAmongExistingHooks(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		SelfserviceFlowsLoginAfterPasswordHookRequireVerifiedAddress: types.BoolValue(true),
+	}
+	current := projectWithIdentityConfig(map[string]interface{}{
+		"selfservice": map[string]interface{}{
+			"flows": map[string]interface{}{
+				"login": map[string]interface{}{
+					"after": map[string]interface{}{
+						"password": map[string]interface{}{
+							"hooks": []interface{}{
+								map[string]interface{}{"hook": "revoke_active_sessions"},
+								map[string]interface{}{"hook": "organization"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	patches := buildHookPatches(plan, current)
+	require.Len(t, patches, 1)
+	hooks, _ := patches[0].Value.([]map[string]interface{})
+	require.Len(t, hooks, 3)
+	assert.Equal(t, "require_verified_address", hooks[0]["hook"])
+	assert.Equal(t, "revoke_active_sessions", hooks[1]["hook"])
+	assert.Equal(t, "organization", hooks[2]["hook"])
+}

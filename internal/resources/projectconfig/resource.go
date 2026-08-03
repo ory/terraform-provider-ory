@@ -852,8 +852,9 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 		Description: "Which previous addresses the `notify_previous_addresses` hook notifies: " +
 			"`removed` for addresses that no longer exist after the change, `all_verified` for every address " +
 			"verified before the change, or `all` for every address on the identity before the change. " +
-			"Requires `selfservice_flows_settings_after_profile_hook_notify_previous_addresses = true`. " +
-			"When unset, the Ory default of `removed` applies.",
+			"Requires `selfservice_flows_settings_after_profile_hook_notify_previous_addresses` to be set. " +
+			"Leave this attribute out to let Ory apply its own default of `removed`. Note that removing it " +
+			"after a scope was already applied stops managing the scope rather than resetting it.",
 		Optional: true,
 		Validators: []validator.String{
 			stringvalidator.OneOf("removed", "all_verified", "all"),
@@ -1272,6 +1273,11 @@ type hookEntry struct {
 	SetConfig func(state *ProjectConfigResourceModel, config map[string]interface{})
 }
 
+// The order of this slice is part of the provider's contract: Kratos runs a
+// flow's hooks in list order, and buildHookPatches prepends each hook as it is
+// added, so entries sharing a path end up in reverse order of their appearance
+// here. See TestBuildHookPatches_MergedProfileHookOrderIsStable.
+//
 // hookEntries returns every hook attribute the provider exposes. Adding a new
 // hook toggle is a matter of appending one entry here, declaring the model
 // field, and registering the schema attribute.

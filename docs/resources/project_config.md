@@ -448,13 +448,14 @@ When `true`, the provider adds the `show_verification_ui` hook to the correspond
 
 The three toggles on the Ory Console **Email verification** page are also post-flow hooks, each with its own attribute:
 
-| Ory Console toggle | Attribute |
-|---|---|
-| Require verified address for login | `selfservice_flows_login_after_password_hook_require_verified_address` |
-| Verify new addresses | `selfservice_flows_settings_after_profile_hook_verify_new_address` |
-| Notify previous addresses | `selfservice_flows_settings_after_profile_hook_notify_previous_addresses` |
+| Ory Console toggle | Attribute | Flow |
+|---|---|---|
+| Require verified address for login | `selfservice_flows_login_after_password_hook_require_verified_address` | Password login |
+| (not in the Console) | `selfservice_flows_login_after_oidc_hook_require_verified_address` | Social login |
+| Verify new addresses | `selfservice_flows_settings_after_profile_hook_verify_new_address` | Profile settings |
+| Notify previous addresses | `selfservice_flows_settings_after_profile_hook_notify_previous_addresses` | Profile settings |
 
-The Ory Console toggle writes the password login flow only. The provider also exposes `selfservice_flows_login_after_oidc_hook_require_verified_address` for the social login flow, which the Ory config schema supports but the Console does not surface. Set both to require a verified address on every login path.
+The Ory Console toggle writes the password login flow only. The Ory config schema also supports the hook on the social login flow, so the provider exposes it there too. Set both to require a verified address on every login path.
 
 ```hcl
 resource "ory_project_config" "main" {
@@ -475,9 +476,11 @@ resource "ory_project_config" "main" {
 
 `selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients` selects who is notified:
 
-- `removed` notifies only addresses that no longer exist after the change. This is the Ory default and applies when the attribute is unset.
+- `removed` notifies only addresses that no longer exist after the change. This is the Ory default.
 - `all_verified` notifies every address that was verified before the change.
 - `all` notifies every address on the identity before the change.
+
+Leave the attribute out and the provider writes no scope at all, so Ory applies `removed`. Removing the attribute after a scope was already applied is different: the provider stops managing the scope and leaves the project on its current value, in line with how every other optional attribute on this resource behaves. Set it back to `removed` explicitly to return to the default.
 
 -> **`verify_new_address` is not `show_verification_ui`.** `selfservice_flows_settings_after_profile_hook_verify_new_address` gates the address change on verification. `selfservice_flows_settings_after_profile_hook_show_verification_ui` only controls the redirect to the verification UI after the flow. Set both if you want the address gated *and* the user sent to the verification screen.
 
@@ -761,7 +764,7 @@ terraform plan  # verify no changes
 - `selfservice_flows_settings_after_password_default_browser_return_url` (String) Return URL after updating password in settings.
 - `selfservice_flows_settings_after_profile_default_browser_return_url` (String) Return URL after updating profile in settings.
 - `selfservice_flows_settings_after_profile_hook_notify_previous_addresses` (Boolean) Enable the `notify_previous_addresses` hook after a profile settings update, emailing the identity's previous addresses when its verified addresses change. Mirrors the Ory Console "Notify previous addresses" toggle. Existing hooks at this path (e.g., `organization`) are preserved.
-- `selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients` (String) Which previous addresses the `notify_previous_addresses` hook notifies: `removed` for addresses that no longer exist after the change, `all_verified` for every address verified before the change, or `all` for every address on the identity before the change. Requires `selfservice_flows_settings_after_profile_hook_notify_previous_addresses = true`. When unset, the Ory default of `removed` applies.
+- `selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients` (String) Which previous addresses the `notify_previous_addresses` hook notifies: `removed` for addresses that no longer exist after the change, `all_verified` for every address verified before the change, or `all` for every address on the identity before the change. Requires `selfservice_flows_settings_after_profile_hook_notify_previous_addresses` to be set. Leave this attribute out to let Ory apply its own default of `removed`. Note that removing it after a scope was already applied stops managing the scope rather than resetting it.
 - `selfservice_flows_settings_after_profile_hook_show_verification_ui` (Boolean) Enable the `show_verification_ui` hook after a successful profile settings update. When true, users are redirected to the verification UI after updating their profile (e.g., changing their email). Existing hooks at this path (e.g., `organization`) are preserved.
 - `selfservice_flows_settings_after_profile_hook_verify_new_address` (Boolean) Enable the `verify_new_address` hook after a profile settings update, requiring verification of an address the user just added or changed. Mirrors the Ory Console "Verify new addresses" toggle. Distinct from `selfservice_flows_settings_after_profile_hook_show_verification_ui`, which only controls the redirect to the verification UI. Existing hooks at this path (e.g., `organization`) are preserved.
 - `selfservice_flows_settings_after_totp_default_browser_return_url` (String) Return URL after updating TOTP in settings.
