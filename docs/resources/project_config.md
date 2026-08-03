@@ -318,8 +318,37 @@ resource "ory_project_config" "show_verification_ui" {
   selfservice_flows_registration_after_password_hook_show_verification_ui = true
   # Same for social (OIDC) registration.
   selfservice_flows_registration_after_oidc_hook_show_verification_ui = true
-  # When users change their email in profile settings, force re-verification.
+  # After a profile settings update, redirect users to the verification UI.
+  # This only controls the redirect. To gate the address change itself on
+  # verification, see selfservice_flows_settings_after_profile_hook_verify_new_address
+  # below.
   selfservice_flows_settings_after_profile_hook_show_verification_ui = true
+}
+
+# The three toggles on the Ory Console "Email verification" page. Like the
+# hooks above, each one is an entry in a flow's hooks array, so other hooks at
+# the same path are preserved.
+resource "ory_project_config" "email_verification_hooks" {
+  selfservice_flows_verification_enabled = true
+
+  # "Require verified address for login": block sign-in until the identity has
+  # a verified address. feature_flags_legacy_require_verified_login_error only
+  # changes how the failure is reported, it does not enable the check.
+  #
+  # The Ory Console toggle writes the password flow only. Set the OIDC flow too
+  # to cover social logins.
+  selfservice_flows_login_after_password_hook_require_verified_address = true
+  selfservice_flows_login_after_oidc_hook_require_verified_address     = true
+
+  # "Verify new addresses": require verification of an address the user just
+  # added or changed in profile settings.
+  selfservice_flows_settings_after_profile_hook_verify_new_address = true
+
+  # "Notify previous addresses": email the identity's previous addresses when
+  # its verified addresses change. Recipients is one of "removed" (the Ory
+  # default), "all_verified", or "all".
+  selfservice_flows_settings_after_profile_hook_notify_previous_addresses            = true
+  selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients = "all_verified"
 }
 
 # Automatically sign users in after they register with email + password.
@@ -415,7 +444,46 @@ Three boolean attributes toggle the [`show_verification_ui`](https://www.ory.com
 
 When `true`, the provider adds the `show_verification_ui` hook to the corresponding flow; when `false`, it removes only that hook. Other hooks at the same path (for example `session` or `organization`) are preserved by reading the current hook list before each apply.
 
-To require a verified address before a user can log in (the "Require verified address for login" toggle in the Ory Console), set `feature_flags_legacy_require_verified_login_error = true`. When that flag is `false`, an unverified user is shown the `show_verification_ui` continuation step instead of receiving a form error.
+## Email Verification Hooks
+
+The three toggles on the Ory Console **Email verification** page are also post-flow hooks, each with its own attribute:
+
+| Ory Console toggle | Attribute |
+|---|---|
+| Require verified address for login | `selfservice_flows_login_after_password_hook_require_verified_address` |
+| Verify new addresses | `selfservice_flows_settings_after_profile_hook_verify_new_address` |
+| Notify previous addresses | `selfservice_flows_settings_after_profile_hook_notify_previous_addresses` |
+
+The Ory Console toggle writes the password login flow only. The provider also exposes `selfservice_flows_login_after_oidc_hook_require_verified_address` for the social login flow, which the Ory config schema supports but the Console does not surface. Set both to require a verified address on every login path.
+
+```hcl
+resource "ory_project_config" "main" {
+  selfservice_flows_verification_enabled = true
+
+  # Block sign-in until the identity has a verified address.
+  selfservice_flows_login_after_password_hook_require_verified_address = true
+  selfservice_flows_login_after_oidc_hook_require_verified_address     = true
+
+  # Require verification of an address the user just added or changed.
+  selfservice_flows_settings_after_profile_hook_verify_new_address = true
+
+  # Email the previous addresses when the verified addresses change.
+  selfservice_flows_settings_after_profile_hook_notify_previous_addresses            = true
+  selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients = "all_verified"
+}
+```
+
+`selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients` selects who is notified:
+
+- `removed` notifies only addresses that no longer exist after the change. This is the Ory default and applies when the attribute is unset.
+- `all_verified` notifies every address that was verified before the change.
+- `all` notifies every address on the identity before the change.
+
+-> **`verify_new_address` is not `show_verification_ui`.** `selfservice_flows_settings_after_profile_hook_verify_new_address` gates the address change on verification. `selfservice_flows_settings_after_profile_hook_show_verification_ui` only controls the redirect to the verification UI after the flow. Set both if you want the address gated *and* the user sent to the verification screen.
+
+-> **`feature_flags_legacy_require_verified_login_error` is not an enable switch.** It controls how a failed verified-address check is reported, a form error instead of a `continue_with` step. It has no effect unless `selfservice_flows_login_after_password_hook_require_verified_address` is `true`.
+
+The Ory Console additionally turns on `selfservice_flows_registration_after_password_hook_show_verification_ui` when you enable "Require verified address for login" on a project that signs users in after registration. The provider does not infer that for you. Set the attribute yourself if you want that behavior.
 
 ## Account Experience Branding
 
@@ -656,8 +724,10 @@ terraform plan  # verify no changes
 - `selfservice_flows_login_after_default_browser_return_url` (String) Default return URL after login.
 - `selfservice_flows_login_after_lookup_secret_default_browser_return_url` (String) Return URL after login via lookup secret method.
 - `selfservice_flows_login_after_oidc_default_browser_return_url` (String) Return URL after login via OIDC.
+- `selfservice_flows_login_after_oidc_hook_require_verified_address` (Boolean) Enable the `require_verified_address` hook after an OIDC (social) login, blocking sign-in until the identity has a verified address. The Ory Console "Require verified address for login" toggle only writes the password flow, so set this attribute as well to cover social logins. Existing hooks at this path (e.g., `organization`) are preserved.
 - `selfservice_flows_login_after_passkey_default_browser_return_url` (String) Return URL after login via passkey.
 - `selfservice_flows_login_after_password_default_browser_return_url` (String) Return URL after login via password.
+- `selfservice_flows_login_after_password_hook_require_verified_address` (Boolean) Enable the `require_verified_address` hook after a password login, blocking sign-in until the identity has a verified address. Mirrors the Ory Console "Require verified address for login" toggle. Use `feature_flags_legacy_require_verified_login_error` to control how the failure is reported, not whether the check runs. Existing hooks at this path (e.g., `organization`) are preserved.
 - `selfservice_flows_login_after_totp_default_browser_return_url` (String) Return URL after login via TOTP.
 - `selfservice_flows_login_after_webauthn_default_browser_return_url` (String) Return URL after login via WebAuthn.
 - `selfservice_flows_login_lifespan` (String) Lifespan of the login flow (e.g. '1h').
@@ -690,7 +760,10 @@ terraform plan  # verify no changes
 - `selfservice_flows_settings_after_passkey_default_browser_return_url` (String) Return URL after updating passkey in settings.
 - `selfservice_flows_settings_after_password_default_browser_return_url` (String) Return URL after updating password in settings.
 - `selfservice_flows_settings_after_profile_default_browser_return_url` (String) Return URL after updating profile in settings.
+- `selfservice_flows_settings_after_profile_hook_notify_previous_addresses` (Boolean) Enable the `notify_previous_addresses` hook after a profile settings update, emailing the identity's previous addresses when its verified addresses change. Mirrors the Ory Console "Notify previous addresses" toggle. Existing hooks at this path (e.g., `organization`) are preserved.
+- `selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients` (String) Which previous addresses the `notify_previous_addresses` hook notifies: `removed` for addresses that no longer exist after the change, `all_verified` for every address verified before the change, or `all` for every address on the identity before the change. Requires `selfservice_flows_settings_after_profile_hook_notify_previous_addresses = true`. When unset, the Ory default of `removed` applies.
 - `selfservice_flows_settings_after_profile_hook_show_verification_ui` (Boolean) Enable the `show_verification_ui` hook after a successful profile settings update. When true, users are redirected to the verification UI after updating their profile (e.g., changing their email). Existing hooks at this path (e.g., `organization`) are preserved.
+- `selfservice_flows_settings_after_profile_hook_verify_new_address` (Boolean) Enable the `verify_new_address` hook after a profile settings update, requiring verification of an address the user just added or changed. Mirrors the Ory Console "Verify new addresses" toggle. Distinct from `selfservice_flows_settings_after_profile_hook_show_verification_ui`, which only controls the redirect to the verification UI. Existing hooks at this path (e.g., `organization`) are preserved.
 - `selfservice_flows_settings_after_totp_default_browser_return_url` (String) Return URL after updating TOTP in settings.
 - `selfservice_flows_settings_after_webauthn_default_browser_return_url` (String) Return URL after updating WebAuthn in settings.
 - `selfservice_flows_settings_lifespan` (String) Lifespan of the settings flow (e.g., '30m0s'). Controls how long a settings flow session remains valid.

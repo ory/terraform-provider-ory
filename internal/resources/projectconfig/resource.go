@@ -426,6 +426,15 @@ type ProjectConfigResourceModel struct {
 	// the Ory Console "Enable sign in after registration" toggle.
 	SelfserviceFlowsRegistrationAfterPasswordHookSession types.Bool `tfsdk:"selfservice_flows_registration_after_password_hook_session"`
 
+	// Email verification hooks (custom: not in OpenAPI spec). These back the
+	// three toggles on the Ory Console "Email verification" page.
+	SelfserviceFlowsLoginAfterPasswordHookRequireVerifiedAddress types.Bool `tfsdk:"selfservice_flows_login_after_password_hook_require_verified_address"`
+	SelfserviceFlowsLoginAfterOIDCHookRequireVerifiedAddress     types.Bool `tfsdk:"selfservice_flows_login_after_oidc_hook_require_verified_address"`
+	SelfserviceFlowsSettingsAfterProfileHookVerifyNewAddress     types.Bool `tfsdk:"selfservice_flows_settings_after_profile_hook_verify_new_address"`
+
+	SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddresses           types.Bool   `tfsdk:"selfservice_flows_settings_after_profile_hook_notify_previous_addresses"`
+	SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddressesRecipients types.String `tfsdk:"selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients"`
+
 	// Auto-discovered (review naming before release)
 	SelfserviceMethodsDeviceauthnEnabled types.Bool `tfsdk:"selfservice_methods_deviceauthn_enabled"`
 
@@ -801,6 +810,55 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 			"\"Enable sign in after registration\" toggle. " +
 			"Existing hooks at this path (e.g., `organization`) are preserved.",
 		Optional: true,
+	}
+
+	// Email verification hooks: the three toggles on the Ory Console
+	// "Email verification" page. Like the hooks above, each one is an entry in
+	// a flow's hooks array rather than a scalar config property.
+	attrs["selfservice_flows_login_after_password_hook_require_verified_address"] = schema.BoolAttribute{
+		Description: "Enable the `require_verified_address` hook after a password login, " +
+			"blocking sign-in until the identity has a verified address. Mirrors the Ory Console " +
+			"\"Require verified address for login\" toggle. " +
+			"Use `feature_flags_legacy_require_verified_login_error` to control how the failure is " +
+			"reported, not whether the check runs. " +
+			"Existing hooks at this path (e.g., `organization`) are preserved.",
+		Optional: true,
+	}
+	attrs["selfservice_flows_login_after_oidc_hook_require_verified_address"] = schema.BoolAttribute{
+		Description: "Enable the `require_verified_address` hook after an OIDC (social) login, " +
+			"blocking sign-in until the identity has a verified address. The Ory Console " +
+			"\"Require verified address for login\" toggle only writes the password flow, so set this " +
+			"attribute as well to cover social logins. " +
+			"Existing hooks at this path (e.g., `organization`) are preserved.",
+		Optional: true,
+	}
+	attrs["selfservice_flows_settings_after_profile_hook_verify_new_address"] = schema.BoolAttribute{
+		Description: "Enable the `verify_new_address` hook after a profile settings update, " +
+			"requiring verification of an address the user just added or changed. Mirrors the Ory Console " +
+			"\"Verify new addresses\" toggle. Distinct from " +
+			"`selfservice_flows_settings_after_profile_hook_show_verification_ui`, which only controls the " +
+			"redirect to the verification UI. " +
+			"Existing hooks at this path (e.g., `organization`) are preserved.",
+		Optional: true,
+	}
+	attrs["selfservice_flows_settings_after_profile_hook_notify_previous_addresses"] = schema.BoolAttribute{
+		Description: "Enable the `notify_previous_addresses` hook after a profile settings update, " +
+			"emailing the identity's previous addresses when its verified addresses change. Mirrors the Ory Console " +
+			"\"Notify previous addresses\" toggle. " +
+			"Existing hooks at this path (e.g., `organization`) are preserved.",
+		Optional: true,
+	}
+	attrs["selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients"] = schema.StringAttribute{
+		Description: "Which previous addresses the `notify_previous_addresses` hook notifies: " +
+			"`removed` for addresses that no longer exist after the change, `all_verified` for every address " +
+			"verified before the change, or `all` for every address on the identity before the change. " +
+			"Requires `selfservice_flows_settings_after_profile_hook_notify_previous_addresses = true`. " +
+			"When unset, the Ory default of `removed` applies.",
+		Optional: true,
+		Validators: []validator.String{
+			stringvalidator.OneOf("removed", "all_verified", "all"),
+			stringvalidator.AlsoRequires(path.MatchRoot("selfservice_flows_settings_after_profile_hook_notify_previous_addresses")),
+		},
 	}
 
 	// Courier HTTP Delivery
@@ -1195,11 +1253,23 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 // hookEntry describes one boolean hook attribute: the field on the model, the
 // identity-config path whose hooks array it controls, the hook name within
 // that array, and a setter that writes the read-back value into state.
+//
+// Most hooks are bare `{"hook": "<name>"}` entries. A hook that carries
+// settings also populates Config and SetConfig, which write and read back the
+// entry's "config" object.
 type hookEntry struct {
 	Field    types.Bool
 	PathKeys []string // path under /services/identity/config, ending at the parent of "hooks"
 	HookName string
 	Set      func(state *ProjectConfigResourceModel, value types.Bool)
+
+	// Config is written under the hook entry's "config" key. A nil or empty
+	// map leaves whatever config the hook already has untouched, matching how
+	// the rest of the resource treats unconfigured attributes.
+	Config map[string]interface{}
+	// SetConfig writes a config object read back from the API into state. Nil
+	// for hooks that carry no config.
+	SetConfig func(state *ProjectConfigResourceModel, config map[string]interface{})
 }
 
 // hookEntries returns every hook attribute the provider exposes. Adding a new
@@ -1239,7 +1309,70 @@ func hookEntries(plan *ProjectConfigResourceModel) []hookEntry {
 				s.SelfserviceFlowsRegistrationAfterPasswordHookSession = v
 			},
 		},
+		{
+			// The Ory Console writes this hook to the password login flow only.
+			// The config schema also allows it on the OIDC flow, exposed below.
+			Field:    plan.SelfserviceFlowsLoginAfterPasswordHookRequireVerifiedAddress,
+			PathKeys: []string{"selfservice", "flows", "login", "after", "password"},
+			HookName: "require_verified_address",
+			Set: func(s *ProjectConfigResourceModel, v types.Bool) {
+				s.SelfserviceFlowsLoginAfterPasswordHookRequireVerifiedAddress = v
+			},
+		},
+		{
+			Field:    plan.SelfserviceFlowsLoginAfterOIDCHookRequireVerifiedAddress,
+			PathKeys: []string{"selfservice", "flows", "login", "after", "oidc"},
+			HookName: "require_verified_address",
+			Set: func(s *ProjectConfigResourceModel, v types.Bool) {
+				s.SelfserviceFlowsLoginAfterOIDCHookRequireVerifiedAddress = v
+			},
+		},
+		{
+			Field:    plan.SelfserviceFlowsSettingsAfterProfileHookVerifyNewAddress,
+			PathKeys: []string{"selfservice", "flows", "settings", "after", "profile"},
+			HookName: "verify_new_address",
+			Set: func(s *ProjectConfigResourceModel, v types.Bool) {
+				s.SelfserviceFlowsSettingsAfterProfileHookVerifyNewAddress = v
+			},
+		},
+		{
+			Field:    plan.SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddresses,
+			PathKeys: []string{"selfservice", "flows", "settings", "after", "profile"},
+			HookName: "notify_previous_addresses",
+			Config:   notifyPreviousAddressesConfig(plan),
+			Set: func(s *ProjectConfigResourceModel, v types.Bool) {
+				s.SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddresses = v
+			},
+			SetConfig: func(s *ProjectConfigResourceModel, config map[string]interface{}) {
+				// Only refresh a recipient scope the practitioner tracks, so an
+				// unset attribute does not start showing drift.
+				if s.SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddressesRecipients.IsNull() {
+					return
+				}
+				recipients, _ := config["recipients"].(string)
+				if recipients == "" {
+					// The hook is present without an explicit scope, so Ory
+					// applies its default.
+					recipients = notifyPreviousAddressesDefaultRecipients
+				}
+				s.SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddressesRecipients = types.StringValue(recipients)
+			},
+		},
 	}
+}
+
+// notifyPreviousAddressesDefaultRecipients is the recipient scope Ory applies
+// when the notify_previous_addresses hook carries no config.
+const notifyPreviousAddressesDefaultRecipients = "removed"
+
+// notifyPreviousAddressesConfig builds the config object for the
+// notify_previous_addresses hook entry, or nil when no scope is configured.
+func notifyPreviousAddressesConfig(plan *ProjectConfigResourceModel) map[string]interface{} {
+	recipients := plan.SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddressesRecipients
+	if recipients.IsNull() || recipients.IsUnknown() {
+		return nil
+	}
+	return map[string]interface{}{"recipients": recipients.ValueString()}
 }
 
 // buildHookPatches reconciles every configured hook attribute by merging the
@@ -1281,7 +1414,7 @@ func buildHookPatches(plan *ProjectConfigResourceModel, currentProject *ory.Proj
 			accumulators[pathKey] = acc
 			order = append(order, pathKey)
 		}
-		acc.hooks = setHookPresent(acc.hooks, e.HookName, e.Field.ValueBool())
+		acc.hooks = setHookPresent(acc.hooks, e.HookName, e.Field.ValueBool(), e.Config)
 	}
 
 	for _, pathKey := range order {
@@ -1317,7 +1450,11 @@ func readHookList(identityConfig map[string]interface{}, pathKeys []string) []ma
 // setHookPresent returns a copy of hooks with the given hook name either
 // prepended (if present == true and missing) or removed (if present == false).
 // Other hook entries are preserved in their original order.
-func setHookPresent(hooks []map[string]interface{}, hookName string, present bool) []map[string]interface{} {
+//
+// A non-empty config replaces the config of the matching entry, so a change to
+// a hook's settings applies without removing and re-adding the hook. An empty
+// config leaves an existing entry untouched.
+func setHookPresent(hooks []map[string]interface{}, hookName string, present bool, config map[string]interface{}) []map[string]interface{} {
 	filtered := make([]map[string]interface{}, 0, len(hooks)+1)
 	alreadyPresent := false
 	for _, h := range hooks {
@@ -1327,13 +1464,29 @@ func setHookPresent(hooks []map[string]interface{}, hookName string, present boo
 			if !present {
 				continue
 			}
+			if len(config) > 0 {
+				h = hookMap(hookName, config)
+			}
 		}
 		filtered = append(filtered, h)
 	}
 	if present && !alreadyPresent {
-		filtered = append([]map[string]interface{}{{"hook": hookName}}, filtered...)
+		// Prepended rather than appended: require_verified_address must run
+		// before any other hook on its flow, and the Ory Console orders it the
+		// same way.
+		filtered = append([]map[string]interface{}{hookMap(hookName, config)}, filtered...)
 	}
 	return filtered
+}
+
+// hookMap builds a single hooks-array entry, omitting the "config" key when
+// the hook carries no settings.
+func hookMap(hookName string, config map[string]interface{}) map[string]interface{} {
+	entry := map[string]interface{}{"hook": hookName}
+	if len(config) > 0 {
+		entry["config"] = config
+	}
+	return entry
 }
 
 // hookListContains reports whether the hooks list at the given path includes
@@ -1345,6 +1498,20 @@ func hookListContains(identityConfig map[string]interface{}, pathKeys []string, 
 		}
 	}
 	return false
+}
+
+// readHookConfig returns the "config" object of the named hook at the given
+// path, or nil when the hook is absent or carries no config. Ory omits the key
+// entirely when a hook runs with its defaults.
+func readHookConfig(identityConfig map[string]interface{}, pathKeys []string, hookName string) map[string]interface{} {
+	for _, h := range readHookList(identityConfig, pathKeys) {
+		if name, _ := h["hook"].(string); name != hookName {
+			continue
+		}
+		config, _ := h["config"].(map[string]interface{})
+		return config
+	}
+	return nil
 }
 
 // needsHookPrefetch reports whether any hook attribute is set in the plan, in
@@ -1730,6 +1897,9 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 			}
 			present := hookListContains(identityConfig, e.PathKeys, e.HookName)
 			e.Set(state, types.BoolValue(present))
+			if present && e.SetConfig != nil {
+				e.SetConfig(state, readHookConfig(identityConfig, e.PathKeys, e.HookName))
+			}
 		}
 	}
 

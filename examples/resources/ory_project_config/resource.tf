@@ -289,8 +289,37 @@ resource "ory_project_config" "show_verification_ui" {
   selfservice_flows_registration_after_password_hook_show_verification_ui = true
   # Same for social (OIDC) registration.
   selfservice_flows_registration_after_oidc_hook_show_verification_ui = true
-  # When users change their email in profile settings, force re-verification.
+  # After a profile settings update, redirect users to the verification UI.
+  # This only controls the redirect. To gate the address change itself on
+  # verification, see selfservice_flows_settings_after_profile_hook_verify_new_address
+  # below.
   selfservice_flows_settings_after_profile_hook_show_verification_ui = true
+}
+
+# The three toggles on the Ory Console "Email verification" page. Like the
+# hooks above, each one is an entry in a flow's hooks array, so other hooks at
+# the same path are preserved.
+resource "ory_project_config" "email_verification_hooks" {
+  selfservice_flows_verification_enabled = true
+
+  # "Require verified address for login": block sign-in until the identity has
+  # a verified address. feature_flags_legacy_require_verified_login_error only
+  # changes how the failure is reported, it does not enable the check.
+  #
+  # The Ory Console toggle writes the password flow only. Set the OIDC flow too
+  # to cover social logins.
+  selfservice_flows_login_after_password_hook_require_verified_address = true
+  selfservice_flows_login_after_oidc_hook_require_verified_address     = true
+
+  # "Verify new addresses": require verification of an address the user just
+  # added or changed in profile settings.
+  selfservice_flows_settings_after_profile_hook_verify_new_address = true
+
+  # "Notify previous addresses": email the identity's previous addresses when
+  # its verified addresses change. Recipients is one of "removed" (the Ory
+  # default), "all_verified", or "all".
+  selfservice_flows_settings_after_profile_hook_notify_previous_addresses            = true
+  selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients = "all_verified"
 }
 
 # Automatically sign users in after they register with email + password.
