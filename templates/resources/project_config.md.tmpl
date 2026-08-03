@@ -128,7 +128,49 @@ Three boolean attributes toggle the [`show_verification_ui`](https://www.ory.com
 
 When `true`, the provider adds the `show_verification_ui` hook to the corresponding flow; when `false`, it removes only that hook. Other hooks at the same path (for example `session` or `organization`) are preserved by reading the current hook list before each apply.
 
-To require a verified address before a user can log in (the "Require verified address for login" toggle in the Ory Console), set `feature_flags_legacy_require_verified_login_error = true`. When that flag is `false`, an unverified user is shown the `show_verification_ui` continuation step instead of receiving a form error.
+## Email Verification Hooks
+
+The three toggles on the Ory Console **Email verification** page are also post-flow hooks, each with its own attribute:
+
+| Ory Console toggle | Attribute | Flow |
+|---|---|---|
+| Require verified address for login | `selfservice_flows_login_after_password_hook_require_verified_address` | Password login |
+| (not in the Console) | `selfservice_flows_login_after_oidc_hook_require_verified_address` | Social login |
+| Verify new addresses | `selfservice_flows_settings_after_profile_hook_verify_new_address` | Profile settings |
+| Notify previous addresses | `selfservice_flows_settings_after_profile_hook_notify_previous_addresses` | Profile settings |
+
+The Ory Console toggle writes the password login flow only. The Ory config schema also supports the hook on the social login flow, so the provider exposes it there too. Set both to require a verified address on every login path.
+
+```hcl
+resource "ory_project_config" "main" {
+  selfservice_flows_verification_enabled = true
+
+  # Block sign-in until the identity has a verified address.
+  selfservice_flows_login_after_password_hook_require_verified_address = true
+  selfservice_flows_login_after_oidc_hook_require_verified_address     = true
+
+  # Require verification of an address the user just added or changed.
+  selfservice_flows_settings_after_profile_hook_verify_new_address = true
+
+  # Email the previous addresses when the verified addresses change.
+  selfservice_flows_settings_after_profile_hook_notify_previous_addresses            = true
+  selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients = "all_verified"
+}
+```
+
+`selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients` selects who is notified:
+
+- `removed` notifies only addresses that no longer exist after the change. This is the Ory default.
+- `all_verified` notifies every address that was verified before the change.
+- `all` notifies every address on the identity before the change.
+
+Leave the attribute out and the provider writes no scope at all, so Ory applies `removed`. Removing the attribute after a scope was already applied is different: the provider stops managing the scope and leaves the project on its current value, in line with how every other optional attribute on this resource behaves. Set it back to `removed` explicitly to return to the default.
+
+-> **`verify_new_address` is not `show_verification_ui`.** `selfservice_flows_settings_after_profile_hook_verify_new_address` gates the address change on verification. `selfservice_flows_settings_after_profile_hook_show_verification_ui` only controls the redirect to the verification UI after the flow. Set both if you want the address gated *and* the user sent to the verification screen.
+
+-> **`feature_flags_legacy_require_verified_login_error` is not an enable switch.** It controls how a failed verified-address check is reported, a form error instead of a `continue_with` step. It has no effect unless `selfservice_flows_login_after_password_hook_require_verified_address` is `true`.
+
+The Ory Console additionally turns on `selfservice_flows_registration_after_password_hook_show_verification_ui` when you enable "Require verified address for login" on a project that signs users in after registration. The provider does not infer that for you. Set the attribute yourself if you want that behavior.
 
 ## Account Experience Branding
 

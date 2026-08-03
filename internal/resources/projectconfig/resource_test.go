@@ -1206,6 +1206,93 @@ func TestAccProjectConfigResource_showVerificationUIHooks(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_emailVerificationHooks(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Enable all three Email verification hooks.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/email_verification_hooks.tf.tmpl", map[string]string{
+					"RequireVerifiedAddress":     "true",
+					"RequireVerifiedAddressOIDC": "true",
+					"VerifyNewAddress":           "true",
+					"NotifyPreviousAddresses":    "true",
+					"Recipients":                 "all_verified",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_login_after_password_hook_require_verified_address", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_login_after_oidc_hook_require_verified_address", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_after_profile_hook_verify_new_address", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_after_profile_hook_notify_previous_addresses", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients", "all_verified"),
+				),
+			},
+			// Re-apply the same config to confirm no perpetual diff.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/email_verification_hooks.tf.tmpl", map[string]string{
+					"RequireVerifiedAddress":     "true",
+					"RequireVerifiedAddressOIDC": "true",
+					"VerifyNewAddress":           "true",
+					"NotifyPreviousAddresses":    "true",
+					"Recipients":                 "all_verified",
+				}),
+				PlanOnly: true,
+			},
+			// Change only the recipient scope: the hook is updated in place.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/email_verification_hooks.tf.tmpl", map[string]string{
+					"RequireVerifiedAddress":     "true",
+					"RequireVerifiedAddressOIDC": "true",
+					"VerifyNewAddress":           "true",
+					"NotifyPreviousAddresses":    "true",
+					"Recipients":                 "all",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients", "all"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_after_profile_hook_notify_previous_addresses", "true"),
+				),
+			},
+			// Disable the login and notify hooks, keep verify_new_address on.
+			// Both hooks share the profile hooks array, so this also covers a
+			// removal that must not disturb its neighbour.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/email_verification_hooks.tf.tmpl", map[string]string{
+					"RequireVerifiedAddress":     "false",
+					"RequireVerifiedAddressOIDC": "false",
+					"VerifyNewAddress":           "true",
+					"NotifyPreviousAddresses":    "false",
+					"Recipients":                 "all",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_login_after_password_hook_require_verified_address", "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_login_after_oidc_hook_require_verified_address", "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_after_profile_hook_verify_new_address", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_after_profile_hook_notify_previous_addresses", "false"),
+				),
+			},
+			// Import then verify state.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"selfservice_flows_login_after_password_hook_require_verified_address",
+					"selfservice_flows_login_after_oidc_hook_require_verified_address",
+					"selfservice_flows_settings_after_profile_hook_verify_new_address",
+					"selfservice_flows_settings_after_profile_hook_notify_previous_addresses",
+					"selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients",
+					"selfservice_flows_verification_enabled",
+					"cors_enabled",
+					"selfservice_methods_password_config_min_password_length",
+					"smtp_connection_uri",
+				},
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_oauth2Advanced(t *testing.T) {
 	// The pairwise salt is here to cover its read path. The API accepts the write
 	// at oidc.subject_identifiers.pairwise_salt and reports the value back under

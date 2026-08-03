@@ -1,0 +1,10 @@
+resource "ory_project_config" "test" {
+  selfservice_flows_verification_enabled = true
+
+  selfservice_flows_login_after_password_hook_require_verified_address = [[ .RequireVerifiedAddress ]]
+  selfservice_flows_login_after_oidc_hook_require_verified_address     = [[ .RequireVerifiedAddressOIDC ]]
+  selfservice_flows_settings_after_profile_hook_verify_new_address     = [[ .VerifyNewAddress ]]
+
+  selfservice_flows_settings_after_profile_hook_notify_previous_addresses            = [[ .NotifyPreviousAddresses ]]
+  selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients = "[[ .Recipients ]]"
+}
