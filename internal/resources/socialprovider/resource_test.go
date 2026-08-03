@@ -3,16 +3,19 @@
 package socialprovider_test
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	"github.com/stretchr/testify/require"
@@ -237,6 +240,86 @@ func TestAccSocialProviderResource_baseRedirectURI(t *testing.T) {
 			},
 		},
 	})
+}
+
+// TestAccSocialProviderResource_preservesProjectConfigBaseRedirectURI verifies
+// that creating and deleting a social provider does not wipe the global OIDC
+// base_redirect_uri managed by ory_project_config. Both the first-provider
+// create and the last-provider delete used to replace the whole OIDC method
+// node, discarding sibling config keys.
+func TestAccSocialProviderResource_preservesProjectConfigBaseRedirectURI(t *testing.T) {
+	const baseRedirectURI = "https://iam.example.com"
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Set base_redirect_uri via ory_project_config, then add a provider
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/preserve_project_config_base_redirect_uri.tf.tmpl", map[string]string{
+					"BaseRedirectURI": baseRedirectURI,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-google-preserve"),
+					checkServerBaseRedirectURI(baseRedirectURI),
+				),
+			},
+			// Remove the provider — base_redirect_uri must survive server-side
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/preserve_project_config_base_redirect_uri_removed.tf.tmpl", map[string]string{
+					"BaseRedirectURI": baseRedirectURI,
+				}),
+				Check: checkServerBaseRedirectURI(baseRedirectURI),
+			},
+		},
+	})
+}
+
+// checkServerBaseRedirectURI asserts the OIDC base_redirect_uri stored on the
+// project by reading the API directly, bypassing Terraform state.
+func checkServerBaseRedirectURI(want string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		c, err := acctest.GetOryClient()
+		if err != nil {
+			return fmt.Errorf("could not create client: %w", err)
+		}
+
+		var projectID string
+		for _, rs := range s.RootModule().Resources {
+			if pid := rs.Primary.Attributes["project_id"]; pid != "" {
+				projectID = pid
+				break
+			}
+		}
+		if projectID == "" {
+			return fmt.Errorf("no project_id found in state")
+		}
+
+		p, err := c.GetProject(context.Background(), projectID)
+		if err != nil {
+			return fmt.Errorf("could not get project: %w", err)
+		}
+
+		var current interface{} = p.Services.Identity.Config
+		for _, seg := range []string{"selfservice", "methods", "oidc", "config"} {
+			m, ok := current.(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("OIDC config missing at %q", seg)
+			}
+			current = m[seg]
+		}
+		oidcConfig, ok := current.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("OIDC config is not an object")
+		}
+		got, _ := oidcConfig["base_redirect_uri"].(string)
+		if got != want {
+			return fmt.Errorf("base_redirect_uri = %q, want %q", got, want)
+		}
+		return nil
+	}
 }
 
 func TestAccSocialProviderResource_autoLink(t *testing.T) {
