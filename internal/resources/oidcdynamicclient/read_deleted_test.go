@@ -115,3 +115,23 @@ func TestRead_DynamicClientServerErrorKeepsResource(t *testing.T) {
 	assert.True(t, resp.Diagnostics.HasError(), "a 500 must surface as an error")
 	assert.False(t, resp.State.Raw.IsNull(), "a 500 must not remove the resource from state")
 }
+
+// Same guard as the OAuth2 client: a 500 whose body happens to contain "404"
+// must not drop a live resource from state.
+func TestRead_DynamicClientServerErrorWith404InRequestIDKeepsResource(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":{"code":500,"status":"Internal Server Error","request":"bfd5c404-7133-9506-8a5f-f7a738b14e04","message":"boom"}}`))
+	}))
+	defer srv.Close()
+
+	r := dynamicClientResourceForServer(t, srv.URL)
+	state := dynamicClientState(t, r)
+
+	resp := &resource.ReadResponse{State: state}
+	r.Read(context.Background(), resource.ReadRequest{State: state}, resp)
+
+	assert.True(t, resp.Diagnostics.HasError(), "a 500 must surface as an error")
+	assert.False(t, resp.State.Raw.IsNull(), "a 500 must not remove the resource from state")
+}

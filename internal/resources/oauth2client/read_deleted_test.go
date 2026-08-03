@@ -142,3 +142,26 @@ func TestRead_ServerErrorKeepsClient(t *testing.T) {
 	assert.True(t, resp.Diagnostics.HasError(), "a 500 must surface as an error")
 	assert.False(t, resp.State.Raw.IsNull(), "a 500 must not remove the resource from state")
 }
+
+// A 500 whose body merely contains the digits "404" must not be mistaken for a
+// deletion. Request IDs are hex strings, so they carry those digits about once
+// every 150 errors, and IsNotFound's substring fallback matches on them. Dropping
+// a live client from state over a transient outage is worse than the read error
+// this change removes, so the removal path checks the HTTP status alone.
+func TestRead_ServerErrorWith404InRequestIDKeepsClient(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":{"code":500,"status":"Internal Server Error","request":"bfd5c404-7133-9506-8a5f-f7a738b14e04","message":"boom"}}`))
+	}))
+	defer srv.Close()
+
+	r := clientResourceForServer(t, srv.URL)
+	state := oauth2ClientState(t, r)
+
+	resp := &resource.ReadResponse{State: state}
+	r.Read(context.Background(), resource.ReadRequest{State: state}, resp)
+
+	assert.True(t, resp.Diagnostics.HasError(), "a 500 must surface as an error")
+	assert.False(t, resp.State.Raw.IsNull(), "a 500 must not remove the resource from state")
+}

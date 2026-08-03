@@ -269,7 +269,7 @@ func (r *TrustedJwtIssuerResource) Read(ctx context.Context, req resource.ReadRe
 
 	issuer, err := r.client.GetTrustedOAuth2JwtGrantIssuer(ctx, state.ID.ValueString())
 	if err != nil {
-		if client.IsNotFound(err) {
+		if client.IsNotFoundStatus(err) {
 			// The issuer was deleted outside Terraform. Drop it from state so the
 			// next plan recreates it, instead of failing every plan until the
 			// operator runs `terraform state rm`.

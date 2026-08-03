@@ -873,3 +873,22 @@ func TestIsNotFound(t *testing.T) {
 	assert.False(t, IsNotFound(errors.New("400 Bad Request")))
 	assert.False(t, IsNotFound(errors.New("500 Internal Server Error")))
 }
+
+// IsNotFound's substring fallback over-matches, which is why the state-removal
+// decision uses IsNotFoundStatus instead. Pin both halves of that split.
+func TestIsNotFoundStatus(t *testing.T) {
+	assert.False(t, IsNotFoundStatus(nil))
+	assert.False(t, IsNotFoundStatus(errors.New("404 Not Found")),
+		"text alone must not count as a 404 status")
+
+	tagged := notFoundIfStatus(&http.Response{StatusCode: http.StatusNotFound}, errors.New("boom"))
+	assert.True(t, IsNotFoundStatus(tagged))
+	assert.True(t, IsNotFound(tagged), "the tag must satisfy the looser check too")
+
+	// A 500 whose body carries the digits "404", for instance in a hex request ID.
+	serverErr := errors.New(`{"error":{"code":500,"status":"Internal Server Error","request":"bfd5c404-7133-9506-8a5f-f7a738b14e04"}}`)
+	assert.False(t, IsNotFoundStatus(notFoundIfStatus(&http.Response{StatusCode: http.StatusInternalServerError}, serverErr)),
+		"a 500 must never be tagged as not-found")
+	assert.True(t, IsNotFound(serverErr),
+		"documents the over-match in IsNotFound that IsNotFoundStatus exists to avoid")
+}
