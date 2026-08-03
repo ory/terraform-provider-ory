@@ -29,6 +29,17 @@
 #   Add deprecated_name and deprecated_go_field to the entry. Both names
 #   will work in terraform configs, but the old name shows a deprecation
 #   warning. See scripts/migrate-deprecated-attrs.sh for the migration tool.
+#
+# When the live API disagrees with the spec, two flags cover it. Verify with
+# curl first: PATCH the value, then GET the project and look for the key.
+#   preserve_on_missing: true
+#     The API accepts the key with HTTP 200 and never reports it back. Read keeps
+#     the state value instead of nulling it, because a null would show a diff on
+#     every plan that no apply can settle. Costs drift detection for that one
+#     attribute, so only set it with a verified comment.
+#   read_path: /services/<svc>/config/<where the API reports it>
+#     The API accepts the write at one config path and reports the value at
+#     another. Writes keep using patch_path; only the read table changes.
 
 attributes:
   # ============================================================================
@@ -44,6 +55,11 @@ attributes:
     go_field: SessionEarliestPossibleExtend
     type: string
     patch_path: /services/identity/config/session/earliest_possible_extend
+    # The Console API accepts this key with HTTP 200 but never reports it back:
+    # the normalized project revision has no column for it, so it is dropped
+    # during normalization and is absent from both the PATCH response and a
+    # later GET. Verified 2026-08-03 on a throwaway prod project.
+    preserve_on_missing: true
     description: "Earliest time before session expiry when a session can be extended (e.g., '24h'). Setting this prevents excessive database writes when sessions are extended."
     validators:
       regex: "^([0-9]+(ns|us|ms|s|m|h))+$"
@@ -657,6 +673,11 @@ attributes:
     go_field: OIDCSubjectIdentifiersPairwiseSalt
     type: string
     openapi_property: hydra_oidc_subject_identifiers_pairwise_salt
+    # Writes go to the spec's governs path,
+    # "oidc.subject_identifiers.pairwise_salt", but the API reports the value
+    # back under the nested "oidc.subject_identifiers.pairwise.salt". Verified
+    # 2026-08-03 on a throwaway prod project.
+    read_path: /services/oauth2/config/oidc/subject_identifiers/pairwise/salt
     description: "Salt for the OIDC pairwise subject identifier algorithm."
 
   - name: oauth2_urls_post_logout_redirect
@@ -1095,6 +1116,10 @@ attributes:
     go_field: SelfserviceMethodsWebAuthnConfigRPIcon
     type: string
     openapi_property: kratos_selfservice_methods_webauthn_config_rp_icon
+    # Kratos ignores the relying party icon, and the API never reports the key
+    # back, even with WebAuthn enabled and the rest of the rp block set.
+    # Verified 2026-08-03 on a throwaway prod project.
+    preserve_on_missing: true
     description: "Deprecated. WebAuthn relying party icon URL (ignored for security reasons)."
 
   # ============================================================================
@@ -1284,6 +1309,12 @@ attributes:
     go_field: SelfserviceMethodsCaptchaConfigBYO
     type: bool
     openapi_property: kratos_selfservice_methods_captcha_config_byo
+    # BYO CAPTCHA is an account-gated feature ("Reach out to your account
+    # manager to enable this feature"). On a project without it the API accepts
+    # the key with HTTP 200 and never reports it back, while the sibling
+    # cf_turnstile keys do come back. Verified 2026-08-03 on a throwaway prod
+    # project.
+    preserve_on_missing: true
     description: "Use bring-your-own CAPTCHA widget instead of managed."
 
   # Note: BYO and non-BYO turnstile fields map to the same config key
@@ -1320,6 +1351,12 @@ attributes:
     go_field: SelfserviceMethodsCodeConfigMaxSubmissions
     type: int64
     openapi_property: kratos_selfservice_methods_code_config_max_submissions
+    # Writes go to the spec's governs path, "selfservice.methods.code.max_submissions",
+    # but the API reports the value back one level deeper, under
+    # "selfservice.methods.code.config.max_submissions". Verified 2026-08-03 on a
+    # throwaway prod project: patching the governs path with 7 makes the config
+    # path report 7, while patching the config path directly is discarded.
+    read_path: /services/identity/config/selfservice/methods/code/config/max_submissions
     description: "Maximum number of code submission attempts before invalidation."
 
   - name: selfservice_methods_passkey_config_rp_origins
