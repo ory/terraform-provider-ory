@@ -48,8 +48,13 @@ type Attribute struct {
 	// differs from the path the value is written to. Reads use it instead of
 	// PatchPath. Always record the verification in a comment next to the
 	// attribute.
-	ReadPath   string     `yaml:"read_path"`
-	Validators *Validator `yaml:"validators"`
+	ReadPath string `yaml:"read_path"`
+	// StorageURLContent marks a string attribute whose content the Ory API
+	// uploads to object storage. The write sends `base64://<payload>` and the
+	// API reports an https URL instead, so Read resolves the URL back to the
+	// configured value. Only valid for `type: string`.
+	StorageURLContent bool       `yaml:"storage_url_content"`
+	Validators        *Validator `yaml:"validators"`
 
 	// Deprecated alias support: when set, generates a second schema attribute
 	// with the old name that shows a deprecation warning directing users to Name.
@@ -372,6 +377,12 @@ func main() {
 		}
 		if a.Description == "" {
 			log.Fatalf("attribute %q: description is required (set it in mappings.yaml or ensure openapi_property points to a spec entry with a description)", a.Name)
+		}
+		if a.StorageURLContent && a.Type != typeString {
+			log.Fatalf("attribute %q: storage_url_content is only supported for type string, got %q", a.Name, a.Type)
+		}
+		if a.StorageURLContent && a.WriteOnly {
+			log.Fatalf("attribute %q: storage_url_content and write_only are mutually exclusive (write_only removes the attribute from the read path)", a.Name)
 		}
 	}
 
@@ -1293,6 +1304,10 @@ type StringReadEntry struct {
 	// and for attributes it accepts but never reports, where a null would show a
 	// diff on every plan that no apply can settle.
 	PreserveOnMissing bool
+	// StorageURL marks a field whose content the API uploads to object storage
+	// and reports back as an https URL. Read resolves that URL to the value the
+	// configuration holds. See resolveStorageURLContent in helpers.go.
+	StorageURL bool
 }
 
 // BoolReadEntry maps a bool state field to its config read path.
@@ -1343,6 +1358,9 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 			}
 			if !target.IsNull() {
 				if v, ok := getNestedString({{ varName $svc }}Config, e.Keys...); ok {
+					if e.StorageURL {
+						v = resolveStorageURLContent(ctx, v, target.ValueString())
+					}
 					if !e.SkipEmpty || v != "" {
 						*target = types.StringValue(v)
 					}
@@ -1465,7 +1483,7 @@ func {{ $svc }}StringReadEntries(state *ProjectConfigResourceModel) []StringRead
 	return []StringReadEntry{
 {{- range $strings }}
 {{- if not .WriteOnly }}
-		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .SkipEmptyRead }}, {{ .ReadPreservesOnMissing }}},
+		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .SkipEmptyRead }}, {{ .ReadPreservesOnMissing }}, {{ .StorageURLContent }}},
 {{- end }}
 {{- end }}
 	}

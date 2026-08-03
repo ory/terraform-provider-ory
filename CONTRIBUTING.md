@@ -330,6 +330,7 @@ That's it — the field appears in the Terraform schema, JSON Patch operations, 
 | `sensitive` | No | If `true`, value is masked in Terraform output |
 | `skip_empty_read` | No | If `true`, skip reading empty strings from API (used for account_experience fields) |
 | `write_only` | No | If `true`, the attribute is sent on create/update but never read back from the API. Use for secrets the API does not return (or returns masked, e.g. `****`), so the configured value is always preserved and never produces a spurious diff |
+| `storage_url_content` | No | If `true`, the read path resolves an object-storage URL back to the configured `base64://` value. Use for a Jsonnet payload the API uploads and then reports as `https://storage.googleapis.com/.../<sha512>.jsonnet`. `string` only, and not combinable with `write_only` |
 | `validators` | No | `one_of: [...]` or `regex: "..."` + `regex_message: "..."` |
 | `deprecated_name` | No | Old terraform attribute name (shows deprecation warning in Terraform) |
 | `deprecated_go_field` | No | Old Go struct field name for the deprecated attribute |
@@ -408,6 +409,14 @@ These require hand-written code in `resource.go` because they have non-trivial s
 > secrets in project-config responses, so the provider sends them on create/update but
 > never reads them back — this keeps them from showing a perpetual diff if the API
 > returns an empty value or a masked sentinel.
+
+> **Note:** `courier_http_request_config_body` is codegen'd with
+> `storage_url_content: true`. The API uploads the decoded `base64://` payload to
+> object storage and reports an `https://storage.googleapis.com/.../<sha512>.jsonnet`
+> URL, so the read path resolves that URL back to the configured value. The
+> resolver lives in `resolveStorageURLContent` in `helpers.go`. It compares the
+> hash in the URL with the payload in state, and only downloads the stored payload
+> when the hash differs.
 
 ### Adding a New Resource
 

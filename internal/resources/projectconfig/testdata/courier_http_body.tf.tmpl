@@ -1,0 +1,5 @@
+resource "ory_project_config" "test" {
+  courier_delivery_strategy        = "http"
+  courier_http_request_config_url  = "https://example.com/mail-api/send"
+  courier_http_request_config_body = "[[ .Body ]]"
+}

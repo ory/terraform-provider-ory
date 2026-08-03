@@ -248,6 +248,30 @@ resource "ory_project_config" "with_courier_http" {
   ]
 }
 
+locals {
+  courier_body = <<-JSONNET
+    {
+      "recipient": {{ .recipient }},
+      "subject": {{ .subject }},
+      "body": {{ .body }}
+    }
+  JSONNET
+}
+
+# The same courier HTTP delivery through the flat attributes. The body must be a
+# `base64://` value: the Ory API rejects a plain Jsonnet string. The API stores
+# the decoded payload and reports a storage URL, and the provider resolves that
+# URL back to this value, so plan stays empty while the payload matches.
+resource "ory_project_config" "with_courier_http_flat" {
+  courier_delivery_strategy       = "http"
+  courier_http_request_config_url = "https://mail-api.example.com/send"
+
+  courier_http_request_config_body = "base64://${base64encode(local.courier_body)}"
+
+  courier_http_request_config_auth_basic_auth_user     = "mailuser"
+  courier_http_request_config_auth_basic_auth_password = var.mail_password
+}
+
 variable "mail_password" {
   type        = string
   sensitive   = true
