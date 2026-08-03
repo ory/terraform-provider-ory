@@ -774,7 +774,16 @@ attributes:
     go_field: CourierHTTPRequestConfigBody
     type: string
     openapi_property: kratos_courier_http_request_config_body
-    description: "Base64-encoded Jsonnet template for the HTTP courier request body."
+    description: >-
+      Jsonnet template for the HTTP courier request body, as a
+      `base64://<base64-encoded-payload>` value. The API stores the payload in
+      object storage and reports an https URL back, so the read path resolves
+      that URL to the configured value.
+    # The API never echoes the configured value: it uploads the decoded payload
+    # and reports `https://storage.googleapis.com/.../<sha512>.jsonnet`. Copying
+    # that URL into state makes every plan show a diff no apply can settle, so
+    # the read path resolves it. See issue #315.
+    storage_url_content: true
 
   - name: courier_http_request_config_url
     go_field: CourierHTTPRequestConfigURL

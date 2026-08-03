@@ -684,7 +684,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 		},
 		"courier_http_request_config_body": schema.StringAttribute{
-			Description: "Base64-encoded Jsonnet template for the HTTP courier request body.",
+			Description: "Jsonnet template for the HTTP courier request body, as a `base64://<base64-encoded-payload>` value. The API stores the payload in object storage and reports an https URL back, so the read path resolves that URL to the configured value.",
 			Optional:    true,
 		},
 		"courier_http_request_config_url": schema.StringAttribute{

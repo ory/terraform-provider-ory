@@ -31,6 +31,10 @@ type StringReadEntry struct {
 	// and for attributes it accepts but never reports, where a null would show a
 	// diff on every plan that no apply can settle.
 	PreserveOnMissing bool
+	// StorageURL marks a field whose content the API uploads to object storage
+	// and reports back as an https URL. Read resolves that URL to the value the
+	// configuration holds. See resolveStorageURLContent in helpers.go.
+	StorageURL bool
 }
 
 // BoolReadEntry maps a bool state field to its config read path.
@@ -76,6 +80,9 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 			}
 			if !target.IsNull() {
 				if v, ok := getNestedString(accountExperienceConfig, e.Keys...); ok {
+					if e.StorageURL {
+						v = resolveStorageURLContent(ctx, v, target.ValueString())
+					}
 					if !e.SkipEmpty || v != "" {
 						*target = types.StringValue(v)
 					}
@@ -167,6 +174,9 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 			}
 			if !target.IsNull() {
 				if v, ok := getNestedString(identityConfig, e.Keys...); ok {
+					if e.StorageURL {
+						v = resolveStorageURLContent(ctx, v, target.ValueString())
+					}
 					if !e.SkipEmpty || v != "" {
 						*target = types.StringValue(v)
 					}
@@ -273,6 +283,9 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 			}
 			if !target.IsNull() {
 				if v, ok := getNestedString(oauth2Config, e.Keys...); ok {
+					if e.StorageURL {
+						v = resolveStorageURLContent(ctx, v, target.ValueString())
+					}
 					if !e.SkipEmpty || v != "" {
 						*target = types.StringValue(v)
 					}
@@ -349,6 +362,9 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 			}
 			if !target.IsNull() {
 				if v, ok := getNestedString(permissionConfig, e.Keys...); ok {
+					if e.StorageURL {
+						v = resolveStorageURLContent(ctx, v, target.ValueString())
+					}
 					if !e.SkipEmpty || v != "" {
 						*target = types.StringValue(v)
 					}
@@ -392,11 +408,11 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 
 func account_experienceStringReadEntries(state *ProjectConfigResourceModel) []StringReadEntry {
 	return []StringReadEntry{
-		{&state.AccountExperienceLocale, nil, []string{"default_locale"}, true, true},
-		{&state.AccountExperienceLocaleBehavior, nil, []string{"locale_behavior"}, true, true},
-		{&state.AccountExperienceContactURL, nil, []string{"contact_url"}, false, false},
-		{&state.AccountExperiencePrivacyPolicyURL, nil, []string{"privacy_policy_url"}, false, false},
-		{&state.AccountExperienceTermsOfServiceURL, nil, []string{"terms_of_service_url"}, false, false},
+		{&state.AccountExperienceLocale, nil, []string{"default_locale"}, true, true, false},
+		{&state.AccountExperienceLocaleBehavior, nil, []string{"locale_behavior"}, true, true, false},
+		{&state.AccountExperienceContactURL, nil, []string{"contact_url"}, false, false, false},
+		{&state.AccountExperiencePrivacyPolicyURL, nil, []string{"privacy_policy_url"}, false, false, false},
+		{&state.AccountExperienceTermsOfServiceURL, nil, []string{"terms_of_service_url"}, false, false, false},
 	}
 }
 
@@ -424,79 +440,79 @@ func account_experienceMapStringReadEntries(state *ProjectConfigResourceModel) [
 
 func identityStringReadEntries(state *ProjectConfigResourceModel) []StringReadEntry {
 	return []StringReadEntry{
-		{&state.SessionLifespan, nil, []string{"session", "lifespan"}, false, false},
-		{&state.SessionEarliestPossibleExtend, nil, []string{"session", "earliest_possible_extend"}, false, true},
-		{&state.SessionCookieSameSite, nil, []string{"session", "cookie", "same_site"}, false, false},
-		{&state.SessionWhoamiRequiredAAL, nil, []string{"session", "whoami", "required_aal"}, false, false},
-		{&state.SelfserviceFlowsLoginUIURL, &state.LoginUIURL, []string{"selfservice", "flows", "login", "ui_url"}, false, false},
-		{&state.SelfserviceFlowsRegistrationUIURL, &state.RegistrationUIURL, []string{"selfservice", "flows", "registration", "ui_url"}, false, false},
-		{&state.SelfserviceFlowsRecoveryUIURL, &state.RecoveryUIURL, []string{"selfservice", "flows", "recovery", "ui_url"}, false, false},
-		{&state.SelfserviceFlowsVerificationUIURL, &state.VerificationUIURL, []string{"selfservice", "flows", "verification", "ui_url"}, false, false},
-		{&state.SelfserviceFlowsSettingsUIURL, &state.SettingsUIURL, []string{"selfservice", "flows", "settings", "ui_url"}, false, false},
-		{&state.SelfserviceFlowsErrorUIURL, &state.ErrorUIURL, []string{"selfservice", "flows", "error", "ui_url"}, false, false},
-		{&state.SelfserviceMethodsCodeConfigLifespan, &state.CodeLifespan, []string{"selfservice", "methods", "code", "config", "lifespan"}, false, false},
-		{&state.SelfserviceFlowsLoginStyle, &state.LoginStyle, []string{"selfservice", "flows", "login", "style"}, false, false},
-		{&state.SelfserviceFlowsSettingsLifespan, &state.SettingsLifespan, []string{"selfservice", "flows", "settings", "lifespan"}, false, false},
-		{&state.SelfserviceFlowsSettingsPrivilegedSessionMaxAge, &state.SettingsPrivilegedSessionMaxAge, []string{"selfservice", "flows", "settings", "privileged_session_max_age"}, false, false},
-		{&state.SelfserviceFlowsSettingsRequiredAAL, &state.RequiredAAL, []string{"selfservice", "flows", "settings", "required_aal"}, false, false},
-		{&state.SelfserviceFlowsVerificationUse, &state.VerificationUse, []string{"selfservice", "flows", "verification", "use"}, false, false},
-		{&state.SelfserviceFlowsVerificationLifespan, &state.VerificationLifespan, []string{"selfservice", "flows", "verification", "lifespan"}, false, false},
-		{&state.CourierSMTPFromAddress, &state.SMTPFromAddress, []string{"courier", "smtp", "from_address"}, false, false},
-		{&state.CourierSMTPFromName, &state.SMTPFromName, []string{"courier", "smtp", "from_name"}, false, false},
-		{&state.SelfserviceMethodsTOTPConfigIssuer, &state.TOTPIssuer, []string{"selfservice", "methods", "totp", "config", "issuer"}, false, false},
-		{&state.SelfserviceMethodsWebAuthnConfigRPDisplayName, &state.WebAuthnRPDisplayName, []string{"selfservice", "methods", "webauthn", "config", "rp", "display_name"}, false, false},
-		{&state.SelfserviceMethodsWebAuthnConfigRPID, &state.WebAuthnRPID, []string{"selfservice", "methods", "webauthn", "config", "rp", "id"}, false, false},
-		{&state.CourierDeliveryStrategy, nil, []string{"courier", "delivery_strategy"}, false, false},
-		{&state.CookiesSameSite, nil, []string{"cookies", "same_site"}, false, false},
-		{&state.CourierHTTPRequestConfigAuthAPIKeyIn, nil, []string{"courier", "http", "request_config", "auth", "config", "in"}, false, false},
-		{&state.CourierHTTPRequestConfigAuthAPIKeyName, nil, []string{"courier", "http", "request_config", "auth", "config", "name"}, false, false},
-		{&state.CourierHTTPRequestConfigAuthBasicAuthUser, nil, []string{"courier", "http", "request_config", "auth", "config", "user"}, false, false},
-		{&state.CourierHTTPRequestConfigBody, nil, []string{"courier", "http", "request_config", "body"}, false, false},
-		{&state.CourierHTTPRequestConfigURL, nil, []string{"courier", "http", "request_config", "url"}, false, false},
-		{&state.CourierSMTPLocalName, nil, []string{"courier", "smtp", "local_name"}, false, false},
-		{&state.FeatureFlagsCacheableSessionsMaxAge, nil, []string{"feature_flags", "cacheable_sessions_max_age"}, false, false},
-		{&state.OAuth2ProviderURL, nil, []string{"oauth2_provider", "url"}, false, false},
-		{&state.SelfserviceDefaultBrowserReturnURL, nil, []string{"selfservice", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsLoginAfterCodeDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "login", "after", "code", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsLoginAfterDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "login", "after", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsLoginAfterLookupSecretDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "login", "after", "lookup_secret", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsLoginAfterOIDCDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "login", "after", "oidc", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsLoginAfterPasskeyDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "login", "after", "passkey", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsLoginAfterPasswordDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "login", "after", "password", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsLoginAfterTOTPDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "login", "after", "totp", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsLoginAfterWebAuthnDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "login", "after", "webauthn", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsLoginLifespan, nil, []string{"selfservice", "flows", "login", "lifespan"}, false, false},
-		{&state.SelfserviceFlowsLogoutAfterDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "logout", "after", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsRecoveryAfterDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "recovery", "after", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsRecoveryLifespan, nil, []string{"selfservice", "flows", "recovery", "lifespan"}, false, false},
-		{&state.SelfserviceFlowsRecoveryUse, nil, []string{"selfservice", "flows", "recovery", "use"}, false, false},
-		{&state.SelfserviceFlowsRegistrationAfterCodeDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "registration", "after", "code", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsRegistrationAfterDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "registration", "after", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsRegistrationAfterOIDCDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "registration", "after", "oidc", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsRegistrationAfterPasskeyDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "registration", "after", "passkey", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsRegistrationAfterPasswordDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "registration", "after", "password", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsRegistrationAfterWebAuthnDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "registration", "after", "webauthn", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsRegistrationLifespan, nil, []string{"selfservice", "flows", "registration", "lifespan"}, false, false},
-		{&state.SelfserviceFlowsSettingsAfterDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "settings", "after", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsSettingsAfterLookupSecretDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "settings", "after", "lookup_secret", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsSettingsAfterOIDCDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "settings", "after", "oidc", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsSettingsAfterPasskeyDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "settings", "after", "passkey", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsSettingsAfterPasswordDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "settings", "after", "password", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsSettingsAfterProfileDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "settings", "after", "profile", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsSettingsAfterTOTPDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "settings", "after", "totp", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsSettingsAfterWebAuthnDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "settings", "after", "webauthn", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceFlowsVerificationAfterDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "verification", "after", "default_browser_return_url"}, false, false},
-		{&state.SelfserviceMethodsLinkConfigBaseURL, nil, []string{"selfservice", "methods", "link", "config", "base_url"}, false, false},
-		{&state.SelfserviceMethodsLinkConfigLifespan, nil, []string{"selfservice", "methods", "link", "config", "lifespan"}, false, false},
-		{&state.SelfserviceMethodsOIDCConfigBaseRedirectURI, nil, []string{"selfservice", "methods", "oidc", "config", "base_redirect_uri"}, false, false},
-		{&state.SelfserviceMethodsPasskeyConfigRPDisplayName, nil, []string{"selfservice", "methods", "passkey", "config", "rp", "display_name"}, false, false},
-		{&state.SelfserviceMethodsPasskeyConfigRPID, nil, []string{"selfservice", "methods", "passkey", "config", "rp", "id"}, false, false},
-		{&state.SelfserviceMethodsWebAuthnConfigRPIcon, nil, []string{"selfservice", "methods", "webauthn", "config", "rp", "icon"}, false, true},
-		{&state.PreviewDefaultReadConsistencyLevel, nil, []string{"preview", "default_read_consistency_level"}, false, false},
-		{&state.SelfserviceMethodsCaptchaConfigCFTurnstileSecret, nil, []string{"selfservice", "methods", "captcha", "config", "cf_turnstile", "secret"}, false, true},
-		{&state.SelfserviceMethodsCaptchaConfigCFTurnstileSitekey, nil, []string{"selfservice", "methods", "captcha", "config", "cf_turnstile", "sitekey"}, false, false},
-		{&state.CourierHTTPRequestConfigAuthType, nil, []string{"courier", "http", "request_config", "auth", "type"}, false, false},
-		{&state.CourierHTTPRequestConfigMethod, nil, []string{"courier", "http", "request_config", "method"}, false, false},
+		{&state.SessionLifespan, nil, []string{"session", "lifespan"}, false, false, false},
+		{&state.SessionEarliestPossibleExtend, nil, []string{"session", "earliest_possible_extend"}, false, true, false},
+		{&state.SessionCookieSameSite, nil, []string{"session", "cookie", "same_site"}, false, false, false},
+		{&state.SessionWhoamiRequiredAAL, nil, []string{"session", "whoami", "required_aal"}, false, false, false},
+		{&state.SelfserviceFlowsLoginUIURL, &state.LoginUIURL, []string{"selfservice", "flows", "login", "ui_url"}, false, false, false},
+		{&state.SelfserviceFlowsRegistrationUIURL, &state.RegistrationUIURL, []string{"selfservice", "flows", "registration", "ui_url"}, false, false, false},
+		{&state.SelfserviceFlowsRecoveryUIURL, &state.RecoveryUIURL, []string{"selfservice", "flows", "recovery", "ui_url"}, false, false, false},
+		{&state.SelfserviceFlowsVerificationUIURL, &state.VerificationUIURL, []string{"selfservice", "flows", "verification", "ui_url"}, false, false, false},
+		{&state.SelfserviceFlowsSettingsUIURL, &state.SettingsUIURL, []string{"selfservice", "flows", "settings", "ui_url"}, false, false, false},
+		{&state.SelfserviceFlowsErrorUIURL, &state.ErrorUIURL, []string{"selfservice", "flows", "error", "ui_url"}, false, false, false},
+		{&state.SelfserviceMethodsCodeConfigLifespan, &state.CodeLifespan, []string{"selfservice", "methods", "code", "config", "lifespan"}, false, false, false},
+		{&state.SelfserviceFlowsLoginStyle, &state.LoginStyle, []string{"selfservice", "flows", "login", "style"}, false, false, false},
+		{&state.SelfserviceFlowsSettingsLifespan, &state.SettingsLifespan, []string{"selfservice", "flows", "settings", "lifespan"}, false, false, false},
+		{&state.SelfserviceFlowsSettingsPrivilegedSessionMaxAge, &state.SettingsPrivilegedSessionMaxAge, []string{"selfservice", "flows", "settings", "privileged_session_max_age"}, false, false, false},
+		{&state.SelfserviceFlowsSettingsRequiredAAL, &state.RequiredAAL, []string{"selfservice", "flows", "settings", "required_aal"}, false, false, false},
+		{&state.SelfserviceFlowsVerificationUse, &state.VerificationUse, []string{"selfservice", "flows", "verification", "use"}, false, false, false},
+		{&state.SelfserviceFlowsVerificationLifespan, &state.VerificationLifespan, []string{"selfservice", "flows", "verification", "lifespan"}, false, false, false},
+		{&state.CourierSMTPFromAddress, &state.SMTPFromAddress, []string{"courier", "smtp", "from_address"}, false, false, false},
+		{&state.CourierSMTPFromName, &state.SMTPFromName, []string{"courier", "smtp", "from_name"}, false, false, false},
+		{&state.SelfserviceMethodsTOTPConfigIssuer, &state.TOTPIssuer, []string{"selfservice", "methods", "totp", "config", "issuer"}, false, false, false},
+		{&state.SelfserviceMethodsWebAuthnConfigRPDisplayName, &state.WebAuthnRPDisplayName, []string{"selfservice", "methods", "webauthn", "config", "rp", "display_name"}, false, false, false},
+		{&state.SelfserviceMethodsWebAuthnConfigRPID, &state.WebAuthnRPID, []string{"selfservice", "methods", "webauthn", "config", "rp", "id"}, false, false, false},
+		{&state.CourierDeliveryStrategy, nil, []string{"courier", "delivery_strategy"}, false, false, false},
+		{&state.CookiesSameSite, nil, []string{"cookies", "same_site"}, false, false, false},
+		{&state.CourierHTTPRequestConfigAuthAPIKeyIn, nil, []string{"courier", "http", "request_config", "auth", "config", "in"}, false, false, false},
+		{&state.CourierHTTPRequestConfigAuthAPIKeyName, nil, []string{"courier", "http", "request_config", "auth", "config", "name"}, false, false, false},
+		{&state.CourierHTTPRequestConfigAuthBasicAuthUser, nil, []string{"courier", "http", "request_config", "auth", "config", "user"}, false, false, false},
+		{&state.CourierHTTPRequestConfigBody, nil, []string{"courier", "http", "request_config", "body"}, false, false, true},
+		{&state.CourierHTTPRequestConfigURL, nil, []string{"courier", "http", "request_config", "url"}, false, false, false},
+		{&state.CourierSMTPLocalName, nil, []string{"courier", "smtp", "local_name"}, false, false, false},
+		{&state.FeatureFlagsCacheableSessionsMaxAge, nil, []string{"feature_flags", "cacheable_sessions_max_age"}, false, false, false},
+		{&state.OAuth2ProviderURL, nil, []string{"oauth2_provider", "url"}, false, false, false},
+		{&state.SelfserviceDefaultBrowserReturnURL, nil, []string{"selfservice", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsLoginAfterCodeDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "login", "after", "code", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsLoginAfterDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "login", "after", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsLoginAfterLookupSecretDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "login", "after", "lookup_secret", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsLoginAfterOIDCDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "login", "after", "oidc", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsLoginAfterPasskeyDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "login", "after", "passkey", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsLoginAfterPasswordDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "login", "after", "password", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsLoginAfterTOTPDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "login", "after", "totp", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsLoginAfterWebAuthnDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "login", "after", "webauthn", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsLoginLifespan, nil, []string{"selfservice", "flows", "login", "lifespan"}, false, false, false},
+		{&state.SelfserviceFlowsLogoutAfterDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "logout", "after", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsRecoveryAfterDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "recovery", "after", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsRecoveryLifespan, nil, []string{"selfservice", "flows", "recovery", "lifespan"}, false, false, false},
+		{&state.SelfserviceFlowsRecoveryUse, nil, []string{"selfservice", "flows", "recovery", "use"}, false, false, false},
+		{&state.SelfserviceFlowsRegistrationAfterCodeDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "registration", "after", "code", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsRegistrationAfterDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "registration", "after", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsRegistrationAfterOIDCDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "registration", "after", "oidc", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsRegistrationAfterPasskeyDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "registration", "after", "passkey", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsRegistrationAfterPasswordDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "registration", "after", "password", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsRegistrationAfterWebAuthnDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "registration", "after", "webauthn", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsRegistrationLifespan, nil, []string{"selfservice", "flows", "registration", "lifespan"}, false, false, false},
+		{&state.SelfserviceFlowsSettingsAfterDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "settings", "after", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsSettingsAfterLookupSecretDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "settings", "after", "lookup_secret", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsSettingsAfterOIDCDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "settings", "after", "oidc", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsSettingsAfterPasskeyDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "settings", "after", "passkey", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsSettingsAfterPasswordDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "settings", "after", "password", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsSettingsAfterProfileDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "settings", "after", "profile", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsSettingsAfterTOTPDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "settings", "after", "totp", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsSettingsAfterWebAuthnDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "settings", "after", "webauthn", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceFlowsVerificationAfterDefaultBrowserReturnURL, nil, []string{"selfservice", "flows", "verification", "after", "default_browser_return_url"}, false, false, false},
+		{&state.SelfserviceMethodsLinkConfigBaseURL, nil, []string{"selfservice", "methods", "link", "config", "base_url"}, false, false, false},
+		{&state.SelfserviceMethodsLinkConfigLifespan, nil, []string{"selfservice", "methods", "link", "config", "lifespan"}, false, false, false},
+		{&state.SelfserviceMethodsOIDCConfigBaseRedirectURI, nil, []string{"selfservice", "methods", "oidc", "config", "base_redirect_uri"}, false, false, false},
+		{&state.SelfserviceMethodsPasskeyConfigRPDisplayName, nil, []string{"selfservice", "methods", "passkey", "config", "rp", "display_name"}, false, false, false},
+		{&state.SelfserviceMethodsPasskeyConfigRPID, nil, []string{"selfservice", "methods", "passkey", "config", "rp", "id"}, false, false, false},
+		{&state.SelfserviceMethodsWebAuthnConfigRPIcon, nil, []string{"selfservice", "methods", "webauthn", "config", "rp", "icon"}, false, true, false},
+		{&state.PreviewDefaultReadConsistencyLevel, nil, []string{"preview", "default_read_consistency_level"}, false, false, false},
+		{&state.SelfserviceMethodsCaptchaConfigCFTurnstileSecret, nil, []string{"selfservice", "methods", "captcha", "config", "cf_turnstile", "secret"}, false, true, false},
+		{&state.SelfserviceMethodsCaptchaConfigCFTurnstileSitekey, nil, []string{"selfservice", "methods", "captcha", "config", "cf_turnstile", "sitekey"}, false, false, false},
+		{&state.CourierHTTPRequestConfigAuthType, nil, []string{"courier", "http", "request_config", "auth", "type"}, false, false, false},
+		{&state.CourierHTTPRequestConfigMethod, nil, []string{"courier", "http", "request_config", "method"}, false, false, false},
 	}
 }
 
@@ -582,39 +598,39 @@ func identityMapStringReadEntries(state *ProjectConfigResourceModel) []MapString
 
 func oauth2StringReadEntries(state *ProjectConfigResourceModel) []StringReadEntry {
 	return []StringReadEntry{
-		{&state.OAuth2TTLAccessToken, &state.OAuth2AccessTokenLifespan, []string{"ttl", "access_token"}, false, false},
-		{&state.OAuth2TTLRefreshToken, &state.OAuth2RefreshTokenLifespan, []string{"ttl", "refresh_token"}, false, false},
-		{&state.OAuth2TTLAuthCode, &state.OAuth2AuthCodeLifespan, []string{"ttl", "auth_code"}, false, false},
-		{&state.OAuth2TTLIDToken, &state.OAuth2IDTokenLifespan, []string{"ttl", "id_token"}, false, false},
-		{&state.OAuth2TTLLoginConsentRequest, &state.OAuth2LoginConsentRequestLifespan, []string{"ttl", "login_consent_request"}, false, false},
-		{&state.OAuth2StrategiesAccessToken, &state.OAuth2AccessTokenStrategy, []string{"strategies", "access_token"}, false, false},
-		{&state.OAuth2StrategiesJWTScopeClaim, &state.OAuth2JWTScopeClaim, []string{"strategies", "jwt", "scope_claim"}, false, false},
-		{&state.OAuth2StrategiesScope, &state.OAuth2ScopeStrategy, []string{"strategies", "scope"}, false, false},
-		{&state.OAuth2URLsConsent, &state.OAuth2ConsentURL, []string{"urls", "consent"}, false, false},
-		{&state.OAuth2URLsLogin, &state.OAuth2LoginURL, []string{"urls", "login"}, false, false},
-		{&state.OAuth2URLsLogout, &state.OAuth2LogoutURL, []string{"urls", "logout"}, false, false},
-		{&state.OAuth2URLsError, &state.OAuth2ErrorURL, []string{"urls", "error"}, false, false},
-		{&state.OAuth2URLsSelfIssuer, &state.OAuth2IssuerURL, []string{"urls", "self", "issuer"}, false, false},
-		{&state.OAuth2ServeCookiesSameSiteMode, &state.OAuth2CookiesSameSiteMode, []string{"serve", "cookies", "same_site_mode"}, false, false},
-		{&state.OAuth2GrantJWTMaxTTL, nil, []string{"oauth2", "grant", "jwt", "max_ttl"}, false, false},
-		{&state.OAuth2GrantRefreshTokenRotationGracePeriod, nil, []string{"oauth2", "grant", "refresh_token", "rotation_grace_period"}, false, false},
-		{&state.OAuth2RefreshTokenHook, nil, []string{"oauth2", "refresh_token_hook"}, false, false},
-		{&state.OAuth2TokenHook, nil, []string{"oauth2", "token_hook", "url"}, false, false},
-		{&state.OIDCSubjectIdentifiersPairwiseSalt, nil, []string{"oidc", "subject_identifiers", "pairwise", "salt"}, false, false},
-		{&state.OAuth2UrlsPostLogoutRedirect, nil, []string{"urls", "post_logout_redirect"}, false, false},
-		{&state.OAuth2UrlsRegistration, nil, []string{"urls", "registration"}, false, false},
-		{&state.OAuth2WebfingerOIDCDiscoveryAuthURL, nil, []string{"webfinger", "oidc_discovery", "auth_url"}, false, false},
-		{&state.OAuth2WebfingerOIDCDiscoveryClientRegistrationURL, nil, []string{"webfinger", "oidc_discovery", "client_registration_url"}, false, false},
-		{&state.OAuth2WebfingerOIDCDiscoveryJwksURL, nil, []string{"webfinger", "oidc_discovery", "jwks_url"}, false, false},
-		{&state.OAuth2WebfingerOIDCDiscoveryTokenURL, nil, []string{"webfinger", "oidc_discovery", "token_url"}, false, false},
-		{&state.OAuth2WebfingerOIDCDiscoveryUserinfoURL, nil, []string{"webfinger", "oidc_discovery", "userinfo_url"}, false, false},
-		{&state.OAuth2TokenPrefix, nil, []string{"oauth2", "token_prefix"}, false, false},
-		{&state.OAuth2DeviceAuthorizationTokenPollingInterval, nil, []string{"oauth2", "device_authorization", "token_polling_interval"}, false, false},
-		{&state.OAuth2DeviceAuthorizationUserCodeEntropyPreset, nil, []string{"oauth2", "device_authorization", "user_code", "entropy_preset"}, false, false},
-		{&state.OAuth2TTLDeviceUserCode, nil, []string{"ttl", "device_user_code"}, false, false},
-		{&state.OAuth2UrlsDeviceSuccess, nil, []string{"urls", "device", "success"}, false, false},
-		{&state.OAuth2UrlsDeviceVerification, nil, []string{"urls", "device", "verification"}, false, false},
-		{&state.OAuth2WebfingerOIDCDiscoveryDeviceAuthorizationURL, nil, []string{"webfinger", "oidc_discovery", "device_authorization_url"}, false, false},
+		{&state.OAuth2TTLAccessToken, &state.OAuth2AccessTokenLifespan, []string{"ttl", "access_token"}, false, false, false},
+		{&state.OAuth2TTLRefreshToken, &state.OAuth2RefreshTokenLifespan, []string{"ttl", "refresh_token"}, false, false, false},
+		{&state.OAuth2TTLAuthCode, &state.OAuth2AuthCodeLifespan, []string{"ttl", "auth_code"}, false, false, false},
+		{&state.OAuth2TTLIDToken, &state.OAuth2IDTokenLifespan, []string{"ttl", "id_token"}, false, false, false},
+		{&state.OAuth2TTLLoginConsentRequest, &state.OAuth2LoginConsentRequestLifespan, []string{"ttl", "login_consent_request"}, false, false, false},
+		{&state.OAuth2StrategiesAccessToken, &state.OAuth2AccessTokenStrategy, []string{"strategies", "access_token"}, false, false, false},
+		{&state.OAuth2StrategiesJWTScopeClaim, &state.OAuth2JWTScopeClaim, []string{"strategies", "jwt", "scope_claim"}, false, false, false},
+		{&state.OAuth2StrategiesScope, &state.OAuth2ScopeStrategy, []string{"strategies", "scope"}, false, false, false},
+		{&state.OAuth2URLsConsent, &state.OAuth2ConsentURL, []string{"urls", "consent"}, false, false, false},
+		{&state.OAuth2URLsLogin, &state.OAuth2LoginURL, []string{"urls", "login"}, false, false, false},
+		{&state.OAuth2URLsLogout, &state.OAuth2LogoutURL, []string{"urls", "logout"}, false, false, false},
+		{&state.OAuth2URLsError, &state.OAuth2ErrorURL, []string{"urls", "error"}, false, false, false},
+		{&state.OAuth2URLsSelfIssuer, &state.OAuth2IssuerURL, []string{"urls", "self", "issuer"}, false, false, false},
+		{&state.OAuth2ServeCookiesSameSiteMode, &state.OAuth2CookiesSameSiteMode, []string{"serve", "cookies", "same_site_mode"}, false, false, false},
+		{&state.OAuth2GrantJWTMaxTTL, nil, []string{"oauth2", "grant", "jwt", "max_ttl"}, false, false, false},
+		{&state.OAuth2GrantRefreshTokenRotationGracePeriod, nil, []string{"oauth2", "grant", "refresh_token", "rotation_grace_period"}, false, false, false},
+		{&state.OAuth2RefreshTokenHook, nil, []string{"oauth2", "refresh_token_hook"}, false, false, false},
+		{&state.OAuth2TokenHook, nil, []string{"oauth2", "token_hook", "url"}, false, false, false},
+		{&state.OIDCSubjectIdentifiersPairwiseSalt, nil, []string{"oidc", "subject_identifiers", "pairwise", "salt"}, false, false, false},
+		{&state.OAuth2UrlsPostLogoutRedirect, nil, []string{"urls", "post_logout_redirect"}, false, false, false},
+		{&state.OAuth2UrlsRegistration, nil, []string{"urls", "registration"}, false, false, false},
+		{&state.OAuth2WebfingerOIDCDiscoveryAuthURL, nil, []string{"webfinger", "oidc_discovery", "auth_url"}, false, false, false},
+		{&state.OAuth2WebfingerOIDCDiscoveryClientRegistrationURL, nil, []string{"webfinger", "oidc_discovery", "client_registration_url"}, false, false, false},
+		{&state.OAuth2WebfingerOIDCDiscoveryJwksURL, nil, []string{"webfinger", "oidc_discovery", "jwks_url"}, false, false, false},
+		{&state.OAuth2WebfingerOIDCDiscoveryTokenURL, nil, []string{"webfinger", "oidc_discovery", "token_url"}, false, false, false},
+		{&state.OAuth2WebfingerOIDCDiscoveryUserinfoURL, nil, []string{"webfinger", "oidc_discovery", "userinfo_url"}, false, false, false},
+		{&state.OAuth2TokenPrefix, nil, []string{"oauth2", "token_prefix"}, false, false, false},
+		{&state.OAuth2DeviceAuthorizationTokenPollingInterval, nil, []string{"oauth2", "device_authorization", "token_polling_interval"}, false, false, false},
+		{&state.OAuth2DeviceAuthorizationUserCodeEntropyPreset, nil, []string{"oauth2", "device_authorization", "user_code", "entropy_preset"}, false, false, false},
+		{&state.OAuth2TTLDeviceUserCode, nil, []string{"ttl", "device_user_code"}, false, false, false},
+		{&state.OAuth2UrlsDeviceSuccess, nil, []string{"urls", "device", "success"}, false, false, false},
+		{&state.OAuth2UrlsDeviceVerification, nil, []string{"urls", "device", "verification"}, false, false, false},
+		{&state.OAuth2WebfingerOIDCDiscoveryDeviceAuthorizationURL, nil, []string{"webfinger", "oidc_discovery", "device_authorization_url"}, false, false, false},
 	}
 }
 
@@ -656,7 +672,7 @@ func oauth2ListStringReadEntries(state *ProjectConfigResourceModel) []ListString
 
 func permissionStringReadEntries(state *ProjectConfigResourceModel) []StringReadEntry {
 	return []StringReadEntry{
-		{&state.KetoNamespaceConfiguration, nil, []string{"namespaces", "location"}, false, false},
+		{&state.KetoNamespaceConfiguration, nil, []string{"namespaces", "location"}, false, false, false},
 	}
 }
 
