@@ -33,6 +33,13 @@ var ErrConsoleClientNotConfigured = errors.New("console API client not configure
 // can check with errors.Is.
 var ErrProjectNotAllowed = errors.New("project not allowed by allowed_project_ids")
 
+// ErrNotFound tags an API error whose HTTP response carried 404. The status is
+// the only reliable signal: when the error body does not match the model the SDK
+// expects for an endpoint, the SDK replaces the status text ("404 Not Found")
+// with the JSON decode error, and the body itself no longer parses into the
+// shape extractDebugInfo reads. IsNotFound reports true for a tagged error.
+var ErrNotFound = errors.New("resource not found")
+
 const (
 	// maxRetries is the maximum number of retry attempts for rate-limited requests.
 	maxRetries = 3
@@ -260,12 +267,24 @@ func wrapAPIError(err error, operation string) error {
 	return err
 }
 
+// notFoundIfStatus tags err with ErrNotFound when the response carried HTTP 404,
+// so callers can rely on IsNotFound regardless of the error body's shape.
+func notFoundIfStatus(resp *http.Response, err error) error {
+	if err == nil || resp == nil || resp.StatusCode != http.StatusNotFound {
+		return err
+	}
+	return fmt.Errorf("%w: %w", ErrNotFound, err)
+}
+
 // IsNotFound reports whether err is an Ory API 404 (Not Found) — e.g. a project
 // that has been purged. Callers use it to treat a missing resource as already
 // gone rather than a hard failure.
 func IsNotFound(err error) bool {
 	if err == nil {
 		return false
+	}
+	if errors.Is(err, ErrNotFound) {
+		return true
 	}
 	if extractDebugInfo(err).StatusCode == 404 {
 		return true
@@ -1222,6 +1241,7 @@ func (c *OryClient) GetOAuth2Client(ctx context.Context, clientID string) (*ory.
 		return nil, fmt.Errorf("reading OAuth2 client: %w", err)
 	}
 	oauthClient, httpResp, err := c.projectClient.OAuth2API.GetOAuth2Client(ctx, clientID).Execute()
+	err = notFoundIfStatus(httpResp, err)
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
@@ -1553,6 +1573,7 @@ func (c *OryClient) GetTrustedOAuth2JwtGrantIssuer(ctx context.Context, id strin
 		return nil, fmt.Errorf("getting trusted JWT grant issuer: %w", err)
 	}
 	issuer, httpResp, err := c.projectClient.OAuth2API.GetTrustedOAuth2JwtGrantIssuer(ctx, id).Execute()
+	err = notFoundIfStatus(httpResp, err)
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
@@ -1617,6 +1638,7 @@ func (c *OryClient) GetOIDCDynamicClient(ctx context.Context, clientID string) (
 		return nil, fmt.Errorf("getting OIDC dynamic client: %w", err)
 	}
 	result, httpResp, err := c.projectClient.OAuth2API.GetOAuth2Client(ctx, clientID).Execute()
+	err = notFoundIfStatus(httpResp, err)
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
