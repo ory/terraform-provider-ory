@@ -28,6 +28,23 @@ This resource supports drift detection — `terraform plan` will detect changes 
 
 {{ tffile "examples/resources/ory_project_config/resource.tf" }}
 
+## Courier HTTP Request Body
+
+Set `courier_http_request_config_body` to a `base64://` value that carries the Jsonnet template inline. The Ory API rejects a plain Jsonnet string, and it rejects a URL outside its own storage:
+
+```hcl
+resource "ory_project_config" "main" {
+  courier_delivery_strategy       = "http"
+  courier_http_request_config_url = "https://mail.example.com/send"
+
+  courier_http_request_config_body = "base64://${base64encode(file("${path.module}/courier_body.jsonnet"))}"
+}
+```
+
+The API stores the decoded payload and reports an `https://storage.googleapis.com/.../<sha512>.jsonnet` URL instead of the value you set. The provider compares the hash in that URL with your configured payload, so a matching payload produces no change in plan. A payload edited in the Ory Console does not match the hash, so the provider downloads it and plan shows the difference in `base64://` form.
+
+The nested `courier_http_request_config` attribute and each entry in `courier_channels` take the same `base64://` value for their `body` field. For those two, the provider keeps the configured value whenever the API reports a URL, so a payload edited in the Ory Console is not reported as drift.
+
 ## Duration Format
 
 Time-based attributes use Go duration strings. Examples:

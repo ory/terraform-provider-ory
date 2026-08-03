@@ -978,6 +978,65 @@ func TestAccProjectConfigResource_courierHTTP(t *testing.T) {
 	})
 }
 
+// courierBodyTemplate and courierBodyTemplateUpdated are `base64://` Jsonnet
+// payloads for the flat courier_http_request_config_body attribute. The Ory API
+// stores the decoded payload and reports a storage URL instead, so each step's
+// implicit post-apply plan check is what proves the read path resolves that URL
+// back to the configured value. See issue #315.
+const (
+	courierBodyTemplate        = "base64://ewogICJyZWNpcGllbnQiOiB7eyAucmVjaXBpZW50IH19LAogICJib2R5Ijoge3sgLmJvZHkgfX0KfQ=="
+	courierBodyTemplateUpdated = "base64://ewogICJyZWNpcGllbnQiOiB7eyAucmVjaXBpZW50IH19LAogICJzdWJqZWN0Ijoge3sgLnN1YmplY3QgfX0sCiAgImJvZHkiOiB7eyAuYm9keSB9fQp9"
+)
+
+// TestAccProjectConfigResource_courierHTTPBody covers the flat courier body
+// attribute end to end: create, refresh, update, and import. Before the storage
+// URL fix, the refresh after step 1 wrote
+// `https://storage.googleapis.com/.../<sha512>.jsonnet` into state and the step
+// failed with a non-empty plan.
+func TestAccProjectConfigResource_courierHTTPBody(t *testing.T) {
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/courier_http_body.tf.tmpl", map[string]string{
+					"Body": courierBodyTemplate,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "courier_delivery_strategy", "http"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "courier_http_request_config_url", "https://example.com/mail-api/send"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "courier_http_request_config_body", courierBodyTemplate),
+				),
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/courier_http_body.tf.tmpl", map[string]string{
+					"Body": courierBodyTemplateUpdated,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "courier_http_request_config_body", courierBodyTemplateUpdated),
+				),
+			},
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				// Import starts from empty state, so every optional attribute
+				// comes back null. That is the resource's existing import
+				// behavior and is not what this test covers.
+				ImportStateVerifyIgnore: []string{
+					"courier_delivery_strategy",
+					"courier_http_request_config_url",
+					"courier_http_request_config_body",
+					"smtp_connection_uri",
+					"cors_enabled",
+					"selfservice_methods_password_config_min_password_length",
+				},
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_featureFlags(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },

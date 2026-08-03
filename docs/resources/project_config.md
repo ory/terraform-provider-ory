@@ -277,6 +277,30 @@ resource "ory_project_config" "with_courier_http" {
   ]
 }
 
+locals {
+  courier_body = <<-JSONNET
+    {
+      "recipient": {{ .recipient }},
+      "subject": {{ .subject }},
+      "body": {{ .body }}
+    }
+  JSONNET
+}
+
+# The same courier HTTP delivery through the flat attributes. The body must be a
+# `base64://` value: the Ory API rejects a plain Jsonnet string. The API stores
+# the decoded payload and reports a storage URL, and the provider resolves that
+# URL back to this value, so plan stays empty while the payload matches.
+resource "ory_project_config" "with_courier_http_flat" {
+  courier_delivery_strategy       = "http"
+  courier_http_request_config_url = "https://mail-api.example.com/send"
+
+  courier_http_request_config_body = "base64://${base64encode(local.courier_body)}"
+
+  courier_http_request_config_auth_basic_auth_user     = "mailuser"
+  courier_http_request_config_auth_basic_auth_password = var.mail_password
+}
+
 variable "mail_password" {
   type        = string
   sensitive   = true
@@ -360,6 +384,23 @@ resource "ory_project_config" "sign_in_after_registration" {
   selfservice_flows_registration_after_password_hook_session = true
 }
 ```
+
+## Courier HTTP Request Body
+
+Set `courier_http_request_config_body` to a `base64://` value that carries the Jsonnet template inline. The Ory API rejects a plain Jsonnet string, and it rejects a URL outside its own storage:
+
+```hcl
+resource "ory_project_config" "main" {
+  courier_delivery_strategy       = "http"
+  courier_http_request_config_url = "https://mail.example.com/send"
+
+  courier_http_request_config_body = "base64://${base64encode(file("${path.module}/courier_body.jsonnet"))}"
+}
+```
+
+The API stores the decoded payload and reports an `https://storage.googleapis.com/.../<sha512>.jsonnet` URL instead of the value you set. The provider compares the hash in that URL with your configured payload, so a matching payload produces no change in plan. A payload edited in the Ory Console does not match the hash, so the provider downloads it and plan shows the difference in `base64://` form.
+
+The nested `courier_http_request_config` attribute and each entry in `courier_channels` take the same `base64://` value for their `body` field. For those two, the provider keeps the configured value whenever the API reports a URL, so a payload edited in the Ory Console is not reported as drift.
 
 ## Duration Format
 
@@ -596,7 +637,7 @@ terraform plan  # verify no changes
 - `courier_http_request_config_auth_basic_auth_password` (String, Sensitive) Password for HTTP courier basic authentication.
 - `courier_http_request_config_auth_basic_auth_user` (String) Username for HTTP courier basic authentication.
 - `courier_http_request_config_auth_type` (String) Authentication type for the courier HTTP request (basic_auth, api_key, or empty).
-- `courier_http_request_config_body` (String) Base64-encoded Jsonnet template for the HTTP courier request body.
+- `courier_http_request_config_body` (String) Jsonnet template for the HTTP courier request body, as a `base64://<base64-encoded-payload>` value. The API stores the payload in object storage and reports an https URL back, so the read path resolves that URL to the configured value.
 - `courier_http_request_config_method` (String) HTTP method for the courier HTTP request.
 - `courier_http_request_config_url` (String) URL of the remote HTTP email sending service.
 - `courier_smtp_from_address` (String) Email address to send from.
