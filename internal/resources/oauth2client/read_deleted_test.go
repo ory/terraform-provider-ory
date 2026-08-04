@@ -80,10 +80,10 @@ func TestRead_ClientDeletedOutsideTerraform(t *testing.T) {
 }
 
 // TestRead_ClientDeletedOAuth2ErrorBody covers the other error shape this
-// endpoint can return. The SDK decodes a 404 body into its OAuth2 error model,
-// and only when that fails does it replace the "404 Not Found" status text with
-// the decode error — so neither the message nor the parsed body is a reliable
-// signal on its own. Detection must come from the HTTP status.
+// endpoint can return: the SDK decodes it into its OAuth2 error model, so the
+// error keeps its "404 Not Found" status text, where the Ory-shaped body fails
+// to decode and is recognized by its "code":404 instead. Both shapes must lead
+// to removal, whichever way the 404 is carried.
 func TestRead_ClientDeletedOAuth2ErrorBody(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

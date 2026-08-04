@@ -33,11 +33,11 @@ var ErrConsoleClientNotConfigured = errors.New("console API client not configure
 // can check with errors.Is.
 var ErrProjectNotAllowed = errors.New("project not allowed by allowed_project_ids")
 
-// ErrNotFound tags an API error whose HTTP response carried 404. The status is
-// the only reliable signal: when the error body does not match the model the SDK
-// expects for an endpoint, the SDK replaces the status text ("404 Not Found")
-// with the JSON decode error, and the body itself no longer parses into the
-// shape extractDebugInfo reads. IsNotFound reports true for a tagged error.
+// ErrNotFound tags an API error whose HTTP response carried 404. The tag exists
+// to be narrow, not to detect more: the substring match in IsNotFound already
+// recognizes these 404s, but it also matches any error text that happens to
+// contain "404". A caller that must not act on a false positive — see
+// IsNotFoundStatus — checks the tag instead.
 var ErrNotFound = errors.New("resource not found")
 
 const (
