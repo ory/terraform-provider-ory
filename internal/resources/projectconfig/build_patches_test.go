@@ -1089,3 +1089,47 @@ func TestBuildHookPatches_RequireVerifiedAddressStaysFirstAmongExistingHooks(t *
 	assert.Equal(t, "revoke_active_sessions", hooks[1]["hook"])
 	assert.Equal(t, "organization", hooks[2]["hook"])
 }
+
+// feature_flags.password_profile_registration_node_group stores the string
+// enum "password"/"default". The backend normalizes the key by comparing its
+// string form with "password", so a raw JSON bool true stringifies to "true"
+// and silently stores the false variant. The patch must send the enum.
+func TestBuildPatches_PasswordProfileNodeGroupSendsEnumString(t *testing.T) {
+	r := &ProjectConfigResource{}
+	path := "/services/identity/config/feature_flags/password_profile_registration_node_group"
+
+	for _, tc := range []struct {
+		planned bool
+		want    string
+	}{
+		{true, "password"},
+		{false, "default"},
+	} {
+		plan := &ProjectConfigResourceModel{
+			FeatureFlagsPasswordProfileRegistrationNodeGroup: types.BoolValue(tc.planned),
+		}
+
+		p := findPatch(r.buildPatches(context.Background(), plan), path)
+		require.NotNil(t, p, "expected a patch for password_profile_registration_node_group")
+		assert.Equal(t, "replace", p.Op)
+		assert.Equal(t, tc.want, p.Value, "bool %v must patch the enum string %q", tc.planned, tc.want)
+	}
+}
+
+// enable_ax_v2 has no config key of its own: the account experience config
+// stores it as "enabled". Patching the spec-derived enable_ax_v2 key is
+// accepted with HTTP 200 and silently discarded.
+func TestBuildPatches_EnableAXV2PatchesEnabledKey(t *testing.T) {
+	r := &ProjectConfigResource{}
+	plan := &ProjectConfigResourceModel{
+		EnableAXV2: types.BoolValue(true),
+	}
+
+	patches := r.buildPatches(context.Background(), plan)
+	p := findPatch(patches, "/services/account_experience/config/enabled")
+	require.NotNil(t, p, "expected a patch for the account experience 'enabled' key")
+	assert.Equal(t, "replace", p.Op)
+	assert.Equal(t, true, p.Value)
+	assert.Nil(t, findPatch(patches, "/services/account_experience/config/enable_ax_v2"),
+		"the nonexistent enable_ax_v2 config key must not be patched")
+}

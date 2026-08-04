@@ -53,8 +53,20 @@ type Attribute struct {
 	// uploads to object storage. The write sends `base64://<payload>` and the
 	// API reports an https URL instead, so Read resolves the URL back to the
 	// configured value. Only valid for `type: string`.
-	StorageURLContent bool       `yaml:"storage_url_content"`
-	Validators        *Validator `yaml:"validators"`
+	StorageURLContent bool `yaml:"storage_url_content"`
+	// PatchPathOverride replaces the spec-derived patch path when the spec's
+	// governs description names a config key the API does not actually read
+	// (the write is accepted with HTTP 200 and silently discarded). Reads use
+	// it too unless read_path is also set. Always verify the override against
+	// the live API and record the verification in a comment.
+	PatchPathOverride string `yaml:"patch_path_override"`
+	// BoolEnum marks a bool attribute whose config key stores a string enum
+	// instead of a JSON bool. The patch sends true_value/false_value and Read
+	// maps the reported string back by comparing it to true_value. Sending a
+	// raw bool to such a key is accepted with HTTP 200 but normalized by
+	// string comparison, so it silently stores the false variant.
+	BoolEnum   *BoolEnum  `yaml:"bool_enum"`
+	Validators *Validator `yaml:"validators"`
 
 	// Deprecated alias support: when set, generates a second schema attribute
 	// with the old name that shows a deprecation warning directing users to Name.
@@ -82,6 +94,13 @@ func (a Attribute) ReadKeysPath() string {
 		return a.ReadPath
 	}
 	return a.PatchPath
+}
+
+// BoolEnum holds the string values a bool_enum attribute's config key stores
+// for true and false (e.g. "password"/"default").
+type BoolEnum struct {
+	TrueValue  string `yaml:"true_value"`
+	FalseValue string `yaml:"false_value"`
 }
 
 type Validator struct {
@@ -325,6 +344,14 @@ func main() {
 		log.Fatalf("parsing mappings: %v", err)
 	}
 
+	// Apply patch path overrides before spec resolution so a wrong governs
+	// path in the spec neither wins nor trips the mismatch check.
+	for i := range m.Attributes {
+		if m.Attributes[i].PatchPathOverride != "" {
+			m.Attributes[i].PatchPath = m.Attributes[i].PatchPathOverride
+		}
+	}
+
 	// If spec provided, parse it and use governs-based path derivation
 	var specProps map[string]SpecProperty
 	if *specPath != "" {
@@ -383,6 +410,17 @@ func main() {
 		}
 		if a.StorageURLContent && a.WriteOnly {
 			log.Fatalf("attribute %q: storage_url_content and write_only are mutually exclusive (write_only removes the attribute from the read path)", a.Name)
+		}
+		if a.BoolEnum != nil {
+			if a.Type != typeBool {
+				log.Fatalf("attribute %q: bool_enum is only supported for type bool, got %q", a.Name, a.Type)
+			}
+			if a.BoolEnum.TrueValue == "" || a.BoolEnum.FalseValue == "" {
+				log.Fatalf("attribute %q: bool_enum requires both true_value and false_value", a.Name)
+			}
+			if a.BoolEnum.TrueValue == a.BoolEnum.FalseValue {
+				log.Fatalf("attribute %q: bool_enum true_value and false_value must differ", a.Name)
+			}
 		}
 	}
 
@@ -522,6 +560,13 @@ func resolveFromSpec(m *Mappings, specProps map[string]SpecProperty) {
 			if desc := cleanDescription(sp.Description); desc != "" {
 				a.Description = desc
 			}
+		}
+
+		// patch_path_override wins over the spec: the governs description names
+		// a config key the API does not actually read, so the mismatch with the
+		// derived path is intentional.
+		if a.PatchPathOverride != "" {
+			continue
 		}
 
 		if sp.GovernsPath == "" {
@@ -1197,11 +1242,20 @@ type StringPatchEntry struct {
 	Path       string
 }
 
+// BoolEnumValues holds the string values a config key stores in place of a
+// JSON bool. Sending a raw bool to such a key is accepted with HTTP 200 but
+// normalized by string comparison, so it silently stores the false variant.
+type BoolEnumValues struct {
+	True  string
+	False string
+}
+
 // BoolPatchEntry maps a bool field to its JSON Patch path.
 type BoolPatchEntry struct {
 	Field      *types.Bool
 	Deprecated *types.Bool // fallback when Field is null (deprecated alias)
 	Path       string
+	Enum       *BoolEnumValues // when set, patch the string enum instead of a raw bool
 }
 
 // Int64PatchEntry maps an int64 field to its JSON Patch path.
@@ -1238,7 +1292,7 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 	return []BoolPatchEntry{
 {{- range filterType .Attributes "bool" }}
-		{&plan.{{ .GoField }}, {{ if .DeprecatedGoField }}&plan.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, {{ printf "%q" .PatchPath }}},
+		{&plan.{{ .GoField }}, {{ if .DeprecatedGoField }}&plan.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, {{ printf "%q" .PatchPath }}, {{ if .BoolEnum }}&BoolEnumValues{ {{ printf "%q" .BoolEnum.TrueValue }}, {{ printf "%q" .BoolEnum.FalseValue }} }{{ else }}nil{{ end }}},
 {{- end }}
 	}
 }
@@ -1316,6 +1370,7 @@ type BoolReadEntry struct {
 	Deprecated        *types.Bool // fallback: used only when the primary Field is null in state
 	Keys              []string
 	PreserveOnMissing bool
+	Enum              *BoolEnumValues // when set, the key stores a string enum; map it back by comparing to Enum.True
 }
 
 // Int64ReadEntry maps an int64 state field to its config read path.
@@ -1343,6 +1398,13 @@ type MapStringReadEntry struct {
 }
 
 // readSimpleFields reads all simple attributes from the API response into state.
+//
+// Missing-key semantics: the API prunes empty values (empty string, empty
+// list, empty map, integer zero) from stored configs, so a key the response
+// omits is indistinguishable from an applied empty value. When state already
+// holds the empty value for the type, the omission is exactly what the write
+// produced and the value is kept. Any other state value is nulled so genuine
+// out-of-band removals still surface as drift.
 func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectConfigResourceModel) {
 {{- range $svc := .ServiceNames }}
 {{- $attrs := index $.ByService $svc }}
@@ -1364,7 +1426,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 					if !e.SkipEmpty || v != "" {
 						*target = types.StringValue(v)
 					}
-				} else if !e.PreserveOnMissing {
+				} else if !e.PreserveOnMissing && target.ValueString() != "" {
 					*target = types.StringNull()
 				}
 			}
@@ -1378,7 +1440,13 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				target = e.Deprecated
 			}
 			if !target.IsNull() {
-				if v, ok := getNestedBool({{ varName $svc }}Config, e.Keys...); ok {
+				if e.Enum != nil {
+					if v, ok := getNestedString({{ varName $svc }}Config, e.Keys...); ok {
+						*target = types.BoolValue(v == e.Enum.True)
+					} else if !e.PreserveOnMissing {
+						*target = types.BoolNull()
+					}
+				} else if v, ok := getNestedBool({{ varName $svc }}Config, e.Keys...); ok {
 					*target = types.BoolValue(v)
 				} else if !e.PreserveOnMissing {
 					*target = types.BoolNull()
@@ -1398,7 +1466,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 					if v == math.Trunc(v) {
 						*target = types.Int64Value(int64(v))
 					}
-				} else if !e.PreserveOnMissing {
+				} else if !e.PreserveOnMissing && target.ValueInt64() != 0 {
 					*target = types.Int64Null()
 				}
 			}
@@ -1431,7 +1499,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 							}
 						}
 					}
-				} else if !e.PreserveOnMissing {
+				} else if !e.PreserveOnMissing && len(target.Elements()) > 0 {
 					*target = types.ListNull(types.StringType)
 				}
 			}
@@ -1464,7 +1532,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 							}
 						}
 					}
-				} else if !e.PreserveOnMissing {
+				} else if !e.PreserveOnMissing && len(target.Elements()) > 0 {
 					*target = types.MapNull(types.StringType)
 				}
 			}
@@ -1497,7 +1565,7 @@ func {{ $svc }}BoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntr
 	return []BoolReadEntry{
 {{- range $bools }}
 {{- if not .WriteOnly }}
-		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .ReadPreservesOnMissing }}},
+		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .ReadPreservesOnMissing }}, {{ if .BoolEnum }}&BoolEnumValues{ {{ printf "%q" .BoolEnum.TrueValue }}, {{ printf "%q" .BoolEnum.FalseValue }} }{{ else }}nil{{ end }}},
 {{- end }}
 {{- end }}
 	}

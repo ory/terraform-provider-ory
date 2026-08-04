@@ -567,7 +567,7 @@ attributes:
     go_field: SelfserviceMethodsTOTPConfigIssuer
     type: string
     openapi_property: kratos_selfservice_methods_totp_config_issuer
-    description: "TOTP issuer name shown in authenticator apps."
+    description: "TOTP issuer name shown in authenticator apps. An empty string is replaced by the project name, which the next plan reports as a change; omit the attribute instead of setting it empty."
     deprecated_name: totp_issuer
     deprecated_go_field: TOTPIssuer
 
@@ -1138,7 +1138,7 @@ attributes:
     go_field: AccountExperienceEnabledLocales
     type: list_string
     openapi_property: account_experience_enabled_locales
-    description: "Enabled locales for the hosted login UI."
+    description: "Enabled locales for the hosted login UI. An empty list is replaced by the server's default locale set, which the next plan reports as a change; omit the attribute instead of setting it empty."
 
   # account_experience_favicon_dark/light and account_experience_logo_dark/light
   # are handled by custom code in resource.go. The spec's governs descriptions
@@ -1165,6 +1165,15 @@ attributes:
     openapi_property: account_experience_theme_variables_light
     description: "Theme color variables for the hosted Account Experience UI (light theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset."
 
+  # KNOWN LIMITATION (2026-08-04, verified on staging): the account experience
+  # config has no "disable_welcome_screen" key. Writes to the spec-derived path
+  # are accepted with HTTP 200 and silently discarded, and the key never appears
+  # in reads, so the value cannot take effect or be verified through the
+  # document PATCH API. The flag is a top-level revision column reachable only
+  # via PATCH /projects/{id}/revision/{rev} (op path
+  # /disable_account_experience_welcome_screen), which the provider does not
+  # call yet. Tracked as a follow-up; do not add preserve_on_missing here, the
+  # drift is the only signal users get that the setting is not applied.
   - name: disable_account_experience_welcome_screen
     go_field: DisableAccountExperienceWelcomeScreen
     type: bool
@@ -1175,6 +1184,12 @@ attributes:
     go_field: EnableAXV2
     type: bool
     openapi_property: enable_ax_v2
+    # The spec's governs description says "enable_ax_v2", but the account
+    # experience config has no such key: writes to it are accepted with HTTP
+    # 200 and silently discarded, and reads never find it. The real config key
+    # is "enabled" (verified 2026-08-04 on staging: PATCH .../config/enabled
+    # round-trips both true and false).
+    patch_path_override: /services/account_experience/config/enabled
     description: "Enable the new account experience UI."
 
   # ============================================================================
@@ -1254,6 +1269,14 @@ attributes:
     go_field: FeatureFlagsPasswordProfileRegistrationNodeGroup
     type: bool
     openapi_property: kratos_feature_flags_password_profile_registration_node_group
+    # The spec types this as boolean, but the config key stores the string enum
+    # "password"/"default" (verified 2026-08-04 on staging: PATCH true returns
+    # HTTP 200 and the GET-back reports "default", because the backend
+    # normalizes the key by comparing its string form with "password"). The
+    # bool_enum mapping sends the enum on write and maps it back on read.
+    bool_enum:
+      true_value: password
+      false_value: default
     description: "Use password method group for profile registration node group."
 
   - name: oauth2_provider_headers
@@ -1372,7 +1395,7 @@ attributes:
     go_field: SelfserviceMethodsPasskeyConfigRPOrigins
     type: list_string
     openapi_property: kratos_selfservice_methods_passkey_config_rp_origins
-    description: "Allowed origins for passkey relying party verification."
+    description: "Allowed origins for passkey relying party verification. An empty list is replaced by the server's default origins (derived from the project slug and custom domains), which the next plan reports as a change; omit the attribute instead of setting it empty."
 
 
   # ============================================================================
@@ -1388,7 +1411,7 @@ attributes:
     go_field: WebAuthnRPOrigins
     type: list_string
     openapi_property: kratos_selfservice_methods_webauthn_config_rp_origins
-    description: "Allowed origins for WebAuthn relying party."
+    description: "Allowed origins for WebAuthn relying party. An empty list is replaced by the server's default origins (derived from the project slug and custom domains), which the next plan reports as a change; omit the attribute instead of setting it empty."
 
   - name: courier_http_request_config_auth_type
     go_field: CourierHTTPRequestConfigAuthType

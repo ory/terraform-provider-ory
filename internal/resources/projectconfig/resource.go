@@ -1021,10 +1021,20 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 			field = e.Deprecated
 		}
 		if !field.IsNull() && !field.IsUnknown() {
+			var value interface{} = field.ValueBool()
+			if e.Enum != nil {
+				// The config key stores a string enum; a raw bool would be
+				// accepted but normalized to the false variant.
+				if field.ValueBool() {
+					value = e.Enum.True
+				} else {
+					value = e.Enum.False
+				}
+			}
 			patches = append(patches, ory.JsonPatch{
 				Op:    "replace",
 				Path:  e.Path,
-				Value: field.ValueBool(),
+				Value: value,
 			})
 		}
 	}

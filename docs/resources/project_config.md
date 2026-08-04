@@ -20,6 +20,8 @@ This resource supports drift detection — `terraform plan` will detect changes 
 
 ~> **Not drift-checked:** A few attributes are accepted by the Ory API but never returned by it, so the provider keeps the configured value instead of reporting a change that no apply could settle. Removing one of these outside Terraform is not detected. They are `session_earliest_possible_extend`, `selfservice_methods_webauthn_config_rp_icon`, and `selfservice_methods_captcha_config_byo`. The same applies to secrets the API redacts, such as `smtp_connection_uri` and the courier HTTP auth credentials.
 
+~> **Empty values:** The Ory API prunes empty values (`""`, `[]`, `{}`, and integer `0`) from the stored configuration: the apply succeeds, but the key never appears in later reads. The provider treats such a missing key as matching an empty configured value, so applying an empty value does not produce a diff on every plan. Drift is still reported whenever your configuration holds a non-empty value. A few attributes substitute a server default instead of storing the empty value — `account_experience_enabled_locales`, `selfservice_methods_passkey_config_rp_origins`, `webauthn_rp_origins` (default origins derived from the project slug), and `selfservice_methods_totp_config_issuer` (defaults to the project name). For those, plan keeps reporting the substituted default as a change, so omit the attribute instead of setting it empty.
+
 ~> **Conditionally reported:** Some attributes are only returned once the feature they belong to is configured. The `courier_smtp_*` attributes are reported after `smtp_connection_uri` is set, and the `courier_http_request_config_*` attributes after `courier_delivery_strategy = "http"`. Setting one without its prerequisite leaves the value unset on the server, which plan then reports on every run.
 
 ~> **Plan-gated features:** Some settings require a feature that your project's subscription must include, and the Ory API rejects them with an `HTTP 403 (feature_not_available)` otherwise. Notably, `selfservice_methods_oidc_enable_auto_link_policy = true` requires the OIDC auto-link policy (`use_auto_link`), an enterprise feature that Ory enables per project on request — being on an enterprise plan does not enable it automatically. If an apply fails with a `feature_not_available` error, the provider surfaces the feature name and a request ID; contact Ory support or your account executive to enable the feature.
@@ -607,7 +609,7 @@ terraform plan  # verify no changes
 
 - `account_experience_contact_url` (String) Holds the URL to the account experience's Contact page.
 - `account_experience_default_locale` (String) Default locale for the hosted login UI (e.g., 'en', 'de').
-- `account_experience_enabled_locales` (List of String) Enabled locales for the hosted login UI.
+- `account_experience_enabled_locales` (List of String) Enabled locales for the hosted login UI. An empty list is replaced by the server's default locale set, which the next plan reports as a change; omit the attribute instead of setting it empty.
 - `account_experience_favicon_dark` (String) Favicon for the hosted Account Experience UI (dark theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
 - `account_experience_favicon_light` (String) Favicon for the hosted Account Experience UI (light theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
 - `account_experience_hide_ory_branding` (Boolean) Whether to hide the Ory branding badge on the account experience.
@@ -849,7 +851,7 @@ terraform plan  # verify no changes
 - `selfservice_methods_oidc_enabled` (Boolean) Enable OIDC (OpenID Connect) social sign-in. Must be enabled for social providers (e.g. Google, GitHub) to work.
 - `selfservice_methods_passkey_config_rp_display_name` (String) Passkey relying party display name.
 - `selfservice_methods_passkey_config_rp_id` (String) Passkey relying party ID (typically your domain).
-- `selfservice_methods_passkey_config_rp_origins` (List of String) Allowed origins for passkey relying party verification.
+- `selfservice_methods_passkey_config_rp_origins` (List of String) Allowed origins for passkey relying party verification. An empty list is replaced by the server's default origins (derived from the project slug and custom domains), which the next plan reports as a change; omit the attribute instead of setting it empty.
 - `selfservice_methods_passkey_enabled` (Boolean) Enable Passkey authentication.
 - `selfservice_methods_password_config_haveibeenpwned_enabled` (Boolean) Check passwords against HaveIBeenPwned.
 - `selfservice_methods_password_config_identifier_similarity_check_enabled` (Boolean) Check password similarity to identifier.
@@ -859,7 +861,7 @@ terraform plan  # verify no changes
 - `selfservice_methods_password_enabled` (Boolean) Enable password authentication.
 - `selfservice_methods_profile_enabled` (Boolean) Enable the profile authentication method. When enabled, users can update their identity traits (e.g., name, address) via the settings flow.
 - `selfservice_methods_saml_enabled` (Boolean) Enable SAML login method.
-- `selfservice_methods_totp_config_issuer` (String) TOTP issuer name shown in authenticator apps.
+- `selfservice_methods_totp_config_issuer` (String) TOTP issuer name shown in authenticator apps. An empty string is replaced by the project name, which the next plan reports as a change; omit the attribute instead of setting it empty.
 - `selfservice_methods_totp_enabled` (Boolean) Enable TOTP (Time-based One-Time Password).
 - `selfservice_methods_webauthn_config_passwordless` (Boolean) Enable passwordless WebAuthn authentication.
 - `selfservice_methods_webauthn_config_rp_display_name` (String) WebAuthn Relying Party display name.
@@ -881,7 +883,7 @@ terraform plan  # verify no changes
 - `smtp_from_address` (String, Deprecated) Email address to send from.
 - `smtp_from_name` (String, Deprecated) Name to display as sender.
 - `smtp_headers` (Map of String) Custom SMTP headers for outbound emails.
-- `totp_issuer` (String, Deprecated) TOTP issuer name shown in authenticator apps.
+- `totp_issuer` (String, Deprecated) TOTP issuer name shown in authenticator apps. An empty string is replaced by the project name, which the next plan reports as a change; omit the attribute instead of setting it empty.
 - `verification_lifespan` (String, Deprecated) Lifespan of the verification flow (e.g., '30m0s'). Controls how long a verification flow session remains valid.
 - `verification_notify_unknown_recipients` (Boolean, Deprecated) When enabled, verification emails are sent even if the email address is not associated with any known identity.
 - `verification_ui_url` (String, Deprecated) URL for the verification UI.
@@ -889,7 +891,7 @@ terraform plan  # verify no changes
 - `webauthn_passwordless` (Boolean, Deprecated) Enable passwordless WebAuthn authentication.
 - `webauthn_rp_display_name` (String, Deprecated) WebAuthn Relying Party display name.
 - `webauthn_rp_id` (String, Deprecated) WebAuthn Relying Party ID (typically your domain).
-- `webauthn_rp_origins` (List of String) Allowed origins for WebAuthn relying party.
+- `webauthn_rp_origins` (List of String) Allowed origins for WebAuthn relying party. An empty list is replaced by the server's default origins (derived from the project slug and custom domains), which the next plan reports as a change; omit the attribute instead of setting it empty.
 
 ### Read-Only
 

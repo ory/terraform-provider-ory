@@ -330,7 +330,11 @@ That's it — the field appears in the Terraform schema, JSON Patch operations, 
 | `sensitive` | No | If `true`, value is masked in Terraform output |
 | `skip_empty_read` | No | If `true`, skip reading empty strings from API (used for account_experience fields) |
 | `write_only` | No | If `true`, the attribute is sent on create/update but never read back from the API. Use for secrets the API does not return (or returns masked, e.g. `****`), so the configured value is always preserved and never produces a spurious diff |
+| `preserve_on_missing` | No | If `true`, Read keeps the state value when the API response omits the key. Use for attributes the API accepts with HTTP 200 but never reports back, where nulling state would create a diff no apply can settle. Verify with curl before setting it |
+| `read_path` | No | The config path the API reports the value under, when that differs from the path the value is written to (e.g. `max_submissions` is written at `...code.max_submissions` and reported at `...code.config.max_submissions`). Reads use it instead of the patch path |
 | `storage_url_content` | No | If `true`, the read path resolves an object-storage URL back to the configured `base64://` value. Use for a Jsonnet payload the API uploads and then reports as `https://storage.googleapis.com/.../<sha512>.jsonnet`. `string` only, and not combinable with `write_only` |
+| `patch_path_override` | No | Replaces the spec-derived patch path when the governs description names a config key the API does not actually read (the write returns HTTP 200 and is silently discarded). Reads use it too unless `read_path` is also set. Verify the real key against the live API and record the verification in a comment (see `enable_ax_v2`) |
+| `bool_enum` | No | `true_value: ...` + `false_value: ...`. For a bool attribute whose config key stores a string enum instead of a JSON bool. The patch sends the enum string and the read maps it back by comparing with `true_value`. Without it a raw bool write is accepted with HTTP 200 but normalized by string comparison, silently storing the false variant (see `feature_flags_password_profile_registration_node_group`) |
 | `validators` | No | `one_of: [...]` or `regex: "..."` + `regex_message: "..."` |
 | `deprecated_name` | No | Old terraform attribute name (shows deprecation warning in Terraform) |
 | `deprecated_go_field` | No | Old Go struct field name for the deprecated attribute |
@@ -417,6 +421,14 @@ These require hand-written code in `resource.go` because they have non-trivial s
 > resolver lives in `resolveStorageURLContent` in `helpers.go`. It compares the
 > hash in the URL with the payload in state, and only downloads the stored payload
 > when the hash differs.
+
+> **Note:** The API prunes empty values (empty string, empty list, empty map,
+> integer zero) from stored configs: the write returns HTTP 200 and the key
+> never appears in any read. The generated Read therefore treats a missing key
+> as matching an empty state value and keeps it, and only nulls state (to
+> surface out-of-band drift) when the state value is non-empty. Without this,
+> configurations that set `[]`, `{}`, `""`, or `0` would show a diff on every
+> plan that no apply can settle (issue #321).
 
 ### Adding a New Resource
 

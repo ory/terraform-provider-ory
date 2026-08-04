@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
 )
@@ -292,5 +293,149 @@ func TestReadSimpleFields_IgnoresMissingServiceBlock(t *testing.T) {
 
 	if got := state.SelfserviceMethodsOIDCConfigBaseRedirectURI.ValueString(); got != "https://iam.example.com" {
 		t.Errorf("base_redirect_uri = %q, want the state value preserved when the identity service block is absent", got)
+	}
+}
+
+// The API prunes empty values (empty string, empty list, empty map, integer
+// zero) from stored configs, so after applying such a value the key never
+// comes back. State holding that same empty value must keep it: nulling it
+// would produce a diff on every plan that no apply can settle (issue #321).
+func TestReadSimpleFields_PreservesEmptyValuesWhenAPIOmitsKey(t *testing.T) {
+	emptyList, diags := types.ListValueFrom(context.Background(), types.StringType, []string{})
+	if diags.HasError() {
+		t.Fatalf("building the empty state list: %v", diags)
+	}
+	emptyMap, diags := types.MapValue(types.StringType, map[string]attr.Value{})
+	if diags.HasError() {
+		t.Fatalf("building the empty state map: %v", diags)
+	}
+
+	state := &ProjectConfigResourceModel{
+		SelfserviceMethodsCaptchaConfigAllowedDomains: emptyList,
+		OAuth2ProviderHeaders:                         emptyMap,
+		OAuth2TokenPrefix:                             types.StringValue(""),
+		SelfserviceMethodsPasswordConfigMaxBreaches:   types.Int64Value(0),
+	}
+
+	project := &ory.Project{
+		Services: ory.ProjectServices{
+			Identity: &ory.ProjectServiceIdentity{Config: map[string]interface{}{}},
+			Oauth2:   &ory.ProjectServiceOAuth2{Config: map[string]interface{}{}},
+		},
+	}
+	readSimpleFields(context.Background(), project, state)
+
+	if !state.SelfserviceMethodsCaptchaConfigAllowedDomains.Equal(emptyList) {
+		t.Errorf("allowed_domains = %v, want the empty list preserved",
+			state.SelfserviceMethodsCaptchaConfigAllowedDomains)
+	}
+	if !state.OAuth2ProviderHeaders.Equal(emptyMap) {
+		t.Errorf("oauth2_provider_headers = %v, want the empty map preserved",
+			state.OAuth2ProviderHeaders)
+	}
+	if state.OAuth2TokenPrefix.IsNull() || state.OAuth2TokenPrefix.ValueString() != "" {
+		t.Errorf("oauth2_token_prefix = %v, want the empty string preserved",
+			state.OAuth2TokenPrefix)
+	}
+	if state.SelfserviceMethodsPasswordConfigMaxBreaches.IsNull() ||
+		state.SelfserviceMethodsPasswordConfigMaxBreaches.ValueInt64() != 0 {
+		t.Errorf("max_breaches = %v, want zero preserved",
+			state.SelfserviceMethodsPasswordConfigMaxBreaches)
+	}
+}
+
+// Companion to the preserve test: non-empty values must still null on absence,
+// or the empty-value fix would hide genuine out-of-band removals. String and
+// list nulling are covered above; this pins the int64 and map branches.
+func TestReadSimpleFields_NullsNonEmptyInt64AndMapWhenAPIOmitsKey(t *testing.T) {
+	headers, diags := types.MapValue(types.StringType, map[string]attr.Value{
+		"X-Custom": types.StringValue("value"),
+	})
+	if diags.HasError() {
+		t.Fatalf("building the state map: %v", diags)
+	}
+
+	state := &ProjectConfigResourceModel{
+		OAuth2ProviderHeaders:                       headers,
+		SelfserviceMethodsPasswordConfigMaxBreaches: types.Int64Value(3),
+	}
+
+	readSimpleFields(context.Background(), identityProject(map[string]interface{}{}), state)
+
+	if !state.OAuth2ProviderHeaders.Equal(types.MapNull(types.StringType)) {
+		t.Errorf("oauth2_provider_headers = %v, want a null map(string) so the removal surfaces as drift",
+			state.OAuth2ProviderHeaders)
+	}
+	if !state.SelfserviceMethodsPasswordConfigMaxBreaches.IsNull() {
+		t.Errorf("max_breaches = %v, want null so the removal surfaces as drift",
+			state.SelfserviceMethodsPasswordConfigMaxBreaches)
+	}
+}
+
+// feature_flags.password_profile_registration_node_group stores the string
+// enum "password"/"default" even though the spec types the revision property
+// as boolean. The read must map the enum back to the bool the schema exposes;
+// reading it as a bool fails the type assertion and nulled state on every
+// refresh (issue #321).
+func TestReadSimpleFields_MapsPasswordProfileNodeGroupEnumToBool(t *testing.T) {
+	for _, tc := range []struct {
+		reported string
+		want     bool
+	}{
+		{"password", true},
+		{"default", false},
+	} {
+		state := &ProjectConfigResourceModel{
+			FeatureFlagsPasswordProfileRegistrationNodeGroup: types.BoolValue(!tc.want),
+		}
+
+		readSimpleFields(context.Background(), identityProject(map[string]interface{}{
+			"feature_flags": map[string]interface{}{
+				"password_profile_registration_node_group": tc.reported,
+			},
+		}), state)
+
+		if state.FeatureFlagsPasswordProfileRegistrationNodeGroup.IsNull() ||
+			state.FeatureFlagsPasswordProfileRegistrationNodeGroup.ValueBool() != tc.want {
+			t.Errorf("password_profile_registration_node_group = %v for reported %q, want %v",
+				state.FeatureFlagsPasswordProfileRegistrationNodeGroup, tc.reported, tc.want)
+		}
+	}
+}
+
+// A bool_enum key the API omits entirely still nulls state: the flag is always
+// rendered by the API, so absence is genuine drift, not empty-value pruning.
+func TestReadSimpleFields_NullsPasswordProfileNodeGroupWhenAPIOmitsKey(t *testing.T) {
+	state := &ProjectConfigResourceModel{
+		FeatureFlagsPasswordProfileRegistrationNodeGroup: types.BoolValue(true),
+	}
+
+	readSimpleFields(context.Background(), identityProject(map[string]interface{}{}), state)
+
+	if !state.FeatureFlagsPasswordProfileRegistrationNodeGroup.IsNull() {
+		t.Errorf("password_profile_registration_node_group = %v, want null",
+			state.FeatureFlagsPasswordProfileRegistrationNodeGroup)
+	}
+}
+
+// enable_ax_v2 is reported under the account experience config key "enabled";
+// the spec-derived "enable_ax_v2" key does not exist. The read table must use
+// the real key or state nulls on every refresh.
+func TestReadSimpleFields_ReadsEnableAXV2FromEnabledKey(t *testing.T) {
+	state := &ProjectConfigResourceModel{
+		EnableAXV2: types.BoolValue(false),
+	}
+
+	project := &ory.Project{
+		Services: ory.ProjectServices{
+			AccountExperience: &ory.ProjectServiceAccountExperience{Config: map[string]interface{}{
+				"enabled": true,
+			}},
+		},
+	}
+	readSimpleFields(context.Background(), project, state)
+
+	if state.EnableAXV2.IsNull() || !state.EnableAXV2.ValueBool() {
+		t.Errorf("enable_ax_v2 = %v, want true read from the 'enabled' key", state.EnableAXV2)
 	}
 }

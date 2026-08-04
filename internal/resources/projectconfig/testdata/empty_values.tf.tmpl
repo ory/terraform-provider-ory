@@ -1,0 +1,18 @@
+resource "ory_project_config" "test" {
+  # Empty values the API accepts and prunes from the stored config (issue #321):
+  # the keys never come back on read, so state must keep the configured empties.
+  oauth2_allowed_top_level_claims                    = []
+  oauth2_webfinger_oidc_discovery_supported_claims   = []
+  oauth2_webfinger_oidc_discovery_supported_scope    = []
+  oidc_dynamic_client_registration_default_scope     = []
+  selfservice_methods_captcha_config_allowed_domains = []
+  oauth2_provider_headers                            = {}
+  oauth2_token_prefix                                = ""
+  selfservice_methods_password_config_max_breaches   = 0
+
+  # Stored as the string enum "password"/"default", not a bool.
+  feature_flags_password_profile_registration_node_group = [[ .PasswordProfileNodeGroup ]]
+
+  # Reported under the account experience config key "enabled".
+  enable_ax_v2 = [[ .EnableAXV2 ]]
+}
