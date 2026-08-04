@@ -930,7 +930,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			ElementType: types.StringType,
 		},
 		"disable_account_experience_welcome_screen": schema.BoolAttribute{
-			Description: "Disable the account experience welcome screen at /ui/welcome. Applied via the project revision API. The API does not report this value back, so changes made outside Terraform are not detected.",
+			Description: "Disable the account experience welcome screen at /ui/welcome. Applied and read via the normalized project revision API.",
 			Optional:    true,
 		},
 		"enable_ax_v2": schema.BoolAttribute{
@@ -1036,7 +1036,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 		},
 		"selfservice_methods_captcha_config_allowed_domains": schema.ListAttribute{
-			Description: "Domains allowed for CAPTCHA verification.",
+			Description: "Domains allowed for CAPTCHA verification. Once set, the API refuses to clear this list: applying an empty list keeps the previous domains and the following plan reports the difference. Replace the entries instead of emptying them.",
 			Optional:    true,
 			ElementType: types.StringType,
 		},

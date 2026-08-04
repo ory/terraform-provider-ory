@@ -1337,7 +1337,12 @@ attributes:
     go_field: SelfserviceMethodsCaptchaConfigAllowedDomains
     type: list_string
     openapi_property: kratos_selfservice_methods_captcha_config_allowed_domains
-    description: "Domains allowed for CAPTCHA verification."
+    # Verified 2026-08-04 on staging: once this list holds a value, the API
+    # refuses to clear it — a replace with [] and a remove op both return HTTP
+    # 200 and keep the previous domains. Only a non-empty replacement changes
+    # it. The description warns users, since a transition to [] produces a
+    # plan diff no apply can settle (server-side behavior, not fixable here).
+    description: "Domains allowed for CAPTCHA verification. Once set, the API refuses to clear this list: applying an empty list keeps the previous domains and the following plan reports the difference. Replace the entries instead of emptying them."
 
   - name: selfservice_methods_captcha_config_byo
     go_field: SelfserviceMethodsCaptchaConfigBYO

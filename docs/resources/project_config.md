@@ -646,7 +646,7 @@ terraform plan  # verify no changes
 - `courier_smtp_from_name` (String) Name to display as sender.
 - `courier_smtp_local_name` (String) Local hostname used in SMTP HELO/EHLO commands.
 - `default_return_url` (String) Default URL to redirect after flows.
-- `disable_account_experience_welcome_screen` (Boolean) Disable the account experience welcome screen at /ui/welcome. Applied via the project revision API. The API does not report this value back, so changes made outside Terraform are not detected.
+- `disable_account_experience_welcome_screen` (Boolean) Disable the account experience welcome screen at /ui/welcome. Applied and read via the normalized project revision API.
 - `enable_ax_v2` (Boolean) Enable the new account experience UI.
 - `enable_code` (Boolean, Deprecated) Enable code-based authentication.
 - `enable_lookup_secret` (Boolean, Deprecated) Enable backup/recovery codes.
@@ -822,7 +822,7 @@ terraform plan  # verify no changes
 - `selfservice_flows_verification_notify_unknown_recipients` (Boolean) When enabled, verification emails are sent even if the email address is not associated with any known identity.
 - `selfservice_flows_verification_ui_url` (String) URL for the verification UI.
 - `selfservice_flows_verification_use` (String) Verification method to use: 'code' (one-time code) or 'link' (magic link).
-- `selfservice_methods_captcha_config_allowed_domains` (List of String) Domains allowed for CAPTCHA verification.
+- `selfservice_methods_captcha_config_allowed_domains` (List of String) Domains allowed for CAPTCHA verification. Once set, the API refuses to clear this list: applying an empty list keeps the previous domains and the following plan reports the difference. Replace the entries instead of emptying them.
 - `selfservice_methods_captcha_config_byo` (Boolean) Use bring-your-own CAPTCHA widget instead of managed.
 - `selfservice_methods_captcha_config_cf_turnstile_secret` (String, Sensitive) Cloudflare Turnstile managed site secret (private).
 - `selfservice_methods_captcha_config_cf_turnstile_sitekey` (String) Cloudflare Turnstile site key for managed CAPTCHA.
