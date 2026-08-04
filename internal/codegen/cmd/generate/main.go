@@ -65,8 +65,16 @@ type Attribute struct {
 	// maps the reported string back by comparing it to true_value. Sending a
 	// raw bool to such a key is accepted with HTTP 200 but normalized by
 	// string comparison, so it silently stores the false variant.
-	BoolEnum   *BoolEnum  `yaml:"bool_enum"`
-	Validators *Validator `yaml:"validators"`
+	BoolEnum *BoolEnum `yaml:"bool_enum"`
+	// RevisionProperty marks an attribute that is a top-level normalized
+	// revision column with no key in any service config document. Document
+	// PATCHes cannot reach it (they return HTTP 200 and silently discard the
+	// write), so the write goes through the normalized revision endpoint
+	// (PATCH /normalized/projects/{id}/revision/{rev}) with op path
+	// /<openapi_property>, and the read comes from the normalized revision
+	// (GET /normalized/projects/{id}) instead of the project document.
+	RevisionProperty bool       `yaml:"revision_property"`
+	Validators       *Validator `yaml:"validators"`
 
 	// Deprecated alias support: when set, generates a second schema attribute
 	// with the old name that shows a deprecation warning directing users to Name.
@@ -396,7 +404,7 @@ func main() {
 
 	// Validate all attributes have required fields
 	for i, a := range m.Attributes {
-		if a.Name == "" || a.GoField == "" || a.Type == "" || a.PatchPath == "" {
+		if a.Name == "" || a.GoField == "" || a.Type == "" || (a.PatchPath == "" && !a.RevisionProperty) {
 			log.Fatalf("attribute %d (%s): name, go_field, type, and patch_path are required (patch_path can be derived from spec via openapi_property)", i, a.Name)
 		}
 		if a.Type != typeString && a.Type != typeBool && a.Type != typeInt64 && a.Type != typeListString && a.Type != typeMapString {
@@ -422,12 +430,28 @@ func main() {
 				log.Fatalf("attribute %q: bool_enum true_value and false_value must differ", a.Name)
 			}
 		}
+		if a.RevisionProperty {
+			if a.Type != typeBool {
+				log.Fatalf("attribute %q: revision_property is only supported for type bool, got %q", a.Name, a.Type)
+			}
+			if a.OpenAPIProperty == "" {
+				log.Fatalf("attribute %q: revision_property requires openapi_property (the revision patch op path is derived from it)", a.Name)
+			}
+			if a.BoolEnum != nil || a.WriteOnly || a.StorageURLContent || a.ReadPath != "" || a.PatchPathOverride != "" || a.DeprecatedName != "" {
+				log.Fatalf("attribute %q: revision_property cannot be combined with bool_enum, write_only, storage_url_content, read_path, patch_path_override, or deprecated aliases", a.Name)
+			}
+		}
 	}
 
-	// Group by service
+	// Group by service. Revision properties are not part of any service config
+	// document, so they get no read entries and stay out of the groups; the
+	// schema and revision patch templates iterate m.Attributes directly.
 	byService := make(map[string][]Attribute)
 	hasRegex := false
 	for _, a := range m.Attributes {
+		if a.RevisionProperty {
+			continue
+		}
 		svc, _ := parseService(a.PatchPath)
 		byService[svc] = append(byService[svc], a)
 		if a.Validators != nil && a.Validators.Regex != "" {
@@ -566,6 +590,13 @@ func resolveFromSpec(m *Mappings, specProps map[string]SpecProperty) {
 		// a config key the API does not actually read, so the mismatch with the
 		// derived path is intentional.
 		if a.PatchPathOverride != "" {
+			continue
+		}
+
+		// Revision properties are patched at /<openapi_property> on the
+		// revision endpoint; the spec's governs path names a config document
+		// key that does not exist, so no document patch path is derived.
+		if a.RevisionProperty {
 			continue
 		}
 
@@ -1292,7 +1323,26 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 	return []BoolPatchEntry{
 {{- range filterType .Attributes "bool" }}
+{{- if not .RevisionProperty }}
 		{&plan.{{ .GoField }}, {{ if .DeprecatedGoField }}&plan.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, {{ printf "%q" .PatchPath }}, {{ if .BoolEnum }}&BoolEnumValues{ {{ printf "%q" .BoolEnum.TrueValue }}, {{ printf "%q" .BoolEnum.FalseValue }} }{{ else }}nil{{ end }}},
+{{- end }}
+{{- end }}
+	}
+}
+
+// revisionBoolPatchEntries returns bool attributes that are top-level
+// normalized revision columns. They have no key in any service config
+// document — a document patch is accepted with HTTP 200 and silently
+// discarded — so they are applied via the normalized revision endpoint
+// (client.PatchProjectRevision), with the op path being the normalized
+// property name. Reads go through revisionBoolReadEntries against the
+// normalized revision, not the project document.
+func revisionBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
+	return []BoolPatchEntry{
+{{- range filterType .Attributes "bool" }}
+{{- if .RevisionProperty }}
+		{&plan.{{ .GoField }}, nil, {{ printf "%q" (printf "/%s" .OpenAPIProperty) }}, nil},
+{{- end }}
 {{- end }}
 	}
 }
@@ -1395,6 +1445,20 @@ type MapStringReadEntry struct {
 	Deprecated        *types.Map // fallback: used only when the primary Field is null in state
 	Keys              []string
 	PreserveOnMissing bool
+}
+
+// revisionBoolReadEntries returns bool attributes read from the normalized
+// project revision (client.GetProjectNormalizedRevision) instead of the
+// project document, keyed by their normalized property name. See
+// readRevisionProperties in resource.go.
+func revisionBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry {
+	return []BoolReadEntry{
+{{- range filterType .Attributes "bool" }}
+{{- if .RevisionProperty }}
+		{&state.{{ .GoField }}, nil, []string{ {{ printf "%q" .OpenAPIProperty }} }, false, nil},
+{{- end }}
+{{- end }}
+	}
 }
 
 // readSimpleFields reads all simple attributes from the API response into state.

@@ -646,7 +646,7 @@ terraform plan  # verify no changes
 - `courier_smtp_from_name` (String) Name to display as sender.
 - `courier_smtp_local_name` (String) Local hostname used in SMTP HELO/EHLO commands.
 - `default_return_url` (String) Default URL to redirect after flows.
-- `disable_account_experience_welcome_screen` (Boolean) Disable the account experience welcome screen at /ui/welcome.
+- `disable_account_experience_welcome_screen` (Boolean) Disable the account experience welcome screen at /ui/welcome. Applied via the project revision API. The API does not report this value back, so changes made outside Terraform are not detected.
 - `enable_ax_v2` (Boolean) Enable the new account experience UI.
 - `enable_code` (Boolean, Deprecated) Enable code-based authentication.
 - `enable_lookup_secret` (Boolean, Deprecated) Enable backup/recovery codes.

@@ -1165,20 +1165,22 @@ attributes:
     openapi_property: account_experience_theme_variables_light
     description: "Theme color variables for the hosted Account Experience UI (light theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset."
 
-  # KNOWN LIMITATION (2026-08-04, verified on staging): the account experience
-  # config has no "disable_welcome_screen" key. Writes to the spec-derived path
-  # are accepted with HTTP 200 and silently discarded, and the key never appears
-  # in reads, so the value cannot take effect or be verified through the
-  # document PATCH API. The flag is a top-level revision column reachable only
-  # via PATCH /projects/{id}/revision/{rev} (op path
-  # /disable_account_experience_welcome_screen), which the provider does not
-  # call yet. Tracked as a follow-up; do not add preserve_on_missing here, the
-  # drift is the only signal users get that the setting is not applied.
+  # This flag is a top-level revision column with no key in any service config
+  # document: the account experience config has no "disable_welcome_screen"
+  # key, so document PATCHes to the spec-derived path return HTTP 200 and are
+  # silently discarded. The document-shaped PATCH /projects/{id}/revision/{rev}
+  # drops it the same way (it patches the document, not the revision).
+  # revision_property routes the write through the normalized revision
+  # endpoint (PATCH /normalized/projects/{id}/revision/{rev}) and the read
+  # through GET /normalized/projects/{id}, where the column is a real field.
+  # Verified end to end on staging 2026-08-04: setting true flips /ui/welcome
+  # from 200 to 403 and the GET reports the value back, so drift is detected.
   - name: disable_account_experience_welcome_screen
     go_field: DisableAccountExperienceWelcomeScreen
     type: bool
     openapi_property: disable_account_experience_welcome_screen
-    description: "Disable the account experience welcome screen at /ui/welcome."
+    revision_property: true
+    description: "Disable the account experience welcome screen at /ui/welcome. Applied and read via the normalized project revision API."
 
   - name: enable_ax_v2
     go_field: EnableAXV2

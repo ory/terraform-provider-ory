@@ -219,7 +219,6 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 		{&plan.SelfserviceMethodsLinkEnabled, nil, "/services/identity/config/selfservice/methods/link/enabled", nil},
 		{&plan.SelfserviceMethodsPasswordConfigIgnoreNetworkErrors, nil, "/services/identity/config/selfservice/methods/password/config/ignore_network_errors", nil},
 		{&plan.SelfserviceMethodsSAMLEnabled, nil, "/services/identity/config/selfservice/methods/saml/enabled", nil},
-		{&plan.DisableAccountExperienceWelcomeScreen, nil, "/services/account_experience/config/disable_welcome_screen", nil},
 		{&plan.EnableAXV2, nil, "/services/account_experience/config/enabled", nil},
 		{&plan.FeatureFlagsPasswordProfileRegistrationNodeGroup, nil, "/services/identity/config/feature_flags/password_profile_registration_node_group", &BoolEnumValues{"password", "default"}},
 		{&plan.OAuth2ProviderOverrideReturnTo, nil, "/services/identity/config/oauth2_provider/override_return_to", nil},
@@ -236,6 +235,19 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 		{&plan.FeatureFlagsRefreshLoginChooseAddress, nil, "/services/identity/config/feature_flags/refresh_login_choose_address", nil},
 		{&plan.SelfserviceMethodsDeviceauthnConfigFirstFactor, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/first_factor", nil},
 		{&plan.SelfserviceMethodsDeviceauthnConfigIosBiometricFirstFactor, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/ios_biometric_first_factor", nil},
+	}
+}
+
+// revisionBoolPatchEntries returns bool attributes that are top-level
+// normalized revision columns. They have no key in any service config
+// document — a document patch is accepted with HTTP 200 and silently
+// discarded — so they are applied via the normalized revision endpoint
+// (client.PatchProjectRevision), with the op path being the normalized
+// property name. Reads go through revisionBoolReadEntries against the
+// normalized revision, not the project document.
+func revisionBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
+	return []BoolPatchEntry{
+		{&plan.DisableAccountExperienceWelcomeScreen, nil, "/disable_account_experience_welcome_screen", nil},
 	}
 }
 

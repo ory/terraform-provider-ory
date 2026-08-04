@@ -284,7 +284,7 @@ The codegen tool uses this to automatically derive JSON Patch paths:
 - `kratos_` prefix + `governs "session.lifespan"` → `/services/identity/config/session/lifespan`
 - `hydra_` prefix + `governs "ttl.access_token"` → `/services/oauth2/config/ttl/access_token`
 
-When the OpenAPI spec is present locally (`internal/codegen/openapi.yaml`), `make generate` automatically derives patch paths from the spec's governs descriptions. All patch paths are derived from the spec — no hardcoded paths in `mappings.yaml`.
+When the OpenAPI spec is present locally (`internal/codegen/openapi.yaml`), `make generate` automatically derives patch paths from the spec's governs descriptions. Patch paths are derived from the spec, with two exceptions kept in `mappings.yaml`: `patch_path_override` replaces a spec-derived path whose config key the API does not actually read, and `revision_property` attributes bypass the config document entirely (see the fields table below). Both carry a comment recording the live-API verification — do not remove them during regeneration work.
 
 #### Adding a new simple config field
 
@@ -335,6 +335,7 @@ That's it — the field appears in the Terraform schema, JSON Patch operations, 
 | `storage_url_content` | No | If `true`, the read path resolves an object-storage URL back to the configured `base64://` value. Use for a Jsonnet payload the API uploads and then reports as `https://storage.googleapis.com/.../<sha512>.jsonnet`. `string` only, and not combinable with `write_only` |
 | `patch_path_override` | No | Replaces the spec-derived patch path when the governs description names a config key the API does not actually read (the write returns HTTP 200 and is silently discarded). Reads use it too unless `read_path` is also set. Verify the real key against the live API and record the verification in a comment (see `enable_ax_v2`) |
 | `bool_enum` | No | `true_value: ...` + `false_value: ...`. For a bool attribute whose config key stores a string enum instead of a JSON bool. The patch sends the enum string and the read maps it back by comparing with `true_value`. Without it a raw bool write is accepted with HTTP 200 but normalized by string comparison, silently storing the false variant (see `feature_flags_password_profile_registration_node_group`) |
+| `revision_property` | No | If `true`, the attribute is a top-level normalized revision column with no key in any service config document — document patches (including `PATCH /projects/{id}/revision/{rev}`, which is document-shaped) accept writes to it and silently drop them. The write goes through `PATCH /normalized/projects/{id}/revision/{rev}` (`client.PatchProjectRevision`, compare-and-swap with conflict retry) with op path `/<openapi_property>`, and the read through `GET /normalized/projects/{id}` (`client.GetProjectNormalizedRevision`), so drift is detected. `bool` only (see `disable_account_experience_welcome_screen`) |
 | `validators` | No | `one_of: [...]` or `regex: "..."` + `regex_message: "..."` |
 | `deprecated_name` | No | Old terraform attribute name (shows deprecation warning in Terraform) |
 | `deprecated_go_field` | No | Old Go struct field name for the deprecated attribute |

@@ -1426,3 +1426,61 @@ func TestAccProjectConfigResource_emptyValuesAndEnumFlags(t *testing.T) {
 		},
 	})
 }
+
+func TestAccProjectConfigResource_welcomeScreenFlag(t *testing.T) {
+	// disable_account_experience_welcome_screen is a top-level revision column
+	// with no config document key: document patches to the spec-derived path
+	// return HTTP 200 and are silently discarded. The provider writes it via
+	// PATCH /normalized/projects/{id}/revision/{rev} and reads it back from
+	// GET /normalized/projects/{id}. The PlanOnly steps prove the write is
+	// really stored and read back unchanged (a discarded write would refresh
+	// to the old value and show a diff), and the update step proves both
+	// values round-trip on a real project.
+	createData := map[string]string{"DisableWelcomeScreen": "true"}
+	// End at false, the server default, so the shared acceptance project is
+	// left in its default state.
+	updateData := map[string]string{"DisableWelcomeScreen": "false"}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/welcome_screen.tf.tmpl", createData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "disable_account_experience_welcome_screen", "true"),
+				),
+			},
+			{
+				Config:             acctest.LoadTestConfig(t, "testdata/welcome_screen.tf.tmpl", createData),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/welcome_screen.tf.tmpl", updateData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "disable_account_experience_welcome_screen", "false"),
+				),
+			},
+			{
+				Config:             acctest.LoadTestConfig(t, "testdata/welcome_screen.tf.tmpl", updateData),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			// ImportState — import only sets id/project_id; the flag has no read
+			// path, so it stays unset until the first apply.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"disable_account_experience_welcome_screen",
+					"cors_enabled",
+					"selfservice_methods_password_config_min_password_length",
+					"smtp_connection_uri",
+				},
+			},
+		},
+	})
+}

@@ -70,6 +70,16 @@ type MapStringReadEntry struct {
 	PreserveOnMissing bool
 }
 
+// revisionBoolReadEntries returns bool attributes read from the normalized
+// project revision (client.GetProjectNormalizedRevision) instead of the
+// project document, keyed by their normalized property name. See
+// readRevisionProperties in resource.go.
+func revisionBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry {
+	return []BoolReadEntry{
+		{&state.DisableAccountExperienceWelcomeScreen, nil, []string{"disable_account_experience_welcome_screen"}, false, nil},
+	}
+}
+
 // readSimpleFields reads all simple attributes from the API response into state.
 //
 // Missing-key semantics: the API prunes empty values (empty string, empty
@@ -444,7 +454,6 @@ func account_experienceStringReadEntries(state *ProjectConfigResourceModel) []St
 
 func account_experienceBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry {
 	return []BoolReadEntry{
-		{&state.DisableAccountExperienceWelcomeScreen, nil, []string{"disable_welcome_screen"}, false, nil},
 		{&state.EnableAXV2, nil, []string{"enabled"}, false, nil},
 		{&state.AccountExperienceHideOryBranding, nil, []string{"hide_ory_branding"}, false, nil},
 		{&state.AccountExperienceHideRegistrationLink, nil, []string{"hide_registration_link"}, false, nil},

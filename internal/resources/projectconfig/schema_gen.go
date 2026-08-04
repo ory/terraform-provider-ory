@@ -930,7 +930,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			ElementType: types.StringType,
 		},
 		"disable_account_experience_welcome_screen": schema.BoolAttribute{
-			Description: "Disable the account experience welcome screen at /ui/welcome.",
+			Description: "Disable the account experience welcome screen at /ui/welcome. Applied via the project revision API. The API does not report this value back, so changes made outside Terraform are not detected.",
 			Optional:    true,
 		},
 		"enable_ax_v2": schema.BoolAttribute{

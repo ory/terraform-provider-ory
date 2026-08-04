@@ -2,11 +2,16 @@ package projectconfig
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
+
+	"github.com/ory/terraform-provider-ory/internal/client"
+	"github.com/ory/terraform-provider-ory/internal/testutil"
 )
 
 // identityProject builds a project whose identity service config is the given map.
@@ -437,5 +442,79 @@ func TestReadSimpleFields_ReadsEnableAXV2FromEnabledKey(t *testing.T) {
 
 	if state.EnableAXV2.IsNull() || !state.EnableAXV2.ValueBool() {
 		t.Errorf("enable_ax_v2 = %v, want true read from the 'enabled' key", state.EnableAXV2)
+	}
+}
+
+// disable_account_experience_welcome_screen lives on the normalized revision,
+// not in the project document, so Read fetches it from
+// GET /normalized/projects/{id} — the only endpoint that reports it. Both
+// values must round-trip, and an untracked flag must not trigger the extra
+// API call at all.
+func TestReadRevisionProperties_ReadsWelcomeScreenFromNormalizedRevision(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"current_revision": {"id": "rev-1", "disable_account_experience_welcome_screen": true}}`))
+	}))
+	defer srv.Close()
+
+	oryClient, err := client.NewOryClient(client.OryClientConfig{
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   srv.URL,
+	})
+	if err != nil {
+		t.Fatalf("building client: %v", err)
+	}
+	r := &ProjectConfigResource{client: oryClient}
+
+	// Untracked: no API call.
+	state := &ProjectConfigResourceModel{}
+	r.readRevisionProperties(context.Background(), "proj-1", state)
+	if requests != 0 {
+		t.Fatalf("expected no normalized revision fetch for untracked state, got %d requests", requests)
+	}
+	if !state.DisableAccountExperienceWelcomeScreen.IsNull() {
+		t.Errorf("flag = %v, want null for untracked state", state.DisableAccountExperienceWelcomeScreen)
+	}
+
+	// Tracked: the reported value overwrites state (out-of-band enable shows
+	// as drift).
+	state = &ProjectConfigResourceModel{
+		DisableAccountExperienceWelcomeScreen: types.BoolValue(false),
+	}
+	r.readRevisionProperties(context.Background(), "proj-1", state)
+	if requests != 1 {
+		t.Fatalf("expected exactly one normalized revision fetch, got %d", requests)
+	}
+	if state.DisableAccountExperienceWelcomeScreen.IsNull() || !state.DisableAccountExperienceWelcomeScreen.ValueBool() {
+		t.Errorf("flag = %v, want true read from the normalized revision", state.DisableAccountExperienceWelcomeScreen)
+	}
+}
+
+// A failed normalized-revision fetch must keep the state value: nulling
+// tracked attributes on a transient read error would show phantom drift.
+func TestReadRevisionProperties_KeepsStateOnFetchError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	oryClient, err := client.NewOryClient(client.OryClientConfig{
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   srv.URL,
+	})
+	if err != nil {
+		t.Fatalf("building client: %v", err)
+	}
+	r := &ProjectConfigResource{client: oryClient}
+
+	state := &ProjectConfigResourceModel{
+		DisableAccountExperienceWelcomeScreen: types.BoolValue(true),
+	}
+	r.readRevisionProperties(context.Background(), "proj-1", state)
+
+	if state.DisableAccountExperienceWelcomeScreen.IsNull() || !state.DisableAccountExperienceWelcomeScreen.ValueBool() {
+		t.Errorf("flag = %v, want the state value kept when the fetch fails", state.DisableAccountExperienceWelcomeScreen)
 	}
 }
