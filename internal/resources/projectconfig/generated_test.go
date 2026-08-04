@@ -5,8 +5,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	ory "github.com/ory/client-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -373,4 +375,155 @@ func TestGeneratedSchemaAttributes_AllOptional(t *testing.T) {
 		}
 		assert.True(t, optional, "attribute %q is not optional", name)
 	}
+}
+
+// TestGeneratedReadEntries_MissingKeySemantics mechanically pins the
+// missing-key behavior for EVERY generated read entry, so any codegen change
+// and any future attribute inherits the issue #321 semantics automatically:
+//
+//   - The API prunes empty values (empty string/list/map, integer zero) from
+//     stored configs, so a missing key matches an empty state value and the
+//     value is kept — otherwise the attribute diffs on every plan and no
+//     apply can settle it.
+//   - A non-empty state value still nulls on a missing key (unless the entry
+//     preserves on missing), so genuine out-of-band removals surface as drift.
+func TestGeneratedReadEntries_MissingKeySemantics(t *testing.T) {
+	emptyServicesProject := func() *ory.Project {
+		return &ory.Project{Services: ory.ProjectServices{
+			Identity:          &ory.ProjectServiceIdentity{Config: map[string]interface{}{}},
+			Oauth2:            &ory.ProjectServiceOAuth2{Config: map[string]interface{}{}},
+			Permission:        &ory.ProjectServicePermission{Config: map[string]interface{}{}},
+			AccountExperience: &ory.ProjectServiceAccountExperience{Config: map[string]interface{}{}},
+		}}
+	}
+
+	stringEntries := func(state *ProjectConfigResourceModel) []StringReadEntry {
+		all := identityStringReadEntries(state)
+		all = append(all, oauth2StringReadEntries(state)...)
+		all = append(all, permissionStringReadEntries(state)...)
+		all = append(all, account_experienceStringReadEntries(state)...)
+		return all
+	}
+	boolEntries := func(state *ProjectConfigResourceModel) []BoolReadEntry {
+		all := identityBoolReadEntries(state)
+		all = append(all, oauth2BoolReadEntries(state)...)
+		all = append(all, account_experienceBoolReadEntries(state)...)
+		return all
+	}
+	int64Entries := func(state *ProjectConfigResourceModel) []Int64ReadEntry {
+		all := identityInt64ReadEntries(state)
+		all = append(all, oauth2Int64ReadEntries(state)...)
+		return all
+	}
+	listEntries := func(state *ProjectConfigResourceModel) []ListStringReadEntry {
+		all := identityListStringReadEntries(state)
+		all = append(all, oauth2ListStringReadEntries(state)...)
+		all = append(all, permissionListStringReadEntries(state)...)
+		all = append(all, account_experienceListStringReadEntries(state)...)
+		return all
+	}
+	mapEntries := func(state *ProjectConfigResourceModel) []MapStringReadEntry {
+		all := identityMapStringReadEntries(state)
+		all = append(all, account_experienceMapStringReadEntries(state)...)
+		return all
+	}
+
+	t.Run("empty state values survive a missing key", func(t *testing.T) {
+		state := &ProjectConfigResourceModel{}
+		emptyList, diags := types.ListValueFrom(context.Background(), types.StringType, []string{})
+		require.False(t, diags.HasError())
+		emptyMap, diags := types.MapValue(types.StringType, map[string]attr.Value{})
+		require.False(t, diags.HasError())
+
+		for _, e := range stringEntries(state) {
+			*e.Field = types.StringValue("")
+		}
+		for _, e := range int64Entries(state) {
+			*e.Field = types.Int64Value(0)
+		}
+		for _, e := range listEntries(state) {
+			*e.Field = emptyList
+		}
+		for _, e := range mapEntries(state) {
+			*e.Field = emptyMap
+		}
+		// Bools have no empty value; the drift branch below covers them.
+
+		readSimpleFields(context.Background(), emptyServicesProject(), state)
+
+		for _, e := range stringEntries(state) {
+			assert.False(t, e.Field.IsNull(), "string entry %v: empty value must survive a missing key", e.Keys)
+		}
+		for _, e := range int64Entries(state) {
+			assert.False(t, e.Field.IsNull(), "int64 entry %v: zero must survive a missing key", e.Keys)
+		}
+		for _, e := range listEntries(state) {
+			assert.True(t, e.Field.Equal(emptyList), "list entry %v: empty list must survive a missing key", e.Keys)
+		}
+		for _, e := range mapEntries(state) {
+			assert.True(t, e.Field.Equal(emptyMap), "map entry %v: empty map must survive a missing key", e.Keys)
+		}
+	})
+
+	t.Run("non-empty state values null on a missing key", func(t *testing.T) {
+		state := &ProjectConfigResourceModel{}
+		probeList, diags := types.ListValueFrom(context.Background(), types.StringType, []string{"probe"})
+		require.False(t, diags.HasError())
+		probeMap, diags := types.MapValue(types.StringType, map[string]attr.Value{"probe": types.StringValue("v")})
+		require.False(t, diags.HasError())
+
+		for _, e := range stringEntries(state) {
+			*e.Field = types.StringValue("probe")
+		}
+		for _, e := range boolEntries(state) {
+			*e.Field = types.BoolValue(true)
+		}
+		for _, e := range int64Entries(state) {
+			*e.Field = types.Int64Value(7)
+		}
+		for _, e := range listEntries(state) {
+			*e.Field = probeList
+		}
+		for _, e := range mapEntries(state) {
+			*e.Field = probeMap
+		}
+
+		readSimpleFields(context.Background(), emptyServicesProject(), state)
+
+		for _, e := range stringEntries(state) {
+			if e.PreserveOnMissing {
+				assert.Equal(t, "probe", e.Field.ValueString(), "string entry %v: preserve-on-missing must keep state", e.Keys)
+			} else {
+				assert.True(t, e.Field.IsNull(), "string entry %v: non-empty value must null so removals surface as drift", e.Keys)
+			}
+		}
+		for _, e := range boolEntries(state) {
+			if e.PreserveOnMissing {
+				assert.True(t, e.Field.ValueBool(), "bool entry %v: preserve-on-missing must keep state", e.Keys)
+			} else {
+				assert.True(t, e.Field.IsNull(), "bool entry %v: value must null so removals surface as drift", e.Keys)
+			}
+		}
+		for _, e := range int64Entries(state) {
+			if e.PreserveOnMissing {
+				assert.EqualValues(t, 7, e.Field.ValueInt64(), "int64 entry %v: preserve-on-missing must keep state", e.Keys)
+			} else {
+				assert.True(t, e.Field.IsNull(), "int64 entry %v: non-zero value must null so removals surface as drift", e.Keys)
+			}
+		}
+		for _, e := range listEntries(state) {
+			if e.PreserveOnMissing {
+				assert.True(t, e.Field.Equal(probeList), "list entry %v: preserve-on-missing must keep state", e.Keys)
+			} else {
+				assert.True(t, e.Field.IsNull(), "list entry %v: non-empty list must null so removals surface as drift", e.Keys)
+			}
+		}
+		for _, e := range mapEntries(state) {
+			if e.PreserveOnMissing {
+				assert.True(t, e.Field.Equal(probeMap), "map entry %v: preserve-on-missing must keep state", e.Keys)
+			} else {
+				assert.True(t, e.Field.IsNull(), "map entry %v: non-empty map must null so removals surface as drift", e.Keys)
+			}
+		}
+	})
 }
