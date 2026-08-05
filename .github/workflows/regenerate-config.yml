@@ -178,6 +178,9 @@ jobs:
             if [ -f /tmp/probe-report.md ]; then
               cat /tmp/probe-report.md
               echo ""
+            elif [ "${APPLIED:-0}" -gt 0 ]; then
+              echo "> The live API probe did not produce a report (the probe step was skipped or failed). Run \`make probe ATTRS=...\` locally for the new attributes."
+              echo ""
             fi
             echo "## Codegen Output"
             echo '```'

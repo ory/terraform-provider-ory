@@ -358,11 +358,15 @@ The spec cannot be trusted alone: governs descriptions sometimes name config key
 |---|---|---|
 | `OK` / `EMPTY PRUNED` / `EMPTY OK` | Value echoed back; empty value pruned or round-trips | None — handled generically |
 | `TYPE MISMATCH` | The key stores a different JSON type than the schema declares | Add `bool_enum` or fix the type |
+| `VALUE CHANGED` | The API normalized or substituted the non-empty value | Verify the synthesized value is valid, then document the normalization or adjust the mapping |
 | `REPORTED ELSEWHERE` | The value came back under a different key | Add `read_path` |
 | `NOT REPORTED` | Accepted and never echoed | Verify the path with curl: wrong governs path (`patch_path_override` / `revision_property`), plan-gated, environment-constrained, or `preserve_on_missing` |
 | `DEFAULT SUBSTITUTED` | The empty value was replaced by a server default | Mention the default in the description |
 | `CANNOT CLEAR` | The empty write left the previous value in place | Mention it in the description; the server refuses to clear the key |
 | `WRITE REJECTED` | The synthesized probe value failed validation | Probe manually with a valid value |
+| `WRITE FAILED` | The request could not be created, sent, or read (for example, a network error or timeout) | Check the Console API endpoint and network, then retry |
+| `READ FAILED` | The successful PATCH response could not be parsed, or the expected service was absent | Inspect the response and verify that the service is available on the project |
+| `UNKNOWN ATTRIBUTE` | The name passed in `ATTRS` is absent from `mappings.yaml` | Correct the attribute name |
 
 The regenerate workflow runs this probe automatically for every attribute that auto-discovery appends after a client-go bump and embeds the report in the draft PR, so a lying spec is caught at review time instead of after a release.
 

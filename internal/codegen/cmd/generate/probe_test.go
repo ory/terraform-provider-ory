@@ -1,10 +1,16 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
+// cfg builds the nested identity-service config used by classification tests.
 func cfg(nested map[string]interface{}) map[string]interface{} {
 	return map[string]interface{}{"selfservice": map[string]interface{}{"methods": nested}}
 }
@@ -128,7 +134,7 @@ func TestProbeValues(t *testing.T) {
 
 	t.Run("duration attributes get a duration string", func(t *testing.T) {
 		nonEmpty, _ := probeValues(Attribute{Name: "session_lifespan", Type: typeString, PatchPath: "/services/identity/config/session/lifespan"})
-		if nonEmpty != "42m0s" {
+		if nonEmpty != probeDurationValue {
 			t.Errorf("nonEmpty = %v, want a Go duration string", nonEmpty)
 		}
 	})
@@ -142,4 +148,59 @@ func TestProbeValues(t *testing.T) {
 			t.Errorf("empty = %v, want the empty string", empty)
 		}
 	})
+}
+
+// TestFindSentinelSkipsSharedDurationValue verifies that a common duration
+// value cannot create a false REPORTED ELSEWHERE result.
+func TestFindSentinelSkipsSharedDurationValue(t *testing.T) {
+	config := map[string]interface{}{
+		"session": map[string]interface{}{"lifespan": probeDurationValue},
+	}
+
+	path, found := findSentinel(config, probeDurationValue, nil)
+	assert.False(t, found)
+	assert.Empty(t, path)
+}
+
+// TestCreateProbeProjectReportsUnusableResponse verifies that a successful
+// create status with an unusable body provides enough context for cleanup.
+func TestCreateProbeProjectReportsUnusableResponse(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		wantDetail string
+	}{
+		{
+			name:       "malformed JSON includes decode error",
+			body:       strings.Repeat("x", 220),
+			wantDetail: "decoding create-project response",
+		},
+		{
+			name:       "missing id is distinct from decode failure",
+			body:       `{"name":"tf-codegen-probe"}`,
+			wantDetail: "create-project response has no id",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+
+			_, err := createProbeProject(probeEnv{
+				ConsoleAPIURL:   srv.URL,
+				WorkspaceAPIKey: "test-workspace-key",
+				WorkspaceID:     "test-workspace-id",
+			})
+			require.Error(t, err)
+			assert.ErrorContains(t, err, tc.wantDetail)
+			assert.ErrorContains(t, err, truncate(tc.body, 200))
+			if tc.name == "malformed JSON includes decode error" {
+				assert.ErrorContains(t, err, "invalid character")
+			}
+		})
+	}
 }

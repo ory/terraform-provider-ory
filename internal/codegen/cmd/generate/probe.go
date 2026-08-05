@@ -30,6 +30,11 @@ import (
 	"time"
 )
 
+// probeDurationValue is shared by duration probe generation and sentinel
+// detection. Duration probes are deliberately not searched globally because
+// this value is reused and could otherwise match an unrelated attribute.
+const probeDurationValue = "42m0s"
+
 // sentinelFor returns a per-attribute sentinel value. A unique sentinel keeps
 // the reported-elsewhere search from matching leftovers of another
 // attribute's probe on the same project.
@@ -46,6 +51,8 @@ type probeEnv struct {
 	ProjectID       string // reuse an existing project instead of creating one
 }
 
+// probeEnvFromOS loads and validates the credentials and endpoints used by the
+// live probe.
 func probeEnvFromOS() (probeEnv, error) {
 	env := probeEnv{
 		ConsoleAPIURL:   strings.TrimRight(os.Getenv("ORY_CONSOLE_API_URL"), "/"),
@@ -91,7 +98,7 @@ func probeValues(a Attribute) (nonEmpty, empty interface{}) {
 		if strings.Contains(name, "lifespan") || strings.Contains(name, "ttl") ||
 			strings.Contains(name, "max_age") || strings.Contains(name, "period") ||
 			strings.Contains(name, "expiry") || strings.Contains(name, "extend") {
-			return "42m0s", nil
+			return probeDurationValue, nil
 		}
 		return sentinelFor(a), ""
 	}
@@ -159,6 +166,7 @@ func normalizeWritten(written interface{}) interface{} {
 	}
 }
 
+// probeValueEqual compares a synthesized Go value with its JSON-decoded form.
 func probeValueEqual(written, got interface{}) bool {
 	switch w := written.(type) {
 	case string:
@@ -198,6 +206,7 @@ func probeValueEqual(written, got interface{}) bool {
 	return false
 }
 
+// lookupNested traverses a decoded config object using the supplied key path.
 func lookupNested(config map[string]interface{}, keys []string) (interface{}, bool) {
 	var current interface{} = config
 	for _, k := range keys {
@@ -233,7 +242,7 @@ func findSentinel(node interface{}, written interface{}, path []string) (string,
 			sentinel = v
 		}
 	}
-	if sentinel == "" || sentinel == "42m0s" {
+	if sentinel == "" || sentinel == probeDurationValue {
 		return "", false // ambiguous values would produce false positives
 	}
 	switch n := node.(type) {
@@ -310,7 +319,8 @@ func probeAttributes(m Mappings, names []string, reportPath string) error {
 	report.WriteString("`OK` plus `EMPTY PRUNED`/`EMPTY OK` needs no action. Anything else needs a human: ")
 	report.WriteString("`TYPE MISMATCH` -> `bool_enum` or a type fix, `REPORTED ELSEWHERE` -> `read_path`, ")
 	report.WriteString("`NOT REPORTED` -> verify the path per CONTRIBUTING (wrong governs path, plan-gated, or `preserve_on_missing`), ")
-	report.WriteString("`DEFAULT SUBSTITUTED` -> mention the server default in the description, `WRITE REJECTED` -> probe manually with a valid value.\n\n")
+	report.WriteString("`VALUE CHANGED` / `DEFAULT SUBSTITUTED` / `CANNOT CLEAR` -> document or correct the behavior, ")
+	report.WriteString("and request/response failures -> inspect the detail and retry.\n\n")
 	report.WriteString("| Attribute | Sentinel write | Empty write |\n|---|---|---|\n")
 
 	for _, name := range names {
@@ -349,6 +359,7 @@ func probeAttributes(m Mappings, names []string, reportPath string) error {
 	return os.WriteFile(reportPath, []byte(report.String()), 0644)
 }
 
+// renderOutcome formats one probe classification for the markdown report.
 func renderOutcome(o *probeOutcome) string {
 	if o == nil {
 		return "skipped"
@@ -356,9 +367,10 @@ func renderOutcome(o *probeOutcome) string {
 	return fmt.Sprintf("**%s** — %s", o.Class, o.Detail)
 }
 
+// probeOneAttribute writes the non-empty and empty probe values and classifies
+// the authoritative PATCH responses.
 func probeOneAttribute(env probeEnv, projectID string, a Attribute) (*probeOutcome, *probeOutcome) {
-	_, keys := parseService(a.PatchPath)
-	service := strings.Split(strings.TrimPrefix(a.PatchPath, "/"), "/")[1]
+	service, _ := parseService(a.PatchPath)
 	readPath := a.ReadKeysPath()
 	_, readKeys := parseService(readPath)
 
@@ -399,10 +411,10 @@ func probeOneAttribute(env probeEnv, projectID string, a Attribute) (*probeOutco
 		return nonEmptyOutcome, failure
 	}
 	emptyResult := classifyEmptyProbe(config, readKeys, empty, nonEmpty)
-	_ = keys
 	return nonEmptyOutcome, &emptyResult
 }
 
+// truncate collapses whitespace and limits response text included in errors.
 func truncate(s string, n int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	if len(s) > n {
@@ -413,6 +425,8 @@ func truncate(s string, n int) string {
 
 // --- Raw console API helpers -------------------------------------------------
 
+// probeRequest sends an authenticated request to the Console API and returns
+// the response body and status without interpreting non-success statuses.
 func probeRequest(env probeEnv, method, path string, body interface{}) (string, int, error) {
 	var reader io.Reader
 	if body != nil {
@@ -441,6 +455,7 @@ func probeRequest(env probeEnv, method, path string, body interface{}) (string, 
 	return string(respBody), resp.StatusCode, nil
 }
 
+// createProbeProject creates the temporary project used for live probing.
 func createProbeProject(env probeEnv) (string, error) {
 	body, status, err := probeRequest(env, http.MethodPost, "/projects", map[string]string{
 		"name":         "tf-codegen-probe",
@@ -457,12 +472,16 @@ func createProbeProject(env probeEnv) (string, error) {
 	var parsed struct {
 		ID string `json:"id"`
 	}
-	if err := json.Unmarshal([]byte(body), &parsed); err != nil || parsed.ID == "" {
-		return "", fmt.Errorf("could not parse project id from create response")
+	if err := json.Unmarshal([]byte(body), &parsed); err != nil {
+		return "", fmt.Errorf("decoding create-project response (a project may have been created and leaked): %w: %s", err, truncate(body, 200))
+	}
+	if parsed.ID == "" {
+		return "", fmt.Errorf("create-project response has no id (a project may have been created and leaked): %s", truncate(body, 200))
 	}
 	return parsed.ID, nil
 }
 
+// deleteProbeProject removes a project that the probe created.
 func deleteProbeProject(env probeEnv, projectID string) error {
 	body, status, err := probeRequest(env, http.MethodDelete, "/projects/"+projectID, nil)
 	if err != nil {
@@ -474,6 +493,7 @@ func deleteProbeProject(env probeEnv, projectID string) error {
 	return nil
 }
 
+// patchProbeProject writes one probe value to a project config path.
 func patchProbeProject(env probeEnv, projectID, path string, value interface{}) (string, int, error) {
 	return probeRequest(env, http.MethodPatch, "/projects/"+projectID, []map[string]interface{}{
 		{"op": "replace", "path": path, "value": value},
