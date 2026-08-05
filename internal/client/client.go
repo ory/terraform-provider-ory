@@ -33,6 +33,13 @@ var ErrConsoleClientNotConfigured = errors.New("console API client not configure
 // can check with errors.Is.
 var ErrProjectNotAllowed = errors.New("project not allowed by allowed_project_ids")
 
+// ErrNotFound tags an API error whose HTTP response carried 404. The tag exists
+// to be narrow, not to detect more: the substring match in IsNotFound already
+// recognizes these 404s, but it also matches any error text that happens to
+// contain "404". A caller that must not act on a false positive — see
+// IsNotFoundStatus — checks the tag instead.
+var ErrNotFound = errors.New("resource not found")
+
 const (
 	// maxRetries is the maximum number of retry attempts for rate-limited requests.
 	maxRetries = 3
@@ -260,18 +267,48 @@ func wrapAPIError(err error, operation string) error {
 	return err
 }
 
+// notFoundIfStatus tags err with ErrNotFound when the response carried HTTP 404,
+// so callers can rely on IsNotFound regardless of the error body's shape.
+func notFoundIfStatus(resp *http.Response, err error) error {
+	if err == nil || resp == nil || resp.StatusCode != http.StatusNotFound {
+		return err
+	}
+	return fmt.Errorf("%w: %w", ErrNotFound, err)
+}
+
 // IsNotFound reports whether err is an Ory API 404 (Not Found) — e.g. a project
 // that has been purged. Callers use it to treat a missing resource as already
 // gone rather than a hard failure.
+//
+// The last resort is a substring match, which over-matches: any error text that
+// happens to contain "404" or "Not Found" passes, including a 500 whose request
+// ID contains those digits. That is tolerable where a false positive only makes
+// a teardown path give up early. It is not tolerable where the answer decides
+// whether to drop a live resource from state — use IsNotFoundStatus there.
 func IsNotFound(err error) bool {
 	if err == nil {
 		return false
+	}
+	if IsNotFoundStatus(err) {
+		return true
 	}
 	if extractDebugInfo(err).StatusCode == 404 {
 		return true
 	}
 	errStr := err.Error()
 	return strings.Contains(errStr, "404") || strings.Contains(errStr, "Not Found")
+}
+
+// IsNotFoundStatus reports whether err came from a response that carried HTTP
+// 404, and nothing weaker. Use it for the one decision a false positive would
+// ruin: removing a resource from Terraform state because it looks deleted. A
+// transient 500 must not drop a live resource, and IsNotFound's substring
+// fallback cannot make that promise.
+//
+// Only errors from a getter that calls notFoundIfStatus carry the tag, so a Read
+// that switches to this check needs its getter tagged first.
+func IsNotFoundStatus(err error) bool {
+	return errors.Is(err, ErrNotFound)
 }
 
 // truncateErrorBody trims a raw response body to maxErrorBodyBytes so error
@@ -1222,6 +1259,7 @@ func (c *OryClient) GetOAuth2Client(ctx context.Context, clientID string) (*ory.
 		return nil, fmt.Errorf("reading OAuth2 client: %w", err)
 	}
 	oauthClient, httpResp, err := c.projectClient.OAuth2API.GetOAuth2Client(ctx, clientID).Execute()
+	err = notFoundIfStatus(httpResp, err)
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
@@ -1553,6 +1591,7 @@ func (c *OryClient) GetTrustedOAuth2JwtGrantIssuer(ctx context.Context, id strin
 		return nil, fmt.Errorf("getting trusted JWT grant issuer: %w", err)
 	}
 	issuer, httpResp, err := c.projectClient.OAuth2API.GetTrustedOAuth2JwtGrantIssuer(ctx, id).Execute()
+	err = notFoundIfStatus(httpResp, err)
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
@@ -1617,6 +1656,7 @@ func (c *OryClient) GetOIDCDynamicClient(ctx context.Context, clientID string) (
 		return nil, fmt.Errorf("getting OIDC dynamic client: %w", err)
 	}
 	result, httpResp, err := c.projectClient.OAuth2API.GetOAuth2Client(ctx, clientID).Execute()
+	err = notFoundIfStatus(httpResp, err)
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}

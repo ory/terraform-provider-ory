@@ -341,11 +341,19 @@ func (r *OIDCDynamicClientResource) Read(ctx context.Context, req resource.ReadR
 		return
 	}
 
-	// Derive a request-scoped client, using resource-level credentials if provided
-	client := helpers.ResolveProjectClient(r.client, state.ProjectSlug, state.ProjectAPIKey)
+	// Derive a request-scoped client, using resource-level credentials if provided.
+	// Named projectClient (not client) so the client package stays reachable below.
+	projectClient := helpers.ResolveProjectClient(r.client, state.ProjectSlug, state.ProjectAPIKey)
 
-	oauthClient, err := client.GetOIDCDynamicClient(ctx, state.ClientID.ValueString())
+	oauthClient, err := projectClient.GetOIDCDynamicClient(ctx, state.ClientID.ValueString())
 	if err != nil {
+		if client.IsNotFoundStatus(err) {
+			// The client was deleted outside Terraform. Drop it from state so the
+			// next plan recreates it, instead of failing every plan until the
+			// operator runs `terraform state rm`.
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Error Reading OIDC Dynamic Client",
 			"Could not read OIDC dynamic client "+state.ClientID.ValueString()+": "+err.Error(),
