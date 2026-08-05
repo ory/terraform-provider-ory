@@ -339,6 +339,8 @@ func main() {
 	discoverApply := flag.Bool("discover-apply", false, "append YAML entries to mappings file and Go struct fields to resource.go for unmapped spec properties (requires --spec)")
 	resourceFile := flag.String("resource-file", "", "path to resource.go for -discover-apply struct field insertion (default: <out>/resource.go)")
 	strict := flag.Bool("strict", false, "fail if any spec properties are unmapped (use in CI to detect drift)")
+	probeAttrs := flag.String("probe-attributes", "", "comma-separated attribute names to probe against the live console API instead of generating (requires ORY_WORKSPACE_API_KEY plus ORY_WORKSPACE_ID or ORY_PROBE_PROJECT_ID)")
+	probeReport := flag.String("probe-report", "", "file to write the probe markdown report to (default: stdout)")
 	flag.Parse()
 
 	cleanMappingsPath := filepath.Clean(*mappingsPath)
@@ -441,6 +443,19 @@ func main() {
 				log.Fatalf("attribute %q: revision_property cannot be combined with bool_enum, write_only, storage_url_content, read_path, patch_path_override, or deprecated aliases", a.Name)
 			}
 		}
+	}
+
+	// Probe mode: write sentinel and empty values to the named attributes on a
+	// live project and classify what comes back, instead of generating code.
+	if *probeAttrs != "" {
+		names := strings.Split(*probeAttrs, ",")
+		for i := range names {
+			names[i] = strings.TrimSpace(names[i])
+		}
+		if err := probeAttributes(m, names, *probeReport); err != nil {
+			log.Fatalf("probing attributes: %v", err)
+		}
+		return
 	}
 
 	// Group by service. Revision properties are not part of any service config

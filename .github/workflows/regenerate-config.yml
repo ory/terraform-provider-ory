@@ -101,6 +101,31 @@ jobs:
               -out ./internal/resources/projectconfig/
           fi
 
+      - name: Probe auto-discovered attributes against the live API
+        id: probe
+        if: steps.apply.outputs.count != '0'
+        env:
+          ORY_CONSOLE_API_URL: ${{ secrets.ORY_CONSOLE_API_URL }}
+          ORY_WORKSPACE_API_KEY: ${{ secrets.ORY_WORKSPACE_API_KEY }}
+          ORY_WORKSPACE_ID: ${{ secrets.ORY_WORKSPACE_ID }}
+        run: |
+          # The spec cannot be trusted alone: governs paths are sometimes wrong
+          # and declared types sometimes differ from the wire format, both of
+          # which return HTTP 200 on write and surface later as perpetual plan
+          # diffs (issue #321). Write each newly-appended attribute to a
+          # throwaway project and classify what the API reports back, so the
+          # reviewer of the draft PR sees which attributes need a mapping flag.
+          # Report-only: a probe failure must not block regeneration.
+          NEW_ATTRS=$(git diff -- internal/codegen/mappings.yaml | grep -oP '^\+  - name: \K\S+' | paste -sd, -)
+          if [ -n "$NEW_ATTRS" ]; then
+            echo "Probing: $NEW_ATTRS"
+            go run ./internal/codegen/cmd/generate/ \
+              -mappings ./internal/codegen/mappings.yaml \
+              -spec ./internal/codegen/openapi.yaml \
+              -probe-attributes "$NEW_ATTRS" \
+              -probe-report /tmp/probe-report.md || echo "WARNING: probe failed; the draft PR will not include a probe report"
+          fi
+
       - name: Check for codegen changes (pre-format)
         id: codegen_diff
         run: |
@@ -143,7 +168,12 @@ jobs:
               echo "- [ ] Review truncated descriptions (some may need rewording)"
               echo "- [ ] Confirm types (bool/string/int64/list_string/map_string) are correct"
               echo "- [ ] Decide if any new attribute should be \`sensitive\` or \`skip_empty_read\`"
+              echo "- [ ] Review the live API probe report below; anything not OK/EMPTY PRUNED/EMPTY OK needs a mapping flag (\`bool_enum\`, \`read_path\`, \`patch_path_override\`, \`preserve_on_missing\`, \`revision_property\`) or a docs note"
               echo "- [ ] Add acceptance test coverage if applicable"
+              echo ""
+            fi
+            if [ -f /tmp/probe-report.md ]; then
+              cat /tmp/probe-report.md
               echo ""
             fi
             echo "## Codegen Output"

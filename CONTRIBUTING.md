@@ -348,6 +348,23 @@ That's it — the field appears in the Terraform schema, JSON Patch operations, 
 | `make download-spec` | Download the latest OpenAPI spec from `ory/client-go` |
 | `make discover` | Download spec and output YAML entries + Go struct fields for all unmapped properties |
 | `make check-coverage` | Download spec and fail if any properties are unmapped (used in CI to detect drift) |
+| `make probe ATTRS=a,b` | Write sentinel and empty values to the named attributes on a throwaway project and classify what the live API reports back (see below) |
+
+#### Probing attributes against the live API
+
+The spec cannot be trusted alone: governs descriptions sometimes name config keys the API never reads, declared types sometimes differ from the wire format (a bool spec property can store a string enum), and the API prunes or refuses some values. All of these return HTTP 200 on write and only surface later as perpetual plan diffs (issue #321). `make probe ATTRS=attr_one,attr_two` writes a sentinel value and the type's empty value to each attribute's patch path on a throwaway project (created and deleted automatically; set `ORY_PROBE_PROJECT_ID` to reuse one) and classifies the result:
+
+| Classification | Meaning | Action |
+|---|---|---|
+| `OK` / `EMPTY PRUNED` / `EMPTY OK` | Value echoed back; empty value pruned or round-trips | None — handled generically |
+| `TYPE MISMATCH` | The key stores a different JSON type than the schema declares | Add `bool_enum` or fix the type |
+| `REPORTED ELSEWHERE` | The value came back under a different key | Add `read_path` |
+| `NOT REPORTED` | Accepted and never echoed | Verify the path with curl: wrong governs path (`patch_path_override` / `revision_property`), plan-gated, environment-constrained, or `preserve_on_missing` |
+| `DEFAULT SUBSTITUTED` | The empty value was replaced by a server default | Mention the default in the description |
+| `CANNOT CLEAR` | The empty write left the previous value in place | Mention it in the description; the server refuses to clear the key |
+| `WRITE REJECTED` | The synthesized probe value failed validation | Probe manually with a valid value |
+
+The regenerate workflow runs this probe automatically for every attribute that auto-discovery appends after a client-go bump and embeds the report in the draft PR, so a lying spec is caught at review time instead of after a release.
 
 #### CI drift detection
 
