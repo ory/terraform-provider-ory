@@ -543,11 +543,11 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			DeprecationMessage: "Use courier_smtp_from_name instead. This attribute will be removed in a future major version.",
 		},
 		"selfservice_methods_totp_config_issuer": schema.StringAttribute{
-			Description: "TOTP issuer name shown in authenticator apps.",
+			Description: "TOTP issuer name shown in authenticator apps. An empty string is replaced by the project name, which the next plan reports as a change; omit the attribute instead of setting it empty.",
 			Optional:    true,
 		},
 		"totp_issuer": schema.StringAttribute{
-			Description:        "TOTP issuer name shown in authenticator apps.",
+			Description:        "TOTP issuer name shown in authenticator apps. An empty string is replaced by the project name, which the next plan reports as a change; omit the attribute instead of setting it empty.",
 			Optional:           true,
 			DeprecationMessage: "Use selfservice_methods_totp_config_issuer instead. This attribute will be removed in a future major version.",
 		},
@@ -911,7 +911,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 		},
 		"account_experience_enabled_locales": schema.ListAttribute{
-			Description: "Enabled locales for the hosted login UI.",
+			Description: "Enabled locales for the hosted login UI. An empty list is replaced by the server's default locale set, which the next plan reports as a change; omit the attribute instead of setting it empty.",
 			Optional:    true,
 			ElementType: types.StringType,
 		},
@@ -930,7 +930,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			ElementType: types.StringType,
 		},
 		"disable_account_experience_welcome_screen": schema.BoolAttribute{
-			Description: "Disable the account experience welcome screen at /ui/welcome.",
+			Description: "Disable the account experience welcome screen at /ui/welcome. Applied and read via the normalized project revision API.",
 			Optional:    true,
 		},
 		"enable_ax_v2": schema.BoolAttribute{
@@ -1036,7 +1036,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 		},
 		"selfservice_methods_captcha_config_allowed_domains": schema.ListAttribute{
-			Description: "Domains allowed for CAPTCHA verification.",
+			Description: "Domains allowed for CAPTCHA verification. Once set, the API refuses to clear this list: applying an empty list keeps the previous domains and the following plan reports the difference. Replace the entries instead of emptying them.",
 			Optional:    true,
 			ElementType: types.StringType,
 		},
@@ -1066,7 +1066,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 		},
 		"selfservice_methods_passkey_config_rp_origins": schema.ListAttribute{
-			Description: "Allowed origins for passkey relying party verification.",
+			Description: "Allowed origins for passkey relying party verification. An empty list is replaced by the server's default origins (derived from the project slug and custom domains), which the next plan reports as a change; omit the attribute instead of setting it empty.",
 			Optional:    true,
 			ElementType: types.StringType,
 		},
@@ -1076,7 +1076,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			ElementType: types.StringType,
 		},
 		"webauthn_rp_origins": schema.ListAttribute{
-			Description: "Allowed origins for WebAuthn relying party.",
+			Description: "Allowed origins for WebAuthn relying party. An empty list is replaced by the server's default origins (derived from the project slug and custom domains), which the next plan reports as a change; omit the attribute instead of setting it empty.",
 			Optional:    true,
 			ElementType: types.StringType,
 		},

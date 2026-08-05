@@ -863,6 +863,162 @@ func (c *OryClient) GetCachedProject(projectID string) *ory.Project {
 	return nil
 }
 
+// doConsoleRawRequest issues a request against a console API endpoint that is
+// missing from the generated client-go SDK, with the standard auth headers
+// and 429-aware retry. A non-nil payload is sent as JSON. The caller owns the
+// response body.
+func (c *OryClient) doConsoleRawRequest(ctx context.Context, operation, method, endpoint string, payload []byte) (*http.Response, error) {
+	return retryWithBackoff(ctx, operation, func() (*http.Response, error) {
+		// Build the request inside the retry closure so each attempt gets a
+		// fresh, unconsumed request body.
+		var body io.Reader
+		if payload != nil {
+			body = bytes.NewReader(payload)
+		}
+		req, reqErr := http.NewRequestWithContext(ctx, method, endpoint, body)
+		if reqErr != nil {
+			return nil, reqErr
+		}
+		req.Header.Set("Authorization", "Bearer "+c.config.WorkspaceAPIKey)
+		if payload != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		req.Header.Set("Accept", "application/json")
+		if c.config.UserAgent != "" {
+			req.Header.Set("User-Agent", c.config.UserAgent)
+		}
+		r, doErr := consoleHTTPClient.Do(req)
+		if doErr != nil {
+			return nil, doErr
+		}
+		if r.StatusCode == http.StatusTooManyRequests {
+			respBody, _ := io.ReadAll(r.Body)
+			_ = r.Body.Close()
+			return nil, fmt.Errorf("429 Too Many Requests: %s", strings.TrimSpace(string(respBody)))
+		}
+		return r, nil
+	})
+}
+
+// normalizedProjectResponse is the subset of the console API's normalized
+// project representation the provider needs: the current revision as a raw
+// map, since the generated SDK has no model for these endpoints.
+type normalizedProjectResponse struct {
+	CurrentRevision map[string]interface{} `json:"current_revision"`
+}
+
+// GetProjectNormalizedRevision fetches the project's current normalized
+// revision via GET /normalized/projects/{id}. Unlike the project document,
+// the normalized revision exposes top-level revision columns such as
+// disable_account_experience_welcome_screen, which no document read reports.
+// The endpoint is not part of the generated client-go SDK, so the request is
+// issued directly against the console API, mirroring SetProjectEnvironment.
+func (c *OryClient) GetProjectNormalizedRevision(ctx context.Context, projectID string) (map[string]interface{}, error) {
+	const operation = "getting normalized project revision"
+	if c.consoleClient == nil {
+		return nil, fmt.Errorf("%s: %w. Set workspace_api_key (ORY_WORKSPACE_API_KEY)",
+			operation, ErrConsoleClientNotConfigured)
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
+
+	endpoint := strings.TrimRight(c.config.ConsoleAPIURL, "/") + "/normalized/projects/" + url.PathEscape(projectID)
+	resp, err := c.doConsoleRawRequest(ctx, operation, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, wrapAPIError(err, operation)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading normalized project response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, wrapAPIError(fmt.Errorf("unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(body))), operation)
+	}
+
+	var parsed normalizedProjectResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("decoding normalized project response: %w", err)
+	}
+	if parsed.CurrentRevision == nil {
+		return nil, fmt.Errorf("%s: response has no current_revision", operation)
+	}
+	return parsed.CurrentRevision, nil
+}
+
+// PatchProjectRevision applies JSON Patch operations to the project's current
+// normalized revision via PATCH /normalized/projects/{id}/revision/{rev}. A
+// few settings are top-level revision columns with no key in the per-service
+// config documents (e.g. disable_account_experience_welcome_screen); both the
+// document-based PatchProject and the document-shaped
+// PATCH /projects/{id}/revision/{rev} accept writes to them with HTTP 200 and
+// silently discard them, because unknown document fields are dropped. Only
+// this normalized endpoint patches the revision columns themselves. Revision
+// columns carry over into revisions created by later document patches, so a
+// value set here persists.
+//
+// The endpoint is compare-and-swap on the revision ID and answers HTTP 409
+// when the supplied revision is stale, so each attempt resolves the current
+// revision first and conflicts are retried. It shares PatchProject's
+// per-project mutex, which leaves only out-of-band writers as a conflict
+// source. Like SetProjectEnvironment, the endpoint is missing from the
+// generated SDK and is called directly.
+func (c *OryClient) PatchProjectRevision(ctx context.Context, projectID string, patches []ory.JsonPatch) error {
+	const operation = "patching project revision"
+	if c.consoleClient == nil {
+		return fmt.Errorf("%s: %w. Set workspace_api_key (ORY_WORKSPACE_API_KEY)",
+			operation, ErrConsoleClientNotConfigured)
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return err
+	}
+	mu := c.patchProjectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
+
+	payload, err := json.Marshal(patches)
+	if err != nil {
+		return fmt.Errorf("encoding revision patch request: %w", err)
+	}
+
+	const maxAttempts = 3
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		revision, err := c.GetProjectNormalizedRevision(ctx, projectID)
+		if err != nil {
+			return err
+		}
+		revisionID, _ := revision["id"].(string)
+		if revisionID == "" {
+			return fmt.Errorf("%s: current revision has no id", operation)
+		}
+
+		endpoint := strings.TrimRight(c.config.ConsoleAPIURL, "/") + "/normalized/projects/" +
+			url.PathEscape(projectID) + "/revision/" + url.PathEscape(revisionID)
+		resp, err := c.doConsoleRawRequest(ctx, operation, http.MethodPatch, endpoint, payload)
+		if err != nil {
+			return wrapAPIError(err, operation)
+		}
+		body, readErr := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if readErr != nil {
+			return fmt.Errorf("reading revision patch response: %w", readErr)
+		}
+		if resp.StatusCode == http.StatusOK {
+			return nil
+		}
+		lastErr = fmt.Errorf("unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		if resp.StatusCode != http.StatusConflict {
+			return wrapAPIError(lastErr, operation)
+		}
+		// Stale revision: an out-of-band update created a newer one between
+		// resolving the ID and patching. Loop to re-resolve and retry.
+	}
+	return wrapAPIError(lastErr, operation)
+}
+
 // SetProjectEnvironment changes a project's environment tier (dev, stage, prod)
 // in place via the Console API's PUT /projects/{id}/environment endpoint — the
 // same call the Ory Console makes.
@@ -894,30 +1050,7 @@ func (c *OryClient) SetProjectEnvironment(ctx context.Context, projectID, enviro
 		return fmt.Errorf("encoding set-environment request: %w", err)
 	}
 
-	resp, err := retryWithBackoff(ctx, "setting project environment", func() (*http.Response, error) {
-		// Build the request inside the retry closure so each attempt gets a
-		// fresh, unconsumed request body.
-		req, reqErr := http.NewRequestWithContext(ctx, http.MethodPut, endpoint, bytes.NewReader(payload))
-		if reqErr != nil {
-			return nil, reqErr
-		}
-		req.Header.Set("Authorization", "Bearer "+c.config.WorkspaceAPIKey)
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Accept", "application/json")
-		if c.config.UserAgent != "" {
-			req.Header.Set("User-Agent", c.config.UserAgent)
-		}
-		r, doErr := consoleHTTPClient.Do(req)
-		if doErr != nil {
-			return nil, doErr
-		}
-		if r.StatusCode == http.StatusTooManyRequests {
-			body, _ := io.ReadAll(r.Body)
-			_ = r.Body.Close()
-			return nil, fmt.Errorf("429 Too Many Requests: %s", strings.TrimSpace(string(body)))
-		}
-		return r, nil
-	})
+	resp, err := c.doConsoleRawRequest(ctx, "setting project environment", http.MethodPut, endpoint, payload)
 	if err != nil {
 		return wrapAPIError(err, "setting project environment")
 	}

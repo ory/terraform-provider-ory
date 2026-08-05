@@ -1342,3 +1342,145 @@ func TestAccProjectConfigResource_oauth2Advanced(t *testing.T) {
 		},
 	})
 }
+
+func TestAccProjectConfigResource_emptyValuesAndEnumFlags(t *testing.T) {
+	// Issue #321: the API accepts empty lists/maps/strings and integer zero
+	// with HTTP 200 and prunes them from the stored config, so the keys never
+	// appear in any read. Nulling state on the missing keys produced a diff on
+	// every plan that no apply could settle. The PlanOnly steps are the
+	// regression proof.
+	//
+	// The two bools cover the other perpetual-diff classes:
+	// feature_flags_password_profile_registration_node_group is stored as the
+	// string enum "password"/"default" (a raw bool write silently lands as
+	// "default"), and enable_ax_v2 is reported under the config key "enabled".
+	createData := map[string]string{"PasswordProfileNodeGroup": "false", "EnableAXV2": "true"}
+	// End at the server defaults (flag true = "password", AX v2 off) so the
+	// shared acceptance project is left in its default state.
+	updateData := map[string]string{"PasswordProfileNodeGroup": "true", "EnableAXV2": "false"}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create — fails on unfixed code with "the refresh plan was not empty".
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/empty_values.tf.tmpl", createData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_allowed_top_level_claims.#", "0"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_webfinger_oidc_discovery_supported_claims.#", "0"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_webfinger_oidc_discovery_supported_scope.#", "0"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oidc_dynamic_client_registration_default_scope.#", "0"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_captcha_config_allowed_domains.#", "0"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_provider_headers.%", "0"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_prefix", ""),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_password_config_max_breaches", "0"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "feature_flags_password_profile_registration_node_group", "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "enable_ax_v2", "true"),
+				),
+			},
+			// Verify no perpetual diff after create
+			{
+				Config:             acctest.LoadTestConfig(t, "testdata/empty_values.tf.tmpl", createData),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			// Update flips both bools; the empty values stay put.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/empty_values.tf.tmpl", updateData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "feature_flags_password_profile_registration_node_group", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "enable_ax_v2", "false"),
+				),
+			},
+			// Verify no perpetual diff after update
+			{
+				Config:             acctest.LoadTestConfig(t, "testdata/empty_values.tf.tmpl", updateData),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			// ImportState — import only sets id/project_id; Read only refreshes
+			// fields that are non-null in state, so config attributes won't be
+			// populated until apply.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"oauth2_allowed_top_level_claims",
+					"oauth2_webfinger_oidc_discovery_supported_claims",
+					"oauth2_webfinger_oidc_discovery_supported_scope",
+					"oidc_dynamic_client_registration_default_scope",
+					"selfservice_methods_captcha_config_allowed_domains",
+					"oauth2_provider_headers",
+					"oauth2_token_prefix",
+					"selfservice_methods_password_config_max_breaches",
+					"feature_flags_password_profile_registration_node_group",
+					"enable_ax_v2",
+					"cors_enabled",
+					"selfservice_methods_password_config_min_password_length",
+					"smtp_connection_uri",
+				},
+			},
+		},
+	})
+}
+
+func TestAccProjectConfigResource_welcomeScreenFlag(t *testing.T) {
+	// disable_account_experience_welcome_screen is a top-level revision column
+	// with no config document key: document patches to the spec-derived path
+	// return HTTP 200 and are silently discarded. The provider writes it via
+	// PATCH /normalized/projects/{id}/revision/{rev} and reads it back from
+	// GET /normalized/projects/{id}. The PlanOnly steps prove the write is
+	// really stored and read back unchanged (a discarded write would refresh
+	// to the old value and show a diff), and the update step proves both
+	// values round-trip on a real project.
+	createData := map[string]string{"DisableWelcomeScreen": "true"}
+	// End at false, the server default, so the shared acceptance project is
+	// left in its default state.
+	updateData := map[string]string{"DisableWelcomeScreen": "false"}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/welcome_screen.tf.tmpl", createData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "disable_account_experience_welcome_screen", "true"),
+				),
+			},
+			{
+				Config:             acctest.LoadTestConfig(t, "testdata/welcome_screen.tf.tmpl", createData),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/welcome_screen.tf.tmpl", updateData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "disable_account_experience_welcome_screen", "false"),
+				),
+			},
+			{
+				Config:             acctest.LoadTestConfig(t, "testdata/welcome_screen.tf.tmpl", updateData),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			// ImportState — import only sets id/project_id; the flag has no read
+			// path, so it stays unset until the first apply.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"disable_account_experience_welcome_screen",
+					"cors_enabled",
+					"selfservice_methods_password_config_min_password_length",
+					"smtp_connection_uri",
+				},
+			},
+		},
+	})
+}

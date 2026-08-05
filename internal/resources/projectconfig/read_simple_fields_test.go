@@ -2,10 +2,16 @@ package projectconfig
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
+
+	"github.com/ory/terraform-provider-ory/internal/client"
+	"github.com/ory/terraform-provider-ory/internal/testutil"
 )
 
 // identityProject builds a project whose identity service config is the given map.
@@ -292,5 +298,239 @@ func TestReadSimpleFields_IgnoresMissingServiceBlock(t *testing.T) {
 
 	if got := state.SelfserviceMethodsOIDCConfigBaseRedirectURI.ValueString(); got != "https://iam.example.com" {
 		t.Errorf("base_redirect_uri = %q, want the state value preserved when the identity service block is absent", got)
+	}
+}
+
+// The API prunes empty values (empty string, empty list, empty map, integer
+// zero) from stored configs, so after applying such a value the key never
+// comes back. State holding that same empty value must keep it: nulling it
+// would produce a diff on every plan that no apply can settle (issue #321).
+func TestReadSimpleFields_PreservesEmptyValuesWhenAPIOmitsKey(t *testing.T) {
+	emptyList, diags := types.ListValueFrom(context.Background(), types.StringType, []string{})
+	if diags.HasError() {
+		t.Fatalf("building the empty state list: %v", diags)
+	}
+	emptyMap, diags := types.MapValue(types.StringType, map[string]attr.Value{})
+	if diags.HasError() {
+		t.Fatalf("building the empty state map: %v", diags)
+	}
+
+	state := &ProjectConfigResourceModel{
+		SelfserviceMethodsCaptchaConfigAllowedDomains: emptyList,
+		OAuth2ProviderHeaders:                         emptyMap,
+		OAuth2TokenPrefix:                             types.StringValue(""),
+		SelfserviceMethodsPasswordConfigMaxBreaches:   types.Int64Value(0),
+	}
+
+	project := &ory.Project{
+		Services: ory.ProjectServices{
+			Identity: &ory.ProjectServiceIdentity{Config: map[string]interface{}{}},
+			Oauth2:   &ory.ProjectServiceOAuth2{Config: map[string]interface{}{}},
+		},
+	}
+	readSimpleFields(context.Background(), project, state)
+
+	if !state.SelfserviceMethodsCaptchaConfigAllowedDomains.Equal(emptyList) {
+		t.Errorf("allowed_domains = %v, want the empty list preserved",
+			state.SelfserviceMethodsCaptchaConfigAllowedDomains)
+	}
+	if !state.OAuth2ProviderHeaders.Equal(emptyMap) {
+		t.Errorf("oauth2_provider_headers = %v, want the empty map preserved",
+			state.OAuth2ProviderHeaders)
+	}
+	if state.OAuth2TokenPrefix.IsNull() || state.OAuth2TokenPrefix.ValueString() != "" {
+		t.Errorf("oauth2_token_prefix = %v, want the empty string preserved",
+			state.OAuth2TokenPrefix)
+	}
+	if state.SelfserviceMethodsPasswordConfigMaxBreaches.IsNull() ||
+		state.SelfserviceMethodsPasswordConfigMaxBreaches.ValueInt64() != 0 {
+		t.Errorf("max_breaches = %v, want zero preserved",
+			state.SelfserviceMethodsPasswordConfigMaxBreaches)
+	}
+}
+
+// Companion to the preserve test: non-empty values must still null on absence,
+// or the empty-value fix would hide genuine out-of-band removals. String and
+// list nulling are covered above; this pins the int64 and map branches.
+func TestReadSimpleFields_NullsNonEmptyInt64AndMapWhenAPIOmitsKey(t *testing.T) {
+	headers, diags := types.MapValue(types.StringType, map[string]attr.Value{
+		"X-Custom": types.StringValue("value"),
+	})
+	if diags.HasError() {
+		t.Fatalf("building the state map: %v", diags)
+	}
+
+	state := &ProjectConfigResourceModel{
+		OAuth2ProviderHeaders:                       headers,
+		SelfserviceMethodsPasswordConfigMaxBreaches: types.Int64Value(3),
+	}
+
+	readSimpleFields(context.Background(), identityProject(map[string]interface{}{}), state)
+
+	if !state.OAuth2ProviderHeaders.Equal(types.MapNull(types.StringType)) {
+		t.Errorf("oauth2_provider_headers = %v, want a null map(string) so the removal surfaces as drift",
+			state.OAuth2ProviderHeaders)
+	}
+	if !state.SelfserviceMethodsPasswordConfigMaxBreaches.IsNull() {
+		t.Errorf("max_breaches = %v, want null so the removal surfaces as drift",
+			state.SelfserviceMethodsPasswordConfigMaxBreaches)
+	}
+}
+
+// feature_flags.password_profile_registration_node_group stores the string
+// enum "password"/"default" even though the spec types the revision property
+// as boolean. The read must map the enum back to the bool the schema exposes;
+// reading it as a bool fails the type assertion and nulled state on every
+// refresh (issue #321).
+func TestReadSimpleFields_MapsPasswordProfileNodeGroupEnumToBool(t *testing.T) {
+	for _, tc := range []struct {
+		reported string
+		want     bool
+	}{
+		{"password", true},
+		{"default", false},
+	} {
+		state := &ProjectConfigResourceModel{
+			FeatureFlagsPasswordProfileRegistrationNodeGroup: types.BoolValue(!tc.want),
+		}
+
+		readSimpleFields(context.Background(), identityProject(map[string]interface{}{
+			"feature_flags": map[string]interface{}{
+				"password_profile_registration_node_group": tc.reported,
+			},
+		}), state)
+
+		if state.FeatureFlagsPasswordProfileRegistrationNodeGroup.IsNull() ||
+			state.FeatureFlagsPasswordProfileRegistrationNodeGroup.ValueBool() != tc.want {
+			t.Errorf("password_profile_registration_node_group = %v for reported %q, want %v",
+				state.FeatureFlagsPasswordProfileRegistrationNodeGroup, tc.reported, tc.want)
+		}
+	}
+}
+
+// A bool_enum key the API omits entirely still nulls state: the flag is always
+// rendered by the API, so absence is genuine drift, not empty-value pruning.
+func TestReadSimpleFields_NullsPasswordProfileNodeGroupWhenAPIOmitsKey(t *testing.T) {
+	state := &ProjectConfigResourceModel{
+		FeatureFlagsPasswordProfileRegistrationNodeGroup: types.BoolValue(true),
+	}
+
+	readSimpleFields(context.Background(), identityProject(map[string]interface{}{}), state)
+
+	if !state.FeatureFlagsPasswordProfileRegistrationNodeGroup.IsNull() {
+		t.Errorf("password_profile_registration_node_group = %v, want null",
+			state.FeatureFlagsPasswordProfileRegistrationNodeGroup)
+	}
+}
+
+// enable_ax_v2 is reported under the account experience config key "enabled";
+// the spec-derived "enable_ax_v2" key does not exist. The read table must use
+// the real key or state nulls on every refresh.
+func TestReadSimpleFields_ReadsEnableAXV2FromEnabledKey(t *testing.T) {
+	state := &ProjectConfigResourceModel{
+		EnableAXV2: types.BoolValue(false),
+	}
+
+	project := &ory.Project{
+		Services: ory.ProjectServices{
+			AccountExperience: &ory.ProjectServiceAccountExperience{Config: map[string]interface{}{
+				"enabled": true,
+			}},
+		},
+	}
+	readSimpleFields(context.Background(), project, state)
+
+	if state.EnableAXV2.IsNull() || !state.EnableAXV2.ValueBool() {
+		t.Errorf("enable_ax_v2 = %v, want true read from the 'enabled' key", state.EnableAXV2)
+	}
+}
+
+// disable_account_experience_welcome_screen lives on the normalized revision,
+// not in the project document, so Read fetches it from
+// GET /normalized/projects/{id} — the only endpoint that reports it. Both
+// values must round-trip, and an untracked flag must not trigger the extra
+// API call at all.
+func TestReadRevisionProperties_ReadsWelcomeScreenFromNormalizedRevision(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		// Assert the route, not just that some request arrived: the document
+		// endpoints answer too, and reading the flag from one of them would
+		// always report it missing.
+		if r.Method != http.MethodGet || r.URL.Path != "/normalized/projects/proj-1" {
+			t.Errorf("request = %s %s, want GET /normalized/projects/proj-1", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"current_revision": {"id": "rev-1", "disable_account_experience_welcome_screen": true}}`))
+	}))
+	defer srv.Close()
+
+	oryClient, err := client.NewOryClient(client.OryClientConfig{
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   srv.URL,
+	})
+	if err != nil {
+		t.Fatalf("building client: %v", err)
+	}
+	r := &ProjectConfigResource{client: oryClient}
+
+	// Untracked: no API call.
+	state := &ProjectConfigResourceModel{}
+	r.readRevisionProperties(context.Background(), "proj-1", state)
+	if requests != 0 {
+		t.Fatalf("expected no normalized revision fetch for untracked state, got %d requests", requests)
+	}
+	if !state.DisableAccountExperienceWelcomeScreen.IsNull() {
+		t.Errorf("flag = %v, want null for untracked state", state.DisableAccountExperienceWelcomeScreen)
+	}
+
+	// Tracked: the reported value overwrites state (out-of-band enable shows
+	// as drift).
+	state = &ProjectConfigResourceModel{
+		DisableAccountExperienceWelcomeScreen: types.BoolValue(false),
+	}
+	r.readRevisionProperties(context.Background(), "proj-1", state)
+	if requests != 1 {
+		t.Fatalf("expected exactly one normalized revision fetch, got %d", requests)
+	}
+	if state.DisableAccountExperienceWelcomeScreen.IsNull() || !state.DisableAccountExperienceWelcomeScreen.ValueBool() {
+		t.Errorf("flag = %v, want true read from the normalized revision", state.DisableAccountExperienceWelcomeScreen)
+	}
+}
+
+// A failed normalized-revision fetch must keep the state value: nulling
+// tracked attributes on a transient read error would show phantom drift.
+func TestReadRevisionProperties_KeepsStateOnFetchError(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Method != http.MethodGet || r.URL.Path != "/normalized/projects/proj-1" {
+			t.Errorf("request = %s %s, want GET /normalized/projects/proj-1", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	oryClient, err := client.NewOryClient(client.OryClientConfig{
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   srv.URL,
+	})
+	if err != nil {
+		t.Fatalf("building client: %v", err)
+	}
+	r := &ProjectConfigResource{client: oryClient}
+
+	state := &ProjectConfigResourceModel{
+		DisableAccountExperienceWelcomeScreen: types.BoolValue(true),
+	}
+	r.readRevisionProperties(context.Background(), "proj-1", state)
+
+	if requests == 0 {
+		t.Error("expected a normalized revision fetch attempt for tracked state")
+	}
+	if state.DisableAccountExperienceWelcomeScreen.IsNull() || !state.DisableAccountExperienceWelcomeScreen.ValueBool() {
+		t.Errorf("flag = %v, want the state value kept when the fetch fails", state.DisableAccountExperienceWelcomeScreen)
 	}
 }

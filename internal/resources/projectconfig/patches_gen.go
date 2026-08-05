@@ -15,11 +15,20 @@ type StringPatchEntry struct {
 	Path       string
 }
 
+// BoolEnumValues holds the string values a config key stores in place of a
+// JSON bool. Sending a raw bool to such a key is accepted with HTTP 200 but
+// normalized by string comparison, so it silently stores the false variant.
+type BoolEnumValues struct {
+	True  string
+	False string
+}
+
 // BoolPatchEntry maps a bool field to its JSON Patch path.
 type BoolPatchEntry struct {
 	Field      *types.Bool
 	Deprecated *types.Bool // fallback when Field is null (deprecated alias)
 	Path       string
+	Enum       *BoolEnumValues // when set, patch the string enum instead of a raw bool
 }
 
 // Int64PatchEntry maps an int64 field to its JSON Patch path.
@@ -167,66 +176,78 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 // simpleBoolPatchEntries returns all simple bool attribute patch mappings.
 func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 	return []BoolPatchEntry{
-		{&plan.SessionCookiePersistent, nil, "/services/identity/config/session/cookie/persistent"},
-		{&plan.OAuth2MirrorTopLevelClaims, nil, "/services/oauth2/config/oauth2/mirror_top_level_claims"},
-		{&plan.OAuth2PKCEEnforced, nil, "/services/oauth2/config/oauth2/pkce/enforced"},
-		{&plan.OAuth2PKCEEnforcedForPublicClients, nil, "/services/oauth2/config/oauth2/pkce/enforced_for_public_clients"},
-		{&plan.OAuth2ServeCookiesSameSiteLegacyWorkaround, &plan.OAuth2CookiesSameSiteLegacyWorkaround, "/services/oauth2/config/serve/cookies/same_site_legacy_workaround"},
-		{&plan.SelfserviceMethodsPasswordEnabled, &plan.EnablePassword, "/services/identity/config/selfservice/methods/password/enabled"},
-		{&plan.SelfserviceMethodsCodeEnabled, &plan.EnableCode, "/services/identity/config/selfservice/methods/code/enabled"},
-		{&plan.SelfserviceMethodsCodeMFAEnabled, &plan.CodeMFAEnabled, "/services/identity/config/selfservice/methods/code/mfa_enabled"},
-		{&plan.SelfserviceMethodsOIDCEnabled, &plan.EnableOIDC, "/services/identity/config/selfservice/methods/oidc/enabled"},
-		{&plan.SelfserviceMethodsOIDCEnableAutoLinkPolicy, &plan.EnableOIDCAutoLinkPolicy, "/services/identity/config/selfservice/methods/oidc/enable_auto_link_policy"},
-		{&plan.SelfserviceMethodsTOTPEnabled, &plan.EnableTOTP, "/services/identity/config/selfservice/methods/totp/enabled"},
-		{&plan.SelfserviceMethodsWebAuthnEnabled, &plan.EnableWebAuthn, "/services/identity/config/selfservice/methods/webauthn/enabled"},
-		{&plan.SelfserviceMethodsPasskeyEnabled, &plan.EnablePasskey, "/services/identity/config/selfservice/methods/passkey/enabled"},
-		{&plan.SelfserviceMethodsLookupSecretEnabled, &plan.EnableLookupSecret, "/services/identity/config/selfservice/methods/lookup_secret/enabled"},
-		{&plan.SelfserviceMethodsProfileEnabled, &plan.EnableProfile, "/services/identity/config/selfservice/methods/profile/enabled"},
-		{&plan.SelfserviceMethodsCodeConfigMissingCredentialFallbackEnabled, &plan.CodeMissingCredentialFallbackEnabled, "/services/identity/config/selfservice/methods/code/config/missing_credential_fallback_enabled"},
-		{&plan.SelfserviceMethodsPasswordConfigHaveIBeenPwnedEnabled, &plan.PasswordCheckHaveIBeenPwned, "/services/identity/config/selfservice/methods/password/config/haveibeenpwned_enabled"},
-		{&plan.SelfserviceMethodsPasswordConfigIdentifierSimilarityCheckEnabled, &plan.PasswordIdentifierSimilarity, "/services/identity/config/selfservice/methods/password/config/identifier_similarity_check_enabled"},
-		{&plan.SelfserviceFlowsRecoveryEnabled, &plan.EnableRecovery, "/services/identity/config/selfservice/flows/recovery/enabled"},
-		{&plan.SelfserviceFlowsVerificationEnabled, &plan.EnableVerification, "/services/identity/config/selfservice/flows/verification/enabled"},
-		{&plan.SelfserviceFlowsRegistrationEnabled, &plan.EnableRegistration, "/services/identity/config/selfservice/flows/registration/enabled"},
-		{&plan.SelfserviceFlowsVerificationNotifyUnknownRecipients, &plan.VerificationNotifyUnknownRecipients, "/services/identity/config/selfservice/flows/verification/notify_unknown_recipients"},
-		{&plan.SelfserviceMethodsWebAuthnConfigPasswordless, &plan.WebAuthnPasswordless, "/services/identity/config/selfservice/methods/webauthn/config/passwordless"},
-		{&plan.OAuth2ClientCredentialsDefaultGrantAllowedScope, nil, "/services/oauth2/config/oauth2/client_credentials/default_grant_allowed_scope"},
-		{&plan.OAuth2ExcludeNotBeforeClaim, nil, "/services/oauth2/config/oauth2/exclude_not_before_claim"},
-		{&plan.OAuth2GrantJWTIATOptional, nil, "/services/oauth2/config/oauth2/grant/jwt/iat_optional"},
-		{&plan.OAuth2GrantJWTJTIOptional, nil, "/services/oauth2/config/oauth2/grant/jwt/jti_optional"},
-		{&plan.OIDCDynamicClientRegistrationEnabled, nil, "/services/oauth2/config/oidc/dynamic_client_registration/enabled"},
-		{&plan.FeatureFlagsCacheableSessions, nil, "/services/identity/config/feature_flags/cacheable_sessions"},
-		{&plan.FeatureFlagsChooseRecoveryAddress, nil, "/services/identity/config/feature_flags/choose_recovery_address"},
-		{&plan.FeatureFlagsFasterSessionExtend, nil, "/services/identity/config/feature_flags/faster_session_extend"},
-		{&plan.FeatureFlagsLegacyContinueWithVerificationUI, nil, "/services/identity/config/feature_flags/legacy_continue_with_verification_ui"},
-		{&plan.FeatureFlagsLegacyOIDCRegistrationNodeGroup, nil, "/services/identity/config/feature_flags/legacy_oidc_registration_node_group"},
-		{&plan.FeatureFlagsLegacyRequireVerifiedLoginError, nil, "/services/identity/config/feature_flags/legacy_require_verified_login_error"},
-		{&plan.FeatureFlagsUseContinueWithTransitions, nil, "/services/identity/config/feature_flags/use_continue_with_transitions"},
-		{&plan.SelfserviceFlowsRecoveryNotifyUnknownRecipients, nil, "/services/identity/config/selfservice/flows/recovery/notify_unknown_recipients"},
-		{&plan.SelfserviceFlowsRegistrationEnableLegacyOneStep, nil, "/services/identity/config/selfservice/flows/registration/enable_legacy_one_step"},
-		{&plan.SelfserviceFlowsRegistrationLoginHints, nil, "/services/identity/config/selfservice/flows/registration/login_hints"},
-		{&plan.SelfserviceMethodsCodePasswordlessEnabled, nil, "/services/identity/config/selfservice/methods/code/passwordless_enabled"},
-		{&plan.SelfserviceMethodsCodePasswordlessLoginFallbackEnabled, nil, "/services/identity/config/selfservice/methods/code/passwordless_login_fallback_enabled"},
-		{&plan.SelfserviceMethodsLinkEnabled, nil, "/services/identity/config/selfservice/methods/link/enabled"},
-		{&plan.SelfserviceMethodsPasswordConfigIgnoreNetworkErrors, nil, "/services/identity/config/selfservice/methods/password/config/ignore_network_errors"},
-		{&plan.SelfserviceMethodsSAMLEnabled, nil, "/services/identity/config/selfservice/methods/saml/enabled"},
-		{&plan.DisableAccountExperienceWelcomeScreen, nil, "/services/account_experience/config/disable_welcome_screen"},
-		{&plan.EnableAXV2, nil, "/services/account_experience/config/enable_ax_v2"},
-		{&plan.FeatureFlagsPasswordProfileRegistrationNodeGroup, nil, "/services/identity/config/feature_flags/password_profile_registration_node_group"},
-		{&plan.OAuth2ProviderOverrideReturnTo, nil, "/services/identity/config/oauth2_provider/override_return_to"},
-		{&plan.SecurityAccountEnumerationMitigate, nil, "/services/identity/config/security/account_enumeration/mitigate"},
-		{&plan.SelfserviceMethodsCaptchaConfigBYO, nil, "/services/identity/config/selfservice/methods/captcha/config/byo"},
-		{&plan.SelfserviceMethodsCaptchaConfigLegacyInjectNode, nil, "/services/identity/config/selfservice/methods/captcha/config/legacy_inject_node"},
-		{&plan.SelfserviceMethodsCaptchaEnabled, nil, "/services/identity/config/selfservice/methods/captcha/enabled"},
-		{&plan.OAuth2PreserveExtClaims, nil, "/services/oauth2/config/oauth2/preserve_ext_claims"},
-		{&plan.AccountExperienceHideOryBranding, nil, "/services/account_experience/config/hide_ory_branding"},
-		{&plan.AccountExperienceHideRegistrationLink, nil, "/services/account_experience/config/hide_registration_link"},
-		{&plan.SelfserviceMethodsDeviceauthnEnabled, nil, "/services/identity/config/selfservice/methods/deviceauthn/enabled"},
-		{&plan.SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/insecure_allow_relaxed_attestation"},
-		{&plan.OAuth2GrantJWTOmitAssertionAudience, nil, "/services/oauth2/config/oauth2/grant/jwt/omit_assertion_audience"},
-		{&plan.FeatureFlagsRefreshLoginChooseAddress, nil, "/services/identity/config/feature_flags/refresh_login_choose_address"},
-		{&plan.SelfserviceMethodsDeviceauthnConfigFirstFactor, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/first_factor"},
-		{&plan.SelfserviceMethodsDeviceauthnConfigIosBiometricFirstFactor, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/ios_biometric_first_factor"},
+		{&plan.SessionCookiePersistent, nil, "/services/identity/config/session/cookie/persistent", nil},
+		{&plan.OAuth2MirrorTopLevelClaims, nil, "/services/oauth2/config/oauth2/mirror_top_level_claims", nil},
+		{&plan.OAuth2PKCEEnforced, nil, "/services/oauth2/config/oauth2/pkce/enforced", nil},
+		{&plan.OAuth2PKCEEnforcedForPublicClients, nil, "/services/oauth2/config/oauth2/pkce/enforced_for_public_clients", nil},
+		{&plan.OAuth2ServeCookiesSameSiteLegacyWorkaround, &plan.OAuth2CookiesSameSiteLegacyWorkaround, "/services/oauth2/config/serve/cookies/same_site_legacy_workaround", nil},
+		{&plan.SelfserviceMethodsPasswordEnabled, &plan.EnablePassword, "/services/identity/config/selfservice/methods/password/enabled", nil},
+		{&plan.SelfserviceMethodsCodeEnabled, &plan.EnableCode, "/services/identity/config/selfservice/methods/code/enabled", nil},
+		{&plan.SelfserviceMethodsCodeMFAEnabled, &plan.CodeMFAEnabled, "/services/identity/config/selfservice/methods/code/mfa_enabled", nil},
+		{&plan.SelfserviceMethodsOIDCEnabled, &plan.EnableOIDC, "/services/identity/config/selfservice/methods/oidc/enabled", nil},
+		{&plan.SelfserviceMethodsOIDCEnableAutoLinkPolicy, &plan.EnableOIDCAutoLinkPolicy, "/services/identity/config/selfservice/methods/oidc/enable_auto_link_policy", nil},
+		{&plan.SelfserviceMethodsTOTPEnabled, &plan.EnableTOTP, "/services/identity/config/selfservice/methods/totp/enabled", nil},
+		{&plan.SelfserviceMethodsWebAuthnEnabled, &plan.EnableWebAuthn, "/services/identity/config/selfservice/methods/webauthn/enabled", nil},
+		{&plan.SelfserviceMethodsPasskeyEnabled, &plan.EnablePasskey, "/services/identity/config/selfservice/methods/passkey/enabled", nil},
+		{&plan.SelfserviceMethodsLookupSecretEnabled, &plan.EnableLookupSecret, "/services/identity/config/selfservice/methods/lookup_secret/enabled", nil},
+		{&plan.SelfserviceMethodsProfileEnabled, &plan.EnableProfile, "/services/identity/config/selfservice/methods/profile/enabled", nil},
+		{&plan.SelfserviceMethodsCodeConfigMissingCredentialFallbackEnabled, &plan.CodeMissingCredentialFallbackEnabled, "/services/identity/config/selfservice/methods/code/config/missing_credential_fallback_enabled", nil},
+		{&plan.SelfserviceMethodsPasswordConfigHaveIBeenPwnedEnabled, &plan.PasswordCheckHaveIBeenPwned, "/services/identity/config/selfservice/methods/password/config/haveibeenpwned_enabled", nil},
+		{&plan.SelfserviceMethodsPasswordConfigIdentifierSimilarityCheckEnabled, &plan.PasswordIdentifierSimilarity, "/services/identity/config/selfservice/methods/password/config/identifier_similarity_check_enabled", nil},
+		{&plan.SelfserviceFlowsRecoveryEnabled, &plan.EnableRecovery, "/services/identity/config/selfservice/flows/recovery/enabled", nil},
+		{&plan.SelfserviceFlowsVerificationEnabled, &plan.EnableVerification, "/services/identity/config/selfservice/flows/verification/enabled", nil},
+		{&plan.SelfserviceFlowsRegistrationEnabled, &plan.EnableRegistration, "/services/identity/config/selfservice/flows/registration/enabled", nil},
+		{&plan.SelfserviceFlowsVerificationNotifyUnknownRecipients, &plan.VerificationNotifyUnknownRecipients, "/services/identity/config/selfservice/flows/verification/notify_unknown_recipients", nil},
+		{&plan.SelfserviceMethodsWebAuthnConfigPasswordless, &plan.WebAuthnPasswordless, "/services/identity/config/selfservice/methods/webauthn/config/passwordless", nil},
+		{&plan.OAuth2ClientCredentialsDefaultGrantAllowedScope, nil, "/services/oauth2/config/oauth2/client_credentials/default_grant_allowed_scope", nil},
+		{&plan.OAuth2ExcludeNotBeforeClaim, nil, "/services/oauth2/config/oauth2/exclude_not_before_claim", nil},
+		{&plan.OAuth2GrantJWTIATOptional, nil, "/services/oauth2/config/oauth2/grant/jwt/iat_optional", nil},
+		{&plan.OAuth2GrantJWTJTIOptional, nil, "/services/oauth2/config/oauth2/grant/jwt/jti_optional", nil},
+		{&plan.OIDCDynamicClientRegistrationEnabled, nil, "/services/oauth2/config/oidc/dynamic_client_registration/enabled", nil},
+		{&plan.FeatureFlagsCacheableSessions, nil, "/services/identity/config/feature_flags/cacheable_sessions", nil},
+		{&plan.FeatureFlagsChooseRecoveryAddress, nil, "/services/identity/config/feature_flags/choose_recovery_address", nil},
+		{&plan.FeatureFlagsFasterSessionExtend, nil, "/services/identity/config/feature_flags/faster_session_extend", nil},
+		{&plan.FeatureFlagsLegacyContinueWithVerificationUI, nil, "/services/identity/config/feature_flags/legacy_continue_with_verification_ui", nil},
+		{&plan.FeatureFlagsLegacyOIDCRegistrationNodeGroup, nil, "/services/identity/config/feature_flags/legacy_oidc_registration_node_group", nil},
+		{&plan.FeatureFlagsLegacyRequireVerifiedLoginError, nil, "/services/identity/config/feature_flags/legacy_require_verified_login_error", nil},
+		{&plan.FeatureFlagsUseContinueWithTransitions, nil, "/services/identity/config/feature_flags/use_continue_with_transitions", nil},
+		{&plan.SelfserviceFlowsRecoveryNotifyUnknownRecipients, nil, "/services/identity/config/selfservice/flows/recovery/notify_unknown_recipients", nil},
+		{&plan.SelfserviceFlowsRegistrationEnableLegacyOneStep, nil, "/services/identity/config/selfservice/flows/registration/enable_legacy_one_step", nil},
+		{&plan.SelfserviceFlowsRegistrationLoginHints, nil, "/services/identity/config/selfservice/flows/registration/login_hints", nil},
+		{&plan.SelfserviceMethodsCodePasswordlessEnabled, nil, "/services/identity/config/selfservice/methods/code/passwordless_enabled", nil},
+		{&plan.SelfserviceMethodsCodePasswordlessLoginFallbackEnabled, nil, "/services/identity/config/selfservice/methods/code/passwordless_login_fallback_enabled", nil},
+		{&plan.SelfserviceMethodsLinkEnabled, nil, "/services/identity/config/selfservice/methods/link/enabled", nil},
+		{&plan.SelfserviceMethodsPasswordConfigIgnoreNetworkErrors, nil, "/services/identity/config/selfservice/methods/password/config/ignore_network_errors", nil},
+		{&plan.SelfserviceMethodsSAMLEnabled, nil, "/services/identity/config/selfservice/methods/saml/enabled", nil},
+		{&plan.EnableAXV2, nil, "/services/account_experience/config/enabled", nil},
+		{&plan.FeatureFlagsPasswordProfileRegistrationNodeGroup, nil, "/services/identity/config/feature_flags/password_profile_registration_node_group", &BoolEnumValues{"password", "default"}},
+		{&plan.OAuth2ProviderOverrideReturnTo, nil, "/services/identity/config/oauth2_provider/override_return_to", nil},
+		{&plan.SecurityAccountEnumerationMitigate, nil, "/services/identity/config/security/account_enumeration/mitigate", nil},
+		{&plan.SelfserviceMethodsCaptchaConfigBYO, nil, "/services/identity/config/selfservice/methods/captcha/config/byo", nil},
+		{&plan.SelfserviceMethodsCaptchaConfigLegacyInjectNode, nil, "/services/identity/config/selfservice/methods/captcha/config/legacy_inject_node", nil},
+		{&plan.SelfserviceMethodsCaptchaEnabled, nil, "/services/identity/config/selfservice/methods/captcha/enabled", nil},
+		{&plan.OAuth2PreserveExtClaims, nil, "/services/oauth2/config/oauth2/preserve_ext_claims", nil},
+		{&plan.AccountExperienceHideOryBranding, nil, "/services/account_experience/config/hide_ory_branding", nil},
+		{&plan.AccountExperienceHideRegistrationLink, nil, "/services/account_experience/config/hide_registration_link", nil},
+		{&plan.SelfserviceMethodsDeviceauthnEnabled, nil, "/services/identity/config/selfservice/methods/deviceauthn/enabled", nil},
+		{&plan.SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/insecure_allow_relaxed_attestation", nil},
+		{&plan.OAuth2GrantJWTOmitAssertionAudience, nil, "/services/oauth2/config/oauth2/grant/jwt/omit_assertion_audience", nil},
+		{&plan.FeatureFlagsRefreshLoginChooseAddress, nil, "/services/identity/config/feature_flags/refresh_login_choose_address", nil},
+		{&plan.SelfserviceMethodsDeviceauthnConfigFirstFactor, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/first_factor", nil},
+		{&plan.SelfserviceMethodsDeviceauthnConfigIosBiometricFirstFactor, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/ios_biometric_first_factor", nil},
+	}
+}
+
+// revisionBoolPatchEntries returns bool attributes that are top-level
+// normalized revision columns. They have no key in any service config
+// document — a document patch is accepted with HTTP 200 and silently
+// discarded — so they are applied via the normalized revision endpoint
+// (client.PatchProjectRevision), with the op path being the normalized
+// property name. Reads go through revisionBoolReadEntries against the
+// normalized revision, not the project document.
+func revisionBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
+	return []BoolPatchEntry{
+		{&plan.DisableAccountExperienceWelcomeScreen, nil, "/disable_account_experience_welcome_screen", nil},
 	}
 }
 

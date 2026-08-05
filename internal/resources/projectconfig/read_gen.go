@@ -43,6 +43,7 @@ type BoolReadEntry struct {
 	Deprecated        *types.Bool // fallback: used only when the primary Field is null in state
 	Keys              []string
 	PreserveOnMissing bool
+	Enum              *BoolEnumValues // when set, the key stores a string enum; map it back by comparing to Enum.True
 }
 
 // Int64ReadEntry maps an int64 state field to its config read path.
@@ -69,7 +70,24 @@ type MapStringReadEntry struct {
 	PreserveOnMissing bool
 }
 
+// revisionBoolReadEntries returns bool attributes read from the normalized
+// project revision (client.GetProjectNormalizedRevision) instead of the
+// project document, keyed by their normalized property name. See
+// readRevisionProperties in resource.go.
+func revisionBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry {
+	return []BoolReadEntry{
+		{&state.DisableAccountExperienceWelcomeScreen, nil, []string{"disable_account_experience_welcome_screen"}, false, nil},
+	}
+}
+
 // readSimpleFields reads all simple attributes from the API response into state.
+//
+// Missing-key semantics: the API prunes empty values (empty string, empty
+// list, empty map, integer zero) from stored configs, so a key the response
+// omits is indistinguishable from an applied empty value. When state already
+// holds the empty value for the type, the omission is exactly what the write
+// produced and the value is kept. Any other state value is nulled so genuine
+// out-of-band removals still surface as drift.
 func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectConfigResourceModel) {
 	if project.Services.AccountExperience != nil {
 		accountExperienceConfig := project.Services.AccountExperience.Config
@@ -86,7 +104,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 					if !e.SkipEmpty || v != "" {
 						*target = types.StringValue(v)
 					}
-				} else if !e.PreserveOnMissing {
+				} else if !e.PreserveOnMissing && target.ValueString() != "" {
 					*target = types.StringNull()
 				}
 			}
@@ -97,7 +115,13 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				target = e.Deprecated
 			}
 			if !target.IsNull() {
-				if v, ok := getNestedBool(accountExperienceConfig, e.Keys...); ok {
+				if e.Enum != nil {
+					if v, ok := getNestedString(accountExperienceConfig, e.Keys...); ok {
+						*target = types.BoolValue(v == e.Enum.True)
+					} else if !e.PreserveOnMissing {
+						*target = types.BoolNull()
+					}
+				} else if v, ok := getNestedBool(accountExperienceConfig, e.Keys...); ok {
 					*target = types.BoolValue(v)
 				} else if !e.PreserveOnMissing {
 					*target = types.BoolNull()
@@ -129,7 +153,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 							}
 						}
 					}
-				} else if !e.PreserveOnMissing {
+				} else if !e.PreserveOnMissing && len(target.Elements()) > 0 {
 					*target = types.ListNull(types.StringType)
 				}
 			}
@@ -159,7 +183,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 							}
 						}
 					}
-				} else if !e.PreserveOnMissing {
+				} else if !e.PreserveOnMissing && len(target.Elements()) > 0 {
 					*target = types.MapNull(types.StringType)
 				}
 			}
@@ -180,7 +204,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 					if !e.SkipEmpty || v != "" {
 						*target = types.StringValue(v)
 					}
-				} else if !e.PreserveOnMissing {
+				} else if !e.PreserveOnMissing && target.ValueString() != "" {
 					*target = types.StringNull()
 				}
 			}
@@ -191,7 +215,13 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				target = e.Deprecated
 			}
 			if !target.IsNull() {
-				if v, ok := getNestedBool(identityConfig, e.Keys...); ok {
+				if e.Enum != nil {
+					if v, ok := getNestedString(identityConfig, e.Keys...); ok {
+						*target = types.BoolValue(v == e.Enum.True)
+					} else if !e.PreserveOnMissing {
+						*target = types.BoolNull()
+					}
+				} else if v, ok := getNestedBool(identityConfig, e.Keys...); ok {
 					*target = types.BoolValue(v)
 				} else if !e.PreserveOnMissing {
 					*target = types.BoolNull()
@@ -208,7 +238,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 					if v == math.Trunc(v) {
 						*target = types.Int64Value(int64(v))
 					}
-				} else if !e.PreserveOnMissing {
+				} else if !e.PreserveOnMissing && target.ValueInt64() != 0 {
 					*target = types.Int64Null()
 				}
 			}
@@ -238,7 +268,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 							}
 						}
 					}
-				} else if !e.PreserveOnMissing {
+				} else if !e.PreserveOnMissing && len(target.Elements()) > 0 {
 					*target = types.ListNull(types.StringType)
 				}
 			}
@@ -268,7 +298,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 							}
 						}
 					}
-				} else if !e.PreserveOnMissing {
+				} else if !e.PreserveOnMissing && len(target.Elements()) > 0 {
 					*target = types.MapNull(types.StringType)
 				}
 			}
@@ -289,7 +319,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 					if !e.SkipEmpty || v != "" {
 						*target = types.StringValue(v)
 					}
-				} else if !e.PreserveOnMissing {
+				} else if !e.PreserveOnMissing && target.ValueString() != "" {
 					*target = types.StringNull()
 				}
 			}
@@ -300,7 +330,13 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				target = e.Deprecated
 			}
 			if !target.IsNull() {
-				if v, ok := getNestedBool(oauth2Config, e.Keys...); ok {
+				if e.Enum != nil {
+					if v, ok := getNestedString(oauth2Config, e.Keys...); ok {
+						*target = types.BoolValue(v == e.Enum.True)
+					} else if !e.PreserveOnMissing {
+						*target = types.BoolNull()
+					}
+				} else if v, ok := getNestedBool(oauth2Config, e.Keys...); ok {
 					*target = types.BoolValue(v)
 				} else if !e.PreserveOnMissing {
 					*target = types.BoolNull()
@@ -317,7 +353,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 					if v == math.Trunc(v) {
 						*target = types.Int64Value(int64(v))
 					}
-				} else if !e.PreserveOnMissing {
+				} else if !e.PreserveOnMissing && target.ValueInt64() != 0 {
 					*target = types.Int64Null()
 				}
 			}
@@ -347,7 +383,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 							}
 						}
 					}
-				} else if !e.PreserveOnMissing {
+				} else if !e.PreserveOnMissing && len(target.Elements()) > 0 {
 					*target = types.ListNull(types.StringType)
 				}
 			}
@@ -368,7 +404,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 					if !e.SkipEmpty || v != "" {
 						*target = types.StringValue(v)
 					}
-				} else if !e.PreserveOnMissing {
+				} else if !e.PreserveOnMissing && target.ValueString() != "" {
 					*target = types.StringNull()
 				}
 			}
@@ -398,7 +434,7 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 							}
 						}
 					}
-				} else if !e.PreserveOnMissing {
+				} else if !e.PreserveOnMissing && len(target.Elements()) > 0 {
 					*target = types.ListNull(types.StringType)
 				}
 			}
@@ -418,10 +454,9 @@ func account_experienceStringReadEntries(state *ProjectConfigResourceModel) []St
 
 func account_experienceBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry {
 	return []BoolReadEntry{
-		{&state.DisableAccountExperienceWelcomeScreen, nil, []string{"disable_welcome_screen"}, false},
-		{&state.EnableAXV2, nil, []string{"enable_ax_v2"}, false},
-		{&state.AccountExperienceHideOryBranding, nil, []string{"hide_ory_branding"}, false},
-		{&state.AccountExperienceHideRegistrationLink, nil, []string{"hide_registration_link"}, false},
+		{&state.EnableAXV2, nil, []string{"enabled"}, false, nil},
+		{&state.AccountExperienceHideOryBranding, nil, []string{"hide_ory_branding"}, false, nil},
+		{&state.AccountExperienceHideRegistrationLink, nil, []string{"hide_registration_link"}, false, nil},
 	}
 }
 
@@ -518,51 +553,51 @@ func identityStringReadEntries(state *ProjectConfigResourceModel) []StringReadEn
 
 func identityBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry {
 	return []BoolReadEntry{
-		{&state.SessionCookiePersistent, nil, []string{"session", "cookie", "persistent"}, false},
-		{&state.SelfserviceMethodsPasswordEnabled, &state.EnablePassword, []string{"selfservice", "methods", "password", "enabled"}, false},
-		{&state.SelfserviceMethodsCodeEnabled, &state.EnableCode, []string{"selfservice", "methods", "code", "enabled"}, false},
-		{&state.SelfserviceMethodsCodeMFAEnabled, &state.CodeMFAEnabled, []string{"selfservice", "methods", "code", "mfa_enabled"}, false},
-		{&state.SelfserviceMethodsOIDCEnabled, &state.EnableOIDC, []string{"selfservice", "methods", "oidc", "enabled"}, false},
-		{&state.SelfserviceMethodsOIDCEnableAutoLinkPolicy, &state.EnableOIDCAutoLinkPolicy, []string{"selfservice", "methods", "oidc", "enable_auto_link_policy"}, false},
-		{&state.SelfserviceMethodsTOTPEnabled, &state.EnableTOTP, []string{"selfservice", "methods", "totp", "enabled"}, false},
-		{&state.SelfserviceMethodsWebAuthnEnabled, &state.EnableWebAuthn, []string{"selfservice", "methods", "webauthn", "enabled"}, false},
-		{&state.SelfserviceMethodsPasskeyEnabled, &state.EnablePasskey, []string{"selfservice", "methods", "passkey", "enabled"}, false},
-		{&state.SelfserviceMethodsLookupSecretEnabled, &state.EnableLookupSecret, []string{"selfservice", "methods", "lookup_secret", "enabled"}, false},
-		{&state.SelfserviceMethodsProfileEnabled, &state.EnableProfile, []string{"selfservice", "methods", "profile", "enabled"}, false},
-		{&state.SelfserviceMethodsCodeConfigMissingCredentialFallbackEnabled, &state.CodeMissingCredentialFallbackEnabled, []string{"selfservice", "methods", "code", "config", "missing_credential_fallback_enabled"}, false},
-		{&state.SelfserviceMethodsPasswordConfigHaveIBeenPwnedEnabled, &state.PasswordCheckHaveIBeenPwned, []string{"selfservice", "methods", "password", "config", "haveibeenpwned_enabled"}, false},
-		{&state.SelfserviceMethodsPasswordConfigIdentifierSimilarityCheckEnabled, &state.PasswordIdentifierSimilarity, []string{"selfservice", "methods", "password", "config", "identifier_similarity_check_enabled"}, false},
-		{&state.SelfserviceFlowsRecoveryEnabled, &state.EnableRecovery, []string{"selfservice", "flows", "recovery", "enabled"}, false},
-		{&state.SelfserviceFlowsVerificationEnabled, &state.EnableVerification, []string{"selfservice", "flows", "verification", "enabled"}, false},
-		{&state.SelfserviceFlowsRegistrationEnabled, &state.EnableRegistration, []string{"selfservice", "flows", "registration", "enabled"}, false},
-		{&state.SelfserviceFlowsVerificationNotifyUnknownRecipients, &state.VerificationNotifyUnknownRecipients, []string{"selfservice", "flows", "verification", "notify_unknown_recipients"}, false},
-		{&state.SelfserviceMethodsWebAuthnConfigPasswordless, &state.WebAuthnPasswordless, []string{"selfservice", "methods", "webauthn", "config", "passwordless"}, false},
-		{&state.FeatureFlagsCacheableSessions, nil, []string{"feature_flags", "cacheable_sessions"}, false},
-		{&state.FeatureFlagsChooseRecoveryAddress, nil, []string{"feature_flags", "choose_recovery_address"}, false},
-		{&state.FeatureFlagsFasterSessionExtend, nil, []string{"feature_flags", "faster_session_extend"}, false},
-		{&state.FeatureFlagsLegacyContinueWithVerificationUI, nil, []string{"feature_flags", "legacy_continue_with_verification_ui"}, false},
-		{&state.FeatureFlagsLegacyOIDCRegistrationNodeGroup, nil, []string{"feature_flags", "legacy_oidc_registration_node_group"}, false},
-		{&state.FeatureFlagsLegacyRequireVerifiedLoginError, nil, []string{"feature_flags", "legacy_require_verified_login_error"}, false},
-		{&state.FeatureFlagsUseContinueWithTransitions, nil, []string{"feature_flags", "use_continue_with_transitions"}, false},
-		{&state.SelfserviceFlowsRecoveryNotifyUnknownRecipients, nil, []string{"selfservice", "flows", "recovery", "notify_unknown_recipients"}, false},
-		{&state.SelfserviceFlowsRegistrationEnableLegacyOneStep, nil, []string{"selfservice", "flows", "registration", "enable_legacy_one_step"}, false},
-		{&state.SelfserviceFlowsRegistrationLoginHints, nil, []string{"selfservice", "flows", "registration", "login_hints"}, false},
-		{&state.SelfserviceMethodsCodePasswordlessEnabled, nil, []string{"selfservice", "methods", "code", "passwordless_enabled"}, false},
-		{&state.SelfserviceMethodsCodePasswordlessLoginFallbackEnabled, nil, []string{"selfservice", "methods", "code", "passwordless_login_fallback_enabled"}, false},
-		{&state.SelfserviceMethodsLinkEnabled, nil, []string{"selfservice", "methods", "link", "enabled"}, false},
-		{&state.SelfserviceMethodsPasswordConfigIgnoreNetworkErrors, nil, []string{"selfservice", "methods", "password", "config", "ignore_network_errors"}, false},
-		{&state.SelfserviceMethodsSAMLEnabled, nil, []string{"selfservice", "methods", "saml", "enabled"}, false},
-		{&state.FeatureFlagsPasswordProfileRegistrationNodeGroup, nil, []string{"feature_flags", "password_profile_registration_node_group"}, false},
-		{&state.OAuth2ProviderOverrideReturnTo, nil, []string{"oauth2_provider", "override_return_to"}, false},
-		{&state.SecurityAccountEnumerationMitigate, nil, []string{"security", "account_enumeration", "mitigate"}, false},
-		{&state.SelfserviceMethodsCaptchaConfigBYO, nil, []string{"selfservice", "methods", "captcha", "config", "byo"}, true},
-		{&state.SelfserviceMethodsCaptchaConfigLegacyInjectNode, nil, []string{"selfservice", "methods", "captcha", "config", "legacy_inject_node"}, false},
-		{&state.SelfserviceMethodsCaptchaEnabled, nil, []string{"selfservice", "methods", "captcha", "enabled"}, false},
-		{&state.SelfserviceMethodsDeviceauthnEnabled, nil, []string{"selfservice", "methods", "deviceauthn", "enabled"}, false},
-		{&state.SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation, nil, []string{"selfservice", "methods", "deviceauthn", "config", "insecure_allow_relaxed_attestation"}, false},
-		{&state.FeatureFlagsRefreshLoginChooseAddress, nil, []string{"feature_flags", "refresh_login_choose_address"}, false},
-		{&state.SelfserviceMethodsDeviceauthnConfigFirstFactor, nil, []string{"selfservice", "methods", "deviceauthn", "config", "first_factor"}, false},
-		{&state.SelfserviceMethodsDeviceauthnConfigIosBiometricFirstFactor, nil, []string{"selfservice", "methods", "deviceauthn", "config", "ios_biometric_first_factor"}, false},
+		{&state.SessionCookiePersistent, nil, []string{"session", "cookie", "persistent"}, false, nil},
+		{&state.SelfserviceMethodsPasswordEnabled, &state.EnablePassword, []string{"selfservice", "methods", "password", "enabled"}, false, nil},
+		{&state.SelfserviceMethodsCodeEnabled, &state.EnableCode, []string{"selfservice", "methods", "code", "enabled"}, false, nil},
+		{&state.SelfserviceMethodsCodeMFAEnabled, &state.CodeMFAEnabled, []string{"selfservice", "methods", "code", "mfa_enabled"}, false, nil},
+		{&state.SelfserviceMethodsOIDCEnabled, &state.EnableOIDC, []string{"selfservice", "methods", "oidc", "enabled"}, false, nil},
+		{&state.SelfserviceMethodsOIDCEnableAutoLinkPolicy, &state.EnableOIDCAutoLinkPolicy, []string{"selfservice", "methods", "oidc", "enable_auto_link_policy"}, false, nil},
+		{&state.SelfserviceMethodsTOTPEnabled, &state.EnableTOTP, []string{"selfservice", "methods", "totp", "enabled"}, false, nil},
+		{&state.SelfserviceMethodsWebAuthnEnabled, &state.EnableWebAuthn, []string{"selfservice", "methods", "webauthn", "enabled"}, false, nil},
+		{&state.SelfserviceMethodsPasskeyEnabled, &state.EnablePasskey, []string{"selfservice", "methods", "passkey", "enabled"}, false, nil},
+		{&state.SelfserviceMethodsLookupSecretEnabled, &state.EnableLookupSecret, []string{"selfservice", "methods", "lookup_secret", "enabled"}, false, nil},
+		{&state.SelfserviceMethodsProfileEnabled, &state.EnableProfile, []string{"selfservice", "methods", "profile", "enabled"}, false, nil},
+		{&state.SelfserviceMethodsCodeConfigMissingCredentialFallbackEnabled, &state.CodeMissingCredentialFallbackEnabled, []string{"selfservice", "methods", "code", "config", "missing_credential_fallback_enabled"}, false, nil},
+		{&state.SelfserviceMethodsPasswordConfigHaveIBeenPwnedEnabled, &state.PasswordCheckHaveIBeenPwned, []string{"selfservice", "methods", "password", "config", "haveibeenpwned_enabled"}, false, nil},
+		{&state.SelfserviceMethodsPasswordConfigIdentifierSimilarityCheckEnabled, &state.PasswordIdentifierSimilarity, []string{"selfservice", "methods", "password", "config", "identifier_similarity_check_enabled"}, false, nil},
+		{&state.SelfserviceFlowsRecoveryEnabled, &state.EnableRecovery, []string{"selfservice", "flows", "recovery", "enabled"}, false, nil},
+		{&state.SelfserviceFlowsVerificationEnabled, &state.EnableVerification, []string{"selfservice", "flows", "verification", "enabled"}, false, nil},
+		{&state.SelfserviceFlowsRegistrationEnabled, &state.EnableRegistration, []string{"selfservice", "flows", "registration", "enabled"}, false, nil},
+		{&state.SelfserviceFlowsVerificationNotifyUnknownRecipients, &state.VerificationNotifyUnknownRecipients, []string{"selfservice", "flows", "verification", "notify_unknown_recipients"}, false, nil},
+		{&state.SelfserviceMethodsWebAuthnConfigPasswordless, &state.WebAuthnPasswordless, []string{"selfservice", "methods", "webauthn", "config", "passwordless"}, false, nil},
+		{&state.FeatureFlagsCacheableSessions, nil, []string{"feature_flags", "cacheable_sessions"}, false, nil},
+		{&state.FeatureFlagsChooseRecoveryAddress, nil, []string{"feature_flags", "choose_recovery_address"}, false, nil},
+		{&state.FeatureFlagsFasterSessionExtend, nil, []string{"feature_flags", "faster_session_extend"}, false, nil},
+		{&state.FeatureFlagsLegacyContinueWithVerificationUI, nil, []string{"feature_flags", "legacy_continue_with_verification_ui"}, false, nil},
+		{&state.FeatureFlagsLegacyOIDCRegistrationNodeGroup, nil, []string{"feature_flags", "legacy_oidc_registration_node_group"}, false, nil},
+		{&state.FeatureFlagsLegacyRequireVerifiedLoginError, nil, []string{"feature_flags", "legacy_require_verified_login_error"}, false, nil},
+		{&state.FeatureFlagsUseContinueWithTransitions, nil, []string{"feature_flags", "use_continue_with_transitions"}, false, nil},
+		{&state.SelfserviceFlowsRecoveryNotifyUnknownRecipients, nil, []string{"selfservice", "flows", "recovery", "notify_unknown_recipients"}, false, nil},
+		{&state.SelfserviceFlowsRegistrationEnableLegacyOneStep, nil, []string{"selfservice", "flows", "registration", "enable_legacy_one_step"}, false, nil},
+		{&state.SelfserviceFlowsRegistrationLoginHints, nil, []string{"selfservice", "flows", "registration", "login_hints"}, false, nil},
+		{&state.SelfserviceMethodsCodePasswordlessEnabled, nil, []string{"selfservice", "methods", "code", "passwordless_enabled"}, false, nil},
+		{&state.SelfserviceMethodsCodePasswordlessLoginFallbackEnabled, nil, []string{"selfservice", "methods", "code", "passwordless_login_fallback_enabled"}, false, nil},
+		{&state.SelfserviceMethodsLinkEnabled, nil, []string{"selfservice", "methods", "link", "enabled"}, false, nil},
+		{&state.SelfserviceMethodsPasswordConfigIgnoreNetworkErrors, nil, []string{"selfservice", "methods", "password", "config", "ignore_network_errors"}, false, nil},
+		{&state.SelfserviceMethodsSAMLEnabled, nil, []string{"selfservice", "methods", "saml", "enabled"}, false, nil},
+		{&state.FeatureFlagsPasswordProfileRegistrationNodeGroup, nil, []string{"feature_flags", "password_profile_registration_node_group"}, false, &BoolEnumValues{"password", "default"}},
+		{&state.OAuth2ProviderOverrideReturnTo, nil, []string{"oauth2_provider", "override_return_to"}, false, nil},
+		{&state.SecurityAccountEnumerationMitigate, nil, []string{"security", "account_enumeration", "mitigate"}, false, nil},
+		{&state.SelfserviceMethodsCaptchaConfigBYO, nil, []string{"selfservice", "methods", "captcha", "config", "byo"}, true, nil},
+		{&state.SelfserviceMethodsCaptchaConfigLegacyInjectNode, nil, []string{"selfservice", "methods", "captcha", "config", "legacy_inject_node"}, false, nil},
+		{&state.SelfserviceMethodsCaptchaEnabled, nil, []string{"selfservice", "methods", "captcha", "enabled"}, false, nil},
+		{&state.SelfserviceMethodsDeviceauthnEnabled, nil, []string{"selfservice", "methods", "deviceauthn", "enabled"}, false, nil},
+		{&state.SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation, nil, []string{"selfservice", "methods", "deviceauthn", "config", "insecure_allow_relaxed_attestation"}, false, nil},
+		{&state.FeatureFlagsRefreshLoginChooseAddress, nil, []string{"feature_flags", "refresh_login_choose_address"}, false, nil},
+		{&state.SelfserviceMethodsDeviceauthnConfigFirstFactor, nil, []string{"selfservice", "methods", "deviceauthn", "config", "first_factor"}, false, nil},
+		{&state.SelfserviceMethodsDeviceauthnConfigIosBiometricFirstFactor, nil, []string{"selfservice", "methods", "deviceauthn", "config", "ios_biometric_first_factor"}, false, nil},
 	}
 }
 
@@ -636,17 +671,17 @@ func oauth2StringReadEntries(state *ProjectConfigResourceModel) []StringReadEntr
 
 func oauth2BoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry {
 	return []BoolReadEntry{
-		{&state.OAuth2MirrorTopLevelClaims, nil, []string{"oauth2", "mirror_top_level_claims"}, false},
-		{&state.OAuth2PKCEEnforced, nil, []string{"oauth2", "pkce", "enforced"}, false},
-		{&state.OAuth2PKCEEnforcedForPublicClients, nil, []string{"oauth2", "pkce", "enforced_for_public_clients"}, false},
-		{&state.OAuth2ServeCookiesSameSiteLegacyWorkaround, &state.OAuth2CookiesSameSiteLegacyWorkaround, []string{"serve", "cookies", "same_site_legacy_workaround"}, false},
-		{&state.OAuth2ClientCredentialsDefaultGrantAllowedScope, nil, []string{"oauth2", "client_credentials", "default_grant_allowed_scope"}, false},
-		{&state.OAuth2ExcludeNotBeforeClaim, nil, []string{"oauth2", "exclude_not_before_claim"}, false},
-		{&state.OAuth2GrantJWTIATOptional, nil, []string{"oauth2", "grant", "jwt", "iat_optional"}, false},
-		{&state.OAuth2GrantJWTJTIOptional, nil, []string{"oauth2", "grant", "jwt", "jti_optional"}, false},
-		{&state.OIDCDynamicClientRegistrationEnabled, nil, []string{"oidc", "dynamic_client_registration", "enabled"}, false},
-		{&state.OAuth2PreserveExtClaims, nil, []string{"oauth2", "preserve_ext_claims"}, false},
-		{&state.OAuth2GrantJWTOmitAssertionAudience, nil, []string{"oauth2", "grant", "jwt", "omit_assertion_audience"}, false},
+		{&state.OAuth2MirrorTopLevelClaims, nil, []string{"oauth2", "mirror_top_level_claims"}, false, nil},
+		{&state.OAuth2PKCEEnforced, nil, []string{"oauth2", "pkce", "enforced"}, false, nil},
+		{&state.OAuth2PKCEEnforcedForPublicClients, nil, []string{"oauth2", "pkce", "enforced_for_public_clients"}, false, nil},
+		{&state.OAuth2ServeCookiesSameSiteLegacyWorkaround, &state.OAuth2CookiesSameSiteLegacyWorkaround, []string{"serve", "cookies", "same_site_legacy_workaround"}, false, nil},
+		{&state.OAuth2ClientCredentialsDefaultGrantAllowedScope, nil, []string{"oauth2", "client_credentials", "default_grant_allowed_scope"}, false, nil},
+		{&state.OAuth2ExcludeNotBeforeClaim, nil, []string{"oauth2", "exclude_not_before_claim"}, false, nil},
+		{&state.OAuth2GrantJWTIATOptional, nil, []string{"oauth2", "grant", "jwt", "iat_optional"}, false, nil},
+		{&state.OAuth2GrantJWTJTIOptional, nil, []string{"oauth2", "grant", "jwt", "jti_optional"}, false, nil},
+		{&state.OIDCDynamicClientRegistrationEnabled, nil, []string{"oidc", "dynamic_client_registration", "enabled"}, false, nil},
+		{&state.OAuth2PreserveExtClaims, nil, []string{"oauth2", "preserve_ext_claims"}, false, nil},
+		{&state.OAuth2GrantJWTOmitAssertionAudience, nil, []string{"oauth2", "grant", "jwt", "omit_assertion_audience"}, false, nil},
 	}
 }
 

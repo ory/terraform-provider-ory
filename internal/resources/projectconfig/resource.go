@@ -1021,10 +1021,20 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 			field = e.Deprecated
 		}
 		if !field.IsNull() && !field.IsUnknown() {
+			var value interface{} = field.ValueBool()
+			if e.Enum != nil {
+				// The config key stores a string enum; a raw bool would be
+				// accepted but normalized to the false variant.
+				if field.ValueBool() {
+					value = e.Enum.True
+				} else {
+					value = e.Enum.False
+				}
+			}
 			patches = append(patches, ory.JsonPatch{
 				Op:    "replace",
 				Path:  e.Path,
-				Value: field.ValueBool(),
+				Value: value,
 			})
 		}
 	}
@@ -1281,6 +1291,75 @@ type hookEntry struct {
 // hookEntries returns every hook attribute the provider exposes. Adding a new
 // hook toggle is a matter of appending one entry here, declaring the model
 // field, and registering the schema attribute.
+// buildRevisionPatches returns the JSON Patch operations that must target the
+// normalized project revision endpoint instead of the project document. These
+// attributes are top-level revision columns (see revisionBoolPatchEntries); a
+// document patch cannot reach them.
+func buildRevisionPatches(plan *ProjectConfigResourceModel) []ory.JsonPatch {
+	var patches []ory.JsonPatch
+	for _, e := range revisionBoolPatchEntries(plan) {
+		if !e.Field.IsNull() && !e.Field.IsUnknown() {
+			patches = append(patches, ory.JsonPatch{
+				Op:    "replace",
+				Path:  e.Path,
+				Value: e.Field.ValueBool(),
+			})
+		}
+	}
+	return patches
+}
+
+// applyRevisionPatches applies the revision-level patches for the plan, if
+// any. It runs after the document patch so the patch lands on the revision
+// that patch created.
+func (r *ProjectConfigResource) applyRevisionPatches(ctx context.Context, projectID string, plan *ProjectConfigResourceModel, diags *diag.Diagnostics) {
+	patches := buildRevisionPatches(plan)
+	if len(patches) == 0 {
+		return
+	}
+	if err := r.client.PatchProjectRevision(ctx, projectID, patches); err != nil {
+		diags.AddError("Error Applying Project Revision Config", err.Error())
+	}
+}
+
+// readRevisionProperties refreshes attributes that live on the normalized
+// project revision rather than in the project document (see
+// revisionBoolReadEntries). The extra API call is made only when state tracks
+// at least one such attribute. A failed fetch keeps the state values: a
+// transient read error must not null tracked attributes into phantom drift.
+func (r *ProjectConfigResource) readRevisionProperties(ctx context.Context, projectID string, state *ProjectConfigResourceModel) {
+	entries := revisionBoolReadEntries(state)
+	tracked := false
+	for _, e := range entries {
+		if !e.Field.IsNull() {
+			tracked = true
+			break
+		}
+	}
+	if !tracked {
+		return
+	}
+
+	revision, err := r.client.GetProjectNormalizedRevision(ctx, projectID)
+	if err != nil {
+		tflog.Warn(ctx, "Could not read normalized project revision; keeping state values", map[string]interface{}{
+			"project_id": projectID,
+			"error":      err.Error(),
+		})
+		return
+	}
+	for _, e := range entries {
+		if e.Field.IsNull() {
+			continue
+		}
+		if v, ok := getNestedBool(revision, e.Keys...); ok {
+			*e.Field = types.BoolValue(v)
+		} else {
+			*e.Field = types.BoolNull()
+		}
+	}
+}
+
 func hookEntries(plan *ProjectConfigResourceModel) []hookEntry {
 	return []hookEntry{
 		{
@@ -1663,6 +1742,11 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 		})
 	}
 
+	r.applyRevisionPatches(ctx, projectID, &plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	plan.ID = types.StringValue(projectID)
 	plan.ProjectID = types.StringValue(projectID)
 
@@ -1706,6 +1790,10 @@ func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadReque
 func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *ory.Project, state *ProjectConfigResourceModel) {
 	// --- Generated simple attribute reads ---
 	readSimpleFields(ctx, project, state)
+
+	// Top-level revision columns are absent from the project document and are
+	// read from the normalized revision endpoint instead.
+	r.readRevisionProperties(ctx, project.Id, state)
 
 	// --- Custom reads for complex types ---
 
@@ -2230,6 +2318,11 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 			resp.Diagnostics.AddError("Error Updating Project Config", err.Error())
 			return
 		}
+	}
+
+	r.applyRevisionPatches(ctx, projectID, &plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	plan.ID = types.StringValue(projectID)
