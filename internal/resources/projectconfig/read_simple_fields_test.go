@@ -454,6 +454,14 @@ func TestReadRevisionProperties_ReadsWelcomeScreenFromNormalizedRevision(t *test
 	requests := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
+		// Assert the route, not just that some request arrived: the document
+		// endpoints answer too, and reading the flag from one of them would
+		// always report it missing.
+		if r.Method != http.MethodGet || r.URL.Path != "/normalized/projects/proj-1" {
+			t.Errorf("request = %s %s, want GET /normalized/projects/proj-1", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"current_revision": {"id": "rev-1", "disable_account_experience_welcome_screen": true}}`))
 	}))
@@ -495,7 +503,12 @@ func TestReadRevisionProperties_ReadsWelcomeScreenFromNormalizedRevision(t *test
 // A failed normalized-revision fetch must keep the state value: nulling
 // tracked attributes on a transient read error would show phantom drift.
 func TestReadRevisionProperties_KeepsStateOnFetchError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Method != http.MethodGet || r.URL.Path != "/normalized/projects/proj-1" {
+			t.Errorf("request = %s %s, want GET /normalized/projects/proj-1", r.Method, r.URL.Path)
+		}
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
@@ -514,6 +527,9 @@ func TestReadRevisionProperties_KeepsStateOnFetchError(t *testing.T) {
 	}
 	r.readRevisionProperties(context.Background(), "proj-1", state)
 
+	if requests == 0 {
+		t.Error("expected a normalized revision fetch attempt for tracked state")
+	}
 	if state.DisableAccountExperienceWelcomeScreen.IsNull() || !state.DisableAccountExperienceWelcomeScreen.ValueBool() {
 		t.Errorf("flag = %v, want the state value kept when the fetch fails", state.DisableAccountExperienceWelcomeScreen)
 	}
