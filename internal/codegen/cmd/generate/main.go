@@ -339,7 +339,7 @@ func main() {
 	discoverApply := flag.Bool("discover-apply", false, "append YAML entries to mappings file and Go struct fields to resource.go for unmapped spec properties (requires --spec)")
 	resourceFile := flag.String("resource-file", "", "path to resource.go for -discover-apply struct field insertion (default: <out>/resource.go)")
 	strict := flag.Bool("strict", false, "fail if any spec properties are unmapped (use in CI to detect drift)")
-	probeAttrs := flag.String("probe-attributes", "", "comma-separated attribute names to probe against the live console API instead of generating (requires ORY_WORKSPACE_API_KEY plus ORY_WORKSPACE_ID or ORY_PROBE_PROJECT_ID)")
+	probeAttrs := flag.String("probe-attributes", "", "comma-separated attribute names to probe against the live console API instead of generating. Requires --spec so patch/read paths resolve for entries that rely on governs derivation (entries with an explicit patch_path work without it), plus ORY_WORKSPACE_API_KEY and either ORY_WORKSPACE_ID (throwaway project) or ORY_PROBE_PROJECT_ID (reuse)")
 	probeReport := flag.String("probe-report", "", "file to write the probe markdown report to (default: stdout)")
 	flag.Parse()
 

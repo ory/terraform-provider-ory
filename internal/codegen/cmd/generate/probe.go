@@ -277,15 +277,22 @@ func probeAttributes(m Mappings, names []string, reportPath string) error {
 		byName[a.Name] = a
 	}
 
+	// The throwaway project is created lazily: a probe list consisting only of
+	// skipped attributes (revision_property, write_only) must not touch the API.
 	projectID := env.ProjectID
 	created := false
-	if projectID == "" {
-		projectID, err = createProbeProject(env)
-		if err != nil {
-			return fmt.Errorf("creating throwaway probe project: %w", err)
+	ensureProject := func() (string, error) {
+		if projectID != "" {
+			return projectID, nil
 		}
+		id, err := createProbeProject(env)
+		if err != nil {
+			return "", fmt.Errorf("creating throwaway probe project: %w", err)
+		}
+		projectID = id
 		created = true
 		fmt.Printf("Created throwaway probe project %s\n", projectID)
+		return projectID, nil
 	}
 	defer func() {
 		if created {
@@ -316,7 +323,21 @@ func probeAttributes(m Mappings, names []string, reportPath string) error {
 			fmt.Fprintf(&report, "| `%s` | handled via the normalized revision API (revision_property) — document-path probe not applicable | |\n", name)
 			continue
 		}
-		nonEmptyOutcome, emptyOutcome := probeOneAttribute(env, projectID, a)
+		if a.WriteOnly {
+			fmt.Fprintf(&report, "| `%s` | write-only secret (write_only) — the API intentionally never reports it back; state preserves the configured value | |\n", name)
+			continue
+		}
+		pid, err := ensureProject()
+		if err != nil {
+			return err
+		}
+		nonEmptyOutcome, emptyOutcome := probeOneAttribute(env, pid, a)
+		// A missing echo is the expected behavior when the mapping already
+		// preserves state on a missing key; say so instead of suggesting flags
+		// the entry already carries.
+		if nonEmptyOutcome != nil && nonEmptyOutcome.Class == "NOT REPORTED" && a.ReadPreservesOnMissing() {
+			nonEmptyOutcome.Detail = "accepted with HTTP 200 and absent from the response — expected: the mapping already preserves state on missing (sensitive / skip_empty_read / preserve_on_missing)"
+		}
 		fmt.Fprintf(&report, "| `%s` | %s | %s |\n", name, renderOutcome(nonEmptyOutcome), renderOutcome(emptyOutcome))
 	}
 

@@ -115,8 +115,11 @@ jobs:
           # diffs (issue #321). Write each newly-appended attribute to a
           # throwaway project and classify what the API reports back, so the
           # reviewer of the draft PR sees which attributes need a mapping flag.
-          # Report-only: a probe failure must not block regeneration.
-          NEW_ATTRS=$(git diff -- internal/codegen/mappings.yaml | grep -oP '^\+  - name: \K\S+' | paste -sd, -)
+          # Report-only: a probe failure must not block regeneration. The
+          # || true keeps the extraction non-fatal under -e/pipefail when the
+          # diff has no matches (or its format changes); the -n guard below
+          # then simply skips the probe.
+          NEW_ATTRS=$(git diff -- internal/codegen/mappings.yaml | grep -oP '^\+  - name: \K\S+' | paste -sd, - || true)
           if [ -n "$NEW_ATTRS" ]; then
             echo "Probing: $NEW_ATTRS"
             go run ./internal/codegen/cmd/generate/ \
