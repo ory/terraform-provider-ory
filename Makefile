@@ -121,6 +121,11 @@ download-spec: ## Download OpenAPI spec from client-go version pinned in go.mod
 discover: download-spec ## Discover new unmapped properties from the OpenAPI spec and output YAML entries
 	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml -spec ./internal/codegen/openapi.yaml -discover
 
+.PHONY: probe
+probe: download-spec ## Probe attributes against the live console API (ATTRS=a,b; needs ORY_WORKSPACE_API_KEY + ORY_WORKSPACE_ID or ORY_PROBE_PROJECT_ID)
+	@if [ -z "$(ATTRS)" ]; then echo "usage: make probe ATTRS=attr_one,attr_two"; exit 1; fi
+	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml -spec ./internal/codegen/openapi.yaml -probe-attributes "$(ATTRS)"
+
 .PHONY: check-coverage
 check-coverage: download-spec ## Check that all spec properties are mapped (fails if unmapped properties found)
 	@TMPDIR=$$(mktemp -d) && \
