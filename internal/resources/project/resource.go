@@ -211,6 +211,11 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	project, httpResp, err := r.client.CreateProject(ctx, plan.Name.ValueString(), plan.Environment.ValueString(), plan.HomeRegion.ValueString())
+	// CreateProject hands back the response so the 402 below can read its status;
+	// closing it here is what keeps the connection from leaking on every create.
+	if httpResp != nil {
+		defer func() { _ = httpResp.Body.Close() }()
+	}
 	if err != nil {
 		if httpResp != nil && httpResp.StatusCode == 402 {
 			resp.Diagnostics.AddError(
@@ -247,6 +252,13 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	project, err := r.client.GetProject(ctx, state.ID.ValueString())
 	if err != nil {
+		if client.IsNotFoundStatus(err) {
+			// The project was purged outside Terraform. Drop it from state so the
+			// next plan recreates it, instead of failing every plan until the
+			// operator runs `terraform state rm`.
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Error Reading Project",
 			"Could not read project ID "+state.ID.ValueString()+": "+err.Error(),

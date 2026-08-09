@@ -1772,6 +1772,13 @@ func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadReque
 		var err error
 		project, err = r.client.GetProject(ctx, projectID)
 		if err != nil {
+			if client.IsNotFoundStatus(err) {
+				// The config is not an object of its own: it lives inside the
+				// project. A purged project takes its config with it, so drop the
+				// resource from state rather than failing every plan.
+				resp.State.RemoveResource(ctx)
+				return
+			}
 			resp.Diagnostics.AddError("Error Reading Project Config",
 				"Could not read project "+projectID+": "+err.Error())
 			return

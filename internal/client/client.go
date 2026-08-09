@@ -40,6 +40,20 @@ var ErrProjectNotAllowed = errors.New("project not allowed by allowed_project_id
 // IsNotFoundStatus — checks the tag instead.
 var ErrNotFound = errors.New("resource not found")
 
+// organizationRetryBaseDelay is the unit of the exponential backoff between the
+// organization consistency retries in GetOrganization (1x, 2x, 4x, 8x). It is a
+// variable so tests can exercise the retry path without waiting fifteen seconds.
+var organizationRetryBaseDelay = time.Second
+
+// SetOrganizationRetryBaseDelay overrides organizationRetryBaseDelay and returns
+// a function restoring the previous value. Tests use it to keep the retry path
+// covered without paying its production timing.
+func SetOrganizationRetryBaseDelay(d time.Duration) (restore func()) {
+	previous := organizationRetryBaseDelay
+	organizationRetryBaseDelay = d
+	return func() { organizationRetryBaseDelay = previous }
+}
+
 const (
 	// maxRetries is the maximum number of retry attempts for rate-limited requests.
 	maxRetries = 3
@@ -794,6 +808,7 @@ func (c *OryClient) GetProject(ctx context.Context, projectID string) (*ory.Proj
 		return nil, err
 	}
 	project, httpResp, err := c.consoleClient.ProjectAPI.GetProject(ctx, projectID).Execute()
+	err = notFoundIfStatus(httpResp, err)
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
@@ -1098,6 +1113,7 @@ func (c *OryClient) GetWorkspace(ctx context.Context, workspaceID string) (*ory.
 		return nil, err
 	}
 	workspace, httpResp, err := c.consoleClient.WorkspaceAPI.GetWorkspace(ctx, workspaceID).Execute()
+	err = notFoundIfStatus(httpResp, err)
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
@@ -1118,7 +1134,11 @@ func (c *OryClient) GetWorkspace(ctx context.Context, workspaceID string) (*ory.
 					return &w, nil
 				}
 			}
-			return nil, fmt.Errorf("workspace %s not found", workspaceID)
+			// The list is authoritative: the workspace is absent, which is the
+			// same answer a 404 gives. Tag it so callers that must distinguish
+			// "gone" from "failed" — see IsNotFoundStatus — get the same signal
+			// on both paths.
+			return nil, fmt.Errorf("%w: workspace %s not found", ErrNotFound, workspaceID)
 		}
 		return nil, err
 	}
@@ -1212,6 +1232,7 @@ func (c *OryClient) GetOrganization(ctx context.Context, projectID, orgID string
 	var lastErr error
 	for attempt := 0; attempt < 5; attempt++ {
 		resp, httpResp, err := c.consoleClient.ProjectAPI.GetOrganization(ctx, projectID, orgID).Execute()
+		err = notFoundIfStatus(httpResp, err)
 		if httpResp != nil {
 			_ = httpResp.Body.Close()
 		}
@@ -1232,7 +1253,7 @@ func (c *OryClient) GetOrganization(ctx context.Context, projectID, orgID string
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
-			case <-time.After(time.Duration(1<<attempt) * time.Second):
+			case <-time.After(time.Duration(1<<attempt) * organizationRetryBaseDelay):
 			}
 		}
 	}
