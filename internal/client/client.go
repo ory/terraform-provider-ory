@@ -1121,23 +1121,39 @@ func (c *OryClient) GetWorkspace(ctx context.Context, workspaceID string) (*ory.
 		// Check if it's a 403 error - try fallback to list
 		errStr := err.Error()
 		if strings.Contains(errStr, "403") || strings.Contains(errStr, "Forbidden") {
-			// Fall back to listing workspaces and finding by ID
-			listResp, listHttpResp, listErr := c.consoleClient.WorkspaceAPI.ListWorkspaces(ctx).Execute()
-			if listHttpResp != nil {
-				_ = listHttpResp.Body.Close()
-			}
-			if listErr != nil {
-				return nil, err // Return original error
-			}
-			for _, w := range listResp.Workspaces {
-				if w.GetId() == workspaceID {
-					return &w, nil
+			// Fall back to listing workspaces and finding by ID. The listing is
+			// paginated, and every page has to be read before "absent" means
+			// anything: callers treat absence as deletion, so stopping at the
+			// first page would drop a live workspace from Terraform state.
+			var pageToken string
+			for {
+				listReq := c.consoleClient.WorkspaceAPI.ListWorkspaces(ctx)
+				if pageToken != "" {
+					listReq = listReq.PageToken(pageToken)
 				}
+				listResp, listHttpResp, listErr := listReq.Execute()
+				if listHttpResp != nil {
+					_ = listHttpResp.Body.Close()
+				}
+				if listErr != nil {
+					return nil, err // Return original error
+				}
+				for _, w := range listResp.Workspaces {
+					if w.GetId() == workspaceID {
+						return &w, nil
+					}
+				}
+				next := listResp.GetNextPageToken()
+				// A repeated token would loop forever; treat it as the end.
+				if !listResp.GetHasNextPage() || next == "" || next == pageToken {
+					break
+				}
+				pageToken = next
 			}
-			// The list is authoritative: the workspace is absent, which is the
-			// same answer a 404 gives. Tag it so callers that must distinguish
-			// "gone" from "failed" — see IsNotFoundStatus — get the same signal
-			// on both paths.
+			// Every page has been read and the workspace is not in any of them,
+			// which is the same answer a 404 gives. Tag it so callers that must
+			// tell "gone" from "failed" — see IsNotFoundStatus — get the same
+			// signal on both paths.
 			return nil, fmt.Errorf("%w: workspace %s not found", ErrNotFound, workspaceID)
 		}
 		return nil, err

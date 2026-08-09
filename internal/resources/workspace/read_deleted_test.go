@@ -96,6 +96,34 @@ func TestRead_WorkspaceDeletedViaListFallback(t *testing.T) {
 	assert.True(t, resp.State.Raw.IsNull(), "a workspace absent from the list must be removed from state")
 }
 
+// TestRead_WorkspaceOnLaterListPageIsKept guards the dangerous half of the list
+// fallback. The listing is paginated, and absence from it is read as deletion, so
+// a workspace that merely sits on a later page must still be found. Reading only
+// the first page would drop a live workspace from state and make the next apply
+// create a duplicate.
+func TestRead_WorkspaceOnLaterListPageIsKept(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(req.URL.Path, "/workspaces/") {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":{"code":403,"status":"Forbidden","message":"no access"}}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		if req.URL.Query().Get("page_token") == "page-2" {
+			_, _ = w.Write([]byte(`{"workspaces":[{"id":"ws-1","name":"test workspace","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-02T00:00:00Z","subscription_id":null}],"has_next_page":false,"next_page_token":""}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"workspaces":[{"id":"other-ws","name":"other","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z","subscription_id":null}],"has_next_page":true,"next_page_token":"page-2"}`))
+	}))
+	defer srv.Close()
+
+	resp := readWorkspace(t, srv)
+
+	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+	assert.False(t, resp.State.Raw.IsNull(), "a workspace on a later page is live and must stay in state")
+}
+
 // TestRead_WorkspaceStillExists is the control: a live workspace stays in state.
 func TestRead_WorkspaceStillExists(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
