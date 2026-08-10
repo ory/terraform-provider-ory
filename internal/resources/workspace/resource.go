@@ -142,6 +142,14 @@ func (r *WorkspaceResource) Read(ctx context.Context, req resource.ReadRequest, 
 
 	workspace, err := r.client.GetWorkspace(ctx, state.ID.ValueString())
 	if err != nil {
+		if client.IsNotFoundStatus(err) {
+			// The workspace is gone — either a 404, or absent from the list the
+			// client falls back to when a key may list but not GET. Drop it from
+			// state so the next plan recreates it, instead of failing every plan
+			// until the operator runs `terraform state rm`.
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Error Reading Workspace",
 			"Could not read workspace ID "+state.ID.ValueString()+": "+err.Error(),

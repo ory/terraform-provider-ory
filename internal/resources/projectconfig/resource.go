@@ -1450,6 +1450,11 @@ func hookEntries(plan *ProjectConfigResourceModel) []hookEntry {
 // when the notify_previous_addresses hook carries no config.
 const notifyPreviousAddressesDefaultRecipients = "removed"
 
+// projectStateDeleted is the state Ory reports for a project that has been
+// deleted. The delete is soft: the project keeps answering GetProject with 200
+// and this state, rather than starting to 404.
+const projectStateDeleted = "deleted"
+
 // notifyPreviousAddressesConfig builds the config object for the
 // notify_previous_addresses hook entry, or nil when no scope is configured.
 func notifyPreviousAddressesConfig(plan *ProjectConfigResourceModel) map[string]interface{} {
@@ -1772,10 +1777,26 @@ func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadReque
 		var err error
 		project, err = r.client.GetProject(ctx, projectID)
 		if err != nil {
+			if client.IsNotFoundStatus(err) {
+				// The config is not an object of its own: it lives inside the
+				// project. A purged project takes its config with it, so drop the
+				// resource from state rather than failing every plan.
+				resp.State.RemoveResource(ctx)
+				return
+			}
 			resp.Diagnostics.AddError("Error Reading Project Config",
 				"Could not read project "+projectID+": "+err.Error())
 			return
 		}
+	}
+
+	// Deleting a project through the console is a soft delete: GetProject keeps
+	// answering 200 and only the state field changes, so the 404 above never
+	// fires for the case operators actually hit. A deleted project's config is
+	// gone with it, so drop the resource rather than reporting no changes.
+	if project.GetState() == projectStateDeleted {
+		resp.State.RemoveResource(ctx)
+		return
 	}
 
 	r.readProjectConfig(ctx, project, &state)

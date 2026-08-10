@@ -41,6 +41,13 @@ var ErrProjectNotAllowed = errors.New("project not allowed by allowed_project_id
 var ErrNotFound = errors.New("resource not found")
 
 const (
+	// defaultOrganizationRetryBaseDelay is the unit of the exponential backoff
+	// between the organization consistency retries in GetOrganization
+	// (1x, 2x, 4x, 8x), used when the config leaves it unset.
+	defaultOrganizationRetryBaseDelay = time.Second
+)
+
+const (
 	// maxRetries is the maximum number of retry attempts for rate-limited requests.
 	maxRetries = 3
 	// initialBackoff is the initial backoff duration before first retry.
@@ -400,6 +407,12 @@ type OryClientConfig struct {
 	// project ID not in this list is refused before the request is sent. When
 	// empty, no restriction is applied. See OryClient.checkProjectAllowed.
 	AllowedProjectIDs []string
+
+	// OrganizationRetryBaseDelay is the unit of the exponential backoff between
+	// the organization consistency retries in GetOrganization. Zero means
+	// defaultOrganizationRetryBaseDelay; tests shorten it so the retry path can
+	// be covered without waiting fifteen seconds.
+	OrganizationRetryBaseDelay time.Duration
 }
 
 // Equal reports whether two configs are equivalent. It is used to decide
@@ -414,7 +427,8 @@ func (c OryClientConfig) Equal(other OryClientConfig) bool {
 		c.WorkspaceID != other.WorkspaceID ||
 		c.ConsoleAPIURL != other.ConsoleAPIURL ||
 		c.ProjectAPIURL != other.ProjectAPIURL ||
-		c.UserAgent != other.UserAgent {
+		c.UserAgent != other.UserAgent ||
+		c.OrganizationRetryBaseDelay != other.OrganizationRetryBaseDelay {
 		return false
 	}
 	if len(c.AllowedProjectIDs) != len(other.AllowedProjectIDs) {
@@ -794,6 +808,7 @@ func (c *OryClient) GetProject(ctx context.Context, projectID string) (*ory.Proj
 		return nil, err
 	}
 	project, httpResp, err := c.consoleClient.ProjectAPI.GetProject(ctx, projectID).Execute()
+	err = notFoundIfStatus(httpResp, err)
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
@@ -1098,6 +1113,7 @@ func (c *OryClient) GetWorkspace(ctx context.Context, workspaceID string) (*ory.
 		return nil, err
 	}
 	workspace, httpResp, err := c.consoleClient.WorkspaceAPI.GetWorkspace(ctx, workspaceID).Execute()
+	err = notFoundIfStatus(httpResp, err)
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
@@ -1105,20 +1121,40 @@ func (c *OryClient) GetWorkspace(ctx context.Context, workspaceID string) (*ory.
 		// Check if it's a 403 error - try fallback to list
 		errStr := err.Error()
 		if strings.Contains(errStr, "403") || strings.Contains(errStr, "Forbidden") {
-			// Fall back to listing workspaces and finding by ID
-			listResp, listHttpResp, listErr := c.consoleClient.WorkspaceAPI.ListWorkspaces(ctx).Execute()
-			if listHttpResp != nil {
-				_ = listHttpResp.Body.Close()
-			}
-			if listErr != nil {
-				return nil, err // Return original error
-			}
-			for _, w := range listResp.Workspaces {
-				if w.GetId() == workspaceID {
-					return &w, nil
+			// Fall back to listing workspaces and finding by ID. The listing is
+			// paginated, and every page has to be read before "absent" means
+			// anything: callers treat absence as deletion, so stopping at the
+			// first page would drop a live workspace from Terraform state.
+			var pageToken string
+			for {
+				listReq := c.consoleClient.WorkspaceAPI.ListWorkspaces(ctx)
+				if pageToken != "" {
+					listReq = listReq.PageToken(pageToken)
 				}
+				listResp, listHttpResp, listErr := listReq.Execute()
+				if listHttpResp != nil {
+					_ = listHttpResp.Body.Close()
+				}
+				if listErr != nil {
+					return nil, err // Return original error
+				}
+				for _, w := range listResp.Workspaces {
+					if w.GetId() == workspaceID {
+						return &w, nil
+					}
+				}
+				next := listResp.GetNextPageToken()
+				// A repeated token would loop forever; treat it as the end.
+				if !listResp.GetHasNextPage() || next == "" || next == pageToken {
+					break
+				}
+				pageToken = next
 			}
-			return nil, fmt.Errorf("workspace %s not found", workspaceID)
+			// Every page has been read and the workspace is not in any of them,
+			// which is the same answer a 404 gives. Tag it so callers that must
+			// tell "gone" from "failed" — see IsNotFoundStatus — get the same
+			// signal on both paths.
+			return nil, fmt.Errorf("%w: workspace %s not found", ErrNotFound, workspaceID)
 		}
 		return nil, err
 	}
@@ -1196,6 +1232,15 @@ func (c *OryClient) CreateOrganization(ctx context.Context, projectID, label str
 	return org, nil
 }
 
+// organizationRetryBaseDelay returns the configured backoff unit for the
+// organization consistency retries, falling back to the production default.
+func (c *OryClient) organizationRetryBaseDelay() time.Duration {
+	if c.config.OrganizationRetryBaseDelay > 0 {
+		return c.config.OrganizationRetryBaseDelay
+	}
+	return defaultOrganizationRetryBaseDelay
+}
+
 // GetOrganization retrieves an organization by ID.
 // Includes retry logic to handle eventual consistency after organization creation.
 func (c *OryClient) GetOrganization(ctx context.Context, projectID, orgID string) (*ory.Organization, error) {
@@ -1212,6 +1257,7 @@ func (c *OryClient) GetOrganization(ctx context.Context, projectID, orgID string
 	var lastErr error
 	for attempt := 0; attempt < 5; attempt++ {
 		resp, httpResp, err := c.consoleClient.ProjectAPI.GetOrganization(ctx, projectID, orgID).Execute()
+		err = notFoundIfStatus(httpResp, err)
 		if httpResp != nil {
 			_ = httpResp.Body.Close()
 		}
@@ -1232,7 +1278,7 @@ func (c *OryClient) GetOrganization(ctx context.Context, projectID, orgID string
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
-			case <-time.After(time.Duration(1<<attempt) * time.Second):
+			case <-time.After(time.Duration(1<<attempt) * c.organizationRetryBaseDelay()):
 			}
 		}
 	}

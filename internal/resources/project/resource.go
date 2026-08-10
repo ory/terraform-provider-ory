@@ -16,6 +16,11 @@ import (
 	"github.com/ory/terraform-provider-ory/internal/client"
 )
 
+// projectStateDeleted is the state Ory reports for a project that has been
+// deleted. The delete is soft: the project keeps answering GetProject with 200
+// and this state, rather than starting to 404.
+const projectStateDeleted = "deleted"
+
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
 	_ resource.Resource                = &ProjectResource{}
@@ -211,6 +216,11 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	project, httpResp, err := r.client.CreateProject(ctx, plan.Name.ValueString(), plan.Environment.ValueString(), plan.HomeRegion.ValueString())
+	// CreateProject hands back the response so the 402 below can read its status;
+	// closing it here is what keeps the connection from leaking on every create.
+	if httpResp != nil {
+		defer func() { _ = httpResp.Body.Close() }()
+	}
 	if err != nil {
 		if httpResp != nil && httpResp.StatusCode == 402 {
 			resp.Diagnostics.AddError(
@@ -247,10 +257,27 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	project, err := r.client.GetProject(ctx, state.ID.ValueString())
 	if err != nil {
+		if client.IsNotFoundStatus(err) {
+			// The project was purged outside Terraform. Drop it from state so the
+			// next plan recreates it, instead of failing every plan until the
+			// operator runs `terraform state rm`.
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Error Reading Project",
 			"Could not read project ID "+state.ID.ValueString()+": "+err.Error(),
 		)
+		return
+	}
+
+	// Deleting a project through the console is a soft delete: GetProject keeps
+	// answering 200 and only the state field changes, so the 404 above never
+	// fires for the case operators actually hit. Without this check a plan
+	// reports no changes at all for a project that is gone from the console.
+	// ActionResource.getHooksFromProject treats the same state the same way.
+	if project.GetState() == projectStateDeleted {
+		resp.State.RemoveResource(ctx)
 		return
 	}
 
