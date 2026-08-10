@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -118,6 +119,25 @@ func TestOryClientConfig_Equal(t *testing.T) {
 
 	emptyBoth := OryClientConfig{}
 	assert.True(t, emptyBoth.Equal(OryClientConfig{}))
+
+	// The retry delay decides real timing, so a client configured with one value
+	// must not be reused for another.
+	delayDiff := base
+	delayDiff.AllowedProjectIDs = []string{"a", "b"}
+	delayDiff.OrganizationRetryBaseDelay = time.Millisecond
+	assert.False(t, base.Equal(delayDiff))
+}
+
+// The zero value means "use the production default". A regression that returned
+// zero instead would drop the backoff entirely and hammer the API through all
+// five organization retries, which no other test would notice: the ones that
+// exercise the retry path set the delay explicitly.
+func TestOrganizationRetryBaseDelay_ZeroFallsBackToDefault(t *testing.T) {
+	unset := &OryClient{config: OryClientConfig{}}
+	assert.Equal(t, defaultOrganizationRetryBaseDelay, unset.organizationRetryBaseDelay())
+
+	configured := &OryClient{config: OryClientConfig{OrganizationRetryBaseDelay: time.Millisecond}}
+	assert.Equal(t, time.Millisecond, configured.organizationRetryBaseDelay())
 }
 
 // errorsIsSanity guards against accidental removal of the sentinel wrapping.
