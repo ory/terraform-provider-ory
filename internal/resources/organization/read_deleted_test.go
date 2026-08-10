@@ -22,11 +22,11 @@ import (
 // would otherwise make each case wait fifteen seconds.
 func organizationResourceForServer(t *testing.T, srvURL string) *OrganizationResource {
 	t.Helper()
-	t.Cleanup(client.SetOrganizationRetryBaseDelay(time.Millisecond))
 	c, err := client.NewOryClient(client.OryClientConfig{
-		WorkspaceAPIKey: "ws-test-key",
-		ConsoleAPIURL:   srvURL,
-		ProjectID:       "proj-1",
+		WorkspaceAPIKey:            "ws-test-key",
+		ConsoleAPIURL:              srvURL,
+		ProjectID:                  "proj-1",
+		OrganizationRetryBaseDelay: time.Millisecond,
 	})
 	require.NoError(t, err)
 	return &OrganizationResource{client: c}

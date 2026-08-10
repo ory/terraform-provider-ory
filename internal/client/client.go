@@ -40,19 +40,12 @@ var ErrProjectNotAllowed = errors.New("project not allowed by allowed_project_id
 // IsNotFoundStatus — checks the tag instead.
 var ErrNotFound = errors.New("resource not found")
 
-// organizationRetryBaseDelay is the unit of the exponential backoff between the
-// organization consistency retries in GetOrganization (1x, 2x, 4x, 8x). It is a
-// variable so tests can exercise the retry path without waiting fifteen seconds.
-var organizationRetryBaseDelay = time.Second
-
-// SetOrganizationRetryBaseDelay overrides organizationRetryBaseDelay and returns
-// a function restoring the previous value. Tests use it to keep the retry path
-// covered without paying its production timing.
-func SetOrganizationRetryBaseDelay(d time.Duration) (restore func()) {
-	previous := organizationRetryBaseDelay
-	organizationRetryBaseDelay = d
-	return func() { organizationRetryBaseDelay = previous }
-}
+const (
+	// defaultOrganizationRetryBaseDelay is the unit of the exponential backoff
+	// between the organization consistency retries in GetOrganization
+	// (1x, 2x, 4x, 8x), used when the config leaves it unset.
+	defaultOrganizationRetryBaseDelay = time.Second
+)
 
 const (
 	// maxRetries is the maximum number of retry attempts for rate-limited requests.
@@ -414,6 +407,12 @@ type OryClientConfig struct {
 	// project ID not in this list is refused before the request is sent. When
 	// empty, no restriction is applied. See OryClient.checkProjectAllowed.
 	AllowedProjectIDs []string
+
+	// OrganizationRetryBaseDelay is the unit of the exponential backoff between
+	// the organization consistency retries in GetOrganization. Zero means
+	// defaultOrganizationRetryBaseDelay; tests shorten it so the retry path can
+	// be covered without waiting fifteen seconds.
+	OrganizationRetryBaseDelay time.Duration
 }
 
 // Equal reports whether two configs are equivalent. It is used to decide
@@ -428,7 +427,8 @@ func (c OryClientConfig) Equal(other OryClientConfig) bool {
 		c.WorkspaceID != other.WorkspaceID ||
 		c.ConsoleAPIURL != other.ConsoleAPIURL ||
 		c.ProjectAPIURL != other.ProjectAPIURL ||
-		c.UserAgent != other.UserAgent {
+		c.UserAgent != other.UserAgent ||
+		c.OrganizationRetryBaseDelay != other.OrganizationRetryBaseDelay {
 		return false
 	}
 	if len(c.AllowedProjectIDs) != len(other.AllowedProjectIDs) {
@@ -1232,6 +1232,15 @@ func (c *OryClient) CreateOrganization(ctx context.Context, projectID, label str
 	return org, nil
 }
 
+// organizationRetryBaseDelay returns the configured backoff unit for the
+// organization consistency retries, falling back to the production default.
+func (c *OryClient) organizationRetryBaseDelay() time.Duration {
+	if c.config.OrganizationRetryBaseDelay > 0 {
+		return c.config.OrganizationRetryBaseDelay
+	}
+	return defaultOrganizationRetryBaseDelay
+}
+
 // GetOrganization retrieves an organization by ID.
 // Includes retry logic to handle eventual consistency after organization creation.
 func (c *OryClient) GetOrganization(ctx context.Context, projectID, orgID string) (*ory.Organization, error) {
@@ -1269,7 +1278,7 @@ func (c *OryClient) GetOrganization(ctx context.Context, projectID, orgID string
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
-			case <-time.After(time.Duration(1<<attempt) * organizationRetryBaseDelay):
+			case <-time.After(time.Duration(1<<attempt) * c.organizationRetryBaseDelay()):
 			}
 		}
 	}
