@@ -107,3 +107,45 @@ func TestRead_ProjectServerErrorKeepsResource(t *testing.T) {
 	assert.True(t, resp.Diagnostics.HasError(), "a 500 must surface as an error")
 	assert.False(t, resp.State.Raw.IsNull(), "a 500 must not remove the resource from state")
 }
+
+// TestRead_ProjectSoftDeletedOutsideTerraform covers what deleting a project in
+// the console actually does. It is a soft delete: GetProject keeps answering 200
+// and only the state field changes, so the 404 path above never fires and plan
+// used to report no changes at all for a project that is gone.
+func TestRead_ProjectSoftDeletedOutsideTerraform(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"proj-1","name":"test project","slug":"test-slug","state":"deleted","environment":"prod","home_region":"eu-central","revision_id":"r","organizations":[],"services":{}}`))
+	}))
+	defer srv.Close()
+
+	r := projectResourceForServer(t, srv.URL)
+	state := projectState(t, r)
+
+	resp := &resource.ReadResponse{State: state}
+	r.Read(context.Background(), resource.ReadRequest{State: state}, resp)
+
+	assert.False(t, resp.Diagnostics.HasError(), "a deleted project must not surface as an error: %v", resp.Diagnostics)
+	assert.True(t, resp.State.Raw.IsNull(), "a deleted project must be removed from state")
+}
+
+// The control for the state check: a halted project is not gone, so it must stay
+// in state rather than being recreated.
+func TestRead_ProjectHaltedStaysInState(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"proj-1","name":"test project","slug":"test-slug","state":"halted","environment":"prod","home_region":"eu-central","revision_id":"r","organizations":[],"services":{}}`))
+	}))
+	defer srv.Close()
+
+	r := projectResourceForServer(t, srv.URL)
+	state := projectState(t, r)
+
+	resp := &resource.ReadResponse{State: state}
+	r.Read(context.Background(), resource.ReadRequest{State: state}, resp)
+
+	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+	assert.False(t, resp.State.Raw.IsNull(), "a halted project must stay in state")
+}

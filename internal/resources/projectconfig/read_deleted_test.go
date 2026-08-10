@@ -115,3 +115,21 @@ func TestRead_ProjectConfigServerErrorKeepsResource(t *testing.T) {
 	assert.True(t, resp.Diagnostics.HasError(), "a 500 must surface as an error")
 	assert.False(t, resp.State.Raw.IsNull(), "a 500 must not remove the resource from state")
 }
+
+// TestRead_ProjectConfigProjectSoftDeleted covers what deleting a project in the
+// console actually does. It is a soft delete: GetProject keeps answering 200 and
+// only the state field changes, so the 404 path never fires and plan used to
+// report no changes for the config of a project that is gone.
+func TestRead_ProjectConfigProjectSoftDeleted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"proj-1","name":"n","slug":"s","environment":"prod","home_region":"eu-central","revision_id":"r","organizations":[],"state":"deleted","services":{}}`))
+	}))
+	defer srv.Close()
+
+	resp := readProjectConfig(t, srv)
+
+	assert.False(t, resp.Diagnostics.HasError(), "a deleted project must not surface as an error: %v", resp.Diagnostics)
+	assert.True(t, resp.State.Raw.IsNull(), "a deleted project must take its config out of state")
+}

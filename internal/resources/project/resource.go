@@ -16,6 +16,11 @@ import (
 	"github.com/ory/terraform-provider-ory/internal/client"
 )
 
+// projectStateDeleted is the state Ory reports for a project that has been
+// deleted. The delete is soft: the project keeps answering GetProject with 200
+// and this state, rather than starting to 404.
+const projectStateDeleted = "deleted"
+
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
 	_ resource.Resource                = &ProjectResource{}
@@ -263,6 +268,16 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 			"Error Reading Project",
 			"Could not read project ID "+state.ID.ValueString()+": "+err.Error(),
 		)
+		return
+	}
+
+	// Deleting a project through the console is a soft delete: GetProject keeps
+	// answering 200 and only the state field changes, so the 404 above never
+	// fires for the case operators actually hit. Without this check a plan
+	// reports no changes at all for a project that is gone from the console.
+	// ActionResource.getHooksFromProject treats the same state the same way.
+	if project.GetState() == projectStateDeleted {
+		resp.State.RemoveResource(ctx)
 		return
 	}
 
