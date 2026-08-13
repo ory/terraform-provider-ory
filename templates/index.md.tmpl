@@ -159,6 +159,37 @@ export ORY_ALLOWED_PROJECT_IDS="3fa274fe-910d-4766-b1a4-0c0dd3b41429,7bc1e0c2-..
 
 When `allowed_project_ids` is unset, no restriction is applied.
 
+## Rate limits and retries
+
+The Ory API answers `429 Too Many Requests` when a caller exceeds the request budget for a route. Terraform runs resource operations in parallel, ten at a time by default, so a bulk apply of many `ory_oauth2_client` or `ory_identity` resources can reach that budget.
+
+The provider retries a rejected request instead of failing the apply. It follows [Ory's guidance for 429 responses](https://www.ory.com/docs/guides/rate-limits-new#how-to-handle-429-responses):
+
+1. Back off exponentially, capped at 30 seconds.
+2. Wait longer when the `x-ratelimit-reset` response header reports a longer window.
+3. Add random jitter to every wait, so parallel workers do not retry together.
+4. Pause before the budget runs out, based on the `x-ratelimit-remaining` header.
+
+No configuration is needed. A large apply works at the default parallelism, and `terraform apply -parallelism=1` is no longer a workaround.
+
+Set `max_retries` to change how many times a rejected request is retried. The default is 6, which spends up to 61 seconds waiting and so outlasts a full 60-second rate-limit window. The maximum is 20. Set it to `0` to turn the retry off and let the `429` reach Terraform.
+
+```hcl
+provider "ory" {
+  workspace_api_key = var.ory_workspace_api_key
+  project_id        = var.ory_project_id
+  max_retries       = 8 # for a very large apply
+}
+```
+
+The value can also be supplied as an `ORY_MAX_RETRIES` environment variable:
+
+```bash
+export ORY_MAX_RETRIES=8
+```
+
+To see each wait, run Terraform with `TF_LOG=DEBUG` and look for `Ory API rate limit reached`.
+
 ## Import Requirements
 
 When importing existing resources, ensure you have the appropriate credentials configured **before** running `terraform import`.

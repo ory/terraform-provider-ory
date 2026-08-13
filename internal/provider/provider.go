@@ -2,15 +2,19 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/ory/terraform-provider-ory/internal/client"
@@ -81,6 +85,9 @@ type OryProviderModel struct {
 	// Optional: Override API URLs (for testing)
 	ConsoleAPIURL types.String `tfsdk:"console_api_url"`
 	ProjectAPIURL types.String `tfsdk:"project_api_url"`
+
+	// Optional: how many times a rate-limited request is retried
+	MaxRetries types.Int64 `tfsdk:"max_retries"`
 }
 
 // New returns a new provider instance.
@@ -206,6 +213,22 @@ When importing existing resources, ensure you have the appropriate credentials c
 				MarkdownDescription: "Override the project API URL template (default: `https://%s.projects.oryapis.com`).",
 				Optional:            true,
 			},
+			"max_retries": schema.Int64Attribute{
+				Description: fmt.Sprintf(
+					"How many times a request that the Ory API rejects with HTTP 429 Too Many Requests is retried before the error reaches Terraform (default: %d, maximum: %d). "+
+						"The provider backs off exponentially, capped at 30 seconds, waits longer when the x-ratelimit-reset header reports a longer window, and adds random jitter so parallel workers do not retry together. "+
+						"Raise it for a very large apply; set it to 0 to disable the retry. Can also be set via the ORY_MAX_RETRIES environment variable.",
+					client.DefaultMaxRetries, client.MaxRetriesUpperBound),
+				MarkdownDescription: fmt.Sprintf(
+					"How many times a request that the Ory API rejects with `429 Too Many Requests` is retried before the error reaches Terraform (default: `%d`, maximum: `%d`). "+
+						"The provider backs off exponentially, capped at 30 seconds, waits longer when the `x-ratelimit-reset` header reports a longer window, and adds random jitter so parallel workers do not retry together. "+
+						"Raise it for a very large apply; set it to `0` to disable the retry. Can also be set via the `ORY_MAX_RETRIES` environment variable.",
+					client.DefaultMaxRetries, client.MaxRetriesUpperBound),
+				Optional: true,
+				Validators: []validator.Int64{
+					int64validator.Between(0, client.MaxRetriesUpperBound),
+				},
+			},
 		},
 	}
 }
@@ -227,6 +250,7 @@ func (p *OryProvider) Configure(ctx context.Context, req provider.ConfigureReque
 	consoleAPIURL := resolveStringDefault(config.ConsoleAPIURL, "ORY_CONSOLE_API_URL", DefaultConsoleAPIURL)
 	projectAPIURL := resolveStringDefault(config.ProjectAPIURL, "ORY_PROJECT_API_URL", DefaultProjectAPIURL)
 	allowedProjectIDs := resolveAllowedProjectIDs(ctx, config.AllowedProjectIDs, &resp.Diagnostics)
+	maxRetries := resolveMaxRetries(config.MaxRetries, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -274,6 +298,7 @@ For more information: https://www.ory.sh/docs/guides/api-keys`,
 		ProjectAPIURL:     projectAPIURL,
 		UserAgent:         userAgent,
 		AllowedProjectIDs: allowedProjectIDs,
+		MaxRetries:        maxRetries,
 	}
 
 	if p.oryClient == nil || !p.lastConfig.Equal(newConfig) {
@@ -371,6 +396,32 @@ func resolveAllowedProjectIDs(ctx context.Context, tfValue types.List, diags *di
 		return normalizeStringList(strings.Split(v, ","))
 	}
 	return nil
+}
+
+// resolveMaxRetries resolves max_retries with an ORY_MAX_RETRIES environment
+// variable fallback. It returns nil when neither source sets a value, which
+// leaves the client on its default. A pointer to 0 is a real setting that turns
+// the retry off, so the two cases must stay apart.
+func resolveMaxRetries(tfValue types.Int64, diags *diag.Diagnostics) *int {
+	if !tfValue.IsNull() && !tfValue.IsUnknown() {
+		value := int(tfValue.ValueInt64())
+		return &value
+	}
+	raw := strings.TrimSpace(os.Getenv("ORY_MAX_RETRIES"))
+	if raw == "" {
+		return nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 || value > client.MaxRetriesUpperBound {
+		diags.AddError(
+			"Invalid ORY_MAX_RETRIES Value",
+			fmt.Sprintf("ORY_MAX_RETRIES must be a whole number between 0 and %d, got %q. "+
+				"It sets how many times a request rejected with HTTP 429 is retried.",
+				client.MaxRetriesUpperBound, raw),
+		)
+		return nil
+	}
+	return &value
 }
 
 // normalizeStringList trims whitespace from each entry and drops empty strings.
