@@ -111,6 +111,56 @@ func TestProjectConfigValue_AbsentServiceReportsFalse(t *testing.T) {
 	assert.False(t, ok, "a project with no oauth2 service must report false")
 }
 
+// TestProjectConfigValue_NilServiceConfigReportsFalse covers a service that is
+// present but carries a nil config map. The config has to stay a concrete map for
+// the nil check to work: assigning a nil map to an interface yields a non-nil
+// interface holding a nil map, so an interface nil check would never fire.
+func TestProjectConfigValue_NilServiceConfigReportsFalse(t *testing.T) {
+	project := &ory.Project{
+		Services: ory.ProjectServices{
+			Identity:   &ory.ProjectServiceIdentity{Config: nil},
+			Oauth2:     &ory.ProjectServiceOAuth2{Config: nil},
+			Permission: &ory.ProjectServicePermission{Config: nil},
+		},
+	}
+
+	for _, path := range []string{
+		// The root path is the discriminating case. With segments left to walk, a
+		// nil map indexes to "not found" anyway, so both forms of the check agree.
+		// With no segments the nil map is the return value, and only a concrete-map
+		// nil check rejects it.
+		"/services/identity/config",
+		"/services/oauth2/config",
+		"/services/permission/config",
+		"/services/identity/config/selfservice",
+		"/services/oauth2/config/ttl",
+		"/services/permission/config/namespaces",
+	} {
+		t.Run(path, func(t *testing.T) {
+			value, ok := projectConfigValue(project, path)
+			assert.False(t, ok, "a nil service config must report false")
+			assert.Nil(t, value)
+		})
+	}
+}
+
+// TestProjectConfigValue_ServiceConfigRootIsReturned covers the shortest valid
+// path, where there are no segments to walk and the config map itself is the
+// value. This is the case the nil check has to let through when the map is set.
+func TestProjectConfigValue_ServiceConfigRootIsReturned(t *testing.T) {
+	project := &ory.Project{
+		Services: ory.ProjectServices{
+			Identity: &ory.ProjectServiceIdentity{
+				Config: map[string]interface{}{"selfservice": map[string]interface{}{}},
+			},
+		},
+	}
+
+	value, ok := projectConfigValue(project, "/services/identity/config")
+	require.True(t, ok)
+	assert.Equal(t, project.Services.Identity.Config, value)
+}
+
 func TestEventually_RetriesUntilSuccess(t *testing.T) {
 	calls := 0
 	err := Eventually(func() error {

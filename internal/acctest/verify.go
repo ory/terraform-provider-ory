@@ -113,30 +113,34 @@ func projectConfigValue(project *ory.Project, patchPath string) (interface{}, bo
 		return nil, false
 	}
 
-	var current interface{}
+	// Kept as a concrete map rather than an interface so the nil check below is
+	// real. Assigning a nil map to an interface yields a non-nil interface holding
+	// a nil map, so an `interface{} == nil` check here would never fire.
+	var config map[string]interface{}
 	switch segments[1] {
 	case "identity":
 		if project.Services.Identity == nil {
 			return nil, false
 		}
-		current = project.Services.Identity.Config
+		config = project.Services.Identity.Config
 	case "oauth2":
 		if project.Services.Oauth2 == nil {
 			return nil, false
 		}
-		current = project.Services.Oauth2.Config
+		config = project.Services.Oauth2.Config
 	case "permission":
 		if project.Services.Permission == nil {
 			return nil, false
 		}
-		current = project.Services.Permission.Config
+		config = project.Services.Permission.Config
 	default:
 		return nil, false
 	}
-	if current == nil {
+	if config == nil {
 		return nil, false
 	}
 
+	var current interface{} = config
 	for _, segment := range segments[3:] {
 		m, ok := current.(map[string]interface{})
 		if !ok {
