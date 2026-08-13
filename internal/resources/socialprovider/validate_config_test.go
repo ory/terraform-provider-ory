@@ -52,6 +52,7 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 		"aal2_amr_values":               tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
 		"pkce":                          tfStringValue(model.Pkce),
 		"fedcm_config_url":              tfStringValue(model.FedcmConfigURL),
+		"net_id_token_origin_header":    tfStringValue(model.NetIDTokenOriginHeader),
 		"update_identity_on_login":      tfStringValue(model.UpdateIdentityOnLogin),
 	}
 
@@ -87,6 +88,7 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 			"aal2_amr_values":               tftypes.List{ElementType: tftypes.String},
 			"pkce":                          tftypes.String,
 			"fedcm_config_url":              tftypes.String,
+			"net_id_token_origin_header":    tftypes.String,
 			"update_identity_on_login":      tftypes.String,
 		},
 	}
@@ -219,6 +221,40 @@ func TestValidateConfig_EmptyFedcmConfigURL_Fails(t *testing.T) {
 	r.ValidateConfig(ctx, req, &resp)
 
 	assert.True(t, resp.Diagnostics.HasError(), "expected error for empty fedcm_config_url")
+}
+
+func TestValidateConfig_EmptyNetIDTokenOriginHeader_Fails(t *testing.T) {
+	r := &SocialProviderResource{}
+	ctx := context.Background()
+
+	req := buildTestConfig(t, SocialProviderResourceModel{
+		ProviderID:             types.StringValue("netid"),
+		ProviderType:           types.StringValue("netid"),
+		ClientID:               types.StringValue("my-client-id"),
+		ClientSecret:           types.StringValue("my-secret"),
+		NetIDTokenOriginHeader: types.StringValue(""), // empty string must fail
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	assert.True(t, resp.Diagnostics.HasError(), "expected error for empty net_id_token_origin_header")
+}
+
+func TestValidateConfig_NetIDTokenOriginHeader_Passes(t *testing.T) {
+	r := &SocialProviderResource{}
+	ctx := context.Background()
+
+	req := buildTestConfig(t, SocialProviderResourceModel{
+		ProviderID:             types.StringValue("netid"),
+		ProviderType:           types.StringValue("netid"),
+		ClientID:               types.StringValue("my-client-id"),
+		ClientSecret:           types.StringValue("my-secret"),
+		NetIDTokenOriginHeader: types.StringValue("https://www.example.com"),
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for a valid net_id_token_origin_header: %v", resp.Diagnostics.Errors())
 }
 
 func TestValidateConfig_WriteOnlyClientSecret_Passes(t *testing.T) {

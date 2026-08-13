@@ -26,6 +26,7 @@ The `provider_type` attribute determines which OAuth2/OIDC integration to use:
 | `discord` | Discord |
 | `facebook` | Facebook |
 | `gitlab` | GitLab |
+| `netid` | NetID (supports FedCM, see below) |
 | `slack` | Slack |
 | `spotify` | Spotify |
 | `twitch` | Twitch |
@@ -147,6 +148,20 @@ resource "ory_social_provider" "google_fedcm" {
   fedcm_config_url = "https://accounts.google.com/gsi/fedcm.json"
 }
 
+# NetID Sign-In with FedCM. NetID needs the origin header Ory sends when it
+# exchanges the FedCM token for an ID token. The value must be one of the
+# `origin_uris` registered on the NetID client.
+resource "ory_social_provider" "netid_fedcm" {
+  provider_id   = "netid"
+  provider_type = "netid"
+  client_id     = var.netid_client_id
+  client_secret = var.netid_client_secret
+  scope         = ["openid", "email"]
+
+  fedcm_config_url           = "https://broker.netid.de/fedcm.json"
+  net_id_token_origin_header = "https://www.example.com"
+}
+
 # Google Sign-In that refreshes identity traits from OIDC claims on every login
 resource "ory_social_provider" "google_sync_on_login" {
   provider_id   = "google-sync"
@@ -252,6 +267,15 @@ variable "google_client_id" {
 }
 
 variable "google_client_secret" {
+  type      = string
+  sensitive = true
+}
+
+variable "netid_client_id" {
+  type = string
+}
+
+variable "netid_client_secret" {
   type      = string
   sensitive = true
 }
@@ -443,6 +467,23 @@ resource "ory_social_provider" "google" {
 
 Leave the attribute unset to disable FedCM for the provider. Removing it from your configuration clears the value server-side.
 
+FedCM is supported for Google and NetID. A NetID provider needs one more attribute: `net_id_token_origin_header`. Ory sends it as the `Origin` header when it exchanges the NetID FedCM token for an ID token, so the value must be one of the `origin_uris` registered on the NetID client. Without it, FedCM sign-in through NetID fails.
+
+```hcl
+resource "ory_social_provider" "netid" {
+  provider_id   = "netid"
+  provider_type = "netid"
+  client_id     = var.netid_client_id
+  client_secret = var.netid_client_secret
+  scope         = ["openid", "email"]
+
+  fedcm_config_url           = "https://broker.netid.de/fedcm.json"
+  net_id_token_origin_header = "https://www.example.com"
+}
+```
+
+Leave `net_id_token_origin_header` unset for every provider other than NetID. Removing it from your configuration clears the value server-side.
+
 ## Update Identity on Login
 
 The `update_identity_on_login` attribute controls whether an identity's traits and metadata are refreshed from the upstream OIDC claims every time the user signs in:
@@ -537,6 +578,7 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 - `issuer_url` (String) OIDC issuer URL (required for generic providers).
 - `label` (String) Human-readable label for the provider, displayed on the login button (e.g., "Sign in with Corporate SSO").
 - `mapper_url` (String) Jsonnet mapper URL for claims mapping. Can be a URL or base64-encoded Jsonnet (base64://...). If not set, a default mapper that extracts email from claims will be used.
+- `net_id_token_origin_header` (String) Origin header Ory sends when it exchanges a NetID FedCM token for an ID token. The value must be one of the `origin_uris` registered on the NetID client, for example "https://www.example.com". Set it together with fedcm_config_url on a NetID provider. Leave it unset for every other provider.
 - `pkce` (String) PKCE (Proof Key for Code Exchange) behavior for the OAuth2 authorization code flow. "auto" (default) enables PKCE when the upstream provider advertises support via OIDC discovery; "force" always sends PKCE (use only with providers known to support it); "never" disables PKCE.
 - `project_id` (String) Project ID. If not set, uses provider's project_id.
 - `scope` (List of String) OAuth2 scopes to request.

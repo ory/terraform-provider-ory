@@ -88,6 +88,7 @@ type SocialProviderResourceModel struct {
 	Aal2AmrValues              types.List   `tfsdk:"aal2_amr_values"`
 	Pkce                       types.String `tfsdk:"pkce"`
 	FedcmConfigURL             types.String `tfsdk:"fedcm_config_url"`
+	NetIDTokenOriginHeader     types.String `tfsdk:"net_id_token_origin_header"`
 	UpdateIdentityOnLogin      types.String `tfsdk:"update_identity_on_login"`
 }
 
@@ -283,6 +284,10 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				Description: "URL of the provider's FedCM (Federated Credential Management) configuration file. When set, Ory can use the browser's FedCM API for sign-in with this provider instead of a full-page redirect. For example, Google's FedCM configuration is served at \"https://accounts.google.com/gsi/fedcm.json\". Leave unset to disable FedCM for this provider.",
 				Optional:    true,
 			},
+			"net_id_token_origin_header": schema.StringAttribute{
+				Description: "Origin header Ory sends when it exchanges a NetID FedCM token for an ID token. The value must be one of the `origin_uris` registered on the NetID client, for example \"https://www.example.com\". Set it together with fedcm_config_url on a NetID provider. Leave it unset for every other provider.",
+				Optional:    true,
+			},
 			"update_identity_on_login": schema.StringAttribute{
 				Description: "Controls whether the identity's traits and metadata are refreshed from the upstream OIDC claims on every login. \"never\" (the API default) keeps the identity as-is after the initial sign-up. \"automatic\" re-runs the Jsonnet claims mapper on each login and updates the identity accordingly. Leave unset to use the Ory default (\"never\").",
 				Optional:    true,
@@ -398,6 +403,9 @@ func (r *SocialProviderResource) ValidateConfig(ctx context.Context, req resourc
 	}
 	if !config.FedcmConfigURL.IsNull() && !config.FedcmConfigURL.IsUnknown() && config.FedcmConfigURL.ValueString() == "" {
 		resp.Diagnostics.AddAttributeError(path.Root("fedcm_config_url"), "Invalid Attribute Value", "fedcm_config_url must not be an empty string.")
+	}
+	if !config.NetIDTokenOriginHeader.IsNull() && !config.NetIDTokenOriginHeader.IsUnknown() && config.NetIDTokenOriginHeader.ValueString() == "" {
+		resp.Diagnostics.AddAttributeError(path.Root("net_id_token_origin_header"), "Invalid Attribute Value", "net_id_token_origin_header must not be an empty string.")
 	}
 
 	if providerType == "apple" {
@@ -532,6 +540,14 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 	// the full-object replace performed by Update clears it server-side.
 	if !plan.FedcmConfigURL.IsNull() && !plan.FedcmConfigURL.IsUnknown() && plan.FedcmConfigURL.ValueString() != "" {
 		config["fedcm_config_url"] = plan.FedcmConfigURL.ValueString()
+	}
+
+	// net_id_token_origin_header gets the same handling as fedcm_config_url.
+	// Create and Update replace the whole provider object, so a value missing
+	// here is wiped server-side on the next apply.
+	// See: https://github.com/ory/terraform-provider-ory/issues/329
+	if !plan.NetIDTokenOriginHeader.IsNull() && !plan.NetIDTokenOriginHeader.IsUnknown() && plan.NetIDTokenOriginHeader.ValueString() != "" {
+		config["net_id_token_origin_header"] = plan.NetIDTokenOriginHeader.ValueString()
 	}
 
 	// Apple-specific fields — skip empty strings to avoid sending blank credentials
@@ -1000,6 +1016,14 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		state.FedcmConfigURL = types.StringValue(fedcmURL)
 	} else {
 		state.FedcmConfigURL = types.StringNull()
+	}
+
+	// Read net_id_token_origin_header from the API (returned on read), clearing
+	// stale state when the API omits it.
+	if originHeader, ok := provider["net_id_token_origin_header"].(string); ok && originHeader != "" {
+		state.NetIDTokenOriginHeader = types.StringValue(originHeader)
+	} else {
+		state.NetIDTokenOriginHeader = types.StringNull()
 	}
 
 	// Read Apple-specific fields, clearing stale state when not returned by the API

@@ -26,6 +26,7 @@ The `provider_type` attribute determines which OAuth2/OIDC integration to use:
 | `discord` | Discord |
 | `facebook` | Facebook |
 | `gitlab` | GitLab |
+| `netid` | NetID (supports FedCM, see below) |
 | `slack` | Slack |
 | `spotify` | Spotify |
 | `twitch` | Twitch |
@@ -210,6 +211,23 @@ resource "ory_social_provider" "google" {
 ```
 
 Leave the attribute unset to disable FedCM for the provider. Removing it from your configuration clears the value server-side.
+
+FedCM is supported for Google and NetID. A NetID provider needs one more attribute: `net_id_token_origin_header`. Ory sends it as the `Origin` header when it exchanges the NetID FedCM token for an ID token, so the value must be one of the `origin_uris` registered on the NetID client. Without it, FedCM sign-in through NetID fails.
+
+```hcl
+resource "ory_social_provider" "netid" {
+  provider_id   = "netid"
+  provider_type = "netid"
+  client_id     = var.netid_client_id
+  client_secret = var.netid_client_secret
+  scope         = ["openid", "email"]
+
+  fedcm_config_url           = "https://broker.netid.de/fedcm.json"
+  net_id_token_origin_header = "https://www.example.com"
+}
+```
+
+Leave `net_id_token_origin_header` unset for every provider other than NetID. Removing it from your configuration clears the value server-side.
 
 ## Update Identity on Login
 
