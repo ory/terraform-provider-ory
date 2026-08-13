@@ -42,33 +42,61 @@ func testCheckResourceAttrNotEqual(res1, attr1, res2, attr2 string) resource.Tes
 	}
 }
 
-// checkSchemaSurvivesDestroy asserts the schema is still registered on the project
-// after destroy. ory_identity_schema has an intentional no-op Delete, because Ory
-// Network does not support deleting identity schemas (ory/network#262), and the
-// resource warns as much. Pinning that keeps two failures visible: a Delete that
-// starts really deleting, which would break identities still using the schema, and
-// one that removes the schema from the project's list. See issue #333.
-func checkSchemaSurvivesDestroy(t *testing.T, schemaID string) resource.TestCheckFunc {
+// captureSchemaAPIID records the API-side id of the schema this test created, so
+// the destroy check can require that exact schema rather than accepting any
+// non-empty list. The API rewrites schema_id to a content hash, so the id has to
+// be read from state after apply instead of assumed.
+func captureSchemaAPIID(resourceName string, into *string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return fmt.Errorf("resource %s not found in state", resourceName)
+		}
+		if rs.Primary.ID == "" {
+			return fmt.Errorf("resource %s has an empty id", resourceName)
+		}
+		*into = rs.Primary.ID
+		return nil
+	}
+}
+
+// checkSchemaSurvivesDestroy asserts the schema this test created is still
+// registered on the project after destroy. ory_identity_schema has an intentional
+// no-op Delete, because Ory Network does not support deleting identity schemas
+// (ory/network#262), and the resource warns as much. Pinning that keeps two
+// failures visible: a Delete that starts really deleting, which would break
+// identities still using the schema, and one that drops the schema from the
+// project's list.
+//
+// apiID is filled in by captureSchemaAPIID during the apply step. Asserting that
+// specific id, rather than a non-empty list, is what keeps this from passing on
+// the preset schemas every project already has. See issue #333.
+func checkSchemaSurvivesDestroy(t *testing.T, apiID *string) resource.TestCheckFunc {
 	return func(*terraform.State) error {
+		if *apiID == "" {
+			return fmt.Errorf("no schema id was captured during the apply step")
+		}
 		return acctest.Eventually(func() error {
-			value, ok := acctest.ProjectConfigValue(t, acctest.GetTestProject(t).ID,
+			value, ok, err := acctest.ProjectConfigValue(t, acctest.GetTestProject(t).ID,
 				"/services/identity/config/identity/schemas")
+			if err != nil {
+				return fmt.Errorf("could not read project after destroy: %w", err)
+			}
 			if !ok {
 				return fmt.Errorf("destroy removed the identity schemas list entirely")
 			}
 			schemas, _ := value.([]interface{})
+			present := make([]string, 0, len(schemas))
 			for _, s := range schemas {
 				sm, _ := s.(map[string]interface{})
-				if id, _ := sm["id"].(string); id == schemaID {
+				id, _ := sm["id"].(string)
+				if id == *apiID {
 					return nil
 				}
+				present = append(present, id)
 			}
-			// The API rewrites schema_id to a content hash, so an exact id match is
-			// not guaranteed. A non-empty list is the assertion that holds either way.
-			if len(schemas) == 0 {
-				return fmt.Errorf("destroy emptied the identity schemas list")
-			}
-			return nil
+			return fmt.Errorf("destroy removed schema %s from the project, remaining schemas: %v",
+				*apiID, present)
 		})
 	}
 }
@@ -77,19 +105,23 @@ func TestAccIdentitySchemaResource_basic(t *testing.T) {
 	suffix := time.Now().UnixNano()
 	schemaID := fmt.Sprintf("tf-test-schema-%d", suffix)
 
+	// Filled in by captureSchemaAPIID during the apply, read by CheckDestroy.
+	var schemaAPIID string
+
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.AccPreCheck(t)
 			acctest.RequireSchemaTests(t)
 		},
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
-		CheckDestroy:             checkSchemaSurvivesDestroy(t, schemaID),
+		CheckDestroy:             checkSchemaSurvivesDestroy(t, &schemaAPIID),
 		Steps: []resource.TestStep{
 			{
 				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{"SchemaID": schemaID, "AppURL": testutil.ExampleAppURL}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_identity_schema.test", "id"),
 					resource.TestCheckResourceAttr("ory_identity_schema.test", "schema_id", schemaID),
+					captureSchemaAPIID("ory_identity_schema.test", &schemaAPIID),
 				),
 			},
 		},

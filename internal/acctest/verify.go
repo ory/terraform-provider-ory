@@ -8,6 +8,8 @@ import (
 	"time"
 
 	ory "github.com/ory/client-go"
+
+	"github.com/ory/terraform-provider-ory/internal/client"
 )
 
 // Verification helpers for asserting what the Ory API actually stores, rather
@@ -46,23 +48,26 @@ func Eventually(check func() error) error {
 // Patch path, for example
 // "/services/identity/config/selfservice/methods/oidc/config/providers".
 //
-// The second return reports whether the path resolves. A missing key reports
-// false rather than an error, because the API prunes empty values and removes
-// whole nodes, which is exactly what a delete assertion needs to observe.
-func ProjectConfigValue(t *testing.T, projectID, patchPath string) (interface{}, bool) {
+// The bool reports whether the path resolves. A missing key is not an error,
+// because the API prunes empty values and removes whole nodes, which is exactly
+// what a delete assertion needs to observe. A read failure is returned as an
+// error and kept distinct from a missing key, so a caller inside Eventually
+// retries it instead of reading a transient 5xx as "already deleted".
+func ProjectConfigValue(t *testing.T, projectID, patchPath string) (interface{}, bool, error) {
 	t.Helper()
 
 	project, err := getProjectForVerify(t, projectID)
 	if err != nil {
-		t.Fatalf("could not read project %s: %v", projectID, err)
-		return nil, false
+		return nil, false, err
 	}
-	return projectConfigValue(project, patchPath)
+	value, ok := projectConfigValue(project, patchPath)
+	return value, ok, nil
 }
 
 // ProjectState returns the lifecycle state the API reports for a project.
 // Projects are soft deleted, so a deleted project still returns HTTP 200 with
-// state "deleted" rather than a 404.
+// state "deleted" rather than a 404. A purged project is gone, so callers should
+// treat IsNotFound as deleted and every other error as a failed check.
 func ProjectState(t *testing.T, projectID string) (string, error) {
 	t.Helper()
 
@@ -71,6 +76,13 @@ func ProjectState(t *testing.T, projectID string) (string, error) {
 		return "", err
 	}
 	return project.GetState(), nil
+}
+
+// IsNotFound reports whether an error from a verification helper means the object
+// is gone, as opposed to the read having failed. Delegates to the provider's own
+// classifier so tests and resources agree on what a 404 looks like.
+func IsNotFound(err error) bool {
+	return client.IsNotFound(err)
 }
 
 // WorkspaceExists reports whether the API still returns the workspace. Ory has no

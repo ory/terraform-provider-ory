@@ -47,11 +47,16 @@ func checkProjectDeleted(t *testing.T, resourceName string) resource.TestCheckFu
 		}
 		return acctest.Eventually(func() error {
 			state, err := acctest.ProjectState(t, projectID)
-			if err != nil {
-				// A purged project reads as not found, which also means deleted.
+			switch {
+			case acctest.IsNotFound(err):
+				// A purged project is gone, which also means deleted.
 				return nil
-			}
-			if state != "deleted" {
+			case err != nil:
+				// Anything else, such as an auth failure, a timeout, or a 5xx, means
+				// the check did not run. Returning nil here would pass CheckDestroy
+				// without ever verifying the deletion.
+				return fmt.Errorf("could not read project %s after destroy: %w", projectID, err)
+			case state != "deleted":
 				return fmt.Errorf("project %s reports state %q after destroy, want %q",
 					projectID, state, "deleted")
 			}

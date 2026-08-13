@@ -56,7 +56,11 @@ func checkTemplateContentRemoved(t *testing.T, subject, bodyHTML string) resourc
 				{recoveryCodeValidSubjectPath, subject},
 				{recoveryCodeValidBodyHTMLPath, bodyHTML},
 			} {
-				value, ok := acctest.ProjectConfigValue(t, projectID, want.path)
+				value, ok, err := acctest.ProjectConfigValue(t, projectID, want.path)
+				if err != nil {
+					// A failed read must be retried, not read as "already cleared".
+					return fmt.Errorf("could not read project %s after destroy: %w", projectID, err)
+				}
 				if !ok {
 					continue
 				}
