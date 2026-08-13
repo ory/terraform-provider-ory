@@ -201,6 +201,48 @@ func (r *SAMLProviderResource) buildProviderConfig(plan *SAMLProviderResourceMod
 	return config
 }
 
+// samlMethodPath is the config node that holds the whole SAML method
+// configuration: its `enabled` flag and its `config` object.
+const samlMethodPath = "/services/identity/config/selfservice/methods/saml"
+
+// samlMethodPatches returns the patches that set the SAML method's enabled flag
+// and its providers array. Both the first-provider create and the last-provider
+// delete need this.
+//
+// When the method node is absent it is created in one operation, which loses
+// nothing. When it already exists each key is patched on its own. A JSON Patch
+// "add" or "replace" whose path is an object node replaces that whole object
+// (RFC 6902), so writing the node wholesale silently discards every sibling key
+// Ory keeps under it. ory_social_provider had the same defect on the OIDC node,
+// where it discarded `config.base_redirect_uri` and `enable_auto_link_policy`.
+// See https://github.com/ory/terraform-provider-ory/issues/332
+func samlMethodPatches(nodeExists, enabled bool, providers []interface{}) []ory.JsonPatch {
+	if !nodeExists {
+		return []ory.JsonPatch{{
+			Op:   "add",
+			Path: samlMethodPath,
+			Value: map[string]interface{}{
+				"enabled": enabled,
+				"config": map[string]interface{}{
+					"providers": providers,
+				},
+			},
+		}}
+	}
+	return []ory.JsonPatch{
+		{
+			Op:    "add",
+			Path:  samlMethodPath + "/enabled",
+			Value: enabled,
+		},
+		{
+			Op:    "add",
+			Path:  samlMethodPath + "/config/providers",
+			Value: providers,
+		},
+	}
+}
+
 // extractSAMLConfigFromProject navigates to the SAML method config map.
 func extractSAMLConfigFromProject(project *ory.Project) map[string]interface{} {
 	if project.Services.Identity == nil {
@@ -230,7 +272,12 @@ func extractSAMLConfigFromProject(project *ory.Project) map[string]interface{} {
 }
 
 func extractProvidersFromProject(project *ory.Project) []map[string]interface{} {
-	samlConfig := extractSAMLConfigFromProject(project)
+	return providersFromSAMLConfig(extractSAMLConfigFromProject(project))
+}
+
+// providersFromSAMLConfig reads the providers array out of a SAML method config
+// map. A nil map, which means the method node is absent, yields no providers.
+func providersFromSAMLConfig(samlConfig map[string]interface{}) []map[string]interface{} {
 	if samlConfig == nil {
 		return []map[string]interface{}{}
 	}
@@ -247,29 +294,45 @@ func extractProvidersFromProject(project *ory.Project) []map[string]interface{} 
 	return result
 }
 
-// copyProviders returns a deep copy of the provider slice via a JSON
+// copySAMLConfig returns a deep copy of the SAML method config via a JSON
 // round-trip so callers cannot accidentally mutate the cached project state.
-func copyProviders(providers []map[string]interface{}) []map[string]interface{} {
-	b, err := json.Marshal(providers)
+func copySAMLConfig(samlConfig map[string]interface{}) map[string]interface{} {
+	b, err := json.Marshal(samlConfig)
 	if err != nil {
-		return providers
+		return samlConfig
 	}
-	var cp []map[string]interface{}
+	var cp map[string]interface{}
 	if err := json.Unmarshal(b, &cp); err != nil {
-		return providers
+		return samlConfig
 	}
 	return cp
 }
 
 func (r *SAMLProviderResource) getProviders(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
+	samlConfig, err := r.getSAMLConfig(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	return providersFromSAMLConfig(samlConfig), nil
+}
+
+// getSAMLConfig returns the SAML method config map, or nil when the method node
+// is absent from the project config. Callers need that distinction: an absent
+// node can be written wholesale, while an existing one must be patched key by
+// key. See samlMethodPatches.
+func (r *SAMLProviderResource) getSAMLConfig(ctx context.Context, projectID string) (map[string]interface{}, error) {
 	if cached := r.client.GetCachedProject(projectID); cached != nil {
-		return copyProviders(extractProvidersFromProject(cached)), nil
+		samlConfig := extractSAMLConfigFromProject(cached)
+		if samlConfig == nil {
+			return nil, nil
+		}
+		return copySAMLConfig(samlConfig), nil
 	}
 	project, err := r.client.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get project %s: %w", projectID, err)
 	}
-	return extractProvidersFromProject(project), nil
+	return extractSAMLConfigFromProject(project), nil
 }
 
 func (r *SAMLProviderResource) findProviderIndex(providers []map[string]interface{}, providerID string) int {
@@ -299,11 +362,12 @@ func (r *SAMLProviderResource) Create(ctx context.Context, req resource.CreateRe
 	mu.Lock()
 	defer mu.Unlock()
 
-	providers, err := r.getProviders(ctx, projectID)
+	samlConfig, err := r.getSAMLConfig(ctx, projectID)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Getting SAML Providers", err.Error())
 		return
 	}
+	providers := providersFromSAMLConfig(samlConfig)
 
 	var patches []ory.JsonPatch
 	existingIndex := r.findProviderIndex(providers, plan.ProviderID.ValueString())
@@ -313,28 +377,19 @@ func (r *SAMLProviderResource) Create(ctx context.Context, req resource.CreateRe
 		// Replace existing
 		patches = append(patches, ory.JsonPatch{
 			Op:    "replace",
-			Path:  fmt.Sprintf("/services/identity/config/selfservice/methods/saml/config/providers/%d", existingIndex),
+			Path:  fmt.Sprintf("%s/config/providers/%d", samlMethodPath, existingIndex),
 			Value: providerConfig,
 		})
 	case len(providers) == 0:
-		// Initialize the full SAML method configuration when adding the first provider.
-		// Using `add` (not `replace`) mirrors ory_social_provider's first-provider flow
-		// so the JSON Patch semantics are identical whether or not the saml method stub
-		// already exists in the project config.
-		patches = append(patches, ory.JsonPatch{
-			Op:   "add",
-			Path: "/services/identity/config/selfservice/methods/saml",
-			Value: map[string]interface{}{
-				"enabled": true,
-				"config": map[string]interface{}{
-					"providers": []interface{}{providerConfig},
-				},
-			},
-		})
+		// Adding the first provider also enables the method. Patch the two keys
+		// individually when the method node already exists so sibling keys under
+		// it survive; only an absent node is written wholesale.
+		patches = append(patches, samlMethodPatches(samlConfig != nil, true,
+			[]interface{}{providerConfig})...)
 	default:
 		patches = append(patches, ory.JsonPatch{
 			Op:    "add",
-			Path:  "/services/identity/config/selfservice/methods/saml/config/providers/-",
+			Path:  samlMethodPath + "/config/providers/-",
 			Value: providerConfig,
 		})
 	}
@@ -517,7 +572,7 @@ func (r *SAMLProviderResource) Update(ctx context.Context, req resource.UpdateRe
 
 	patches := []ory.JsonPatch{{
 		Op:    "replace",
-		Path:  fmt.Sprintf("/services/identity/config/selfservice/methods/saml/config/providers/%d", index),
+		Path:  fmt.Sprintf("%s/config/providers/%d", samlMethodPath, index),
 		Value: providerConfig,
 	}}
 
@@ -562,24 +617,17 @@ func (r *SAMLProviderResource) Delete(ctx context.Context, req resource.DeleteRe
 
 	var patches []ory.JsonPatch
 
-	// When removing the last provider, reset the SAML method config so we
-	// don't leave an `enabled: true` method with an empty providers array,
-	// which Ory treats as an invalid configuration.
+	// When removing the last provider, disable the method and clear the providers
+	// array so we don't leave an `enabled: true` method with an empty list, which
+	// Ory treats as an invalid configuration. The method node exists here, since
+	// we just found a provider inside it, so both keys are patched individually
+	// and sibling keys under the node survive.
 	if len(providers) == 1 {
-		patches = append(patches, ory.JsonPatch{
-			Op:   "replace",
-			Path: "/services/identity/config/selfservice/methods/saml",
-			Value: map[string]interface{}{
-				"enabled": false,
-				"config": map[string]interface{}{
-					"providers": []interface{}{},
-				},
-			},
-		})
+		patches = append(patches, samlMethodPatches(true, false, []interface{}{})...)
 	} else {
 		patches = append(patches, ory.JsonPatch{
 			Op:   "remove",
-			Path: fmt.Sprintf("/services/identity/config/selfservice/methods/saml/config/providers/%d", index),
+			Path: fmt.Sprintf("%s/config/providers/%d", samlMethodPath, index),
 		})
 	}
 
