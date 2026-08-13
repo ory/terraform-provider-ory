@@ -159,6 +159,39 @@ export ORY_ALLOWED_PROJECT_IDS="3fa274fe-910d-4766-b1a4-0c0dd3b41429,7bc1e0c2-..
 
 When `allowed_project_ids` is unset, no restriction is applied.
 
+## Rate limits and retries
+
+The Ory API answers `429 Too Many Requests` when a caller exceeds the request budget for a route. Terraform runs resource operations in parallel, ten at a time by default, so a bulk apply of many `ory_oauth2_client` or `ory_identity` resources can reach that budget.
+
+The provider retries a rejected request instead of failing the apply. It follows [Ory's guidance for 429 responses](https://www.ory.com/docs/guides/rate-limits-new#how-to-handle-429-responses):
+
+1. Back off exponentially, capped at 30 seconds.
+2. Wait longer when the `x-ratelimit-reset` response header reports a longer window.
+3. Add random jitter to every wait, so parallel workers do not retry together.
+4. Pause before the budget runs out, based on the `x-ratelimit-remaining` header.
+
+No configuration is needed. A large apply works at the default parallelism, and `terraform apply -parallelism=1` is no longer a workaround.
+
+A `429` still reaches Terraform when the retries run out or when `max_retries` is `0`. The error then names the operation and the number of retries it used.
+
+Set `max_retries` to change how many times a rejected request is retried. The default is 6. Its waits of 1, 2, 4, 8, 16 and 30 seconds come to 61 seconds, so the retry outlasts a full 60-second rate-limit window. That total is a floor: the jitter and a longer window reported by the server both raise it. The maximum is 20. Set it to `0` to turn the retry off.
+
+```hcl
+provider "ory" {
+  workspace_api_key = var.ory_workspace_api_key
+  project_id        = var.ory_project_id
+  max_retries       = 8 # for a very large apply
+}
+```
+
+The value can also be supplied as an `ORY_MAX_RETRIES` environment variable:
+
+```bash
+export ORY_MAX_RETRIES=8
+```
+
+To see each wait, run Terraform with `TF_LOG=DEBUG` and look for `Ory API rate limit reached`.
+
 ## Import Requirements
 
 When importing existing resources, ensure you have the appropriate credentials configured **before** running `terraform import`.
@@ -170,6 +203,7 @@ When importing existing resources, ensure you have the appropriate credentials c
 
 - `allowed_project_ids` (List of String) Optional safety guardrail. When set, the provider refuses any project-configuration operation (`ory_project_config`, `ory_action`, `ory_email_template`, `ory_social_provider`, `ory_saml_provider`, `ory_identity_schema`, `ory_custom_domain`, `ory_event_stream`, `ory_organization`, `ory_project_api_key`, and `ory_project` create/delete) that targets a project ID not in this list. This bounds the blast radius of a workspace API key so a mis-pointed `project_id` (such as production) cannot be read or changed. When unset, no restriction is applied. Can also be set via the `ORY_ALLOWED_PROJECT_IDS` environment variable as a comma-separated list.
 - `console_api_url` (String) Override the console API URL (default: `https://api.console.ory.sh`). Mainly for testing.
+- `max_retries` (Number) How many times a request that the Ory API rejects with `429 Too Many Requests` is retried before the error reaches Terraform (default: `6`, maximum: `20`). The provider backs off exponentially, capped at 30 seconds, waits longer when the `x-ratelimit-reset` header reports a longer window, and adds random jitter so parallel workers do not retry together. At the default the waits come to 61 seconds, which is a floor: the jitter and a longer reported window both raise it. The `429` still reaches Terraform once the retries run out, or when this is set to `0`. Raise it for a very large apply. Can also be set via the `ORY_MAX_RETRIES` environment variable.
 - `project_api_key` (String, Sensitive) Ory Project API Key (`ory_pat_...`). Used for identity and OAuth2 operations. Can also be set via `ORY_PROJECT_API_KEY` environment variable.
 - `project_api_url` (String) Override the project API URL template (default: `https://%s.projects.oryapis.com`).
 - `project_id` (String) Ory Project ID. Can also be set via `ORY_PROJECT_ID` environment variable.
