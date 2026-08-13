@@ -60,6 +60,20 @@ resource "ory_social_provider" "google_fedcm" {
   fedcm_config_url = "https://accounts.google.com/gsi/fedcm.json"
 }
 
+# NetID Sign-In with FedCM. NetID needs the origin header Ory sends when it
+# exchanges the FedCM token for an ID token. The value must be one of the
+# `origin_uris` registered on the NetID client.
+resource "ory_social_provider" "netid_fedcm" {
+  provider_id   = "netid"
+  provider_type = "netid"
+  client_id     = var.netid_client_id
+  client_secret = var.netid_client_secret
+  scope         = ["openid", "email"]
+
+  fedcm_config_url           = "https://broker.netid.de/fedcm.json"
+  net_id_token_origin_header = "https://www.example.com"
+}
+
 # Google Sign-In that refreshes identity traits from OIDC claims on every login
 resource "ory_social_provider" "google_sync_on_login" {
   provider_id   = "google-sync"
@@ -165,6 +179,15 @@ variable "google_client_id" {
 }
 
 variable "google_client_secret" {
+  type      = string
+  sensitive = true
+}
+
+variable "netid_client_id" {
+  type = string
+}
+
+variable "netid_client_secret" {
   type      = string
   sensitive = true
 }

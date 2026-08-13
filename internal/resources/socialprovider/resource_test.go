@@ -630,6 +630,75 @@ func TestAccSocialProviderResource_fedcmConfigURL(t *testing.T) {
 	})
 }
 
+// TestAccSocialProviderResource_netIDTokenOriginHeader exercises
+// net_id_token_origin_header across create, update (changed origin), removal,
+// and import. Create and Update replace the whole provider object, so an
+// attribute missing from the schema is blanked server-side on every apply. The
+// PlanOnly step after each apply is the regression guard for that: it fails if
+// the API drops the value.
+// Regression test for https://github.com/ory/terraform-provider-ory/issues/329.
+func TestAccSocialProviderResource_netIDTokenOriginHeader(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with net_id_token_origin_header set
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_net_id_origin_header.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-netid-origin"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_type", "netid"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "fedcm_config_url", "https://broker.netid.de/fedcm.json"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "net_id_token_origin_header", "https://www.example.com"),
+				),
+			},
+			// Verify no perpetual diff — the API must echo the value back unchanged
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_net_id_origin_header.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Update the origin header
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_net_id_origin_header_updated.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "net_id_token_origin_header", "https://news.example.com"),
+				),
+			},
+			// Verify no perpetual diff after update
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_net_id_origin_header_updated.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Remove net_id_token_origin_header from config — should clear it server-side
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_net_id_origin_header_removed.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "net_id_token_origin_header"),
+					// The sibling FedCM attribute must survive the removal.
+					resource.TestCheckResourceAttr("ory_social_provider.test", "fedcm_config_url", "https://broker.netid.de/fedcm.json"),
+				),
+			},
+			// Verify no diff after removal
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_net_id_origin_header_removed.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// ImportState
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           "test-netid-origin",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+		},
+	})
+}
+
 // TestAccSocialProviderResource_aal2Values exercises aal2_acr_values and
 // aal2_amr_values across create, update (changed list contents), removal, and
 // import. Values are opaque strings stored on the provider config — the API
