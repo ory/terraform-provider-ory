@@ -28,12 +28,45 @@ func testAccPreCheck(t *testing.T) {
 // TestAccProjectResource_basic tests the full CRUD lifecycle of a project.
 // WARNING: This test creates and deletes a real Ory project.
 // Only run this test if you have quota available and understand the implications.
+// checkProjectDeleted asserts the API reports the project as deleted. Projects
+// are soft deleted, so GetProject still returns HTTP 200 with state "deleted"
+// rather than a 404, and a Delete that no-ops would leave state "running" while
+// Terraform reported a clean destroy. Terraform state cannot see that, hence the
+// direct read. See issue #333.
+func checkProjectDeleted(t *testing.T, resourceName string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			// The resource is gone from state, which is the normal post-destroy
+			// shape. Without an id there is nothing left to look up.
+			return nil
+		}
+		projectID := rs.Primary.ID
+		if projectID == "" {
+			return nil
+		}
+		return acctest.Eventually(func() error {
+			state, err := acctest.ProjectState(t, projectID)
+			if err != nil {
+				// A purged project reads as not found, which also means deleted.
+				return nil
+			}
+			if state != "deleted" {
+				return fmt.Errorf("project %s reports state %q after destroy, want %q",
+					projectID, state, "deleted")
+			}
+			return nil
+		})
+	}
+}
+
 func TestAccProjectResource_basic(t *testing.T) {
 	projectName := testProjectName("basic")
 	updatedName := projectName + "-updated"
 	acctest.RunTest(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		CheckDestroy:             checkProjectDeleted(t, "ory_project.test"),
 		Steps: []resource.TestStep{
 			// Create and Read
 			{

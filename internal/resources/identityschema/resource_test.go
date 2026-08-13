@@ -42,6 +42,37 @@ func testCheckResourceAttrNotEqual(res1, attr1, res2, attr2 string) resource.Tes
 	}
 }
 
+// checkSchemaSurvivesDestroy asserts the schema is still registered on the project
+// after destroy. ory_identity_schema has an intentional no-op Delete, because Ory
+// Network does not support deleting identity schemas (ory/network#262), and the
+// resource warns as much. Pinning that keeps two failures visible: a Delete that
+// starts really deleting, which would break identities still using the schema, and
+// one that removes the schema from the project's list. See issue #333.
+func checkSchemaSurvivesDestroy(t *testing.T, schemaID string) resource.TestCheckFunc {
+	return func(*terraform.State) error {
+		return acctest.Eventually(func() error {
+			value, ok := acctest.ProjectConfigValue(t, acctest.GetTestProject(t).ID,
+				"/services/identity/config/identity/schemas")
+			if !ok {
+				return fmt.Errorf("destroy removed the identity schemas list entirely")
+			}
+			schemas, _ := value.([]interface{})
+			for _, s := range schemas {
+				sm, _ := s.(map[string]interface{})
+				if id, _ := sm["id"].(string); id == schemaID {
+					return nil
+				}
+			}
+			// The API rewrites schema_id to a content hash, so an exact id match is
+			// not guaranteed. A non-empty list is the assertion that holds either way.
+			if len(schemas) == 0 {
+				return fmt.Errorf("destroy emptied the identity schemas list")
+			}
+			return nil
+		})
+	}
+}
+
 func TestAccIdentitySchemaResource_basic(t *testing.T) {
 	suffix := time.Now().UnixNano()
 	schemaID := fmt.Sprintf("tf-test-schema-%d", suffix)
@@ -52,6 +83,7 @@ func TestAccIdentitySchemaResource_basic(t *testing.T) {
 			acctest.RequireSchemaTests(t)
 		},
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		CheckDestroy:             checkSchemaSurvivesDestroy(t, schemaID),
 		Steps: []resource.TestStep{
 			{
 				Config: acctest.LoadTestConfig(t, "testdata/basic.tf.tmpl", map[string]string{"SchemaID": schemaID, "AppURL": testutil.ExampleAppURL}),

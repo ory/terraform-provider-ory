@@ -4,11 +4,13 @@ package projectconfig_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	ory "github.com/ory/client-go"
@@ -65,10 +67,34 @@ func TestAccProjectConfigResource_smtpConnectionURIWriteOnlyArgument(t *testing.
 	})
 }
 
+// checkConfigSurvivesDestroy asserts the project configuration is still readable
+// after destroy. ory_project_config has an intentional no-op Delete: a project's
+// configuration cannot be deleted, only changed. Pinning that means a change that
+// starts really deleting, or that starts resetting the config to defaults, fails
+// here instead of silently wiping a user's project on `terraform destroy`.
+// See issue #333.
+func checkConfigSurvivesDestroy(t *testing.T) resource.TestCheckFunc {
+	return func(*terraform.State) error {
+		return acctest.Eventually(func() error {
+			projectID := acctest.GetTestProject(t).ID
+			if _, ok := acctest.ProjectConfigValue(t, projectID,
+				"/services/identity/config/selfservice"); !ok {
+				return fmt.Errorf("destroy removed the identity selfservice config from project %s", projectID)
+			}
+			if _, ok := acctest.ProjectConfigValue(t, projectID,
+				"/services/oauth2/config/ttl"); !ok {
+				return fmt.Errorf("destroy removed the oauth2 ttl config from project %s", projectID)
+			}
+			return nil
+		})
+	}
+}
+
 func TestAccProjectConfigResource_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		CheckDestroy:             checkConfigSurvivesDestroy(t),
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
