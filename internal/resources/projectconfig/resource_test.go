@@ -4,11 +4,13 @@ package projectconfig_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	ory "github.com/ory/client-go"
@@ -65,10 +67,47 @@ func TestAccProjectConfigResource_smtpConnectionURIWriteOnlyArgument(t *testing.
 	})
 }
 
+// minPasswordLengthPath is where ory_project_config writes
+// selfservice_methods_password_config_min_password_length, which
+// testdata/basic.tf.tmpl sets to 10.
+const minPasswordLengthPath = "/services/identity/config/selfservice/methods/password/config/min_password_length"
+
+// checkConfigSurvivesDestroy asserts the value this test wrote is still stored
+// after destroy. ory_project_config has an intentional no-op Delete: a project's
+// configuration cannot be deleted, only changed. Pinning that means a change that
+// starts really deleting, or that starts resetting the config to defaults, fails
+// here instead of silently reverting a user's project on `terraform destroy`.
+//
+// The assertion is on the value this test set rather than on a parent node
+// existing, because the parent nodes are populated by defaults on every project
+// and would survive a reset that wiped everything this test configured.
+// See issue #333.
+func checkConfigSurvivesDestroy(t *testing.T, wantMinPasswordLength float64) resource.TestCheckFunc {
+	return func(*terraform.State) error {
+		return acctest.Eventually(func() error {
+			projectID := acctest.GetTestProject(t).ID
+			value, ok, err := acctest.ProjectConfigValue(t, projectID, minPasswordLengthPath)
+			if err != nil {
+				return fmt.Errorf("could not read project %s after destroy: %w", projectID, err)
+			}
+			if !ok {
+				return fmt.Errorf("destroy removed %s from project %s", minPasswordLengthPath, projectID)
+			}
+			// JSON numbers decode to float64.
+			if got, _ := value.(float64); got != wantMinPasswordLength {
+				return fmt.Errorf("%s is %v after destroy, want %v",
+					minPasswordLengthPath, value, wantMinPasswordLength)
+			}
+			return nil
+		})
+	}
+}
+
 func TestAccProjectConfigResource_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		CheckDestroy:             checkConfigSurvivesDestroy(t, 10),
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
