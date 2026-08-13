@@ -1,0 +1,11 @@
+resource "ory_action" "test" {
+  project_id  = "[[ .ProjectID ]]"
+  flow        = "settings"
+  timing      = "after"
+  auth_method = "profile"
+  url         = "[[ .WebhookURL ]]/profile-after-settings"
+  method      = "POST"
+
+  response_parse = true
+  can_interrupt  = true
+}

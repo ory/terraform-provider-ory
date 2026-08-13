@@ -5,6 +5,7 @@ package action_test
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -272,6 +273,69 @@ func TestAccActionResource_samlLogin(t *testing.T) {
 					resource.TestCheckResourceAttr("ory_action.test", "timing", "after"),
 					resource.TestCheckResourceAttr("ory_action.test", "auth_method", "saml"),
 					resource.TestCheckResourceAttr("ory_action.test", "method", "POST"),
+				),
+			},
+			// Import using the 6-part format: project_id:flow:timing:auth_method:method:url
+			{
+				ResourceName:      "ory_action.test",
+				ImportState:       true,
+				ImportStateIdFunc: actionImportStateIDFunc,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+// TestAccActionResource_settingsProfile is the regression test for issue #328:
+// the Ory API stores settings:after:profile hooks under the "profile"
+// authentication method, but the provider's auth_method validator rejected
+// "profile", making those webhooks unmanageable. This exercises create, read,
+// update, import, and delete of a webhook bound to the profile method on the
+// settings flow (stored at .../settings/after/profile/hooks, alongside the
+// built-in verify_new_address and organization hooks configured there).
+// project_id is set explicitly so the update step is an in-place Update. When it
+// is left to the provider default it plans as unknown, and because it requires
+// replacement, every change becomes a destroy and create.
+func TestAccActionResource_settingsProfile(t *testing.T) {
+	projectID := os.Getenv("ORY_PROJECT_ID")
+	if projectID == "" {
+		t.Skip("ORY_PROJECT_ID must be set to exercise the in-place update step")
+	}
+
+	webhookURL := testutil.ExampleWebhookURL + "/profile-after-settings"
+	hookPath := "/services/identity/config/selfservice/flows/settings/after/profile/hooks"
+	configData := map[string]string{
+		"ProjectID":  projectID,
+		"WebhookURL": testutil.ExampleWebhookURL,
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			cleanupDanglingWebhook(t, hookPath, webhookURL)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create and Read
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/settings_profile.tf.tmpl", configData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_action.test", "id"),
+					resource.TestCheckResourceAttr("ory_action.test", "flow", "settings"),
+					resource.TestCheckResourceAttr("ory_action.test", "timing", "after"),
+					resource.TestCheckResourceAttr("ory_action.test", "auth_method", "profile"),
+					resource.TestCheckResourceAttr("ory_action.test", "method", "POST"),
+					resource.TestCheckResourceAttr("ory_action.test", "url", webhookURL),
+				),
+			},
+			// Update: the url and auth_method are unchanged, so the hook is patched
+			// at its existing index under the profile method.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/settings_profile_updated.tf.tmpl", configData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_action.test", "auth_method", "profile"),
+					resource.TestCheckResourceAttr("ory_action.test", "response_parse", "true"),
+					resource.TestCheckResourceAttr("ory_action.test", "can_interrupt", "true"),
 				),
 			},
 			// Import using the 6-part format: project_id:flow:timing:auth_method:method:url
