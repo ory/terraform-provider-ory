@@ -5,6 +5,7 @@ import (
 	"io"
 	"math/rand/v2"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -37,9 +38,10 @@ import (
 const (
 	// DefaultMaxRetries is how many more times the transport sends a request
 	// that the API rejected with HTTP 429. Ory meters each route with a
-	// one-second burst bucket and a sixty-second sustained bucket, so six
-	// retries are the smallest number whose waits (1 s, 2 s, 4 s, 8 s, 16 s and
-	// 30 s, 61 s in total) outlast a full sustained window.
+	// one-second burst bucket and a sixty-second sustained bucket. Six retries
+	// wait 1 s, 2 s, 4 s, 8 s, 16 s and 30 s, which is 61 s in total and so
+	// outlasts a full sustained window. That total is a floor. The jitter and a
+	// longer window reported by the server both raise it.
 	DefaultMaxRetries = 6
 
 	// MaxRetriesUpperBound is the largest value the provider accepts for
@@ -176,11 +178,11 @@ func (t *rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error
 
 		wait := t.waitFor(resp.Header, attempt)
 		tflog.Debug(req.Context(), "Ory API rate limit reached; retrying after backoff", map[string]interface{}{
-			"method":      req.Method,
-			"request_url": req.URL.Redacted(),
-			"attempt":     attempt + 1,
-			"max_retries": t.maxRetries,
-			"wait_ms":     wait.Milliseconds(),
+			"method":        req.Method,
+			"request_route": requestRoute(req.URL),
+			"attempt":       attempt + 1,
+			"max_retries":   t.maxRetries,
+			"wait_ms":       wait.Milliseconds(),
 		})
 		drainAndClose(resp.Body)
 
@@ -188,6 +190,18 @@ func (t *rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error
 			return nil, err
 		}
 	}
+}
+
+// requestRoute returns the scheme, the host and the path of a URL, without the
+// query string. The Ory API takes identifiers and filter values as query
+// parameters, such as the email address in credentials_identifier, and a retry
+// diagnostic has no use for them. url.URL.Redacted hides only the userinfo, so
+// it does not keep those values out of the Terraform debug log.
+func requestRoute(u *url.URL) string {
+	if u == nil {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host + u.EscapedPath()
 }
 
 // cloneRequest copies req and gives the copy an unread body. A request whose

@@ -172,7 +172,9 @@ The provider retries a rejected request instead of failing the apply. It follows
 
 No configuration is needed. A large apply works at the default parallelism, and `terraform apply -parallelism=1` is no longer a workaround.
 
-Set `max_retries` to change how many times a rejected request is retried. The default is 6, which spends up to 61 seconds waiting and so outlasts a full 60-second rate-limit window. The maximum is 20. Set it to `0` to turn the retry off and let the `429` reach Terraform.
+A `429` still reaches Terraform when the retries run out or when `max_retries` is `0`. The error then names the operation and the number of retries it used.
+
+Set `max_retries` to change how many times a rejected request is retried. The default is 6. Its waits of 1, 2, 4, 8, 16 and 30 seconds come to 61 seconds, so the retry outlasts a full 60-second rate-limit window. That total is a floor: the jitter and a longer window reported by the server both raise it. The maximum is 20. Set it to `0` to turn the retry off.
 
 ```hcl
 provider "ory" {
@@ -201,7 +203,7 @@ When importing existing resources, ensure you have the appropriate credentials c
 
 - `allowed_project_ids` (List of String) Optional safety guardrail. When set, the provider refuses any project-configuration operation (`ory_project_config`, `ory_action`, `ory_email_template`, `ory_social_provider`, `ory_saml_provider`, `ory_identity_schema`, `ory_custom_domain`, `ory_event_stream`, `ory_organization`, `ory_project_api_key`, and `ory_project` create/delete) that targets a project ID not in this list. This bounds the blast radius of a workspace API key so a mis-pointed `project_id` (such as production) cannot be read or changed. When unset, no restriction is applied. Can also be set via the `ORY_ALLOWED_PROJECT_IDS` environment variable as a comma-separated list.
 - `console_api_url` (String) Override the console API URL (default: `https://api.console.ory.sh`). Mainly for testing.
-- `max_retries` (Number) How many times a request that the Ory API rejects with `429 Too Many Requests` is retried before the error reaches Terraform (default: `6`, maximum: `20`). The provider backs off exponentially, capped at 30 seconds, waits longer when the `x-ratelimit-reset` header reports a longer window, and adds random jitter so parallel workers do not retry together. Raise it for a very large apply; set it to `0` to disable the retry. Can also be set via the `ORY_MAX_RETRIES` environment variable.
+- `max_retries` (Number) How many times a request that the Ory API rejects with `429 Too Many Requests` is retried before the error reaches Terraform (default: `6`, maximum: `20`). The provider backs off exponentially, capped at 30 seconds, waits longer when the `x-ratelimit-reset` header reports a longer window, and adds random jitter so parallel workers do not retry together. At the default the waits come to 61 seconds, which is a floor: the jitter and a longer reported window both raise it. The `429` still reaches Terraform once the retries run out, or when this is set to `0`. Raise it for a very large apply. Can also be set via the `ORY_MAX_RETRIES` environment variable.
 - `project_api_key` (String, Sensitive) Ory Project API Key (`ory_pat_...`). Used for identity and OAuth2 operations. Can also be set via `ORY_PROJECT_API_KEY` environment variable.
 - `project_api_url` (String) Override the project API URL template (default: `https://%s.projects.oryapis.com`).
 - `project_id` (String) Ory Project ID. Can also be set via `ORY_PROJECT_ID` environment variable.

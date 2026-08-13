@@ -217,12 +217,16 @@ When importing existing resources, ensure you have the appropriate credentials c
 				Description: fmt.Sprintf(
 					"How many times a request that the Ory API rejects with HTTP 429 Too Many Requests is retried before the error reaches Terraform (default: %d, maximum: %d). "+
 						"The provider backs off exponentially, capped at 30 seconds, waits longer when the x-ratelimit-reset header reports a longer window, and adds random jitter so parallel workers do not retry together. "+
-						"Raise it for a very large apply; set it to 0 to disable the retry. Can also be set via the ORY_MAX_RETRIES environment variable.",
+						"At the default the waits come to 61 seconds, which is a floor: the jitter and a longer reported window both raise it. "+
+						"The 429 still reaches Terraform once the retries run out, or when this is set to 0. "+
+						"Raise it for a very large apply. Can also be set via the ORY_MAX_RETRIES environment variable.",
 					client.DefaultMaxRetries, client.MaxRetriesUpperBound),
 				MarkdownDescription: fmt.Sprintf(
 					"How many times a request that the Ory API rejects with `429 Too Many Requests` is retried before the error reaches Terraform (default: `%d`, maximum: `%d`). "+
 						"The provider backs off exponentially, capped at 30 seconds, waits longer when the `x-ratelimit-reset` header reports a longer window, and adds random jitter so parallel workers do not retry together. "+
-						"Raise it for a very large apply; set it to `0` to disable the retry. Can also be set via the `ORY_MAX_RETRIES` environment variable.",
+						"At the default the waits come to 61 seconds, which is a floor: the jitter and a longer reported window both raise it. "+
+						"The `429` still reaches Terraform once the retries run out, or when this is set to `0`. "+
+						"Raise it for a very large apply. Can also be set via the `ORY_MAX_RETRIES` environment variable.",
 					client.DefaultMaxRetries, client.MaxRetriesUpperBound),
 				Optional: true,
 				Validators: []validator.Int64{

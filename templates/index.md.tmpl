@@ -172,7 +172,9 @@ The provider retries a rejected request instead of failing the apply. It follows
 
 No configuration is needed. A large apply works at the default parallelism, and `terraform apply -parallelism=1` is no longer a workaround.
 
-Set `max_retries` to change how many times a rejected request is retried. The default is 6, which spends up to 61 seconds waiting and so outlasts a full 60-second rate-limit window. The maximum is 20. Set it to `0` to turn the retry off and let the `429` reach Terraform.
+A `429` still reaches Terraform when the retries run out or when `max_retries` is `0`. The error then names the operation and the number of retries it used.
+
+Set `max_retries` to change how many times a rejected request is retried. The default is 6. Its waits of 1, 2, 4, 8, 16 and 30 seconds come to 61 seconds, so the retry outlasts a full 60-second rate-limit window. That total is a floor: the jitter and a longer window reported by the server both raise it. The maximum is 20. Set it to `0` to turn the retry off.
 
 ```hcl
 provider "ory" {

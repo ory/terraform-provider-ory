@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -535,6 +535,42 @@ func TestLowestRemaining(t *testing.T) {
 	}
 }
 
+func TestRequestRoute(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{
+			// url.URL.Redacted would keep both query values, and the retry
+			// diagnostic has no use for them.
+			name: "the query string is dropped",
+			raw:  "https://slug.projects.oryapis.com/admin/identities?credentials_identifier=alice%40example.com&page_token=abc",
+			want: "https://slug.projects.oryapis.com/admin/identities",
+		},
+		{ //nolint:gosec // G101 false positive - the fake userinfo is the point of this case
+			name: "userinfo is dropped with the rest of the authority",
+			raw:  "https://user:secret@api.console.ory.sh/projects/123",
+			want: "https://api.console.ory.sh/projects/123",
+		},
+		{
+			name: "a plain route is unchanged",
+			raw:  "https://api.console.ory.sh/projects",
+			want: "https://api.console.ory.sh/projects",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed, err := url.Parse(tt.raw)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, requestRoute(parsed))
+		})
+	}
+
+	assert.Empty(t, requestRoute(nil))
+}
+
 func TestOryClientConfig_MaxRetries(t *testing.T) {
 	zero, five := 0, 5
 
@@ -588,7 +624,7 @@ type tokenBucket struct {
 	rejected int
 }
 
-// take spends a token and reports whether one was left.
+// take spends a token and reports how many are left and whether one was there.
 func (b *tokenBucket) take() (remaining int, ok bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -621,9 +657,13 @@ func TestRateLimitTransport_ParallelWorkersAllSucceed(t *testing.T) {
 
 	bucket := &tokenBucket{tokens: 3, size: 3}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		remaining, ok := bucket.take()
+		_, ok := bucket.take()
 		w.Header().Set(headerRateLimitReset, "1")
-		w.Header().Set(headerRateLimitRemaining, strconv.Itoa(remaining))
+		// The response carries no x-ratelimit-remaining on purpose. With it the
+		// proactive throttle would pause before the bucket ever empties, refill
+		// it through the stand-in wait below, and leave this case with no
+		// rejection to retry. TestRateLimitTransport_ThrottlesWhenBudgetIsSpent
+		// covers the throttle instead.
 		if !ok {
 			w.WriteHeader(http.StatusTooManyRequests)
 			return
