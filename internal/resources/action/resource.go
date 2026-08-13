@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -130,6 +131,7 @@ The ` + "`auth_method`" + ` attribute specifies which authentication method trig
 | ` + "`password`" + ` | Password-based authentication (default) | "Password" |
 | ` + "`oidc`" + ` | Social/OIDC authentication (Google, GitHub, etc.) | "Social Sign-In" |
 | ` + "`code`" + ` | One-time code (magic link, OTP) | "Code" |
+| ` + "`profile`" + ` | Profile/trait update (settings flow only) | "Profile" |
 | ` + "`webauthn`" + ` | Hardware security keys | "WebAuthn" |
 | ` + "`passkey`" + ` | Passkey authentication | "Passkey" |
 | ` + "`totp`" + ` | Time-based one-time password | "TOTP" |
@@ -137,6 +139,35 @@ The ` + "`auth_method`" + ` attribute specifies which authentication method trig
 | ` + "`saml`" + ` | SAML single sign-on (SSO) | "SAML" |
 
 **Note:** ` + "`auth_method`" + ` only applies to ` + "`timing = \"after\"`" + ` webhooks on the ` + "`login`" + `, ` + "`registration`" + `, and ` + "`settings`" + ` flows. The ` + "`recovery`" + ` and ` + "`verification`" + ` flows are not scoped by authentication method, so ` + "`auth_method`" + ` is ignored for them and should be omitted. For ` + "`timing = \"before\"`" + ` hooks, the webhook runs before any authentication method.
+
+### Method Availability by Flow
+
+Not every method exists on every flow. The Ory API accepts a hook written to an
+unsupported flow and method pair with HTTP 200 but discards it, so the provider
+warns at plan time and the apply then fails verification.
+
+| Method | ` + "`login`" + ` | ` + "`registration`" + ` | ` + "`settings`" + ` |
+|--------|---------|----------------|------------|
+| ` + "`password`" + ` | yes | yes | yes |
+| ` + "`oidc`" + ` | yes | yes | yes |
+| ` + "`code`" + ` | yes | yes | no |
+| ` + "`profile`" + ` | no | no | yes |
+| ` + "`webauthn`" + ` | yes | yes | yes |
+| ` + "`passkey`" + ` | yes | yes | yes |
+| ` + "`totp`" + ` | yes | no | yes |
+| ` + "`lookup_secret`" + ` | yes | no | yes |
+| ` + "`saml`" + ` | yes | yes | yes |
+
+` + "```hcl" + `
+# Post-profile-update webhook on the settings flow
+resource "ory_action" "profile_updated" {
+  flow        = "settings"
+  timing      = "after"
+  auth_method = "profile"
+  url         = "https://api.example.com/webhooks/profile-updated"
+  method      = "POST"
+}
+` + "```" + `
 
 ## Webhook Authentication
 
@@ -252,13 +283,13 @@ func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				},
 			},
 			"auth_method": schema.StringAttribute{
-				Description:         "Authentication method to hook into (password, oidc, code, webauthn, passkey, totp, lookup_secret, saml). Defaults to 'password'. Only applies to 'after' timing on the login, registration, and settings flows; ignored for the recovery and verification flows.",
-				MarkdownDescription: "Authentication method that triggers the webhook. In the Ory Console UI, this is the \"Method\" selector. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `webauthn`, `passkey`, `totp`, `lookup_secret`, `saml` (SAML single sign-on). Only applies to `timing = \"after\"` webhooks on the `login`, `registration`, and `settings` flows; it is ignored for the `recovery` and `verification` flows.",
+				Description:         "Authentication method to hook into (password, oidc, code, profile, webauthn, passkey, totp, lookup_secret, saml). Defaults to 'password'. Only applies to 'after' timing on the login, registration, and settings flows; ignored for the recovery and verification flows. Not every method is available on every flow: 'profile' is settings-only, 'code' is login/registration-only, and 'totp'/'lookup_secret' are login/settings-only.",
+				MarkdownDescription: "Authentication method that triggers the webhook. In the Ory Console UI, this is the \"Method\" selector. Valid values: `password` (default), `oidc` (social login), `code` (magic link/OTP), `profile` (profile/trait update, settings flow only), `webauthn`, `passkey`, `totp`, `lookup_secret`, `saml` (SAML single sign-on). Only applies to `timing = \"after\"` webhooks on the `login`, `registration`, and `settings` flows; it is ignored for the `recovery` and `verification` flows. Not every method is available on every flow — see the method availability table in the resource description.",
 				Optional:            true,
 				Computed:            true,
 				Default:             stringdefault.StaticString("password"),
 				Validators: []validator.String{
-					stringvalidator.OneOf("password", "oidc", "code", "webauthn", "passkey", "totp", "lookup_secret", "saml"),
+					stringvalidator.OneOf("password", "oidc", "code", "profile", "webauthn", "passkey", "totp", "lookup_secret", "saml"),
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
@@ -443,9 +474,9 @@ func (r *ActionResource) ValidateConfig(ctx context.Context, req resource.Valida
 	if !config.AuthMethod.IsNull() && !config.AuthMethod.IsUnknown() &&
 		!config.Flow.IsNull() && !config.Flow.IsUnknown() {
 		flow := config.Flow.ValueString()
+		timingKnown := !config.Timing.IsNull() && !config.Timing.IsUnknown()
 		ignoredByFlow := !flowSupportsAuthMethod(flow)
-		ignoredByTiming := !config.Timing.IsNull() && !config.Timing.IsUnknown() &&
-			config.Timing.ValueString() != timingAfter
+		ignoredByTiming := timingKnown && config.Timing.ValueString() != timingAfter
 		if ignoredByFlow || ignoredByTiming {
 			detail := fmt.Sprintf("The %q flow does not scope its hooks by authentication method, so "+
 				"auth_method is ignored. You can safely remove auth_method from this resource.", flow)
@@ -457,6 +488,17 @@ func (r *ActionResource) ValidateConfig(ctx context.Context, req resource.Valida
 				path.Root("auth_method"),
 				"auth_method has no effect for this configuration",
 				detail,
+			)
+		} else if authMethod := config.AuthMethod.ValueString(); timingKnown && !flowSupportsMethod(flow, authMethod) {
+			// The method passes the schema enum but this flow has no key for it, so
+			// the API accepts the patch with HTTP 200 and drops the hook. Warn rather
+			// than error so a config the provider misjudges (for example because a
+			// later Ory release adds a method key) can still be planned; the apply
+			// verification catches it either way.
+			resp.Diagnostics.AddAttributeWarning(
+				path.Root("auth_method"),
+				"auth_method is not available on this flow",
+				unsupportedMethodDetail(flow, authMethod),
 			)
 		}
 	}
@@ -667,6 +709,33 @@ func (r *ActionResource) findHookIndex(hooks []map[string]interface{}, url, meth
 	return -1
 }
 
+// authMethodsForFlow returns the authentication methods a flow's "after" hooks
+// can be scoped by, in the order the Ory Console UI lists them. A flow with no
+// method-scoped after-hooks (recovery, verification) returns nil.
+//
+// The sets are the method keys under
+// services.identity.config.selfservice.flows.<flow>.after in a live project
+// config, which is also how the Console UI builds its "Method" picker. Verified
+// against the Console API on 2026-08-13: "profile" exists only for settings,
+// "code" only for login and registration, and "totp"/"lookup_secret" only for
+// login and settings.
+//
+// Writing a hook to a method a flow does not support returns HTTP 200 but the
+// API drops the key, so nothing is stored. See
+// https://github.com/ory/terraform-provider-ory/issues/328
+func authMethodsForFlow(flow string) []string {
+	switch flow {
+	case "login":
+		return []string{"password", "oidc", "code", "webauthn", "passkey", "totp", "lookup_secret", "saml"}
+	case "registration":
+		return []string{"password", "oidc", "code", "webauthn", "passkey", "saml"}
+	case "settings":
+		return []string{"password", "oidc", "profile", "webauthn", "passkey", "totp", "lookup_secret", "saml"}
+	default:
+		return nil
+	}
+}
+
 // flowSupportsAuthMethod reports whether a flow's "after" hooks are scoped by
 // authentication method (e.g. .../after/password/hooks). Only the login,
 // registration, and settings flows have method-scoped after-hooks in the Ory
@@ -675,12 +744,32 @@ func (r *ActionResource) findHookIndex(hooks []map[string]interface{}, url, meth
 // to .../after/<auth_method>/hooks for them returns 200 but silently drops the
 // hook. See https://github.com/ory/terraform-provider-ory/issues/241
 func flowSupportsAuthMethod(flow string) bool {
-	switch flow {
-	case "login", "registration", "settings":
-		return true
-	default:
-		return false
+	return authMethodsForFlow(flow) != nil
+}
+
+// flowSupportsMethod reports whether the given flow's after-hooks accept the
+// given authentication method.
+func flowSupportsMethod(flow, authMethod string) bool {
+	return slices.Contains(authMethodsForFlow(flow), authMethod)
+}
+
+// unsupportedMethodDetail explains that a flow has no key for an authentication
+// method and lists the methods it does accept.
+func unsupportedMethodDetail(flow, authMethod string) string {
+	return fmt.Sprintf("The %q flow does not support auth_method %q. Supported methods for this flow: %s. "+
+		"Ory accepts a hook written to an unsupported method with HTTP 200 but discards it, so the hook is "+
+		"never stored.", flow, authMethod, strings.Join(authMethodsForFlow(flow), ", "))
+}
+
+// verifyFailureDetail describes a hook that is absent from the PatchProject
+// response. An unsupported flow and method pair is the most likely cause, so
+// name it instead of leaving the user with a bare "not found".
+func verifyFailureDetail(flow, timing, authMethod, url string) string {
+	detail := fmt.Sprintf("Hook not found in PatchProject response for %s/%s/%s with URL %s", flow, timing, authMethod, url)
+	if timing == timingAfter && flowSupportsAuthMethod(flow) && !flowSupportsMethod(flow, authMethod) {
+		detail += "\n\n" + unsupportedMethodDetail(flow, authMethod)
 	}
+	return detail
 }
 
 func (r *ActionResource) hookPath(flow, timing, authMethod string) string {
@@ -813,7 +902,7 @@ func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest,
 	hooks = r.getHooksFromProject(&project, flow, timing, authMethod)
 	if r.findHookIndex(hooks, url, httpMethod) < 0 {
 		resp.Diagnostics.AddError("Error Verifying Action",
-			fmt.Sprintf("Hook not found in PatchProject response for %s/%s/%s with URL %s", flow, timing, authMethod, url))
+			verifyFailureDetail(flow, timing, authMethod, url))
 		return
 	}
 
@@ -1102,7 +1191,7 @@ func (r *ActionResource) Update(ctx context.Context, req resource.UpdateRequest,
 	updatedHooks := r.getHooksFromProject(&project, flow, timing, authMethod)
 	if r.findHookIndex(updatedHooks, newURL, newMethod) < 0 {
 		resp.Diagnostics.AddError("Error Verifying Action Update",
-			fmt.Sprintf("Hook not found in PatchProject response for %s/%s/%s with URL %s", flow, timing, authMethod, newURL))
+			verifyFailureDetail(flow, timing, authMethod, newURL))
 		return
 	}
 

@@ -26,6 +26,7 @@ The `auth_method` attribute specifies which authentication method triggers the w
 | `password` | Password-based authentication (default) |
 | `oidc` | Social/OIDC authentication (Google, GitHub, etc.) |
 | `code` | One-time code (magic link, OTP) |
+| `profile` | Profile/trait update (settings flow only) |
 | `webauthn` | Hardware security keys |
 | `passkey` | Passkey authentication |
 | `totp` | Time-based one-time password |
@@ -33,6 +34,37 @@ The `auth_method` attribute specifies which authentication method triggers the w
 | `saml` | SAML single sign-on (SSO) |
 
 ~> **Note:** `auth_method` only applies to `timing = "after"` webhooks on the `login`, `registration`, and `settings` flows. The `recovery` and `verification` flows are **not** scoped by authentication method — their after-hooks always run — so `auth_method` is ignored for them and should be omitted. For `timing = "before"` hooks, the webhook runs before any authentication method is invoked.
+
+### Method Availability by Flow
+
+Not every method exists on every flow. Ory accepts a hook written to an
+unsupported flow and method pair with HTTP 200 but discards it, so the provider
+warns during `terraform plan` and the apply then fails verification.
+
+| Method | `login` | `registration` | `settings` |
+|--------|---------|----------------|------------|
+| `password` | yes | yes | yes |
+| `oidc` | yes | yes | yes |
+| `code` | yes | yes | no |
+| `profile` | no | no | yes |
+| `webauthn` | yes | yes | yes |
+| `passkey` | yes | yes | yes |
+| `totp` | yes | no | yes |
+| `lookup_secret` | yes | no | yes |
+| `saml` | yes | yes | yes |
+
+The `profile` method covers the settings flow's profile/trait update step, which
+Ory stores at `selfservice.flows.settings.after.profile.hooks`:
+
+```hcl
+resource "ory_action" "profile_updated" {
+  flow        = "settings"
+  timing      = "after"
+  auth_method = "profile"
+  url         = "https://api.example.com/webhooks/profile-updated"
+  method      = "POST"
+}
+```
 
 ## Webhook Authentication
 
@@ -128,7 +160,7 @@ terraform import ory_action.validate \
 1. **project_id**: Settings → General → Project ID
 2. **flow**: The flow type (login, registration, recovery, settings, verification)
 3. **timing**: "before" or "after"
-4. **auth_method**: for `login`/`registration`/`settings` "after" hooks, one of password, oidc, code, webauthn, passkey, totp, lookup_secret, saml. For `recovery`/`verification` "after" hooks the value is ignored, but the import ID format still requires this segment — use `password` to match the provider default and avoid a post-import diff (keep `auth_method` omitted from the resource configuration itself).
+4. **auth_method**: for `login`/`registration`/`settings` "after" hooks, one of password, oidc, code, profile, webauthn, passkey, totp, lookup_secret, saml (see the availability table above — `profile` is settings-only). For `recovery`/`verification` "after" hooks the value is ignored, but the import ID format still requires this segment — use `password` to match the provider default and avoid a post-import diff (keep `auth_method` omitted from the resource configuration itself).
 5. **method**: The HTTP method (POST, GET, PUT, PATCH, DELETE)
 6. **url**: The exact webhook URL - must match exactly including protocol and trailing slashes
 
