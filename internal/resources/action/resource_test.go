@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
@@ -138,50 +139,22 @@ func TestAccActionResource_writeOnlyAPIKey(t *testing.T) {
 func cleanupDanglingWebhook(t *testing.T, hookPath, webhookURL string) {
 	t.Helper()
 
+	hooksSlice, err := readRemoteHooks(t, hookPath)
+	if err != nil {
+		t.Logf("Warning: could not read hooks for cleanup: %v", err)
+		return
+	}
+	if len(hooksSlice) == 0 {
+		return
+	}
+
 	c, err := acctest.GetOryClient()
 	if err != nil {
 		t.Logf("Warning: could not create client for cleanup: %v", err)
 		return
 	}
-
 	project := acctest.GetTestProject(t)
 	ctx := context.Background()
-
-	p, err := c.GetProject(ctx, project.ID)
-	if err != nil {
-		t.Logf("Warning: could not get project for cleanup: %v", err)
-		return
-	}
-
-	configMap := p.Services.Identity.Config
-	if configMap == nil {
-		return
-	}
-
-	// Derive navigation segments from hookPath.
-	// e.g. "/services/identity/config/selfservice/flows/registration/after/password/hooks"
-	// → strip prefix "/services/identity/config/" and suffix "/hooks"
-	// → segments: ["selfservice", "flows", "registration", "after", "password"]
-	trimmed := strings.TrimPrefix(hookPath, "/services/identity/config/")
-	trimmed = strings.TrimSuffix(trimmed, "/hooks")
-	segments := strings.Split(trimmed, "/")
-
-	var current interface{} = configMap
-	for _, seg := range segments {
-		m, ok := current.(map[string]interface{})
-		if !ok {
-			return
-		}
-		current = m[seg]
-		if current == nil {
-			return
-		}
-	}
-
-	hooksSlice, ok := current.(map[string]interface{})["hooks"].([]interface{})
-	if !ok || len(hooksSlice) == 0 {
-		return
-	}
 
 	// Build a new hooks list without the dangling test webhook.
 	filtered := make([]interface{}, 0, len(hooksSlice))
@@ -212,6 +185,112 @@ func cleanupDanglingWebhook(t *testing.T, hookPath, webhookURL string) {
 	if err != nil {
 		t.Logf("Warning: failed to clean up dangling webhook: %v", err)
 	}
+}
+
+// readRemoteHooks returns the hooks array the test project stores at hookPath.
+// hookPath must be a full JSON Patch path ending in "/hooks". A path that does
+// not exist yields an empty slice and no error, which is how the API reports a
+// flow and method pair with no hooks configured.
+func readRemoteHooks(t *testing.T, hookPath string) ([]interface{}, error) {
+	t.Helper()
+
+	c, err := acctest.GetOryClient()
+	if err != nil {
+		return nil, fmt.Errorf("could not create client: %w", err)
+	}
+
+	project := acctest.GetTestProject(t)
+	p, err := c.GetProject(context.Background(), project.ID)
+	if err != nil {
+		return nil, fmt.Errorf("could not get project: %w", err)
+	}
+
+	var current interface{} = p.Services.Identity.Config
+	if current == nil {
+		return nil, nil
+	}
+
+	// Derive navigation segments from hookPath.
+	// e.g. "/services/identity/config/selfservice/flows/registration/after/password/hooks"
+	// → strip prefix "/services/identity/config/" and suffix "/hooks"
+	// → segments: ["selfservice", "flows", "registration", "after", "password"]
+	trimmed := strings.TrimPrefix(hookPath, "/services/identity/config/")
+	trimmed = strings.TrimSuffix(trimmed, "/hooks")
+
+	for _, seg := range strings.Split(trimmed, "/") {
+		m, ok := current.(map[string]interface{})
+		if !ok {
+			return nil, nil
+		}
+		current = m[seg]
+		if current == nil {
+			return nil, nil
+		}
+	}
+
+	m, ok := current.(map[string]interface{})
+	if !ok {
+		return nil, nil
+	}
+	hooks, _ := m["hooks"].([]interface{})
+	return hooks, nil
+}
+
+// checkWebhookDestroyed reports whether the webhook is gone from hookPath while
+// the hooks Ory manages itself at that path are still there. Deleting an action
+// is a read-modify-write of a shared array, so a delete that took the built-in
+// hooks with it would pass a state-only check.
+//
+// GetProject is eventually consistent, so the read is retried for a bounded
+// window before the check is treated as a failure.
+func checkWebhookDestroyed(t *testing.T, hookPath, webhookURL string, keepHooks []string) resource.TestCheckFunc {
+	const (
+		attempts = 15
+		interval = 2 * time.Second
+	)
+
+	return func(*terraform.State) error {
+		var lastErr error
+		for i := 0; i < attempts; i++ {
+			if i > 0 {
+				time.Sleep(interval)
+			}
+			lastErr = webhookAbsentFrom(t, hookPath, webhookURL, keepHooks)
+			if lastErr == nil {
+				return nil
+			}
+		}
+		return lastErr
+	}
+}
+
+// webhookAbsentFrom performs a single check of the post-destroy expectation.
+func webhookAbsentFrom(t *testing.T, hookPath, webhookURL string, keepHooks []string) error {
+	hooks, err := readRemoteHooks(t, hookPath)
+	if err != nil {
+		return err
+	}
+
+	remaining := make(map[string]bool, len(hooks))
+	for _, h := range hooks {
+		hm, _ := h.(map[string]interface{})
+		name, _ := hm["hook"].(string)
+		remaining[name] = true
+		if name != "web_hook" {
+			continue
+		}
+		cfg, _ := hm["config"].(map[string]interface{})
+		if url, _ := cfg["url"].(string); url == webhookURL {
+			return fmt.Errorf("webhook %s is still configured at %s after destroy", webhookURL, hookPath)
+		}
+	}
+
+	for _, name := range keepHooks {
+		if !remaining[name] {
+			return fmt.Errorf("destroy removed the %q hook from %s, which it does not own", name, hookPath)
+		}
+	}
+	return nil
 }
 
 func TestAccActionResource_basic(t *testing.T) {
@@ -315,6 +394,10 @@ func TestAccActionResource_settingsProfile(t *testing.T) {
 			cleanupDanglingWebhook(t, hookPath, webhookURL)
 		},
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		// Ory manages verify_new_address and organization at this path, so the
+		// delete must remove only the webhook.
+		CheckDestroy: checkWebhookDestroyed(t, hookPath, webhookURL,
+			[]string{"verify_new_address", "organization"}),
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
