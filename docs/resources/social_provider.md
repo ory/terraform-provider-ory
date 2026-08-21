@@ -237,6 +237,25 @@ resource "ory_social_provider" "enterprise_sso" {
   aal2_amr_values = ["mfa", "otp", "hwk"]
 }
 
+# OIDC provider scoped to an organization (B2B SSO). Ory offers this provider
+# only to users of the organization, and routes users to it by the domain of the
+# email address they enter on the login screen.
+resource "ory_organization" "acme" {
+  label   = "Acme"
+  domains = ["acme.example.com"]
+}
+
+resource "ory_social_provider" "acme_sso" {
+  provider_id     = "acme-sso"
+  provider_type   = "generic"
+  client_id       = var.acme_client_id
+  client_secret   = var.acme_client_secret
+  issuer_url      = "https://sso.acme.example.com"
+  scope           = ["openid", "profile", "email"]
+  label           = "Acme SSO"
+  organization_id = ory_organization.acme.id
+}
+
 # Generic OIDC Provider with custom claims mapping
 resource "ory_social_provider" "corporate_sso" {
   provider_id   = "corporate-sso"
@@ -323,6 +342,15 @@ variable "apple_private_key" {
   sensitive   = true
 }
 
+variable "acme_client_id" {
+  type = string
+}
+
+variable "acme_client_secret" {
+  type      = string
+  sensitive = true
+}
+
 variable "sso_client_id" {
   type = string
 }
@@ -356,6 +384,36 @@ If not set, the provider uses a default mapper that extracts the email claim.
 ## Label
 
 The `label` attribute sets a human-readable label for the provider. This is displayed on the login button in the default UI (e.g., "Sign in with Corporate SSO"). If not set, the default label for the provider type is used.
+
+## Organization Scoping (B2B SSO)
+
+Set `organization_id` to associate an OIDC provider with a specific organization. Ory then offers the provider only to users of that organization instead of to everyone on the login screen, and the callback URL gains an `/organization/<organization_id>` segment. This is the OIDC counterpart of the same attribute on `ory_saml_provider`, and it is what the Ory Console shows as "via `<organization>` SSO" in the Social Sign-In (OIDC) tab.
+
+```hcl
+resource "ory_organization" "acme" {
+  label   = "Acme"
+  domains = ["acme.example.com"]
+}
+
+resource "ory_social_provider" "acme_sso" {
+  provider_id     = "acme-sso"
+  provider_type   = "generic"
+  client_id       = var.acme_client_id
+  client_secret   = var.acme_client_secret
+  issuer_url      = "https://sso.acme.example.com"
+  scope           = ["openid", "email", "profile"]
+  label           = "Acme SSO"
+  organization_id = ory_organization.acme.id
+}
+```
+
+Give the organization one or more `domains` to let Ory route a user to this provider by the domain of the email address they enter.
+
+~> **Note:** `organization_id` must be the ID of an organization that exists in the same project. The API rejects a value that is not a UUID with `HTTP 400`, and a UUID that matches no organization with `HTTP 500` and a foreign key error. Reference an `ory_organization` resource so Terraform creates the organization first.
+
+Removing `organization_id` from your configuration clears the link and turns the resource back into a normal social sign-in provider that every user can use.
+
+-> **Plan:** B2B SSO requires a plan with B2B or Enterprise features. Check your Ory Network plan before using this attribute.
 
 ## Account Linking Mode
 
@@ -579,6 +637,7 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 - `label` (String) Human-readable label for the provider, displayed on the login button (e.g., "Sign in with Corporate SSO").
 - `mapper_url` (String) Jsonnet mapper URL for claims mapping. Can be a URL or base64-encoded Jsonnet (base64://...). If not set, a default mapper that extracts email from claims will be used.
 - `net_id_token_origin_header` (String) Origin header Ory sends when it exchanges a NetID FedCM token for an ID token. The value must be one of the `origin_uris` registered on the NetID client, for example "https://www.example.com". Set it together with fedcm_config_url on a NetID provider. Leave it unset for every other provider.
+- `organization_id` (String) Organization ID to associate this OIDC provider with (for B2B SSO). Set it to the ID of an existing `ory_organization`. The provider is then only offered to users of that organization, and the callback URL gains an `/organization/<organization_id>` segment. Leave it unset for a normal social sign-in provider that every user can use. Requires a B2B plan.
 - `pkce` (String) PKCE (Proof Key for Code Exchange) behavior for the OAuth2 authorization code flow. "auto" (default) enables PKCE when the upstream provider advertises support via OIDC discovery; "force" always sends PKCE (use only with providers known to support it); "never" disables PKCE.
 - `project_id` (String) Project ID. If not set, uses provider's project_id.
 - `scope` (List of String) OAuth2 scopes to request.

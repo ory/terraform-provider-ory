@@ -149,6 +149,25 @@ resource "ory_social_provider" "enterprise_sso" {
   aal2_amr_values = ["mfa", "otp", "hwk"]
 }
 
+# OIDC provider scoped to an organization (B2B SSO). Ory offers this provider
+# only to users of the organization, and routes users to it by the domain of the
+# email address they enter on the login screen.
+resource "ory_organization" "acme" {
+  label   = "Acme"
+  domains = ["acme.example.com"]
+}
+
+resource "ory_social_provider" "acme_sso" {
+  provider_id     = "acme-sso"
+  provider_type   = "generic"
+  client_id       = var.acme_client_id
+  client_secret   = var.acme_client_secret
+  issuer_url      = "https://sso.acme.example.com"
+  scope           = ["openid", "profile", "email"]
+  label           = "Acme SSO"
+  organization_id = ory_organization.acme.id
+}
+
 # Generic OIDC Provider with custom claims mapping
 resource "ory_social_provider" "corporate_sso" {
   provider_id   = "corporate-sso"
@@ -233,6 +252,15 @@ variable "apple_private_key" {
   description = "Apple private key in PEM format (.p8 file contents)"
   type        = string
   sensitive   = true
+}
+
+variable "acme_client_id" {
+  type = string
+}
+
+variable "acme_client_secret" {
+  type      = string
+  sensitive = true
 }
 
 variable "sso_client_id" {

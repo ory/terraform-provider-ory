@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -877,6 +878,182 @@ func TestAccSocialProviderResource_mapperURLNoDrift(t *testing.T) {
 				ImportStateId:           "test-google-mapper",
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"client_secret", "mapper_url"},
+			},
+		},
+	})
+}
+
+// oidcProvidersPath is the Console API JSON Patch path holding the OIDC
+// providers array, used to read the API back in organization assertions.
+const oidcProvidersPath = "/services/identity/config/selfservice/methods/oidc/config/providers"
+
+// checkAPIOrganizationID asserts what the API stores for the test provider's
+// organization_id. Terraform state only records what the provider believes it
+// wrote, and the whole point of issue #339 is a link that Terraform reports as
+// present while the API has dropped it, so the assertion has to read the API.
+//
+// Set wantLinked to false to assert the link is absent. When it is true, the
+// expected organization ID is read out of orgResourceName in Terraform state, so
+// the caller does not need to know the generated UUID before the apply.
+func checkAPIOrganizationID(t *testing.T, providerID, orgResourceName string, wantLinked bool) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		var wantOrgID string
+		if wantLinked {
+			rs, ok := s.RootModule().Resources[orgResourceName]
+			if !ok {
+				return fmt.Errorf("resource not found in state: %s", orgResourceName)
+			}
+			wantOrgID = rs.Primary.ID
+		}
+
+		return acctest.Eventually(func() error {
+			projectID := acctest.GetTestProject(t).ID
+			value, ok, err := acctest.ProjectConfigValue(t, projectID, oidcProvidersPath)
+			if err != nil {
+				return fmt.Errorf("could not read project %s: %w", projectID, err)
+			}
+			if !ok {
+				return fmt.Errorf("%s is absent from project %s", oidcProvidersPath, projectID)
+			}
+			providers, ok := value.([]interface{})
+			if !ok {
+				return fmt.Errorf("%s is %T, want an array", oidcProvidersPath, value)
+			}
+			for _, entry := range providers {
+				provider, ok := entry.(map[string]interface{})
+				if !ok || provider["id"] != providerID {
+					continue
+				}
+				gotOrgID, _ := provider["organization_id"].(string)
+				if gotOrgID != wantOrgID {
+					return fmt.Errorf("provider %q has organization_id %q in the API, want %q",
+						providerID, gotOrgID, wantOrgID)
+				}
+				return nil
+			}
+			return fmt.Errorf("provider %q is absent from %s", providerID, oidcProvidersPath)
+		})
+	}
+}
+
+// checkAPIProviderRemoved asserts the API no longer holds the provider this test
+// created. Destroy leaves Terraform state empty either way, so only a read of
+// the API catches a Delete that patched the wrong index or silently no-opped.
+func checkAPIProviderRemoved(t *testing.T, providerID string) resource.TestCheckFunc {
+	return func(*terraform.State) error {
+		return acctest.Eventually(func() error {
+			projectID := acctest.GetTestProject(t).ID
+			value, ok, err := acctest.ProjectConfigValue(t, projectID, oidcProvidersPath)
+			if err != nil {
+				// A failed read must be retried, not read as "already deleted".
+				return fmt.Errorf("could not read project %s after destroy: %w", projectID, err)
+			}
+			if !ok {
+				return nil
+			}
+			providers, ok := value.([]interface{})
+			if !ok {
+				return nil
+			}
+			for _, entry := range providers {
+				provider, ok := entry.(map[string]interface{})
+				if ok && provider["id"] == providerID {
+					return fmt.Errorf("provider %q survived destroy in %s", providerID, oidcProvidersPath)
+				}
+			}
+			return nil
+		})
+	}
+}
+
+// TestAccSocialProviderResource_organizationID covers B2B SSO: an OIDC provider
+// scoped to an organization. Issue #339 reported the link missing. Without
+// organization_id in the schema, importing a B2B provider and applying the
+// generated configuration silently dropped the organization, leaving the
+// organization with no SSO provider.
+//
+// Every step reads the API back rather than trusting state, because the failure
+// mode is exactly a state value that no longer matches the API.
+func TestAccSocialProviderResource_organizationID(t *testing.T) {
+	const providerID = "test-oidc-b2b-sso"
+	tmplData := map[string]string{"OrgLabel": "TF Provider B2B SSO Test"}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+			acctest.RequireB2BTests(t)
+			// Organizations need a prod or stage project, not a dev one.
+			if env := os.Getenv("ORY_PROJECT_ENVIRONMENT"); env == "dev" || env == "" {
+				t.Skip("B2B SSO tests require ORY_PROJECT_ENVIRONMENT to be 'prod' or 'stage' (not 'dev')")
+			}
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		CheckDestroy:             checkAPIProviderRemoved(t, providerID),
+		Steps: []resource.TestStep{
+			// Create the organization and an OIDC provider scoped to it
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_organization.tf.tmpl", tmplData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", providerID),
+					resource.TestCheckResourceAttrPair(
+						"ory_social_provider.test", "organization_id",
+						"ory_organization.test", "id"),
+					checkAPIOrganizationID(t, providerID, "ory_organization.test", true),
+				),
+			},
+			// Verify no perpetual diff, since the API must echo organization_id back
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_organization.tf.tmpl", tmplData),
+				PlanOnly: true,
+			},
+			// Change the label only. Update replaces the whole provider object,
+			// so this is what dropped the organization link before the fix.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_organization_updated.tf.tmpl", tmplData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "label", "B2B SSO Renamed"),
+					resource.TestCheckResourceAttrPair(
+						"ory_social_provider.test", "organization_id",
+						"ory_organization.test", "id"),
+					checkAPIOrganizationID(t, providerID, "ory_organization.test", true),
+				),
+			},
+			// Verify no perpetual diff after the update
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_organization_updated.tf.tmpl", tmplData),
+				PlanOnly: true,
+			},
+			// ImportState must round-trip organization_id, which is the path the
+			// import workflow in issue #339 takes
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           providerID,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+			// Remove organization_id from config — the link must be cleared
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_organization_removed.tf.tmpl", tmplData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "organization_id"),
+					checkAPIOrganizationID(t, providerID, "ory_organization.test", false),
+				),
+			},
+			// Verify no diff after removal
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_organization_removed.tf.tmpl", tmplData),
+				PlanOnly: true,
+			},
+			// Re-add the link so destroy has to unwind a linked provider, which
+			// is the ordering the organization foreign key constrains
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_organization.tf.tmpl", tmplData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					checkAPIOrganizationID(t, providerID, "ory_organization.test", true),
+				),
 			},
 		},
 	})

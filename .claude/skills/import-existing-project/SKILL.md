@@ -224,6 +224,14 @@ explicit `{project_id}/...` form in generated files.
 - **`ory_social_provider.auto_link`** is write-only in the API; an import will
   not populate it. Re-add it to config manually where used (enterprise
   feature).
+- **B2B SSO providers come back as `ory_social_provider` with an
+  `organization_id`.** An OIDC provider scoped to an organization lives in the
+  same `...methods.oidc.config.providers[]` array as a plain social provider, so
+  the inventory finds both. Import the matching `ory_organization` as well and
+  replace the generated literal UUID with a reference
+  (`organization_id = ory_organization.<name>.id`) so Terraform orders the
+  create and the destroy correctly. Dropping the attribute clears the link and
+  leaves the organization with no SSO provider (issue #339).
 - **Organizations require a B2B plan; event streams require an enterprise
   plan.** On other plans those endpoints return empty lists or
   `feature_not_available` errors — skip the resources.
