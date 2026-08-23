@@ -123,6 +123,11 @@ import block, note it, and hand-write that resource later.
   absent). Wire them to `variable` blocks marked `sensitive`, or use the
   write-only variants (`client_secret_wo`, `smtp_connection_uri_wo`, ...) with
   `*_wo_version` to keep them out of state entirely.
+  `courier_http_request_config_auth_basic_auth_password` and
+  `courier_http_request_config_auth_api_key_value` behave the same way but have
+  **no** `_wo` variant, so they must come from a `sensitive` variable.
+  `smtp_connection_uri_wo` is the only write-only argument on
+  `ory_project_config`.
 - **Populate `ory_project_config` yourself — it generates as an empty shell.**
   The provider intentionally refreshes only attributes already tracked in
   state (so unmanaged settings never drift), and a fresh import tracks
@@ -130,11 +135,27 @@ import block, note it, and hand-write that resource later.
   resource. Delete the null lines and add the attributes you want Terraform
   to own, copying current values from the revision dump (`GET /projects/{id}`
   under `.services.identity.config`, `.services.oauth2.config`,
-  `.services.permission.config`). The first plan shows those attributes as
-  additions (`+`) even when the values match the server; the first apply just
-  records them in state (the PATCH is idempotent) and subsequent plans are
-  clean. Prefer the spec-derived attribute names over deprecated aliases (run
-  `scripts/migrate-deprecated-attrs.sh` from the provider repo if needed).
+  `.services.permission.config`, and `.services.account_experience.config`).
+  The first plan shows those attributes as additions (`+`) even when the values
+  match the server, and the first apply just records them in state because the
+  PATCH is idempotent. Prefer the spec-derived attribute names over deprecated
+  aliases (run `scripts/migrate-deprecated-attrs.sh` from the provider repo if
+  needed).
+
+  Five attributes do not sit where the dump suggests, so copying by name fails:
+
+  | Attribute | Where the dump holds it |
+  |---|---|
+  | `enable_ax_v2` | `.services.account_experience.config.enabled` |
+  | `disable_account_experience_welcome_screen` | no service config at all; only `GET /normalized/projects/{id}` |
+  | `selfservice_methods_code_config_max_submissions` | reported under `...code.config.max_submissions`, written to `...code.max_submissions` |
+  | `oidc_subject_identifiers_pairwise_salt` | reported under `oidc.subject_identifiers.pairwise.salt` |
+  | `courier_http_request_config_body` | a `https://storage.googleapis.com/.../<sha512>.jsonnet` URL, never the payload |
+
+  Do **not** copy the `courier_http_request_config_body` URL into config. The
+  API rejects a storage URL it did not mint. Set `base64://${base64encode(...)}`
+  with the Jsonnet payload instead; the provider resolves the URL back to it by
+  comparing the SHA-512 in the URL with the value in state.
 - **Replace literal IDs with references** where resources relate, e.g.
   `project_id = ory_project.main.id` instead of the hardcoded UUID.
 - **Split into files** (`project.tf`, `oauth2.tf`, `social.tf`, ...) once the
@@ -145,6 +166,15 @@ import block, note it, and hand-write that resource later.
 ```bash
 terraform plan
 ```
+
+Five `ory_project_config` attributes never converge if you set them empty,
+because the server substitutes its own default or refuses to clear the key. If
+the dump shows one of these as empty or absent, omit the attribute rather than
+writing an empty value, otherwise this step cannot finish:
+`account_experience_enabled_locales`,
+`selfservice_methods_passkey_config_rp_origins`, `webauthn_rp_origins`,
+`selfservice_methods_totp_config_issuer`, and
+`selfservice_methods_captcha_config_allowed_domains`.
 
 Iterate on the config until the plan reports **only imports**:
 `Plan: N to import, 0 to add, 0 to change, 0 to destroy.` Then:
@@ -172,7 +202,7 @@ Project API = `https://{slug}.projects.oryapis.com` with the project API key.
 
 | Resource | Discover via | Import ID |
 |---|---|---|
-| `ory_workspace` | `GET /workspaces` (console) | `{workspace_id}` |
+| `ory_workspace` | `.workspace_id` on the project payload (the script emits this one commented out) | `{workspace_id}` |
 | `ory_project` | `GET /workspaces/{ws}/projects` (console) | `{project_id}` |
 | `ory_project_config` | `GET /projects/{id}` (console) | `{project_id}` |
 | `ory_custom_domain` | `GET /projects/{id}/cname` (console) | `{project_id}/{domain_id}` |
@@ -182,14 +212,14 @@ Project API = `https://{slug}.projects.oryapis.com` with the project API key.
 | `ory_social_provider` | revision: `.services.identity.config.selfservice.methods.oidc.config.providers[]` | `{provider_id}` (e.g. `google`) |
 | `ory_saml_provider` | revision: `...methods.saml.config.providers[]` | `{provider_id}` |
 | `ory_action` | revision: `...selfservice.flows.<flow>.<timing>...hooks[]` where `hook == "web_hook"` | after: `{project_id}:{flow}:after:{auth_method}:{METHOD}:{url}`; before: `{project_id}:{flow}:before:{METHOD}:{url}` |
-| `ory_email_template` | revision: `...courier.templates.<base>.<valid\|invalid>` with non-empty subject/body | `{base}_{valid\|invalid}` (e.g. `recovery_code_valid`) |
+| `ory_email_template` | revision: `...courier.templates.<base>.<valid\|invalid>.email` with non-empty `subject` or `body.html` / `body.plaintext` | `{base}_{valid\|invalid}` (e.g. `recovery_code_valid`) |
 | `ory_oauth2_client` | `GET /admin/clients` (project) | `{client_id}` |
-| `ory_oidc_dynamic_client` | same list; clients created via DCR | `{client_id}` |
+| `ory_oidc_dynamic_client` | same list; `GET /admin/clients` carries no field that distinguishes a DCR client, so pick them out yourself | `{client_id}` (identical to `ory_oauth2_client`, so switching resource type is a one-word edit) |
 | `ory_json_web_key_set` | `GET /admin/keys/{set}` (project); no list-all endpoint, set IDs must be known | `{project_id}/{set_id}` |
 | `ory_trusted_oauth2_jwt_grant_issuer` | `GET /admin/trust/grants/jwt-bearer/issuers` (project) | `{grant_id}` |
 | `ory_identity` | `GET /admin/identities` (project) | `{identity_id}` |
-| `ory_relationship` | `GET /namespaces` + `GET /relation-tuples?namespace=` (project) | `namespace:object#relation@subject_id`, or a subject set `namespace:object#relation@subject_ns:subject_obj#subject_rel` |
-| `ory_identity_schema` | revision: `...identity.schemas[]` | **not importable** (immutable by design) |
+| `ory_relationship` | revision: `.services.permission.config.namespaces[]` + `GET /relation-tuples?namespace=` (project) | `namespace:object#relation@subject_id`, or a subject set `namespace:object#relation@subject_ns:subject_obj#subject_rel` |
+| `ory_identity_schema` | revision: `...identity.schemas[]`, plus `GET /identity-schemas` (console) for workspace-scoped schemas the revision omits | **not importable** (immutable by design) |
 
 Single-segment forms (`{domain_id}`, `{org_id}`, `{key_id}`, `{stream_id}`,
 `{set_id}`) also work when the provider block sets `project_id`; prefer the
@@ -198,8 +228,12 @@ explicit `{project_id}/...` form in generated files.
 ## Caveats
 
 - **Identity schemas cannot be imported.** They are immutable; leave existing
-  schemas unmanaged (readable via the `ory_identity_schema` data source) and
-  manage only newly created schemas.
+  schemas unmanaged and manage only newly created schemas. Read a single schema
+  with the `ory_identity_schema` data source, or list every schema the project
+  can see with `ory_identity_schemas`. The project revision lists only schemas
+  explicitly added to the project, so the plural data source and the console
+  `GET /identity-schemas` endpoint see workspace-scoped schemas the revision
+  omits.
 - **Secrets never round-trip.** SMTP connection URI, social/SAML client
   secrets, OAuth2 client secrets, tokenizer template keys: re-supply via
   variables or write-only `*_wo` arguments. Until you do, some of these show a
@@ -235,15 +269,44 @@ explicit `{project_id}/...` form in generated files.
 - **Organizations require a B2B plan; event streams require an enterprise
   plan.** On other plans those endpoints return empty lists or
   `feature_not_available` errors — skip the resources.
-- **Flow-level `after` hooks** (a flat `hooks` array directly under
-  `flows.<flow>.after`) only occur on the recovery/verification flows in
-  provider-managed configs. For those, the auth-method segment of the import
-  ID is a placeholder (`_`) and is ignored by the provider.
-- **Attributes with static schema defaults** (e.g. `cors_enabled`) plan a
+- **A flat `after` hooks array is only importable on some flows.** The
+  auth-method placeholder (`_`, `none`, or empty) in an `after` import ID is
+  **not** ignored. The provider resolves it to the default `password`. That is
+  harmless only for flows whose hooks are not scoped by auth method, which means
+  recovery and verification. For `login`, `registration`, and `settings` the
+  provider always reads
+  `.../flows/<flow>/after/<auth_method>/hooks`, so a webhook sitting in the flat
+  `.../after/hooks` array on one of those flows cannot be imported at all. Move
+  it under an auth method in the Console first. The inventory script reports
+  these instead of emitting a doomed import block.
+- **`ory_project.environment` must be set explicitly.** It is `Optional` and
+  `Computed` with a static default of `prod`, and it no longer forces
+  replacement, so it is changed **in place**. On a `stage` or `dev` project,
+  leaving it out of config plans `~ environment = "dev" -> "prod"` and the first
+  apply really promotes the project's tier, consuming a production slot in the
+  workspace subscription. Copy the imported project's actual environment into
+  config before the first apply. `home_region` still forces replacement, so
+  that one fails loudly instead.
+- **Other attributes with static schema defaults** (e.g. `cors_enabled`) plan a
   one-time `+ <default>` change right after import even when unconfigured,
   because import leaves them null and the default then materializes. When the
   server already holds the default value the apply is a remote no-op; set the
   attribute explicitly if you want the plan to say so.
+- **`ory_action` and `ory_project_config` share two hook arrays.** The
+  `selfservice_flows_login_after_password_hook_require_verified_address`,
+  `..._login_after_oidc_...`, and the three
+  `selfservice_flows_settings_after_profile_hook_*` attributes write into the
+  same `login.after.<method>.hooks` and `settings.after.profile.hooks` arrays
+  that `ory_action` read-modify-writes. The inventory script only reports
+  `hook == "web_hook"` entries, so the non-webhook hooks those attributes
+  control are invisible to it. Set them on `ory_project_config` explicitly if
+  the Console has them enabled, otherwise they stay unmanaged and an
+  `ory_action` delete on the same array can drop them.
+- **`ory_social_provider` blanks provider keys its schema does not model.**
+  Create and Update replace the whole provider object, so any key Ory stores
+  that the provider version does not know about is dropped on the next apply.
+  Use a current provider release before importing social providers, and check
+  the revision dump for keys that do not appear in the resource schema.
 
 ## Troubleshooting
 
@@ -260,9 +323,34 @@ explicit `{project_id}/...` form in generated files.
   URL's own colons broke the import ID parser in provider versions before the
   fix for issue #280. Upgrade the provider; both documented before formats
   then work.
-- **`Cannot import non-existent remote object`** — the inventory went stale:
-  the resource was deleted between running the script and the plan. Remove
-  that import block, or re-run the script to refresh the inventory.
+- **`Cannot import non-existent remote object`** — three causes, in order of
+  likelihood. First, the inventory went stale: the resource was deleted between
+  running the script and the plan. Remove that import block, or re-run the
+  script. Second, the project is **soft deleted**: `GET /projects/{id}` still
+  answers HTTP 200 with `state = "deleted"`, so every request succeeds while
+  nothing can be imported. The script now refuses to run against such a project.
+  Third, for an `ory_action` on `login`, `registration`, or `settings`, the
+  auth-method segment does not match where the hook actually lives. See the flat
+  `after` hooks caveat above.
+- **A resource silently disappears from state on a later plan** — the provider
+  now removes a resource from state instead of erroring when the API reports it
+  gone, for `ory_project`, `ory_project_config`, `ory_workspace`,
+  `ory_organization`, `ory_oauth2_client`, `ory_oidc_dynamic_client`, and
+  `ory_trusted_oauth2_jwt_grant_issuer`. After onboarding, deleting one of these
+  in the Console makes the next plan propose a **create**, not an error. That is
+  expected; re-apply to restore it, or remove it from config.
+- **`429 Too Many Requests` during the converge apply** — a bulk import of many
+  `ory_oauth2_client` or `ory_identity` resources can exceed the request budget.
+  The provider retries a 429 with exponential backoff and jitter, 6 times by
+  default. Raise `max_retries` on the provider block (maximum 20, or set
+  `ORY_MAX_RETRIES`) for a very large project.
+- **`value must be one of` on an `ory_action` auth method** — `profile` and
+  `saml` are valid auth methods on some flows but were only added in later
+  provider releases, and the accepted set is now per-flow: `login` has no
+  `profile`, `registration` has no `profile`, `totp`, or `lookup_secret`, and
+  `settings` has no `code`. Upgrade the provider. Writing an unsupported
+  flow-and-method pair returns HTTP 200 and is silently discarded, so the
+  provider warns at plan time instead of failing.
 - **Generated attribute rejected on plan** — delete it; it is computed-only.
   `-generate-config-out` emits every attribute it saw in state, including ones
   that are not valid to configure.
