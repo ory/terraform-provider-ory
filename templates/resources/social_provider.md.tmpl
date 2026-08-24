@@ -102,6 +102,36 @@ If not set, the provider uses a default mapper that extracts the email claim.
 
 The `label` attribute sets a human-readable label for the provider. This is displayed on the login button in the default UI (e.g., "Sign in with Corporate SSO"). If not set, the default label for the provider type is used.
 
+## Organization Scoping (B2B SSO)
+
+Set `organization_id` to associate an OIDC provider with a specific organization. Ory then offers the provider only to users of that organization instead of to everyone on the login screen, and the callback URL gains an `/organization/<organization_id>` segment. This is the OIDC counterpart of the same attribute on `ory_saml_provider`, and it is what the Ory Console shows as "via `<organization>` SSO" in the Social Sign-In (OIDC) tab.
+
+```hcl
+resource "ory_organization" "acme" {
+  label   = "Acme"
+  domains = ["acme.example.com"]
+}
+
+resource "ory_social_provider" "acme_sso" {
+  provider_id     = "acme-sso"
+  provider_type   = "generic"
+  client_id       = var.acme_client_id
+  client_secret   = var.acme_client_secret
+  issuer_url      = "https://sso.acme.example.com"
+  scope           = ["openid", "email", "profile"]
+  label           = "Acme SSO"
+  organization_id = ory_organization.acme.id
+}
+```
+
+Give the organization one or more `domains` to let Ory route a user to this provider by the domain of the email address they enter.
+
+~> **Note:** `organization_id` must be the ID of an organization that exists in the same project. The API rejects a value that is not a UUID with `HTTP 400`, and a UUID that matches no organization with `HTTP 500` and a foreign key error. Reference an `ory_organization` resource so Terraform creates the organization first.
+
+Removing `organization_id` from your configuration clears the link and turns the resource back into a normal social sign-in provider that every user can use.
+
+-> **Plan:** B2B SSO requires a plan with B2B or Enterprise features. Check your Ory Network plan before using this attribute.
+
 ## Account Linking Mode
 
 The `account_linking_mode` attribute controls how accounts are linked when a user signs in with this provider and a matching identity already exists:

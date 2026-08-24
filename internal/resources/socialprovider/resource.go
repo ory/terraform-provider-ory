@@ -81,6 +81,7 @@ type SocialProviderResourceModel struct {
 	ApplePrivateKeyWOVersion   types.String `tfsdk:"apple_private_key_wo_version"`
 	AutoLink                   types.Bool   `tfsdk:"auto_link"`
 	Label                      types.String `tfsdk:"label"`
+	OrganizationID             types.String `tfsdk:"organization_id"`
 	AccountLinkingMode         types.String `tfsdk:"account_linking_mode"`
 	BaseRedirectURI            types.String `tfsdk:"base_redirect_uri"`
 	AdditionalIDTokenAudiences types.List   `tfsdk:"additional_id_token_audiences"`
@@ -242,6 +243,10 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 			},
 			"label": schema.StringAttribute{
 				Description: "Human-readable label for the provider, displayed on the login button (e.g., \"Sign in with Corporate SSO\").",
+				Optional:    true,
+			},
+			"organization_id": schema.StringAttribute{
+				Description: "Organization ID to associate this OIDC provider with (for B2B SSO). Set it to the ID of an existing `ory_organization`. The provider is then only offered to users of that organization, and the callback URL gains an `/organization/<organization_id>` segment. Leave it unset for a normal social sign-in provider that every user can use. Requires a B2B plan.",
 				Optional:    true,
 			},
 			"account_linking_mode": schema.StringAttribute{
@@ -407,6 +412,9 @@ func (r *SocialProviderResource) ValidateConfig(ctx context.Context, req resourc
 	if !config.NetIDTokenOriginHeader.IsNull() && !config.NetIDTokenOriginHeader.IsUnknown() && config.NetIDTokenOriginHeader.ValueString() == "" {
 		resp.Diagnostics.AddAttributeError(path.Root("net_id_token_origin_header"), "Invalid Attribute Value", "net_id_token_origin_header must not be an empty string.")
 	}
+	if !config.OrganizationID.IsNull() && !config.OrganizationID.IsUnknown() && config.OrganizationID.ValueString() == "" {
+		resp.Diagnostics.AddAttributeError(path.Root("organization_id"), "Invalid Attribute Value", "organization_id must not be an empty string.")
+	}
 
 	if providerType == "apple" {
 		// Apple: needs either client_secret OR all three Apple-specific fields
@@ -496,6 +504,18 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 	if !plan.Label.IsNull() && !plan.Label.IsUnknown() {
 		config["label"] = plan.Label.ValueString()
 	}
+
+	// organization_id links the provider to a B2B SSO organization. Send it only
+	// when set: Create and Update replace the whole provider object, so omitting
+	// the key clears the link server-side, which is what removing the attribute
+	// from configuration must do. The API rejects a non-UUID value with HTTP 400,
+	// and an organization that does not exist with HTTP 500 and a foreign key
+	// violation on project_revision_oidc_providers.
+	// See: https://github.com/ory/terraform-provider-ory/issues/339
+	if !plan.OrganizationID.IsNull() && !plan.OrganizationID.IsUnknown() && plan.OrganizationID.ValueString() != "" {
+		config["organization_id"] = plan.OrganizationID.ValueString()
+	}
+
 	if !plan.AccountLinkingMode.IsNull() && !plan.AccountLinkingMode.IsUnknown() {
 		config["account_linking_mode"] = plan.AccountLinkingMode.ValueString()
 	}
@@ -979,6 +999,15 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		state.Label = types.StringValue(label)
 	} else {
 		state.Label = types.StringNull()
+	}
+
+	// Read organization_id, which the API does return. It reports the key as JSON
+	// null once the link is cleared, so a failed string assertion also has to null
+	// the state value.
+	if orgID, ok := provider["organization_id"].(string); ok && orgID != "" {
+		state.OrganizationID = types.StringValue(orgID)
+	} else {
+		state.OrganizationID = types.StringNull()
 	}
 
 	// Read account_linking_mode from API (returned on read)
