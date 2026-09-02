@@ -972,6 +972,13 @@ func (c *OryClient) GetProjectNormalizedRevision(ctx context.Context, projectID 
 	return parsed.CurrentRevision, nil
 }
 
+// RevisionPatchBuilder computes the JSON Patch operations for one attempt of
+// PatchProjectRevisionWith. It receives the revision that attempt patches, so
+// an operation that addresses a revision array by index, for example
+// /scim_clients/2, is computed from the same revision it is applied to.
+// Returning no operations skips the PATCH for that attempt.
+type RevisionPatchBuilder func(revision map[string]interface{}) ([]ory.JsonPatch, error)
+
 // PatchProjectRevision applies JSON Patch operations to the project's current
 // normalized revision via PATCH /normalized/projects/{id}/revision/{rev}. A
 // few settings are top-level revision columns with no key in the per-service
@@ -989,58 +996,98 @@ func (c *OryClient) GetProjectNormalizedRevision(ctx context.Context, projectID 
 // per-project mutex, which leaves only out-of-band writers as a conflict
 // source. Like SetProjectEnvironment, the endpoint is missing from the
 // generated SDK and is called directly.
+//
+// The operations are fixed, so this suits a write whose paths do not depend
+// on the current revision. A read-modify-write on a revision array, such as
+// scim_clients, uses PatchProjectRevisionWith so the paths are rebuilt after
+// a conflict.
 func (c *OryClient) PatchProjectRevision(ctx context.Context, projectID string, patches []ory.JsonPatch) error {
+	_, err := c.PatchProjectRevisionWith(ctx, projectID, func(map[string]interface{}) ([]ory.JsonPatch, error) {
+		return patches, nil
+	})
+	return err
+}
+
+// PatchProjectRevisionWith is PatchProjectRevision for a read-modify-write.
+// build runs on every attempt against the revision that attempt targets, so a
+// stale-revision conflict re-reads the revision and rebuilds the operations
+// instead of replaying operations computed against the old one. The read and
+// the patch run under the per-project mutex, which serializes the resources
+// in one apply that all modify the same revision array.
+//
+// It returns the revision the API reports after the patch. When build returns
+// no operations nothing is sent, and the revision that was read is returned.
+func (c *OryClient) PatchProjectRevisionWith(ctx context.Context, projectID string, build RevisionPatchBuilder) (map[string]interface{}, error) {
 	const operation = "patching project revision"
 	if c.consoleClient == nil {
-		return fmt.Errorf("%s: %w. Set workspace_api_key (ORY_WORKSPACE_API_KEY)",
+		return nil, fmt.Errorf("%s: %w. Set workspace_api_key (ORY_WORKSPACE_API_KEY)",
 			operation, ErrConsoleClientNotConfigured)
 	}
 	if err := c.checkProjectAllowed(projectID); err != nil {
-		return err
+		return nil, err
 	}
 	mu := c.patchProjectMutex(projectID)
 	mu.Lock()
 	defer mu.Unlock()
-
-	payload, err := json.Marshal(patches)
-	if err != nil {
-		return fmt.Errorf("encoding revision patch request: %w", err)
-	}
 
 	const maxAttempts = 3
 	var lastErr error
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		revision, err := c.GetProjectNormalizedRevision(ctx, projectID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		revisionID, _ := revision["id"].(string)
 		if revisionID == "" {
-			return fmt.Errorf("%s: current revision has no id", operation)
+			return nil, fmt.Errorf("%s: current revision has no id", operation)
+		}
+		patches, err := build(revision)
+		if err != nil {
+			return nil, err
+		}
+		if len(patches) == 0 {
+			return revision, nil
+		}
+		payload, err := json.Marshal(patches)
+		if err != nil {
+			return nil, fmt.Errorf("encoding revision patch request: %w", err)
 		}
 
 		endpoint := strings.TrimRight(c.config.ConsoleAPIURL, "/") + "/normalized/projects/" +
 			url.PathEscape(projectID) + "/revision/" + url.PathEscape(revisionID)
 		resp, err := c.doConsoleRawRequest(ctx, operation, http.MethodPatch, endpoint, payload)
 		if err != nil {
-			return wrapAPIError(err, operation)
+			return nil, wrapAPIError(err, operation)
 		}
 		body, readErr := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		if readErr != nil {
-			return fmt.Errorf("reading revision patch response: %w", readErr)
+			return nil, fmt.Errorf("reading revision patch response: %w", readErr)
 		}
 		if resp.StatusCode == http.StatusOK {
-			return nil
+			return c.revisionFromPatchResponse(ctx, projectID, body)
 		}
 		lastErr = fmt.Errorf("unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 		if resp.StatusCode != http.StatusConflict {
-			return wrapAPIError(lastErr, operation)
+			return nil, wrapAPIError(lastErr, operation)
 		}
 		// Stale revision: an out-of-band update created a newer one between
-		// resolving the ID and patching. Loop to re-resolve and retry.
+		// resolving the ID and patching. Loop to re-resolve, rebuild, and retry.
 	}
-	return wrapAPIError(lastErr, operation)
+	return nil, wrapAPIError(lastErr, operation)
+}
+
+// revisionFromPatchResponse returns the current_revision carried by a
+// successful revision PATCH. The endpoint answers with the whole normalized
+// project, the same shape GET /normalized/projects/{id} returns. A response
+// without one falls back to a fresh read, so callers always get the
+// post-patch revision.
+func (c *OryClient) revisionFromPatchResponse(ctx context.Context, projectID string, body []byte) (map[string]interface{}, error) {
+	var parsed normalizedProjectResponse
+	if err := json.Unmarshal(body, &parsed); err == nil && parsed.CurrentRevision != nil {
+		return parsed.CurrentRevision, nil
+	}
+	return c.GetProjectNormalizedRevision(ctx, projectID)
 }
 
 // SetProjectEnvironment changes a project's environment tier (dev, stage, prod)

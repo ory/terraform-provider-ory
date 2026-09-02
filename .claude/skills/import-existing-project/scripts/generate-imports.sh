@@ -331,6 +331,31 @@ echo "$SAML" | jq -c '.[]' | while read -r row; do
 done
 log "saml providers: $(echo "$SAML" | jq 'length')"
 
+# --- SCIM clients (from the normalized project revision) -----------------------
+# scim_clients is a top-level column of the normalized revision, which the
+# project document above does not carry, so this section reads the normalized
+# endpoint. The import ID takes the string client_id: the row UUID changes on
+# every revision the project writes.
+SCIM="[]"
+if NORMALIZED=$(console_get_optional "/normalized/projects/$ORY_PROJECT_ID"); then
+  SCIM=$(echo "$NORMALIZED" | jq -c '
+    [.current_revision.scim_clients[]? | select(type == "object")]')
+fi
+if [ "$(echo "$SCIM" | jq 'length')" -gt 0 ]; then
+  echo "# SCIM client secrets are never returned by the API, and mapper_url comes"
+  echo "# back as a stored object-storage URL. After generating config, re-supply"
+  echo "# each authorization_header_secret (or authorization_header_secret_wo)"
+  echo "# and the mapper. Import the matching ory_organization too and reference"
+  echo "# it as organization_id = ory_organization.<name>.id, because deleting an"
+  echo "# organization deletes its SCIM clients."
+fi
+echo "$SCIM" | jq -c '.[]' | while read -r row; do
+  id=$(echo "$row" | jq -r '.client_id // empty')
+  [ -n "$id" ] || continue
+  emit "ory_scim_client.$(unique_label "$(sanitize "$id")")" "$ORY_PROJECT_ID/$id"
+done
+log "scim clients: $(echo "$SCIM" | jq 'length')"
+
 # --- Actions / webhooks (from the project revision) -----------------------------
 # after-timing hooks nested under an auth method: flow:after:<method>:METHOD:url
 # after-timing hooks in a flat array: auth method placeholder "_". Only valid on

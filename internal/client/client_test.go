@@ -1048,3 +1048,172 @@ func TestPatchProjectRevision_SurfacesNonConflictError(t *testing.T) {
 	assert.Equal(t, 1, patchCount, "a 400 must not be retried")
 	assert.Contains(t, err.Error(), "patching project revision")
 }
+
+// normalizedRevisionWithClientsJSON renders a normalized project whose
+// revision carries a scim_clients array, the shape PatchProjectRevisionWith
+// callers rebuild index-addressed operations from.
+func normalizedRevisionWithClientsJSON(revisionID string, clientIDs ...string) string {
+	entries := make([]string, 0, len(clientIDs))
+	for _, id := range clientIDs {
+		entries = append(entries, fmt.Sprintf(`{"client_id": %q}`, id))
+	}
+	return fmt.Sprintf(`{"current_revision": {"id": %q, "scim_clients": [%s]}}`,
+		revisionID, strings.Join(entries, ","))
+}
+
+// PatchProjectRevisionWith must hand each attempt the revision it patches.
+// After a 409 the array may have shifted underneath the caller, so replaying
+// the first attempt's index would remove the wrong element.
+func TestPatchProjectRevisionWith_RebuildsPatchesAfterConflict(t *testing.T) {
+	var patchBodies []string
+	gets := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			gets++
+			if gets == 1 {
+				_, _ = w.Write([]byte(normalizedRevisionWithClientsJSON("rev-a", "okta")))
+				return
+			}
+			// An out-of-band writer prepended a client, so okta moved to index 1.
+			_, _ = w.Write([]byte(normalizedRevisionWithClientsJSON("rev-b", "azure", "okta")))
+		case http.MethodPatch:
+			body, _ := io.ReadAll(r.Body)
+			patchBodies = append(patchBodies, string(body))
+			if strings.HasSuffix(r.URL.Path, "/revision/rev-a") {
+				w.WriteHeader(http.StatusConflict)
+				_, _ = w.Write([]byte(`{"error":{"code":409,"status":"Conflict"}}`))
+				return
+			}
+			_, _ = w.Write([]byte(normalizedRevisionWithClientsJSON("rev-c", "azure")))
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer srv.Close()
+
+	client, err := NewOryClient(OryClientConfig{
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   srv.URL,
+	})
+	require.NoError(t, err)
+
+	builds := 0
+	revision, err := client.PatchProjectRevisionWith(context.Background(), "proj-1", func(revision map[string]interface{}) ([]ory.JsonPatch, error) {
+		builds++
+		clients, _ := revision["scim_clients"].([]interface{})
+		for i, c := range clients {
+			if m, _ := c.(map[string]interface{}); m["client_id"] == "okta" {
+				return []ory.JsonPatch{{Op: "remove", Path: fmt.Sprintf("/scim_clients/%d", i)}}, nil
+			}
+		}
+		return nil, fmt.Errorf("okta not found")
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, 2, builds, "the builder must run once per attempt")
+	require.Len(t, patchBodies, 2)
+	assert.Contains(t, patchBodies[0], `"/scim_clients/0"`)
+	assert.Contains(t, patchBodies[1], `"/scim_clients/1"`, "the retry must address the index in the re-read revision")
+
+	clients, _ := revision["scim_clients"].([]interface{})
+	require.Len(t, clients, 1, "the post-patch revision from the PATCH response must be returned")
+}
+
+// A builder that returns no operations has nothing to write: no PATCH is
+// sent and the revision that was read comes back, so a delete of an
+// already-missing element is a clean no-op.
+func TestPatchProjectRevisionWith_NoOperationsSkipsPatch(t *testing.T) {
+	patches := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			_, _ = w.Write([]byte(normalizedRevisionWithClientsJSON("rev-a", "okta")))
+		case http.MethodPatch:
+			patches++
+			w.WriteHeader(http.StatusBadRequest)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer srv.Close()
+
+	client, err := NewOryClient(OryClientConfig{
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   srv.URL,
+	})
+	require.NoError(t, err)
+
+	revision, err := client.PatchProjectRevisionWith(context.Background(), "proj-1", func(map[string]interface{}) ([]ory.JsonPatch, error) {
+		return nil, nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 0, patches, "no PATCH may be sent when the builder returns no operations")
+	assert.Equal(t, "rev-a", revision["id"], "the revision that was read must be returned")
+}
+
+// A builder error aborts before any PATCH and reaches the caller unwrapped,
+// so a resource can classify it with errors.Is.
+func TestPatchProjectRevisionWith_BuilderErrorAborts(t *testing.T) {
+	patches := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			_, _ = w.Write([]byte(normalizedRevisionWithClientsJSON("rev-a")))
+		case http.MethodPatch:
+			patches++
+			_, _ = w.Write([]byte(normalizedRevisionWithClientsJSON("rev-b")))
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer srv.Close()
+
+	client, err := NewOryClient(OryClientConfig{
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   srv.URL,
+	})
+	require.NoError(t, err)
+
+	sentinel := errors.New("client missing")
+	_, err = client.PatchProjectRevisionWith(context.Background(), "proj-1", func(map[string]interface{}) ([]ory.JsonPatch, error) {
+		return nil, sentinel
+	})
+	require.ErrorIs(t, err, sentinel)
+	assert.Equal(t, 0, patches)
+}
+
+// When the PATCH response carries no current_revision the post-patch revision
+// is read back, so callers can always verify what the API stored.
+func TestPatchProjectRevisionWith_FallsBackToReadWithoutResponseRevision(t *testing.T) {
+	gets := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			gets++
+			_, _ = w.Write([]byte(normalizedRevisionWithClientsJSON(fmt.Sprintf("rev-%d", gets), "okta")))
+		case http.MethodPatch:
+			_, _ = w.Write([]byte(`{}`))
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer srv.Close()
+
+	client, err := NewOryClient(OryClientConfig{
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   srv.URL,
+	})
+	require.NoError(t, err)
+
+	revision, err := client.PatchProjectRevisionWith(context.Background(), "proj-1", func(map[string]interface{}) ([]ory.JsonPatch, error) {
+		return []ory.JsonPatch{{Op: "remove", Path: "/scim_clients/0"}}, nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 2, gets, "the revision must be re-read when the PATCH response has none")
+	assert.Equal(t, "rev-2", revision["id"])
+}

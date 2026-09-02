@@ -40,6 +40,7 @@ import (
 	"github.com/ory/terraform-provider-ory/internal/resources/projectconfig"
 	"github.com/ory/terraform-provider-ory/internal/resources/relationship"
 	"github.com/ory/terraform-provider-ory/internal/resources/samlprovider"
+	"github.com/ory/terraform-provider-ory/internal/resources/scimclient"
 	"github.com/ory/terraform-provider-ory/internal/resources/socialprovider"
 	"github.com/ory/terraform-provider-ory/internal/resources/trustedjwtissuer"
 	"github.com/ory/terraform-provider-ory/internal/resources/workspace"
@@ -161,7 +162,7 @@ export TF_VAR_ory_project_key="ory_pat_..."
 | Resource | Required Credentials |
 |----------|---------------------|
 | ` + "`ory_project`" + `, ` + "`ory_workspace`" + ` | ` + "`workspace_api_key`" + `, ` + "`workspace_id`" + ` |
-| ` + "`ory_organization`" + ` | ` + "`workspace_api_key`" + `, ` + "`project_id`" + ` |
+| ` + "`ory_organization`" + `, ` + "`ory_scim_client`" + ` | ` + "`workspace_api_key`" + `, ` + "`project_id`" + ` |
 | ` + "`ory_project_config`" + `, ` + "`ory_action`" + `, ` + "`ory_social_provider`" + `, ` + "`ory_saml_provider`" + `, ` + "`ory_email_template`" + ` | ` + "`workspace_api_key`" + `, ` + "`project_id`" + ` |
 | ` + "`ory_identity`" + `, ` + "`ory_oauth2_client`" + `, ` + "`ory_relationship`" + ` | ` + "`project_api_key`" + `, ` + "`project_slug`" + ` |
 
@@ -198,8 +199,8 @@ When importing existing resources, ensure you have the appropriate credentials c
 				Optional:            true,
 			},
 			"allowed_project_ids": schema.ListAttribute{
-				Description:         "Optional safety guardrail. When set, the provider refuses any project-configuration operation (project config, actions, email templates, social/SAML providers, identity schema, custom domains, event streams, organizations, project API keys, and project create/delete) that targets a project ID not in this list. This bounds the blast radius of a workspace API key so a mis-pointed project_id, such as production, cannot be read or changed. When unset, no restriction is applied. Can also be set via the ORY_ALLOWED_PROJECT_IDS environment variable as a comma-separated list.",
-				MarkdownDescription: "Optional safety guardrail. When set, the provider refuses any project-configuration operation (`ory_project_config`, `ory_action`, `ory_email_template`, `ory_social_provider`, `ory_saml_provider`, `ory_identity_schema`, `ory_custom_domain`, `ory_event_stream`, `ory_organization`, `ory_project_api_key`, and `ory_project` create/delete) that targets a project ID not in this list. This bounds the blast radius of a workspace API key so a mis-pointed `project_id` (such as production) cannot be read or changed. When unset, no restriction is applied. Can also be set via the `ORY_ALLOWED_PROJECT_IDS` environment variable as a comma-separated list.",
+				Description:         "Optional safety guardrail. When set, the provider refuses any project-configuration operation (project config, actions, email templates, social/SAML providers, SCIM clients, identity schema, custom domains, event streams, organizations, project API keys, and project create/delete) that targets a project ID not in this list. This bounds the blast radius of a workspace API key so a mis-pointed project_id, such as production, cannot be read or changed. When unset, no restriction is applied. Can also be set via the ORY_ALLOWED_PROJECT_IDS environment variable as a comma-separated list.",
+				MarkdownDescription: "Optional safety guardrail. When set, the provider refuses any project-configuration operation (`ory_project_config`, `ory_action`, `ory_email_template`, `ory_social_provider`, `ory_saml_provider`, `ory_scim_client`, `ory_identity_schema`, `ory_custom_domain`, `ory_event_stream`, `ory_organization`, `ory_project_api_key`, and `ory_project` create/delete) that targets a project ID not in this list. This bounds the blast radius of a workspace API key so a mis-pointed `project_id` (such as production) cannot be read or changed. When unset, no restriction is applied. Can also be set via the `ORY_ALLOWED_PROJECT_IDS` environment variable as a comma-separated list.",
 				Optional:            true,
 				ElementType:         types.StringType,
 			},
@@ -279,7 +280,7 @@ Or via environment variables:
   export ORY_PROJECT_API_KEY="ory_pat_..."
 
 Which API key do you need?
-  - Workspace API Key (ory_wak_...): For ory_project, ory_workspace, ory_organization, ory_project_config, ory_action, ory_social_provider, ory_saml_provider, ory_email_template
+  - Workspace API Key (ory_wak_...): For ory_project, ory_workspace, ory_organization, ory_scim_client, ory_project_config, ory_action, ory_social_provider, ory_saml_provider, ory_email_template
   - Project API Key (ory_pat_...): For ory_identity, ory_oauth2_client, ory_relationship
 
 For more information: https://www.ory.sh/docs/guides/api-keys`,
@@ -334,6 +335,7 @@ func (p *OryProvider) Resources(ctx context.Context) []func() resource.Resource 
 		identityschema.NewResource,
 		socialprovider.NewResource,
 		samlprovider.NewResource,
+		scimclient.NewResource,
 		emailtemplate.NewResource,
 		projectapikey.NewResource,
 		jwk.NewResource,
