@@ -1,0 +1,27 @@
+resource "ory_organization" "test" {
+  label = "SCIM Concurrent Test Org"
+}
+
+resource "ory_scim_client" "one" {
+  organization_id             = ory_organization.test.id
+  client_id                   = "tf-acc-scim-concurrent-one"
+  label                       = "Concurrent One"
+  mapper_url                  = "[[ .MapperURL ]]"
+  authorization_header_secret = "tf-acc-concurrent-secret-one"
+}
+
+resource "ory_scim_client" "two" {
+  organization_id             = ory_organization.test.id
+  client_id                   = "tf-acc-scim-concurrent-two"
+  label                       = "Concurrent Two"
+  mapper_url                  = "[[ .MapperURL ]]"
+  authorization_header_secret = "tf-acc-concurrent-secret-two"
+}
+
+resource "ory_scim_client" "three" {
+  organization_id             = ory_organization.test.id
+  client_id                   = "tf-acc-scim-concurrent-three"
+  label                       = "Concurrent Three"
+  mapper_url                  = "[[ .MapperURL ]]"
+  authorization_header_secret = "tf-acc-concurrent-secret-three"
+}
