@@ -127,7 +127,7 @@ terraform plan
 | Resource | Required Credentials |
 |----------|---------------------|
 | `ory_project`, `ory_workspace` | `workspace_api_key`, `workspace_id` |
-| `ory_organization` | `workspace_api_key`, `project_id` |
+| `ory_organization`, `ory_scim_client` | `workspace_api_key`, `project_id` |
 | `ory_project_config`, `ory_action`, `ory_social_provider`, `ory_saml_provider`, `ory_email_template` | `workspace_api_key`, `project_id` |
 | `ory_identity_schema`, `ory_project_api_key` | `workspace_api_key`, `project_id` |
 | `ory_identity`, `ory_oauth2_client`, `ory_relationship` | `project_api_key`, `project_slug` |
@@ -137,7 +137,7 @@ terraform plan
 
 Project configuration and project-level resources are managed through the Ory Console API, which requires a **workspace API key** (`ory_wak_...`). A **project API key** (`ory_pat_...`) authenticates project *data* operations such as identities, OAuth2 clients, and relationships, but is not authorized to read or change project *configuration*. This is a property of the Ory Network API, not the provider: the Console endpoints reject a project API key with `403 Forbidden`.
 
-As a result, `ory_project_config`, `ory_action`, `ory_email_template`, `ory_social_provider`, `ory_saml_provider`, `ory_identity_schema`, `ory_custom_domain`, `ory_event_stream`, `ory_organization`, and `ory_project_api_key` all require a workspace API key. For more detail, see [Manage Ory Network projects through the API](https://www.ory.com/docs/guides/manage-project-via-api).
+As a result, `ory_project_config`, `ory_action`, `ory_email_template`, `ory_social_provider`, `ory_saml_provider`, `ory_scim_client`, `ory_identity_schema`, `ory_custom_domain`, `ory_event_stream`, `ory_organization`, and `ory_project_api_key` all require a workspace API key. For more detail, see [Manage Ory Network projects through the API](https://www.ory.com/docs/guides/manage-project-via-api).
 
 ## Limiting blast radius with `allowed_project_ids`
 
@@ -201,7 +201,7 @@ When importing existing resources, ensure you have the appropriate credentials c
 
 ### Optional
 
-- `allowed_project_ids` (List of String) Optional safety guardrail. When set, the provider refuses any project-configuration operation (`ory_project_config`, `ory_action`, `ory_email_template`, `ory_social_provider`, `ory_saml_provider`, `ory_identity_schema`, `ory_custom_domain`, `ory_event_stream`, `ory_organization`, `ory_project_api_key`, and `ory_project` create/delete) that targets a project ID not in this list. This bounds the blast radius of a workspace API key so a mis-pointed `project_id` (such as production) cannot be read or changed. When unset, no restriction is applied. Can also be set via the `ORY_ALLOWED_PROJECT_IDS` environment variable as a comma-separated list.
+- `allowed_project_ids` (List of String) Optional safety guardrail. When set, the provider refuses any project-configuration operation (`ory_project_config`, `ory_action`, `ory_email_template`, `ory_social_provider`, `ory_saml_provider`, `ory_scim_client`, `ory_identity_schema`, `ory_custom_domain`, `ory_event_stream`, `ory_organization`, `ory_project_api_key`, and `ory_project` create/delete) that targets a project ID not in this list. This bounds the blast radius of a workspace API key so a mis-pointed `project_id` (such as production) cannot be read or changed. When unset, no restriction is applied. Can also be set via the `ORY_ALLOWED_PROJECT_IDS` environment variable as a comma-separated list.
 - `console_api_url` (String) Override the console API URL (default: `https://api.console.ory.sh`). Mainly for testing.
 - `max_retries` (Number) How many times a request that the Ory API rejects with `429 Too Many Requests` is retried before the error reaches Terraform (default: `6`, maximum: `20`). The provider backs off exponentially, capped at 30 seconds, waits longer when the `x-ratelimit-reset` header reports a longer window, and adds random jitter so parallel workers do not retry together. At the default the waits come to 61 seconds, which is a floor: the jitter and a longer reported window both raise it. The `429` still reaches Terraform once the retries run out, or when this is set to `0`. Raise it for a very large apply. Can also be set via the `ORY_MAX_RETRIES` environment variable.
 - `project_api_key` (String, Sensitive) Ory Project API Key (`ory_pat_...`). Used for identity and OAuth2 operations. Can also be set via `ORY_PROJECT_API_KEY` environment variable.

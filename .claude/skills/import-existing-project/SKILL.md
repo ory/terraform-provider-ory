@@ -119,8 +119,8 @@ import block, note it, and hand-write that resource later.
   "Invalid or unknown key" or "value must be configured only by the provider",
   delete that attribute.
 - **Re-supply secrets.** The API never returns SMTP connection URIs, social
-  provider client secrets, or OAuth2 client secrets (values come back masked or
-  absent). Wire them to `variable` blocks marked `sensitive`, or use the
+  provider client secrets, SCIM client secrets, or OAuth2 client secrets
+  (values come back masked or absent). Wire them to `variable` blocks marked `sensitive`, or use the
   write-only variants (`client_secret_wo`, `smtp_connection_uri_wo`, ...) with
   `*_wo_version` to keep them out of state entirely.
   `courier_http_request_config_auth_basic_auth_password` and
@@ -211,6 +211,7 @@ Project API = `https://{slug}.projects.oryapis.com` with the project API key.
 | `ory_project_api_key` | `GET /projects/{id}/tokens` (console) | `{project_id}/{key_id}` — value unrecoverable |
 | `ory_social_provider` | revision: `.services.identity.config.selfservice.methods.oidc.config.providers[]` | `{provider_id}` (e.g. `google`) |
 | `ory_saml_provider` | revision: `...methods.saml.config.providers[]` | `{provider_id}` |
+| `ory_scim_client` | `GET /normalized/projects/{id}` (console): `.current_revision.scim_clients[]` | `{project_id}/{client_id}`, secret unrecoverable |
 | `ory_action` | revision: `...selfservice.flows.<flow>.<timing>...hooks[]` where `hook == "web_hook"` | after: `{project_id}:{flow}:after:{auth_method}:{METHOD}:{url}`; before: `{project_id}:{flow}:before:{METHOD}:{url}` |
 | `ory_email_template` | revision: `...courier.templates.<base>.<valid\|invalid>.email` with non-empty `subject` or `body.html` / `body.plaintext` | `{base}_{valid\|invalid}` (e.g. `recovery_code_valid`) |
 | `ory_oauth2_client` | `GET /admin/clients` (project) | `{client_id}` |
@@ -235,9 +236,17 @@ explicit `{project_id}/...` form in generated files.
   `GET /identity-schemas` endpoint see workspace-scoped schemas the revision
   omits.
 - **Secrets never round-trip.** SMTP connection URI, social/SAML client
-  secrets, OAuth2 client secrets, tokenizer template keys: re-supply via
-  variables or write-only `*_wo` arguments. Until you do, some of these show a
-  perpetual diff or import as empty.
+  secrets, SCIM client secrets, OAuth2 client secrets, tokenizer template keys:
+  re-supply via variables or write-only `*_wo` arguments. Until you do, some of
+  these show a perpetual diff or import as empty.
+- **`ory_scim_client` imports with an empty secret and a stored mapper URL.**
+  The API redacts `authorization_header_secret` in every response, and it
+  rewrites `mapper_url` into a content-addressed object-storage URL. Set both
+  in config after the import: the first apply uploads the mapper and rotates
+  the secret to the configured value, in place. Also import the matching
+  `ory_organization` and reference it as
+  `organization_id = ory_organization.<name>.id`, because deleting an
+  organization deletes its SCIM clients server-side.
 - **`ory_project_api_key` values** exist only at creation time. Importing one
   yields a resource whose `value` is null; rotating it through Terraform means
   destroy + create (a brand-new key).
@@ -335,8 +344,8 @@ explicit `{project_id}/...` form in generated files.
 - **A resource silently disappears from state on a later plan** — the provider
   now removes a resource from state instead of erroring when the API reports it
   gone, for `ory_project`, `ory_project_config`, `ory_workspace`,
-  `ory_organization`, `ory_oauth2_client`, `ory_oidc_dynamic_client`, and
-  `ory_trusted_oauth2_jwt_grant_issuer`. After onboarding, deleting one of these
+  `ory_organization`, `ory_scim_client`, `ory_oauth2_client`,
+  `ory_oidc_dynamic_client`, and `ory_trusted_oauth2_jwt_grant_issuer`. After onboarding, deleting one of these
   in the Console makes the next plan propose a **create**, not an error. That is
   expected; re-apply to restore it, or remove it from config.
 - **`429 Too Many Requests` during the converge apply** — a bulk import of many

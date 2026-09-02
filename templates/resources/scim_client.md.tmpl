@@ -1,0 +1,90 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  Manages an Ory Network SCIM client that lets an external identity provider provision identities into an organization.
+---
+
+# {{.Name}} ({{.Type}})
+
+Manages an Ory Network SCIM client. A SCIM client is the credential and the mapping an external identity provider such as Okta or Microsoft Entra uses to provision identities into one organization.
+
+SCIM clients are part of the project configuration and have no Console API endpoint of their own. The provider writes them through the normalized project revision and reads them back from it.
+
+-> **Plan:** SCIM provisioning needs an Ory Network plan with B2B features and a project in the `prod` or `stage` environment, the same requirements as `ory_organization`.
+
+## How SCIM provisioning works
+
+1. You create an organization and a SCIM client that points at it.
+2. You give the identity provider the SCIM base URL, `https://<project-slug>.projects.oryapis.com/scim/<client_id>/v2`, and the `authorization_header_secret`.
+3. The identity provider sends SCIM requests with the header `Authorization: Bearer <authorization_header_secret>`.
+4. Ory applies the `mapper_url` Jsonnet to each SCIM user and creates or updates the identity inside the organization.
+
+The URL path takes the string `client_id`, not an internal UUID. A request with the wrong secret gets HTTP 401. A request for a disabled client, or for a `client_id` that does not exist, gets HTTP 404.
+
+## Example Usage
+
+{{ tffile "examples/resources/ory_scim_client/resource.tf" }}
+
+## Authorization Secret
+
+The API never returns `authorization_header_secret`. Every read reports it as an empty string. The provider therefore keeps the configured value in state and does not detect a change made in the Console. Changing the value in configuration rotates the secret. The old secret stops working as soon as the apply finishes.
+
+For a value that never enters Terraform state, use the write-only argument instead. Write-only arguments need Terraform 1.11 or later.
+
+| Write-only attribute | Replaces | Version trigger |
+|----------------------|----------|-----------------|
+| `authorization_header_secret_wo` | `authorization_header_secret` | `authorization_header_secret_wo_version` |
+
+The two attributes are mutually exclusive, and exactly one of them must be set. Terraform cannot diff a write-only value, so change `authorization_header_secret_wo_version` whenever the secret rotates. That change makes Terraform send the new value to Ory.
+
+## Mapper URL
+
+`mapper_url` is the Jsonnet snippet that maps the SCIM user resource to identity traits. It accepts:
+
+- A base64-encoded Jsonnet snippet prefixed with `base64://`.
+- An `http://` or `https://` URL that Ory downloads at write time.
+
+```jsonnet
+local claims = std.extVar('claims');
+{
+  identity: {
+    traits: {
+      email: claims.email,
+    },
+  },
+}
+```
+
+~> **Note:** Ory stores the mapper at a content-addressed object-storage URL and reports that URL on every read, for example `https://storage.googleapis.com/.../<hash>.jsonnet`. The provider keeps the value you configured in state and reads the stored URL only on import, so `mapper_url` never shows a spurious diff.
+
+## Organizations
+
+`organization_id` must reference an organization in the same project. The API reports a missing organization as an HTTP 500 foreign key violation, and the provider adds the attribute name to that error.
+
+Deleting an organization deletes its SCIM clients server-side. When that happens outside Terraform, the next refresh removes both resources from state and the next apply recreates them. Reference the organization by resource attribute, `organization_id = ory_organization.acme.id`, so Terraform orders the create and the destroy correctly.
+
+## Important Behaviors
+
+- **`client_id` cannot be changed** after creation. Changing it forces a new resource.
+- **`state` defaults to `enabled`.** A disabled client keeps its configuration and answers HTTP 404 until it is enabled again.
+- **An existing `client_id` is taken over.** When a client with the configured `client_id` already exists in the project, for example one created in the Console, the first apply rewrites it with the configured values and rotates its secret. This matches `ory_social_provider` and `ory_saml_provider`.
+- **Concurrent creates are safe.** Every write is a compare-and-swap on the project revision. The provider serializes the SCIM clients of one apply and rebuilds the write after a conflict with another writer.
+
+## Import
+
+Import through the project ID and the `client_id`:
+
+```shell
+terraform import ory_scim_client.okta <project-id>/okta-acme
+```
+
+The `client_id` alone also works when the provider block sets `project_id`:
+
+```shell
+terraform import ory_scim_client.okta okta-acme
+```
+
+After the import, `mapper_url` holds the stored object-storage URL and `authorization_header_secret` is empty. Set both in configuration. The first apply then uploads your mapper and rotates the secret to the configured value. Both changes are updates in place.
+
+{{ .SchemaMarkdown | trimspace }}
