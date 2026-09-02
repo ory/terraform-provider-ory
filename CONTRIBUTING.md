@@ -96,7 +96,7 @@ Some tests require specific Ory plan features. Enable them with environment vari
 | Environment Variable | Description |
 |---------------------|-------------|
 | `ORY_KETO_TESTS_ENABLED=true` | Run relationship/Keto tests |
-| `ORY_B2B_ENABLED=true` | Run B2B/organization tests (requires B2B plan) |
+| `ORY_B2B_ENABLED=true` | Run B2B tests: organizations and SCIM clients (requires B2B plan and a `prod` or `stage` project) |
 | `ORY_SOCIAL_PROVIDER_TESTS_ENABLED=true` | Run social provider tests |
 | `ORY_SCHEMA_TESTS_ENABLED=true` | Run identity schema tests |
 | `ORY_PROJECT_TESTS_ENABLED=true` | Run project creation/deletion tests |

@@ -1,0 +1,12 @@
+resource "ory_organization" "test" {
+  label = "SCIM Test Org"
+}
+
+resource "ory_scim_client" "test" {
+  organization_id             = ory_organization.test.id
+  client_id                   = "[[ .ClientID ]]"
+  label                       = "[[ .Label ]]"
+  mapper_url                  = "[[ .MapperURL ]]"
+  authorization_header_secret = "[[ .Secret ]]"
+  state                       = "[[ .State ]]"
+}
