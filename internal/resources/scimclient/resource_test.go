@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,6 +53,9 @@ func scimStatus(t *testing.T, clientID, secret string) (int, error) {
 		template = "https://%s.projects.oryapis.com"
 	}
 	endpoint := fmt.Sprintf(template, acctest.GetTestProject(t).Slug) + "/scim/" + clientID + "/v2/Users"
+	if !strings.HasPrefix(endpoint, "https://") {
+		return 0, fmt.Errorf("refusing to send the SCIM secret over a non-HTTPS endpoint: %s", endpoint)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -60,7 +64,14 @@ func scimStatus(t *testing.T, clientID, secret string) (int, error) {
 		return 0, err
 	}
 	req.Header.Set("Authorization", "Bearer "+secret)
-	resp, err := http.DefaultClient.Do(req)
+	// The SCIM endpoint never redirects. Refusing every redirect keeps the
+	// bearer secret from being replayed against another origin.
+	client := &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return 0, err
 	}

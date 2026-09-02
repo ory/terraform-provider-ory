@@ -301,7 +301,7 @@ func planned(clientID string) SCIMClientResourceModel {
 	return SCIMClientResourceModel{
 		ID:                                 types.StringUnknown(),
 		ProjectID:                          types.StringUnknown(),
-		OrganizationID:                     types.StringValue("org-1"),
+		OrganizationID:                     types.StringValue("6a3c1e8a-3e6b-4f3c-9a4c-2b8b1d5f7e10"),
 		ClientID:                           types.StringValue(clientID),
 		Label:                              types.StringValue("Okta"),
 		MapperURL:                          types.StringValue("base64://abc"),
@@ -324,7 +324,7 @@ func storedClient(clientID string) map[string]interface{} {
 	return map[string]interface{}{
 		"client_id":                   clientID,
 		"label":                       "Okta",
-		"organization_id":             "org-1",
+		"organization_id":             "6a3c1e8a-3e6b-4f3c-9a4c-2b8b1d5f7e10",
 		"mapper_url":                  "base64://abc",
 		"authorization_header_secret": "s3cret",
 		"state":                       stateEnabled,
@@ -455,7 +455,7 @@ func TestCreate_ConcurrentCreatesAllPersist(t *testing.T) {
 func TestRead_MapsServerFieldsAndPreservesSecretAndMapper(t *testing.T) {
 	c := storedClient("okta")
 	c["label"] = "Renamed in the Console"
-	c["organization_id"] = "org-2"
+	c["organization_id"] = "c2d4f6a8-1b3d-4e5f-8a9b-0c1d2e3f4a5b"
 	c["state"] = stateDisabled
 	h := newHarness(t, newFakeConsole(c))
 
@@ -464,7 +464,7 @@ func TestRead_MapsServerFieldsAndPreservesSecretAndMapper(t *testing.T) {
 	assert.False(t, resp.State.Raw.IsNull())
 
 	assert.Equal(t, "Renamed in the Console", got.Label.ValueString(), "label drift is detected")
-	assert.Equal(t, "org-2", got.OrganizationID.ValueString(), "organization drift is detected")
+	assert.Equal(t, "c2d4f6a8-1b3d-4e5f-8a9b-0c1d2e3f4a5b", got.OrganizationID.ValueString(), "organization drift is detected")
 	assert.Equal(t, "disabled", got.State.ValueString(), "state drift is detected")
 	assert.Equal(t, "s3cret", got.AuthorizationHeaderSecret.ValueString(), "the redacted secret must not replace the state value")
 	assert.Equal(t, "base64://abc", got.MapperURL.ValueString(), "the rewritten mapper URL must not replace the configured value")
@@ -494,7 +494,7 @@ func TestRead_PopulatesMapperURLOnImport(t *testing.T) {
 
 	assert.Equal(t, fakeStoredURL, got.MapperURL.ValueString())
 	assert.Equal(t, "Okta", got.Label.ValueString())
-	assert.Equal(t, "org-1", got.OrganizationID.ValueString())
+	assert.Equal(t, "6a3c1e8a-3e6b-4f3c-9a4c-2b8b1d5f7e10", got.OrganizationID.ValueString())
 	assert.Equal(t, "enabled", got.State.ValueString())
 	assert.Equal(t, fakeProjectID, got.ProjectID.ValueString(), "project_id resolves from the provider when the import id had none")
 	assert.True(t, got.AuthorizationHeaderSecret.IsNull(), "the secret cannot be recovered by an import")

@@ -117,7 +117,9 @@ import block, note it, and hand-write that resource later.
 - **Drop computed/read-only attributes** the API owns (`id`, timestamps,
   revision IDs, `state`, verification statuses). If Terraform errors with
   "Invalid or unknown key" or "value must be configured only by the provider",
-  delete that attribute.
+  delete that attribute. Exception: keep `state` on `ory_scim_client`. There
+  it is a configurable `enabled`/`disabled` switch that defaults to
+  `enabled`, so dropping it re-enables a disabled client on the first apply.
 - **Re-supply secrets.** The API never returns SMTP connection URIs, social
   provider client secrets, SCIM client secrets, or OAuth2 client secrets
   (values come back masked or absent). Wire them to `variable` blocks marked `sensitive`, or use the

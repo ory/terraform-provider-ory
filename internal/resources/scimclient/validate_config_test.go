@@ -35,7 +35,7 @@ func validModel() SCIMClientResourceModel {
 	return SCIMClientResourceModel{
 		ID:                                 types.StringNull(),
 		ProjectID:                          types.StringNull(),
-		OrganizationID:                     types.StringValue("org-1"),
+		OrganizationID:                     types.StringValue("6a3c1e8a-3e6b-4f3c-9a4c-2b8b1d5f7e10"),
 		ClientID:                           types.StringValue("okta"),
 		Label:                              types.StringValue("Okta"),
 		MapperURL:                          types.StringValue("base64://abc"),

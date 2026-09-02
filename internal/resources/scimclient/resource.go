@@ -52,6 +52,11 @@ var (
 	// mapperURLRegex matches the prefixes the API accepts for a mapper.
 	mapperURLRegex = regexp.MustCompile(`^(base64://|https?://)`)
 
+	// organizationIDRegex is the UUID form every organization ID has. The API
+	// rejects anything else with HTTP 400, and reports a well-formed UUID that
+	// matches no organization as an HTTP 500 foreign key violation.
+	organizationIDRegex = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
 	// errClientNotFound reports that an update targets a client_id the
 	// revision no longer carries.
 	errClientNotFound = errors.New("SCIM client not found")
@@ -107,10 +112,10 @@ func (r *SCIMClientResource) Schema(ctx context.Context, req resource.SchemaRequ
 				},
 			},
 			"organization_id": schema.StringAttribute{
-				Description: "ID of the organization the SCIM client provisions identities into. It must be an organization in the same project. Deleting the organization deletes the SCIM client server-side, and the next plan then recreates both.",
+				Description: "ID of the organization the SCIM client provisions identities into. It must be the UUID of an organization in the same project. Deleting the organization deletes the SCIM client server-side, and the next plan then recreates both.",
 				Required:    true,
 				Validators: []validator.String{
-					stringvalidator.LengthAtLeast(1),
+					stringvalidator.RegexMatches(organizationIDRegex, "must be an organization UUID"),
 				},
 			},
 			"client_id": schema.StringAttribute{

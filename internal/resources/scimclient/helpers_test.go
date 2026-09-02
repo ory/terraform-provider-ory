@@ -73,7 +73,7 @@ func TestFindClientIndex(t *testing.T) {
 
 func TestBuildClientObject(t *testing.T) {
 	plan := &SCIMClientResourceModel{
-		OrganizationID: types.StringValue("org-1"),
+		OrganizationID: types.StringValue("6a3c1e8a-3e6b-4f3c-9a4c-2b8b1d5f7e10"),
 		ClientID:       types.StringValue("okta"),
 		Label:          types.StringValue("Okta"),
 		MapperURL:      types.StringValue("base64://abc"),
@@ -85,7 +85,7 @@ func TestBuildClientObject(t *testing.T) {
 		"id":                          "row-1",
 		"client_id":                   "okta",
 		"label":                       "Okta",
-		"organization_id":             "org-1",
+		"organization_id":             "6a3c1e8a-3e6b-4f3c-9a4c-2b8b1d5f7e10",
 		"mapper_url":                  "base64://abc",
 		"authorization_header_secret": "s3cret",
 		"state":                       "disabled",
@@ -147,4 +147,21 @@ func TestAPIErrorDetail(t *testing.T) {
 
 	other := errors.New("patching project revision: HTTP 400: does not match pattern")
 	assert.Equal(t, other.Error(), apiErrorDetail(other, "proj-1"), "an unrelated error passes through unchanged")
+}
+
+// The plan-time patterns must match what the API accepts, so a typo fails
+// the plan instead of a mid-apply HTTP 400 or a foreign key HTTP 500.
+func TestSchemaPatterns(t *testing.T) {
+	assert.True(t, organizationIDRegex.MatchString("6a3c1e8a-3e6b-4f3c-9a4c-2b8b1d5f7e10"))
+	assert.True(t, organizationIDRegex.MatchString("6A3C1E8A-3E6B-4F3C-9A4C-2B8B1D5F7E10"), "uppercase hex is a valid UUID spelling")
+	for _, bad := range []string{"", "not-a-uuid", "6a3c1e8a3e6b4f3c9a4c2b8b1d5f7e10", "6a3c1e8a-3e6b-4f3c-9a4c-2b8b1d5f7e1", "org-1"} {
+		assert.False(t, organizationIDRegex.MatchString(bad), "%q must not pass as an organization ID", bad)
+	}
+
+	for _, good := range []string{"okta", "okta-acme_2", "0"} {
+		assert.True(t, clientIDRegex.MatchString(good), "%q is a valid client_id", good)
+	}
+	for _, bad := range []string{"", "Okta", "okta acme", "okta/acme", "okta.acme"} {
+		assert.False(t, clientIDRegex.MatchString(bad), "%q must not pass as a client_id", bad)
+	}
 }

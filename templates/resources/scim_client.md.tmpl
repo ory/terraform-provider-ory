@@ -87,4 +87,6 @@ terraform import ory_scim_client.okta okta-acme
 
 After the import, `mapper_url` holds the stored object-storage URL and `authorization_header_secret` is empty. Set both in configuration. The first apply then uploads your mapper and rotates the secret to the configured value. Both changes are updates in place.
 
+Keep `state` in the configuration when the imported client is disabled. The attribute defaults to `enabled`, so a configuration without `state = "disabled"` enables the client on the first apply.
+
 {{ .SchemaMarkdown | trimspace }}
