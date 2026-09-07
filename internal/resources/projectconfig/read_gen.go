@@ -651,7 +651,6 @@ func oauth2StringReadEntries(state *ProjectConfigResourceModel) []StringReadEntr
 		{&state.OAuth2GrantRefreshTokenRotationGracePeriod, nil, []string{"oauth2", "grant", "refresh_token", "rotation_grace_period"}, false, false, false},
 		{&state.OAuth2RefreshTokenHook, nil, []string{"oauth2", "refresh_token_hook"}, false, false, false},
 		{&state.OAuth2TokenHook, nil, []string{"oauth2", "token_hook", "url"}, false, false, false},
-		{&state.OIDCSubjectIdentifiersPairwiseSalt, nil, []string{"oidc", "subject_identifiers", "pairwise", "salt"}, false, false, false},
 		{&state.OAuth2UrlsPostLogoutRedirect, nil, []string{"urls", "post_logout_redirect"}, false, false, false},
 		{&state.OAuth2UrlsRegistration, nil, []string{"urls", "registration"}, false, false, false},
 		{&state.OAuth2WebfingerOIDCDiscoveryAuthURL, nil, []string{"webfinger", "oidc_discovery", "auth_url"}, false, false, false},

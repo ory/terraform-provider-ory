@@ -673,12 +673,19 @@ attributes:
     go_field: OIDCSubjectIdentifiersPairwiseSalt
     type: string
     openapi_property: hydra_oidc_subject_identifiers_pairwise_salt
-    # Writes go to the spec's governs path,
-    # "oidc.subject_identifiers.pairwise_salt", but the API reports the value
-    # back under the nested "oidc.subject_identifiers.pairwise.salt". Verified
-    # 2026-08-03 on a throwaway prod project.
-    read_path: /services/oauth2/config/oidc/subject_identifiers/pairwise/salt
-    description: "Salt for the OIDC pairwise subject identifier algorithm."
+    description: "Salt for the OIDC pairwise subject identifier algorithm. Write-only: the Ory API treats the salt as a secret and redacts it from project revision responses, so the provider sends it on create and update but never reads it back, and out-of-band changes are not detected. Changing the salt changes every pairwise subject identifier the project has issued. An empty value keeps the stored salt."
+    sensitive: true
+    # The salt is the only secret input to the pairwise subject identifier
+    # hash, and the API redacts it from project revision responses. Reading it
+    # back would null or blank the configured value and cause a perpetual
+    # diff, so it is write-only: sent on create/update at the spec's
+    # governs path "oidc.subject_identifiers.pairwise_salt", never read into
+    # state. Before the redaction the API reported the value under the nested
+    # "oidc.subject_identifiers.pairwise.salt", which needed read_path; the
+    # write-only read makes that moot. Verified 2026-09-07 on a throwaway prod
+    # project: an unrelated patch and an empty write both keep the stored salt,
+    # and a non-empty write rotates it.
+    write_only: true
 
   - name: oauth2_urls_post_logout_redirect
     go_field: OAuth2UrlsPostLogoutRedirect

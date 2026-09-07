@@ -527,3 +527,66 @@ func TestGeneratedReadEntries_MissingKeySemantics(t *testing.T) {
 		}
 	})
 }
+
+// TestOIDCSubjectIdentifiersPairwiseSalt_WriteOnly verifies the pairwise
+// subject identifier salt is treated as write-only: it stays in the schema as a
+// sensitive attribute and in the patch table, so create and update still send
+// it, but it never reaches the read tables. The Ory API redacts the salt from
+// project revision responses, and before the redaction it reported the value
+// under the nested oidc.subject_identifiers.pairwise.salt. Neither a missing
+// key nor an empty, masked, or rotated value at that path may overwrite the
+// configured value, otherwise every plan would show a diff no apply can settle.
+func TestOIDCSubjectIdentifiersPairwiseSalt_WriteOnly(t *testing.T) {
+	const configured = "configured-pairwise-salt"
+
+	// 1. The schema keeps the attribute and masks it in plan output.
+	attr, ok := simpleSchemaAttributes()["oidc_subject_identifiers_pairwise_salt"].(schema.StringAttribute)
+	require.True(t, ok, "oidc_subject_identifiers_pairwise_salt must be a generated string attribute")
+	assert.True(t, attr.Sensitive, "oidc_subject_identifiers_pairwise_salt must be sensitive")
+
+	// 2. The patch table still carries the write at the spec's governs path.
+	plan := &ProjectConfigResourceModel{
+		OIDCSubjectIdentifiersPairwiseSalt: types.StringValue(configured),
+	}
+	var patchPath string
+	for _, e := range simpleStringPatchEntries(plan) {
+		if e.Field == &plan.OIDCSubjectIdentifiersPairwiseSalt {
+			patchPath = e.Path
+		}
+	}
+	assert.Equal(t, "/services/oauth2/config/oidc/subject_identifiers/pairwise_salt", patchPath,
+		"oidc_subject_identifiers_pairwise_salt must still be sent on create/update")
+
+	// 3. It must be excluded from the generated read entries entirely.
+	state := &ProjectConfigResourceModel{
+		OIDCSubjectIdentifiersPairwiseSalt: types.StringValue(configured),
+	}
+	for _, e := range oauth2StringReadEntries(state) {
+		assert.NotSame(t, &state.OIDCSubjectIdentifiersPairwiseSalt, e.Field,
+			"oidc_subject_identifiers_pairwise_salt must not appear in read entries, it is write-only")
+	}
+
+	// 4. readSimpleFields must preserve the configured value regardless of what
+	//    the API reports under oidc.subject_identifiers: a missing key, an empty
+	//    or masked value, or a salt rotated out of band.
+	for name, subjectIdentifiers := range map[string]map[string]interface{}{
+		"absent":           {"supported_types": []interface{}{"public", "pairwise"}},
+		"empty":            {"pairwise": map[string]interface{}{"salt": ""}},
+		"masked":           {"pairwise": map[string]interface{}{"salt": "****"}},
+		"rotated":          {"pairwise": map[string]interface{}{"salt": "rotated-out-of-band"}},
+		"no oauth2 config": nil,
+	} {
+		st := &ProjectConfigResourceModel{
+			OIDCSubjectIdentifiersPairwiseSalt: types.StringValue(configured),
+		}
+		project := &ory.Project{Services: ory.ProjectServices{}}
+		if subjectIdentifiers != nil {
+			project.Services.Oauth2 = &ory.ProjectServiceOAuth2{Config: map[string]interface{}{
+				"oidc": map[string]interface{}{"subject_identifiers": subjectIdentifiers},
+			}}
+		}
+		readSimpleFields(context.Background(), project, st)
+		assert.Equal(t, configured, st.OIDCSubjectIdentifiersPairwiseSalt.ValueString(),
+			"configured oidc_subject_identifiers_pairwise_salt must be preserved when the API reports %s", name)
+	}
+}

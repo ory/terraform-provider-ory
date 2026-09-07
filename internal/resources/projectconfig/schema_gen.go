@@ -626,8 +626,9 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 		},
 		"oidc_subject_identifiers_pairwise_salt": schema.StringAttribute{
-			Description: "Salt for the OIDC pairwise subject identifier algorithm.",
+			Description: "Salt for the OIDC pairwise subject identifier algorithm. Write-only: the Ory API treats the salt as a secret and redacts it from project revision responses, so the provider sends it on create and update but never reads it back, and out-of-band changes are not detected. Changing the salt changes every pairwise subject identifier the project has issued. An empty value keeps the stored salt.",
 			Optional:    true,
+			Sensitive:   true,
 		},
 		"oauth2_urls_post_logout_redirect": schema.StringAttribute{
 			Description: "Default redirect URL after OAuth2 logout.",

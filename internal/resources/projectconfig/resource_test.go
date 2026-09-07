@@ -1333,13 +1333,16 @@ func TestAccProjectConfigResource_emailVerificationHooks(t *testing.T) {
 }
 
 func TestAccProjectConfigResource_oauth2Advanced(t *testing.T) {
-	// The pairwise salt is here to cover its read path. The API accepts the write
-	// at oidc.subject_identifiers.pairwise_salt and reports the value back under
-	// the nested oidc.subject_identifiers.pairwise.salt, so reading the write
-	// path would null a value the API did return. The PlanOnly step is what
-	// catches that.
+	// The pairwise salt is a write-only secret. The API accepts the write at
+	// oidc.subject_identifiers.pairwise_salt and redacts the salt from project
+	// revision responses, so the provider never reads it back and state holds
+	// the configured value. The PlanOnly steps prove that neither the create
+	// nor the rotation leaves a diff, and the import step ignores the attribute
+	// because a redacted secret cannot be imported.
 	const salt = "tf-acc-pairwise-salt"
+	const rotatedSalt = "tf-acc-pairwise-salt-rotated"
 	templateData := map[string]string{"PairwiseSalt": salt}
+	rotatedData := map[string]string{"PairwiseSalt": rotatedSalt}
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
@@ -1355,9 +1358,21 @@ func TestAccProjectConfigResource_oauth2Advanced(t *testing.T) {
 					resource.TestCheckResourceAttr("ory_project_config.test", "oidc_subject_identifiers_pairwise_salt", salt),
 				),
 			},
-			// Verify no perpetual diff, which is the read-path assertion
+			// Verify no perpetual diff: the redacted salt must not null state
 			{
 				Config:             acctest.LoadTestConfig(t, "testdata/oauth2_advanced.tf.tmpl", templateData),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			// Rotate the salt: update sends the new value and state follows the plan
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_advanced.tf.tmpl", rotatedData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "oidc_subject_identifiers_pairwise_salt", rotatedSalt),
+				),
+			},
+			{
+				Config:             acctest.LoadTestConfig(t, "testdata/oauth2_advanced.tf.tmpl", rotatedData),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},

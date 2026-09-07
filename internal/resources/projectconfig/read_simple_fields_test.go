@@ -184,15 +184,17 @@ func TestReadSimpleFields_PreservesPreserveOnMissingFieldsWhenAPIOmitsKey(t *tes
 	}
 }
 
-// The pairwise salt is written to oidc.subject_identifiers.pairwise_salt but
-// reported back under the nested oidc.subject_identifiers.pairwise.salt, so the
-// read table uses read_path. Reading the write path instead would null a value
-// the API did return and produce a diff on every plan.
-func TestReadSimpleFields_ReadsPairwiseSaltFromReportedPath(t *testing.T) {
-	const salt = "reported-pairwise-salt"
+// The pairwise salt is a write-only secret: the API redacts it from project
+// revision responses, so the read tables omit it. Before the redaction the API
+// reported the salt under the nested oidc.subject_identifiers.pairwise.salt and
+// the read table followed it there with read_path. A value at that path must
+// not overwrite the configured salt any more, otherwise a redacted or rotated
+// response would show a diff on every plan.
+func TestReadSimpleFields_PreservesPairwiseSaltReportedAtLegacyPath(t *testing.T) {
+	const configured = "configured-pairwise-salt"
 
 	state := &ProjectConfigResourceModel{
-		OIDCSubjectIdentifiersPairwiseSalt: types.StringValue("stale-salt"),
+		OIDCSubjectIdentifiersPairwiseSalt: types.StringValue(configured),
 	}
 
 	project := &ory.Project{
@@ -200,7 +202,7 @@ func TestReadSimpleFields_ReadsPairwiseSaltFromReportedPath(t *testing.T) {
 			Oauth2: &ory.ProjectServiceOAuth2{Config: map[string]interface{}{
 				"oidc": map[string]interface{}{
 					"subject_identifiers": map[string]interface{}{
-						"pairwise": map[string]interface{}{"salt": salt},
+						"pairwise": map[string]interface{}{"salt": "rotated-out-of-band"},
 					},
 				},
 			}},
@@ -208,8 +210,8 @@ func TestReadSimpleFields_ReadsPairwiseSaltFromReportedPath(t *testing.T) {
 	}
 	readSimpleFields(context.Background(), project, state)
 
-	if got := state.OIDCSubjectIdentifiersPairwiseSalt.ValueString(); got != salt {
-		t.Errorf("pairwise_salt = %q, want the value the API reported at pairwise.salt", got)
+	if got := state.OIDCSubjectIdentifiersPairwiseSalt.ValueString(); got != configured {
+		t.Errorf("pairwise_salt = %q, want the configured value preserved", got)
 	}
 }
 

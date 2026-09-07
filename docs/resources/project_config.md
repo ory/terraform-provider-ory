@@ -18,7 +18,7 @@ This resource supports drift detection — `terraform plan` will detect changes 
 
 ~> **Note:** Only attributes present in your Terraform configuration are tracked for drift. Attributes you have not configured will not appear in plan output, even if they have non-default values in the API.
 
-~> **Not drift-checked:** A few attributes are accepted by the Ory API but never returned by it, so the provider keeps the configured value instead of reporting a change that no apply could settle. Removing one of these outside Terraform is not detected. They are `session_earliest_possible_extend`, `selfservice_methods_webauthn_config_rp_icon`, and `selfservice_methods_captcha_config_byo`. The same applies to secrets the API redacts, such as `smtp_connection_uri` and the courier HTTP auth credentials.
+~> **Not drift-checked:** A few attributes are accepted by the Ory API but never returned by it, so the provider keeps the configured value instead of reporting a change that no apply could settle. Removing one of these outside Terraform is not detected. They are `session_earliest_possible_extend`, `selfservice_methods_webauthn_config_rp_icon`, and `selfservice_methods_captcha_config_byo`. The same applies to secrets the API redacts: `smtp_connection_uri`, the courier HTTP auth credentials, and `oidc_subject_identifiers_pairwise_salt`.
 
 ~> **Empty values:** The Ory API prunes empty values (`""`, `[]`, `{}`, and integer `0`) from the stored configuration: the apply succeeds, but the key never appears in later reads. The provider treats such a missing key as matching an empty configured value, so applying an empty value does not produce a diff on every plan. Drift is still reported whenever your configuration holds a non-empty value. A few attributes substitute a server default instead of storing the empty value — `account_experience_enabled_locales`, `selfservice_methods_passkey_config_rp_origins`, `webauthn_rp_origins` (default origins derived from the project slug), and `selfservice_methods_totp_config_issuer` (defaults to the project name). For those, plan keeps reporting the substituted default as a change, so omit the attribute instead of setting it empty.
 
@@ -477,6 +477,21 @@ The `smtp_connection_uri` attribute selects the SMTP security mode through the U
 
 For more detail, see the [Ory Kratos SMTP documentation](https://www.ory.com/docs/kratos/emails-sms/sending-emails-smtp).
 
+## Pairwise Subject Identifier Salt
+
+`oidc_subject_identifiers_pairwise_salt` is the secret input to the pairwise subject identifier hash. Set it together with `oidc_subject_identifiers_supported_types`:
+
+```hcl
+resource "ory_project_config" "main" {
+  oidc_subject_identifiers_supported_types = ["public", "pairwise"]
+  oidc_subject_identifiers_pairwise_salt   = var.pairwise_salt
+}
+```
+
+-> **Write-only:** The Ory API treats the salt as a secret and redacts it from project revision responses. The provider therefore treats `oidc_subject_identifiers_pairwise_salt` as write-only: it is sent on create and update but never read back, so the value in your configuration is authoritative. Out-of-band changes to the salt are not detected, and `terraform import` leaves the attribute unset until you add it to your configuration.
+
+~> **Rotation:** Changing the salt changes every pairwise subject identifier the project has issued, so relying parties that store the `sub` claim lose the link to the user. An empty value does not clear the salt: the API keeps the stored one.
+
 ## Verification After Registration / Settings
 
 Three boolean attributes toggle the [`show_verification_ui`](https://www.ory.com/docs/kratos/self-service/flows/user-registration) post-flow hook for each authentication method:
@@ -752,7 +767,7 @@ terraform plan  # verify no changes
 - `oauth2_webfinger_oidc_discovery_userinfo_url` (String) Override the userinfo endpoint URL in OIDC discovery.
 - `oidc_dynamic_client_registration_default_scope` (List of String) Default OAuth2 scopes granted to dynamically registered clients.
 - `oidc_dynamic_client_registration_enabled` (Boolean) Enable OpenID Connect dynamic client registration.
-- `oidc_subject_identifiers_pairwise_salt` (String) Salt for the OIDC pairwise subject identifier algorithm.
+- `oidc_subject_identifiers_pairwise_salt` (String, Sensitive) Salt for the OIDC pairwise subject identifier algorithm. Write-only: the Ory API treats the salt as a secret and redacts it from project revision responses, so the provider sends it on create and update but never reads it back, and out-of-band changes are not detected. Changing the salt changes every pairwise subject identifier the project has issued. An empty value keeps the stored salt.
 - `oidc_subject_identifiers_supported_types` (List of String) Supported OIDC subject identifier types ('public', 'pairwise').
 - `password_check_haveibeenpwned` (Boolean, Deprecated) Check passwords against HaveIBeenPwned.
 - `password_identifier_similarity` (Boolean, Deprecated) Check password similarity to identifier.
