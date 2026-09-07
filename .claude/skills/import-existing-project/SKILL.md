@@ -125,8 +125,9 @@ import block, note it, and hand-write that resource later.
   (values come back masked or absent). Wire them to `variable` blocks marked `sensitive`, or use the
   write-only variants (`client_secret_wo`, `smtp_connection_uri_wo`, ...) with
   `*_wo_version` to keep them out of state entirely.
-  `courier_http_request_config_auth_basic_auth_password` and
-  `courier_http_request_config_auth_api_key_value` behave the same way but have
+  `courier_http_request_config_auth_basic_auth_password`,
+  `courier_http_request_config_auth_api_key_value`, and
+  `oidc_subject_identifiers_pairwise_salt` behave the same way but have
   **no** `_wo` variant, so they must come from a `sensitive` variable.
   `smtp_connection_uri_wo` is the only write-only argument on
   `ory_project_config`.
@@ -151,7 +152,7 @@ import block, note it, and hand-write that resource later.
   | `enable_ax_v2` | `.services.account_experience.config.enabled` |
   | `disable_account_experience_welcome_screen` | no service config at all; only `GET /normalized/projects/{id}` |
   | `selfservice_methods_code_config_max_submissions` | reported under `...code.config.max_submissions`, written to `...code.max_submissions` |
-  | `oidc_subject_identifiers_pairwise_salt` | reported under `oidc.subject_identifiers.pairwise.salt` |
+  | `oidc_subject_identifiers_pairwise_salt` | a redacted secret; write-only in the provider, so re-supply it from your secret store |
   | `courier_http_request_config_body` | a `https://storage.googleapis.com/.../<sha512>.jsonnet` URL, never the payload |
 
   Do **not** copy the `courier_http_request_config_body` URL into config. The
@@ -237,8 +238,9 @@ explicit `{project_id}/...` form in generated files.
   explicitly added to the project, so the plural data source and the console
   `GET /identity-schemas` endpoint see workspace-scoped schemas the revision
   omits.
-- **Secrets never round-trip.** SMTP connection URI, social/SAML client
-  secrets, SCIM client secrets, OAuth2 client secrets, tokenizer template keys:
+- **Secrets never round-trip.** SMTP connection URI, pairwise subject
+  identifier salt, social/SAML client secrets, SCIM client secrets, OAuth2
+  client secrets, tokenizer template keys:
   re-supply via variables or write-only `*_wo` arguments. Until you do, some of
   these show a perpetual diff or import as empty.
 - **`ory_scim_client` imports with an empty secret and a stored mapper URL.**
