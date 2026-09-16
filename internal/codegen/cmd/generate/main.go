@@ -992,6 +992,10 @@ func excludedProperties() map[string]bool {
 		"id": true, "project_id": true, "created_at": true, "updated_at": true,
 		"name": true, "state": true, "workspace_id": true, "production": true,
 		"strict_security": true, "project_name": true,
+		// keto_strict_mode_readonly reports whether the project's Keto strict
+		// mode is locked. It is backoffice metadata with no key in the rendered
+		// Keto config, and the normalized revision PATCH rejects writes to it.
+		"keto_strict_mode_readonly": true,
 		// Managed by separate terraform resources
 		"kratos_identity_schemas":                          true,
 		"kratos_selfservice_methods_oidc_config_providers": true,

@@ -409,6 +409,25 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				}
 			}
 		}
+		for _, e := range permissionBoolReadEntries(state) {
+			target := e.Field
+			if target.IsNull() && e.Deprecated != nil && !e.Deprecated.IsNull() {
+				target = e.Deprecated
+			}
+			if !target.IsNull() {
+				if e.Enum != nil {
+					if v, ok := getNestedString(permissionConfig, e.Keys...); ok {
+						*target = types.BoolValue(v == e.Enum.True)
+					} else if !e.PreserveOnMissing {
+						*target = types.BoolNull()
+					}
+				} else if v, ok := getNestedBool(permissionConfig, e.Keys...); ok {
+					*target = types.BoolValue(v)
+				} else if !e.PreserveOnMissing {
+					*target = types.BoolNull()
+				}
+			}
+		}
 		for _, e := range permissionListStringReadEntries(state) {
 			target := e.Field
 			if target.IsNull() && e.Deprecated != nil && !e.Deprecated.IsNull() {
@@ -598,6 +617,8 @@ func identityBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry 
 		{&state.FeatureFlagsRefreshLoginChooseAddress, nil, []string{"feature_flags", "refresh_login_choose_address"}, false, nil},
 		{&state.SelfserviceMethodsDeviceauthnConfigFirstFactor, nil, []string{"selfservice", "methods", "deviceauthn", "config", "first_factor"}, false, nil},
 		{&state.SelfserviceMethodsDeviceauthnConfigIosBiometricFirstFactor, nil, []string{"selfservice", "methods", "deviceauthn", "config", "ios_biometric_first_factor"}, false, nil},
+		{&state.FeatureFlagsWebhookResponseDirectives, nil, []string{"feature_flags", "webhook_response_directives"}, false, nil},
+		{&state.SelfserviceMethodsDeviceauthnConfigAndroidAllowExpiredFactoryCertificates, nil, []string{"selfservice", "methods", "deviceauthn", "config", "android_allow_expired_factory_certificates"}, false, nil},
 	}
 }
 
@@ -707,6 +728,12 @@ func oauth2ListStringReadEntries(state *ProjectConfigResourceModel) []ListString
 func permissionStringReadEntries(state *ProjectConfigResourceModel) []StringReadEntry {
 	return []StringReadEntry{
 		{&state.KetoNamespaceConfiguration, nil, []string{"namespaces", "location"}, false, false, false},
+	}
+}
+
+func permissionBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry {
+	return []BoolReadEntry{
+		{&state.KetoFeatureFlagsStrictMode, nil, []string{"feature_flags", "strict_mode"}, false, nil},
 	}
 }
 
