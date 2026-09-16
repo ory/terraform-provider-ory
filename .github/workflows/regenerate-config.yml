@@ -165,7 +165,7 @@ jobs:
           APPLIED="${{ steps.apply.outputs.count }}"
           {
             echo "## Summary"
-            echo "- Auto-regenerated project_config schema, patches, and read tables from the latest OpenAPI spec"
+            echo "- Auto-regenerated project_config schema, patches, and read tables from the OpenAPI spec pinned in \`.deps/ory-openapi-spec.yaml\` (the latest published spec is only used for drift detection)"
             if [ "${APPLIED:-0}" -gt 0 ]; then
               echo "- Auto-discovered **${APPLIED} new attribute(s)** from the spec and appended entries to \`mappings.yaml\` + \`ProjectConfigResourceModel\`"
             fi
@@ -210,7 +210,7 @@ jobs:
             echo "title=feat: auto-discover ${APPLIED} new project_config attribute(s) + regenerate" >> "$GITHUB_OUTPUT"
             echo "draft=true" >> "$GITHUB_OUTPUT"
           else
-            echo "title=feat: regenerate project_config from latest OpenAPI spec" >> "$GITHUB_OUTPUT"
+            echo "title=feat: regenerate project_config from the pinned OpenAPI spec" >> "$GITHUB_OUTPUT"
             echo "draft=false" >> "$GITHUB_OUTPUT"
           fi
 

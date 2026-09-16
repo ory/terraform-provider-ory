@@ -122,7 +122,7 @@ func TestCheckKetoStrictModeWritable_UnlockedPasses(t *testing.T) {
 	assert.False(t, diags.HasError())
 }
 
-func TestCheckKetoStrictModeWritable_ReadFailureLetsTheWriteThrough(t *testing.T) {
+func TestCheckKetoStrictModeWritable_ReadFailureFailsTheApply(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"error":{"code":500,"message":"boom"}}`))
@@ -133,5 +133,7 @@ func TestCheckKetoStrictModeWritable_ReadFailureLetsTheWriteThrough(t *testing.T
 
 	diags := r.checkKetoStrictModeWritable(context.Background(), "proj-1", plan)
 
-	assert.False(t, diags.HasError(), "a failed lock read must not block the apply")
+	require.True(t, diags.HasError(), "without the lock state the write could be silently discarded, so the apply must stop")
+	assert.Equal(t, "Could not verify the Keto strict mode lock", diags.Errors()[0].Summary())
+	assert.Contains(t, diags.Errors()[0].Detail(), "proj-1")
 }

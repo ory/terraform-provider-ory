@@ -40,8 +40,9 @@ func ketoStrictModeLocked(revision map[string]interface{}, planned bool) (stored
 // checkKetoStrictModeWritable fails the apply when the plan sets
 // keto_feature_flags_strict_mode to a value that the project's lock would
 // discard. It reads the normalized revision only when the attribute is set.
-// When that read fails, the check logs a warning and lets the write through,
-// so an unrelated console error does not block the rest of the apply.
+// When that read fails, the apply fails too: without the lock state the
+// provider cannot tell whether the API would keep the write, and a discarded
+// write would otherwise be stored in state and reported as applied.
 func (r *ProjectConfigResource) checkKetoStrictModeWritable(ctx context.Context, projectID string, plan *ProjectConfigResourceModel) diag.Diagnostics {
 	var diags diag.Diagnostics
 	if plan.KetoFeatureFlagsStrictMode.IsNull() || plan.KetoFeatureFlagsStrictMode.IsUnknown() {
@@ -50,10 +51,18 @@ func (r *ProjectConfigResource) checkKetoStrictModeWritable(ctx context.Context,
 
 	revision, err := r.client.GetProjectNormalizedRevision(ctx, projectID)
 	if err != nil {
-		tflog.Warn(ctx, "Could not read the normalized project revision to check the Keto strict mode lock; sending the write", map[string]interface{}{
+		tflog.Error(ctx, "Could not read the normalized project revision to check the Keto strict mode lock", map[string]interface{}{
 			"project_id": projectID,
 			"error":      err.Error(),
 		})
+		diags.AddAttributeError(
+			path.Root(ketoStrictModeKey),
+			"Could not verify the Keto strict mode lock",
+			fmt.Sprintf("Could not read the normalized revision for project %s: %s. "+
+				"The lock decides whether the Ory API keeps a write to %s, so the apply stops before sending it. "+
+				"Retry, or remove the attribute.",
+				projectID, err, ketoStrictModeKey),
+		)
 		return diags
 	}
 
