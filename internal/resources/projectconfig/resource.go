@@ -1718,6 +1718,11 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
+	resp.Diagnostics.Append(r.checkKetoStrictModeWritable(ctx, projectID, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	patches := r.buildPatches(ctx, &plan)
 	patches = r.appendWriteOnlySMTPPatch(ctx, req.Config, patches, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -2296,6 +2301,11 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 	}
 
 	projectID := helpers.ResolveProjectID(plan.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(r.checkKetoStrictModeWritable(ctx, projectID, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}

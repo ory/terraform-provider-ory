@@ -261,7 +261,7 @@ jobs:
               await github.rest.issues.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                title: `feat: ${count} new API properties detected in master OpenAPI spec`,
+                title: `feat: ${count} new API properties detected in the latest published OpenAPI spec`,
                 labels: ['codegen-drift'],
                 body: body,
               });
