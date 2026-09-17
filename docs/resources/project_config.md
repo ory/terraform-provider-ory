@@ -686,10 +686,12 @@ terraform plan  # verify no changes
 - `feature_flags_password_profile_registration_node_group` (Boolean) Use password method group for profile registration node group.
 - `feature_flags_refresh_login_choose_address` (Boolean) Render an address picker on the code refresh login screen
 - `feature_flags_use_continue_with_transitions` (Boolean) Enable continue_with transitions for session flows.
+- `feature_flags_webhook_response_directives` (Boolean) Honor flow directives in web hook responses. If true, a login after web hook with response parsing enabled can return a required_aal directive of aal2 to require step-up for that login; identities without a second factor are routed to enrollment. Off by default.
 - `identity_secrets_cipher` (List of String, Sensitive) Encryption secrets for identity data at rest.
 - `identity_secrets_cookie` (List of String, Sensitive) Cookie signing secrets for the identity service.
 - `identity_secrets_default` (List of String, Sensitive) Default signing secrets for the identity service.
 - `identity_secrets_pagination` (List of String, Sensitive) Pagination encryption keys for the identity service.
+- `keto_feature_flags_strict_mode` (Boolean) Enable Ory Keto strict mode. In strict mode, relation tuples for permits are not checked directly (only the OPL rewrites apply) and subject sets are only expanded when declared with SubjectSet<...>, which makes permission checks faster. New projects are created with strict mode enabled and locked; on a locked project the API accepts a write but keeps the stored value, so only projects created before the lock can change it. The provider fails the apply with an error instead of sending a value that the lock would discard.
 - `keto_namespace_configuration` (String) URL pointing to an OPL file with the Keto namespace configuration.
 - `keto_namespaces` (List of String) List of Keto namespace names to configure for Ory Permissions. Namespaces define the types of resources in your permission model (e.g., 'documents', 'folders'). Each namespace name must be unique.
 - `keto_secrets_pagination` (List of String, Sensitive) Pagination encryption keys for the permission service.
@@ -850,6 +852,7 @@ terraform plan  # verify no changes
 - `selfservice_methods_code_mfa_enabled` (Boolean) Enable the code method as a second factor for MFA. When enabled, users can use one-time codes as a second authentication factor.
 - `selfservice_methods_code_passwordless_enabled` (Boolean) Enable passwordless login via the code method.
 - `selfservice_methods_code_passwordless_login_fallback_enabled` (Boolean) Allow code-based login as a fallback for users registered with other methods.
+- `selfservice_methods_deviceauthn_config_android_allow_expired_factory_certificates` (Boolean) Device authentication accepts expired CA certificates in Android factory attestation chains that lead to a pinned Google root key. Devices launched before 2021 ship factory keyboxes with expired certificates that Google still documents as trustworthy unless revoked. Revocation, signature, and leaf validity checks still apply. Defaults to false.
 - `selfservice_methods_deviceauthn_config_android_app_ids` (List of String) Allow-list of Android app signing-certificate digests that a device key may be bound to.
 - `selfservice_methods_deviceauthn_config_first_factor` (Boolean) Device authentication may be used as the sole first factor.
 - `selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation` (Boolean) Device authentication accepts relaxed attestations for testing. Only allowed on development projects and forced off otherwise.

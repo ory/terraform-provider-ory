@@ -5,7 +5,9 @@ package projectconfig_test
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
@@ -1087,6 +1089,8 @@ func TestAccProjectConfigResource_featureFlags(t *testing.T) {
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "feature_flags_cacheable_sessions", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "feature_flags_use_continue_with_transitions", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "feature_flags_webhook_response_directives", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_deviceauthn_config_android_allow_expired_factory_certificates", "true"),
 				),
 			},
 			{
@@ -1097,10 +1101,45 @@ func TestAccProjectConfigResource_featureFlags(t *testing.T) {
 					"feature_flags_cacheable_sessions",
 					"feature_flags_cacheable_sessions_max_age",
 					"feature_flags_use_continue_with_transitions",
+					"feature_flags_webhook_response_directives",
+					"selfservice_methods_deviceauthn_config_android_allow_expired_factory_certificates",
 					"cors_enabled",
 					"selfservice_methods_password_config_min_password_length",
 					"smtp_connection_uri",
 				},
+			},
+		},
+	})
+}
+
+// TestAccProjectConfigResource_ketoStrictModeLocked creates a fresh project,
+// which the API locks with strict mode enabled, and checks that the provider
+// refuses the one write the API would silently discard while still accepting
+// the value the lock keeps. Gated like the project tests because it creates
+// and deletes a real project.
+func TestAccProjectConfigResource_ketoStrictModeLocked(t *testing.T) {
+	acctest.RequireProjectTests(t)
+	projectName := fmt.Sprintf("%s-keto-lock-%d", acctest.TestProjectPrefix, time.Now().UnixNano())
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/keto_strict_mode_locked.tf.tmpl", map[string]string{
+					"Name":       projectName,
+					"StrictMode": "false",
+				}),
+				ExpectError: regexp.MustCompile(`Keto strict mode is locked on this project`),
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/keto_strict_mode_locked.tf.tmpl", map[string]string{
+					"Name":       projectName,
+					"StrictMode": "true",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.locked", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.locked", "keto_feature_flags_strict_mode", "true"),
+				),
 			},
 		},
 	})

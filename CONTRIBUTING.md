@@ -274,7 +274,7 @@ The generated `*_gen.go` files are **overwritten** on every `make generate`. Han
 
 #### The "governs" pattern
 
-The published OpenAPI spec (`ory/client-go`) includes descriptions like:
+The published OpenAPI spec (`spec/client/<version>.json` in [ory/sdk](https://github.com/ory/sdk/tree/master/spec/client), the file `ory/client-go` is generated from) includes descriptions like:
 
 ```
 This governs the "session.lifespan" setting.
@@ -284,16 +284,18 @@ The codegen tool uses this to automatically derive JSON Patch paths:
 - `kratos_` prefix + `governs "session.lifespan"` → `/services/identity/config/session/lifespan`
 - `hydra_` prefix + `governs "ttl.access_token"` → `/services/oauth2/config/ttl/access_token`
 
-When the OpenAPI spec is present locally (`internal/codegen/openapi.yaml`), `make generate` automatically derives patch paths from the spec's governs descriptions. Patch paths are derived from the spec, with two exceptions kept in `mappings.yaml`: `patch_path_override` replaces a spec-derived path whose config key the API does not actually read, and `revision_property` attributes bypass the config document entirely (see the fields table below). Both carry a comment recording the live-API verification — do not remove them during regeneration work.
+When the OpenAPI spec is present locally (`internal/codegen/openapi.json`), `make generate` automatically derives patch paths from the spec's governs descriptions. Patch paths are derived from the spec, with two exceptions kept in `mappings.yaml`: `patch_path_override` replaces a spec-derived path whose config key the API does not actually read, and `revision_property` attributes bypass the config document entirely (see the fields table below). Both carry a comment recording the live-API verification — do not remove them during regeneration work.
 
 #### Adding a new simple config field
 
 1. Check if the field exists in the OpenAPI spec:
 
 ```bash
-make download-spec   # Download latest spec
+make download-spec   # Download the spec version pinned in .deps/ory-openapi-spec.yaml
 make discover        # Shows unmapped spec properties with YAML entries ready to copy
 ```
+
+To look ahead of the pin, run `make discover SPEC_VERSION=latest`. It resolves the newest spec published to `ory/sdk` (or pass an explicit `SPEC_VERSION=v1.22.77`).
 
 2. Add an entry to `internal/codegen/mappings.yaml`:
 
@@ -344,8 +346,8 @@ That's it — the field appears in the Terraform schema, JSON Patch operations, 
 
 | Target | Description |
 |--------|-------------|
-| `make generate` | Generate Go files from mappings.yaml. Auto-validates against the OpenAPI spec if `internal/codegen/openapi.yaml` exists |
-| `make download-spec` | Download the latest OpenAPI spec from `ory/client-go` |
+| `make generate` | Generate Go files from mappings.yaml. Auto-validates against the OpenAPI spec if `internal/codegen/openapi.json` exists |
+| `make download-spec` | Download the OpenAPI spec pinned in `.deps/ory-openapi-spec.yaml` from `ory/sdk`. `SPEC_VERSION=vX.Y.Z` or `SPEC_VERSION=latest` overrides the pin |
 | `make discover` | Download spec and output YAML entries + Go struct fields for all unmapped properties |
 | `make check-coverage` | Download spec and fail if any properties are unmapped (used in CI to detect drift) |
 | `make probe ATTRS=a,b` | Write sentinel and empty values to the named attributes on a throwaway project and classify what the live API reports back (see below) |
@@ -370,13 +372,17 @@ The spec cannot be trusted alone: governs descriptions sometimes name config key
 
 The regenerate workflow runs this probe automatically for every attribute that auto-discovery appends after a client-go bump and embeds the report in the draft PR, so a lying spec is caught at review time instead of after a release.
 
+#### Spec version pin
+
+The spec version lives in `.deps/ory-openapi-spec.yaml`. Renovate tracks the newest version published to `ory/sdk` through the `ory-sdk-client-spec` custom datasource in `renovate.json` and opens a bump PR. The pin is independent of the `github.com/ory/client-go` module version on purpose. The SDK publish job that produces client-go can stall for weeks while `ory/sdk` keeps receiving new specs, and the generated attributes only need the spec: they patch and read the generic config document, not typed SDK fields.
+
 #### CI drift detection
 
-A GitHub Actions workflow (`.github/workflows/regenerate-config.yml`) triggers when `go.sum` changes on main (e.g., Renovate merges a client-go bump) and:
-1. Downloads the latest OpenAPI spec from `ory/client-go`
-2. Regenerates code and creates a PR if the generated files changed
-3. Runs `--strict` mode to detect unmapped properties
-4. If new properties are found, creates a GitHub issue with the `codegen-drift` label listing the new properties and instructions to add them
+A GitHub Actions workflow (`.github/workflows/regenerate-config.yml`) runs when `.deps/ory-openapi-spec.yaml` or `go.sum` changes on main (e.g., Renovate merges a spec or client-go bump) and every Monday at 06:00 UTC. It:
+1. Downloads the pinned OpenAPI spec and the latest one from `ory/sdk`
+2. Regenerates code, auto-appends new pinned-spec properties, probes them against the live API, and creates a PR if the generated files changed
+3. Runs `--strict` mode against the latest spec to detect unmapped properties
+4. If the latest spec has properties the pinned one lacks, creates a GitHub issue with the `codegen-drift` label listing them
 
 #### Renaming attributes (deprecated aliases)
 

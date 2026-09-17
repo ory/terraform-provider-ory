@@ -453,15 +453,18 @@ type ProjectConfigResourceModel struct {
 	SelfserviceMethodsDeviceauthnConfigPinMaxAttempts          types.Int64 `tfsdk:"selfservice_methods_deviceauthn_config_pin_max_attempts"`
 
 	// Auto-discovered (review naming before release)
-	AccountExperienceContactURL                        types.String `tfsdk:"account_experience_contact_url"`
-	AccountExperiencePrivacyPolicyURL                  types.String `tfsdk:"account_experience_privacy_policy_url"`
-	AccountExperienceTermsOfServiceURL                 types.String `tfsdk:"account_experience_terms_of_service_url"`
-	OAuth2DeviceAuthorizationTokenPollingInterval      types.String `tfsdk:"oauth2_device_authorization_token_polling_interval"`
-	OAuth2DeviceAuthorizationUserCodeEntropyPreset     types.String `tfsdk:"oauth2_device_authorization_user_code_entropy_preset"`
-	OAuth2TTLDeviceUserCode                            types.String `tfsdk:"oauth2_ttl_device_user_code"`
-	OAuth2UrlsDeviceSuccess                            types.String `tfsdk:"oauth2_urls_device_success"`
-	OAuth2UrlsDeviceVerification                       types.String `tfsdk:"oauth2_urls_device_verification"`
-	OAuth2WebfingerOIDCDiscoveryDeviceAuthorizationURL types.String `tfsdk:"oauth2_webfinger_oidc_discovery_device_authorization_url"`
+	AccountExperienceContactURL                                               types.String `tfsdk:"account_experience_contact_url"`
+	AccountExperiencePrivacyPolicyURL                                         types.String `tfsdk:"account_experience_privacy_policy_url"`
+	AccountExperienceTermsOfServiceURL                                        types.String `tfsdk:"account_experience_terms_of_service_url"`
+	OAuth2DeviceAuthorizationTokenPollingInterval                             types.String `tfsdk:"oauth2_device_authorization_token_polling_interval"`
+	OAuth2DeviceAuthorizationUserCodeEntropyPreset                            types.String `tfsdk:"oauth2_device_authorization_user_code_entropy_preset"`
+	OAuth2TTLDeviceUserCode                                                   types.String `tfsdk:"oauth2_ttl_device_user_code"`
+	OAuth2UrlsDeviceSuccess                                                   types.String `tfsdk:"oauth2_urls_device_success"`
+	OAuth2UrlsDeviceVerification                                              types.String `tfsdk:"oauth2_urls_device_verification"`
+	OAuth2WebfingerOIDCDiscoveryDeviceAuthorizationURL                        types.String `tfsdk:"oauth2_webfinger_oidc_discovery_device_authorization_url"`
+	KetoFeatureFlagsStrictMode                                                types.Bool   `tfsdk:"keto_feature_flags_strict_mode"`
+	FeatureFlagsWebhookResponseDirectives                                     types.Bool   `tfsdk:"feature_flags_webhook_response_directives"`
+	SelfserviceMethodsDeviceauthnConfigAndroidAllowExpiredFactoryCertificates types.Bool   `tfsdk:"selfservice_methods_deviceauthn_config_android_allow_expired_factory_certificates"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---
@@ -1715,6 +1718,11 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
+	resp.Diagnostics.Append(r.checkKetoStrictModeWritable(ctx, projectID, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	patches := r.buildPatches(ctx, &plan)
 	patches = r.appendWriteOnlySMTPPatch(ctx, req.Config, patches, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -2293,6 +2301,11 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 	}
 
 	projectID := helpers.ResolveProjectID(plan.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(r.checkKetoStrictModeWritable(ctx, projectID, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}

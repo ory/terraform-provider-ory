@@ -102,34 +102,48 @@ clean: ## Remove build artifacts
 	echo "Installing go-licenses $${VERSION}..."; \
 	GOBIN=$(PWD)/.bin go install github.com/google/go-licenses@$${VERSION}
 
+# OpenAPI spec for the project_config codegen. The version is pinned in
+# .deps/ory-openapi-spec.yaml (Renovate bumps it) and downloaded from ory/sdk,
+# which receives every published spec even when the SDK publish job that
+# produces github.com/ory/client-go stalls. SPEC_VERSION=vX.Y.Z overrides the
+# pin, and SPEC_VERSION=latest resolves the newest published version.
+SPEC_FILE := ./internal/codegen/openapi.json
+SPEC_VERSION ?= $(shell sed -n 's/^version: *//p' .deps/ory-openapi-spec.yaml)
+SPEC_OUT ?= $(SPEC_FILE)
+SPEC_BASE_URL := https://raw.githubusercontent.com/ory/sdk/master/spec/client
+
 .PHONY: generate
-generate: ## Generate code from mappings.yaml (auto-uses OpenAPI spec if present for governs-based validation)
+generate: ## Generate code from mappings.yaml (auto-uses the OpenAPI spec if present for governs-based validation)
 	@SPEC_FLAG=""; \
-	if [ -f ./internal/codegen/openapi.yaml ]; then \
-		SPEC_FLAG="-spec ./internal/codegen/openapi.yaml"; \
+	if [ -f $(SPEC_FILE) ]; then \
+		SPEC_FLAG="-spec $(SPEC_FILE)"; \
 		echo "Using OpenAPI spec for governs-based path validation..."; \
 	fi; \
 	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml $$SPEC_FLAG -out ./internal/resources/projectconfig/
 
 .PHONY: download-spec
-download-spec: ## Download OpenAPI spec from client-go version pinned in go.mod
-	@VERSION=$$(go list -m -f '{{.Version}}' github.com/ory/client-go); \
-	echo "Downloading OpenAPI spec from ory/client-go@$$VERSION..."; \
-	curl -sSfL "https://raw.githubusercontent.com/ory/client-go/$$VERSION/api/openapi.yaml" -o ./internal/codegen/openapi.yaml
+download-spec: ## Download the OpenAPI spec pinned in .deps/ory-openapi-spec.yaml from ory/sdk (SPEC_VERSION=vX.Y.Z or latest, SPEC_OUT=path)
+	@VERSION="$(SPEC_VERSION)"; \
+	if [ "$$VERSION" = "latest" ]; then \
+		VERSION=$$(curl -sSfL "$(SPEC_BASE_URL)/latest" | tr -d '[:space:]'); \
+	fi; \
+	if [ -z "$$VERSION" ]; then echo "could not determine the OpenAPI spec version"; exit 1; fi; \
+	echo "Downloading OpenAPI spec ory/sdk spec/client/$$VERSION.json to $(SPEC_OUT)..."; \
+	curl -sSfL "$(SPEC_BASE_URL)/$$VERSION.json" -o "$(SPEC_OUT)"
 
 .PHONY: discover
 discover: download-spec ## Discover new unmapped properties from the OpenAPI spec and output YAML entries
-	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml -spec ./internal/codegen/openapi.yaml -discover
+	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml -spec $(SPEC_FILE) -discover
 
 .PHONY: probe
 probe: download-spec ## Probe attributes against the live console API (ATTRS=a,b; needs ORY_WORKSPACE_API_KEY + ORY_WORKSPACE_ID or ORY_PROBE_PROJECT_ID)
 	@if [ -z "$(ATTRS)" ]; then echo "usage: make probe ATTRS=attr_one,attr_two"; exit 1; fi
-	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml -spec ./internal/codegen/openapi.yaml -probe-attributes "$(ATTRS)"
+	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml -spec $(SPEC_FILE) -probe-attributes "$(ATTRS)"
 
 .PHONY: check-coverage
 check-coverage: download-spec ## Check that all spec properties are mapped (fails if unmapped properties found)
 	@TMPDIR=$$(mktemp -d) && \
-	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml -spec ./internal/codegen/openapi.yaml -strict -out "$$TMPDIR" && \
+	go run ./internal/codegen/cmd/generate/ -mappings ./internal/codegen/mappings.yaml -spec $(SPEC_FILE) -strict -out "$$TMPDIR" && \
 	rm -rf "$$TMPDIR"
 
 .PHONY: format

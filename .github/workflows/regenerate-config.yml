@@ -11,6 +11,11 @@ on:
     branches: [main]
     paths:
       - 'go.sum'
+      - '.deps/ory-openapi-spec.yaml'
+  schedule:
+    # Weekly drift check against the newest spec published to ory/sdk, so a
+    # stalled Renovate run cannot hide new project_config properties for long.
+    - cron: '0 6 * * 1'
 
 permissions:
   contents: write
@@ -34,14 +39,15 @@ jobs:
         with:
           terraform_wrapper: false
 
-      - name: Download OpenAPI spec (pinned to go.mod version)
+      - name: Download OpenAPI spec (pinned in .deps/ory-openapi-spec.yaml)
         run: make download-spec
 
       - name: Download latest spec for drift detection
-        run: |
-          # ory/client-go uses 'master' as its default branch
-          curl -sSfL "https://raw.githubusercontent.com/ory/client-go/master/api/openapi.yaml" \
-            -o /tmp/openapi-master.yaml
+        # ory/sdk publishes every spec version under spec/client/ and points
+        # spec/client/latest at the newest one. The pinned spec is read from
+        # the same place, so this compares like with like even while the SDK
+        # publish job that produces ory/client-go is stalled.
+        run: make download-spec SPEC_VERSION=latest SPEC_OUT=/tmp/openapi-latest.json
 
       - name: Run codegen with spec validation
         id: generate
@@ -49,17 +55,17 @@ jobs:
           set -o pipefail
           go run ./internal/codegen/cmd/generate/ \
             -mappings ./internal/codegen/mappings.yaml \
-            -spec ./internal/codegen/openapi.yaml \
+            -spec ./internal/codegen/openapi.json \
             -out ./internal/resources/projectconfig/ 2>&1 | tee /tmp/codegen-output.txt
 
-      - name: Check for unmapped properties (against latest master spec)
+      - name: Check for unmapped properties (against the latest published spec)
         id: unmapped
         run: |
           set -o pipefail
           TMPDIR=$(mktemp -d)
           if ! go run ./internal/codegen/cmd/generate/ \
             -mappings ./internal/codegen/mappings.yaml \
-            -spec /tmp/openapi-master.yaml \
+            -spec /tmp/openapi-latest.json \
             -strict \
             -out "$TMPDIR" 2>&1 | tee /tmp/strict-output.txt; then
             # Expected strict-mode failure (unmapped properties) is not a job error.
@@ -86,7 +92,7 @@ jobs:
           set -o pipefail
           if ! go run ./internal/codegen/cmd/generate/ \
             -mappings ./internal/codegen/mappings.yaml \
-            -spec ./internal/codegen/openapi.yaml \
+            -spec ./internal/codegen/openapi.json \
             -discover-apply \
             -out ./internal/resources/projectconfig/ 2>&1 | tee /tmp/apply-output.txt; then
             exit 1
@@ -97,7 +103,7 @@ jobs:
             # Regenerate _gen.go files to reflect the newly-appended entries.
             go run ./internal/codegen/cmd/generate/ \
               -mappings ./internal/codegen/mappings.yaml \
-              -spec ./internal/codegen/openapi.yaml \
+              -spec ./internal/codegen/openapi.json \
               -out ./internal/resources/projectconfig/
           fi
 
@@ -124,7 +130,7 @@ jobs:
             echo "Probing: $NEW_ATTRS"
             go run ./internal/codegen/cmd/generate/ \
               -mappings ./internal/codegen/mappings.yaml \
-              -spec ./internal/codegen/openapi.yaml \
+              -spec ./internal/codegen/openapi.json \
               -probe-attributes "$NEW_ATTRS" \
               -probe-report /tmp/probe-report.md || echo "WARNING: probe failed; the draft PR will not include a probe report"
           fi
@@ -159,7 +165,7 @@ jobs:
           APPLIED="${{ steps.apply.outputs.count }}"
           {
             echo "## Summary"
-            echo "- Auto-regenerated project_config schema, patches, and read tables from the latest OpenAPI spec"
+            echo "- Auto-regenerated project_config schema, patches, and read tables from the OpenAPI spec pinned in \`.deps/ory-openapi-spec.yaml\` (the latest published spec is only used for drift detection)"
             if [ "${APPLIED:-0}" -gt 0 ]; then
               echo "- Auto-discovered **${APPLIED} new attribute(s)** from the spec and appended entries to \`mappings.yaml\` + \`ProjectConfigResourceModel\`"
             fi
@@ -204,7 +210,7 @@ jobs:
             echo "title=feat: auto-discover ${APPLIED} new project_config attribute(s) + regenerate" >> "$GITHUB_OUTPUT"
             echo "draft=true" >> "$GITHUB_OUTPUT"
           else
-            echo "title=feat: regenerate project_config from latest OpenAPI spec" >> "$GITHUB_OUTPUT"
+            echo "title=feat: regenerate project_config from the pinned OpenAPI spec" >> "$GITHUB_OUTPUT"
             echo "draft=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -225,7 +231,7 @@ jobs:
           delete-branch: true
           draft: ${{ steps.pr_meta.outputs.draft == 'true' }}
 
-      - name: Create issue for master-ahead-of-pinned drift
+      - name: Create issue for latest-ahead-of-pinned drift
         if: steps.unmapped.outputs.found == 'true' && steps.apply.outputs.count == '0'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
@@ -242,20 +248,20 @@ jobs:
               labels: 'codegen-drift',
             });
 
-            const body = `The daily OpenAPI spec check found **${count} new properties** in the \`normalizedProjectRevision\` schema (master branch of ory/client-go) that are not yet mapped in the Terraform provider. These are not yet in the pinned client-go version, so auto-discovery could not append them.\n\n\`\`\`\n${output}\n\`\`\`\n\n## Next steps\n\n- Wait for Renovate to bump client-go to a version that includes these properties. On merge, the regenerate workflow will auto-append them to \`mappings.yaml\` and open a draft PR.\n- Or, bump client-go manually and run \`make discover\` locally.\n\nSee [CONTRIBUTING.md](CONTRIBUTING.md#project-config-codegen) for details.`;
+            const body = `The scheduled OpenAPI spec check found **${count} new properties** in the \`normalizedProjectRevision\` schema of the latest spec published to ory/sdk that are not yet mapped in the Terraform provider. They are not in the spec version pinned in \`.deps/ory-openapi-spec.yaml\`, so auto-discovery could not append them.\n\n\`\`\`\n${output}\n\`\`\`\n\n## Next steps\n\n- Merge the Renovate PR that bumps \`.deps/ory-openapi-spec.yaml\`. On merge, the regenerate workflow will auto-append the properties to \`mappings.yaml\` and open a draft PR.\n- Or, bump the version in \`.deps/ory-openapi-spec.yaml\` by hand and run \`make discover\` locally.\n\nSee [CONTRIBUTING.md](CONTRIBUTING.md#project-config-codegen) for details.`;
 
             if (issues.data.length > 0) {
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issues.data[0].number,
-                body: `Daily spec check found ${count} unmapped master-only properties.\n\n\`\`\`\n${output}\n\`\`\``,
+                body: `Scheduled spec check found ${count} unmapped latest-only properties.\n\n\`\`\`\n${output}\n\`\`\``,
               });
             } else {
               await github.rest.issues.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                title: `feat: ${count} new API properties detected in master OpenAPI spec`,
+                title: `feat: ${count} new API properties detected in the latest published OpenAPI spec`,
                 labels: ['codegen-drift'],
                 body: body,
               });
@@ -283,6 +289,6 @@ jobs:
             fi
             if [ "${{ steps.unmapped.outputs.found }}" == "true" ] && [ "${{ steps.apply.outputs.count }}" == "0" ]; then
               echo ""
-              echo "**${{ steps.unmapped.outputs.count }} unmapped master-only properties detected** -- issue created/updated"
+              echo "**${{ steps.unmapped.outputs.count }} unmapped latest-only properties detected** -- issue created/updated"
             fi
           } >> "$GITHUB_STEP_SUMMARY"

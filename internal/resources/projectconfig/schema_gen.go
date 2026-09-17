@@ -1193,5 +1193,17 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Override the OAuth 2.0 Device Authorization Endpoint URL that is advertised in the OpenID Connect discovery document (/.well-known/openid-configuration)",
 			Optional:    true,
 		},
+		"keto_feature_flags_strict_mode": schema.BoolAttribute{
+			Description: "Enable Ory Keto strict mode. In strict mode, relation tuples for permits are not checked directly (only the OPL rewrites apply) and subject sets are only expanded when declared with SubjectSet<...>, which makes permission checks faster. New projects are created with strict mode enabled and locked; on a locked project the API accepts a write but keeps the stored value, so only projects created before the lock can change it. The provider fails the apply with an error instead of sending a value that the lock would discard.",
+			Optional:    true,
+		},
+		"feature_flags_webhook_response_directives": schema.BoolAttribute{
+			Description: "Honor flow directives in web hook responses. If true, a login after web hook with response parsing enabled can return a required_aal directive of aal2 to require step-up for that login; identities without a second factor are routed to enrollment. Off by default.",
+			Optional:    true,
+		},
+		"selfservice_methods_deviceauthn_config_android_allow_expired_factory_certificates": schema.BoolAttribute{
+			Description: "Device authentication accepts expired CA certificates in Android factory attestation chains that lead to a pinned Google root key. Devices launched before 2021 ship factory keyboxes with expired certificates that Google still documents as trustworthy unless revoked. Revocation, signature, and leaf validity checks still apply. Defaults to false.",
+			Optional:    true,
+		},
 	}
 }

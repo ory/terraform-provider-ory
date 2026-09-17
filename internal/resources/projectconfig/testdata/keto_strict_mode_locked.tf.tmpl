@@ -1,0 +1,9 @@
+resource "ory_project" "locked" {
+  name        = "[[ .Name ]]"
+  environment = "prod"
+}
+
+resource "ory_project_config" "locked" {
+  project_id                     = ory_project.locked.id
+  keto_feature_flags_strict_mode = [[ .StrictMode ]]
+}

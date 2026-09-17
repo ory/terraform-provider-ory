@@ -235,6 +235,9 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 		{&plan.FeatureFlagsRefreshLoginChooseAddress, nil, "/services/identity/config/feature_flags/refresh_login_choose_address", nil},
 		{&plan.SelfserviceMethodsDeviceauthnConfigFirstFactor, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/first_factor", nil},
 		{&plan.SelfserviceMethodsDeviceauthnConfigIosBiometricFirstFactor, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/ios_biometric_first_factor", nil},
+		{&plan.KetoFeatureFlagsStrictMode, nil, "/services/permission/config/feature_flags/strict_mode", nil},
+		{&plan.FeatureFlagsWebhookResponseDirectives, nil, "/services/identity/config/feature_flags/webhook_response_directives", nil},
+		{&plan.SelfserviceMethodsDeviceauthnConfigAndroidAllowExpiredFactoryCertificates, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/android_allow_expired_factory_certificates", nil},
 	}
 }
 
