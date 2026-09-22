@@ -179,7 +179,7 @@ func (r *ProjectAPIKeyResource) Create(ctx context.Context, req resource.CreateR
 			)
 			return
 		}
-		body.ExpiresAt = &expiresAt
+		body.ExpiresAt.Set(&expiresAt)
 	}
 
 	key, err := r.client.CreateProjectAPIKey(ctx, projectID, body)
@@ -204,8 +204,9 @@ func (r *ProjectAPIKeyResource) Create(ctx context.Context, req resource.CreateR
 		plan.CreatedAt = types.StringValue(key.CreatedAt.Format(time.RFC3339))
 	}
 
-	if key.ExpiresAt != nil {
-		plan.ExpiresAt = types.StringValue(key.ExpiresAt.Format(time.RFC3339))
+	// expires_at is nullable: the API returns an explicit null for keys without an expiry.
+	if expiresAt := key.ExpiresAt.Get(); expiresAt != nil {
+		plan.ExpiresAt = types.StringValue(expiresAt.Format(time.RFC3339))
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
@@ -254,8 +255,9 @@ func (r *ProjectAPIKeyResource) Read(ctx context.Context, req resource.ReadReque
 		state.CreatedAt = types.StringValue(found.CreatedAt.Format(time.RFC3339))
 	}
 
-	if found.ExpiresAt != nil {
-		state.ExpiresAt = types.StringValue(found.ExpiresAt.Format(time.RFC3339))
+	// expires_at is nullable: the API returns an explicit null for keys without an expiry.
+	if expiresAt := found.ExpiresAt.Get(); expiresAt != nil {
+		state.ExpiresAt = types.StringValue(expiresAt.Format(time.RFC3339))
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
