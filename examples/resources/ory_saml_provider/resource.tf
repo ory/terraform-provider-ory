@@ -30,6 +30,14 @@ resource "ory_saml_provider" "custom" {
   proxy_saml_audience_override = "https://sp.example.com/saml"
 }
 
+# SAML provider that accepts IdP-initiated login from the identity provider's app launcher
+resource "ory_saml_provider" "launcher" {
+  provider_id                 = "launcher"
+  label                       = "Workforce SSO"
+  raw_idp_metadata_xml        = "https://sso.example.com/metadata"
+  idp_initiated_login_enabled = true
+}
+
 resource "ory_organization" "acme" {
   label   = "Acme"
   domains = ["acme.example.com"]

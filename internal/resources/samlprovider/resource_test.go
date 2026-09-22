@@ -103,6 +103,48 @@ func TestAccSAMLProviderResource_basic(t *testing.T) {
 	})
 }
 
+// TestAccSAMLProviderResource_idpInitiatedLogin toggles idp_initiated_login_enabled
+// through create, update, and import. The API keeps the key only while it is
+// true, so the false step checks that the provider holds false in state when
+// the key is gone, and the final true step lets import verify the round trip.
+func TestAccSAMLProviderResource_idpInitiatedLogin(t *testing.T) {
+	metadata := buildTestMetadataXML(t)
+	data := map[string]string{"MetadataXML": metadata}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/idp_initiated_login.tf.tmpl", data),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_saml_provider.test", "provider_id", "test-saml-idp-initiated"),
+					resource.TestCheckResourceAttr("ory_saml_provider.test", "idp_initiated_login_enabled", "true"),
+				),
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/idp_initiated_login_disabled.tf.tmpl", data),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_saml_provider.test", "idp_initiated_login_enabled", "false"),
+				),
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/idp_initiated_login.tf.tmpl", data),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_saml_provider.test", "idp_initiated_login_enabled", "true"),
+				),
+			},
+			{
+				ResourceName:            "ory_saml_provider.test",
+				ImportState:             true,
+				ImportStateId:           "test-saml-idp-initiated",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"raw_idp_metadata_xml"},
+			},
+		},
+	})
+}
+
 // readSAMLMethodNode returns the selfservice.methods.saml node from the test
 // project, read straight from the API rather than from Terraform state.
 func readSAMLMethodNode(t *testing.T) map[string]interface{} {
