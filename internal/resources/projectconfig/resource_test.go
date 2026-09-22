@@ -1088,6 +1088,7 @@ func TestAccProjectConfigResource_featureFlags(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "feature_flags_cacheable_sessions", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "feature_flags_enforce_identity_schema_guards", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "feature_flags_use_continue_with_transitions", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "feature_flags_webhook_response_directives", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_deviceauthn_config_android_allow_expired_factory_certificates", "true"),
@@ -1100,6 +1101,7 @@ func TestAccProjectConfigResource_featureFlags(t *testing.T) {
 				ImportStateVerifyIgnore: []string{
 					"feature_flags_cacheable_sessions",
 					"feature_flags_cacheable_sessions_max_age",
+					"feature_flags_enforce_identity_schema_guards",
 					"feature_flags_use_continue_with_transitions",
 					"feature_flags_webhook_response_directives",
 					"selfservice_methods_deviceauthn_config_android_allow_expired_factory_certificates",

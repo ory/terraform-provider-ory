@@ -1205,5 +1205,9 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Device authentication accepts expired CA certificates in Android factory attestation chains that lead to a pinned Google root key. Devices launched before 2021 ship factory keyboxes with expired certificates that Google still documents as trustworthy unless revoked. Revocation, signature, and leaf validity checks still apply. Defaults to false.",
 			Optional:    true,
 		},
+		"feature_flags_enforce_identity_schema_guards": schema.BoolAttribute{
+			Description: "Enforces the identity schema guards. If enabled, an identity schema that does not pass the identity schema guards is rejected. If disabled, the result is logged and the schema is used.",
+			Optional:    true,
+		},
 	}
 }

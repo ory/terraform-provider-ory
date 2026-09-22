@@ -679,6 +679,7 @@ terraform plan  # verify no changes
 - `feature_flags_cacheable_sessions` (Boolean) Enable session caching.
 - `feature_flags_cacheable_sessions_max_age` (String) Maximum age for cached sessions (e.g. '5m').
 - `feature_flags_choose_recovery_address` (Boolean) Allow users to choose which recovery address to use.
+- `feature_flags_enforce_identity_schema_guards` (Boolean) Enforces the identity schema guards. If enabled, an identity schema that does not pass the identity schema guards is rejected. If disabled, the result is logged and the schema is used.
 - `feature_flags_faster_session_extend` (Boolean) Enable faster session extension by skipping the session lookup.
 - `feature_flags_legacy_continue_with_verification_ui` (Boolean) Deprecated. Restore legacy behavior of always including show_verification_ui in continue_with.
 - `feature_flags_legacy_oidc_registration_node_group` (Boolean) Use legacy 'oidc' node group for OIDC registration when required fields are missing.
