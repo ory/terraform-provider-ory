@@ -5,6 +5,7 @@ package projectapikey_test
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -27,6 +28,39 @@ func TestAccProjectAPIKeyResource_basic(t *testing.T) {
 				),
 			},
 			// Import using composite ID: project_id/key_id
+			{
+				ResourceName:      "ory_project_api_key.test",
+				ImportState:       true,
+				ImportStateIdFunc: importStateProjectAPIKeyID,
+				ImportStateVerify: true,
+				// value is only returned on creation
+				ImportStateVerifyIgnore: []string{"value"},
+			},
+		},
+	})
+}
+
+func TestAccProjectAPIKeyResource_expiresAt(t *testing.T) {
+	// The API returns the expiry with second precision, so send a whole-second
+	// UTC timestamp for the value to round-trip into state unchanged.
+	expiresAt := time.Now().AddDate(1, 0, 0).UTC().Truncate(time.Second).Format(time.RFC3339)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_expires_at.tf.tmpl", map[string]string{
+					"ExpiresAt": expiresAt,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_api_key.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_api_key.test", "name", "tf-test-key-expires"),
+					resource.TestCheckResourceAttr("ory_project_api_key.test", "expires_at", expiresAt),
+					resource.TestCheckResourceAttrSet("ory_project_api_key.test", "value"),
+				),
+			},
+			// Import reads expires_at back from the list endpoint.
 			{
 				ResourceName:      "ory_project_api_key.test",
 				ImportState:       true,
