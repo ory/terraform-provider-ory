@@ -238,6 +238,7 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 		{&plan.KetoFeatureFlagsStrictMode, nil, "/services/permission/config/feature_flags/strict_mode", nil},
 		{&plan.FeatureFlagsWebhookResponseDirectives, nil, "/services/identity/config/feature_flags/webhook_response_directives", nil},
 		{&plan.SelfserviceMethodsDeviceauthnConfigAndroidAllowExpiredFactoryCertificates, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/android_allow_expired_factory_certificates", nil},
+		{&plan.FeatureFlagsEnforceIdentitySchemaGuards, nil, "/services/identity/config/feature_flags/enforce_identity_schema_guards", nil},
 	}
 }
 

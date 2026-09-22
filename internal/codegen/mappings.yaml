@@ -1631,3 +1631,11 @@ attributes:
     type: bool
     openapi_property: kratos_selfservice_methods_deviceauthn_config_android_allow_expired_factory_certificates
     description: "Device authentication accepts expired CA certificates in Android factory attestation chains that lead to a pinned Google root key. Devices launched before 2021 ship factory keyboxes with expired certificates that Google still documents as trustworthy unless revoked. Revocation, signature, and leaf validity checks still apply. Defaults to false."
+
+  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  - name: feature_flags_enforce_identity_schema_guards
+    go_field: FeatureFlagsEnforceIdentitySchemaGuards
+    type: bool
+    openapi_property: kratos_feature_flags_enforce_identity_schema_guards
+    description: "Enforces the identity schema guards. If enabled, an identity schema that does not pass the identity schema guards is rejected. If disabled, the result is logged and the schema is used."
+
