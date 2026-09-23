@@ -465,6 +465,9 @@ type ProjectConfigResourceModel struct {
 	KetoFeatureFlagsStrictMode                                                types.Bool   `tfsdk:"keto_feature_flags_strict_mode"`
 	FeatureFlagsWebhookResponseDirectives                                     types.Bool   `tfsdk:"feature_flags_webhook_response_directives"`
 	SelfserviceMethodsDeviceauthnConfigAndroidAllowExpiredFactoryCertificates types.Bool   `tfsdk:"selfservice_methods_deviceauthn_config_android_allow_expired_factory_certificates"`
+
+	// Auto-discovered (review naming before release)
+	FeatureFlagsEnforceIdentitySchemaGuards types.Bool `tfsdk:"feature_flags_enforce_identity_schema_guards"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---

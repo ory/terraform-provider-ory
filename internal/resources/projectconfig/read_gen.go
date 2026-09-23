@@ -619,6 +619,7 @@ func identityBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry 
 		{&state.SelfserviceMethodsDeviceauthnConfigIosBiometricFirstFactor, nil, []string{"selfservice", "methods", "deviceauthn", "config", "ios_biometric_first_factor"}, false, nil},
 		{&state.FeatureFlagsWebhookResponseDirectives, nil, []string{"feature_flags", "webhook_response_directives"}, false, nil},
 		{&state.SelfserviceMethodsDeviceauthnConfigAndroidAllowExpiredFactoryCertificates, nil, []string{"selfservice", "methods", "deviceauthn", "config", "android_allow_expired_factory_certificates"}, false, nil},
+		{&state.FeatureFlagsEnforceIdentitySchemaGuards, nil, []string{"feature_flags", "enforce_identity_schema_guards"}, false, nil},
 	}
 }
 

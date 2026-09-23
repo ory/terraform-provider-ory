@@ -1,8 +1,9 @@
 resource "ory_project_config" "test" {
-  feature_flags_cacheable_sessions            = true
-  feature_flags_cacheable_sessions_max_age    = "5m0s"
-  feature_flags_use_continue_with_transitions = true
-  feature_flags_webhook_response_directives   = true
+  feature_flags_cacheable_sessions             = true
+  feature_flags_cacheable_sessions_max_age     = "5m0s"
+  feature_flags_enforce_identity_schema_guards = true
+  feature_flags_use_continue_with_transitions  = true
+  feature_flags_webhook_response_directives    = true
 
   selfservice_methods_deviceauthn_config_android_allow_expired_factory_certificates = true
 }
