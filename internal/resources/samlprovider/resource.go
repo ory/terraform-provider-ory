@@ -60,6 +60,7 @@ type SAMLProviderResourceModel struct {
 	OrganizationID            types.String `tfsdk:"organization_id"`
 	AudienceOverrideBaseURL   types.String `tfsdk:"audience_override_base_url"`
 	ProxySAMLAudienceOverride types.String `tfsdk:"proxy_saml_audience_override"`
+	IdPInitiatedLoginEnabled  types.Bool   `tfsdk:"idp_initiated_login_enabled"`
 }
 
 func (r *SAMLProviderResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -121,6 +122,10 @@ func (r *SAMLProviderResource) Schema(ctx context.Context, req resource.SchemaRe
 			},
 			"proxy_saml_audience_override": schema.StringAttribute{
 				Description: "Customer-controlled override of the SAML Audience (EntityID) sent to the identity provider.",
+				Optional:    true,
+			},
+			"idp_initiated_login_enabled": schema.BoolAttribute{
+				Description: "Enable IdP-initiated login for this provider. When true, users can start a login from the identity provider's app launcher, and the Polis connection's default redirect URL points at the Ory IdP-initiated login entry point instead of the SAML callback. Defaults to false.",
 				Optional:    true,
 			},
 		},
@@ -197,8 +202,26 @@ func (r *SAMLProviderResource) buildProviderConfig(plan *SAMLProviderResourceMod
 	if !plan.ProxySAMLAudienceOverride.IsNull() && !plan.ProxySAMLAudienceOverride.IsUnknown() && plan.ProxySAMLAudienceOverride.ValueString() != "" {
 		config["proxy_saml_audience_override"] = plan.ProxySAMLAudienceOverride.ValueString()
 	}
+	if !plan.IdPInitiatedLoginEnabled.IsNull() && !plan.IdPInitiatedLoginEnabled.IsUnknown() {
+		config["idp_initiated_login_enabled"] = plan.IdPInitiatedLoginEnabled.ValueBool()
+	}
 
 	return config
+}
+
+// readIdPInitiatedLoginEnabled maps the provider entry's
+// idp_initiated_login_enabled key to state. The API keeps the key only when it
+// is true and prunes an explicit false, so a missing key reads as false when
+// the prior state holds false (the user configured it) and as null otherwise.
+// A prior true with a missing key reads as null, which surfaces the drift.
+func readIdPInitiatedLoginEnabled(provider map[string]interface{}, prior types.Bool) types.Bool {
+	if enabled, ok := provider["idp_initiated_login_enabled"].(bool); ok {
+		return types.BoolValue(enabled)
+	}
+	if !prior.IsNull() && !prior.IsUnknown() && !prior.ValueBool() {
+		return types.BoolValue(false)
+	}
+	return types.BoolNull()
 }
 
 // samlMethodPath is the config node that holds the whole SAML method
@@ -532,6 +555,8 @@ func (r *SAMLProviderResource) Read(ctx context.Context, req resource.ReadReques
 	} else {
 		state.ProxySAMLAudienceOverride = types.StringNull()
 	}
+
+	state.IdPInitiatedLoginEnabled = readIdPInitiatedLoginEnabled(provider, state.IdPInitiatedLoginEnabled)
 
 	state.ID = types.StringValue(providerID)
 	state.ProjectID = types.StringValue(projectID)

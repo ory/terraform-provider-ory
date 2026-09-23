@@ -3,6 +3,7 @@ package samlprovider
 import (
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -133,4 +134,42 @@ func TestCopySAMLConfig(t *testing.T) {
 	assert.Equal(t, "one",
 		original["providers"].([]interface{})[0].(map[string]interface{})["id"],
 		"mutating the copy must not reach the original")
+}
+
+// TestBuildProviderConfig_IdPInitiatedLoginEnabled checks that the flag is
+// sent exactly when it is configured, in either value, and omitted otherwise.
+func TestBuildProviderConfig_IdPInitiatedLoginEnabled(t *testing.T) {
+	r := &SAMLProviderResource{}
+	base := func() *SAMLProviderResourceModel {
+		return &SAMLProviderResourceModel{
+			ProviderID:        types.StringValue("corp"),
+			RawIDPMetadataXML: types.StringValue("https://idp.example.com/metadata"),
+		}
+	}
+
+	plan := base()
+	_, present := r.buildProviderConfig(plan)["idp_initiated_login_enabled"]
+	assert.False(t, present, "an unset flag must not be sent")
+
+	plan = base()
+	plan.IdPInitiatedLoginEnabled = types.BoolValue(true)
+	assert.Equal(t, true, r.buildProviderConfig(plan)["idp_initiated_login_enabled"])
+
+	plan = base()
+	plan.IdPInitiatedLoginEnabled = types.BoolValue(false)
+	assert.Equal(t, false, r.buildProviderConfig(plan)["idp_initiated_login_enabled"])
+}
+
+// TestReadIdPInitiatedLoginEnabled covers the API contract for the flag: the
+// key is present only while it is true, so a missing key means false for a
+// configured false, null for an unconfigured flag, and drift for a prior true.
+func TestReadIdPInitiatedLoginEnabled(t *testing.T) {
+	withKey := map[string]interface{}{"idp_initiated_login_enabled": true}
+	withoutKey := map[string]interface{}{"id": "corp"}
+
+	assert.Equal(t, types.BoolValue(true), readIdPInitiatedLoginEnabled(withKey, types.BoolNull()))
+	assert.Equal(t, types.BoolValue(false), readIdPInitiatedLoginEnabled(withoutKey, types.BoolValue(false)))
+	assert.Equal(t, types.BoolNull(), readIdPInitiatedLoginEnabled(withoutKey, types.BoolNull()))
+	assert.Equal(t, types.BoolNull(), readIdPInitiatedLoginEnabled(withoutKey, types.BoolUnknown()))
+	assert.Equal(t, types.BoolNull(), readIdPInitiatedLoginEnabled(withoutKey, types.BoolValue(true)), "a prior true with a missing key is drift")
 }

@@ -1,0 +1,6 @@
+resource "ory_saml_provider" "test" {
+  provider_id                 = "test-saml-idp-initiated"
+  label                       = "Test SAML IdP-initiated"
+  raw_idp_metadata_xml        = "[[ .MetadataXML ]]"
+  idp_initiated_login_enabled = true
+}

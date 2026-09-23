@@ -59,6 +59,14 @@ resource "ory_saml_provider" "custom" {
   proxy_saml_audience_override = "https://sp.example.com/saml"
 }
 
+# SAML provider that accepts IdP-initiated login from the identity provider's app launcher
+resource "ory_saml_provider" "launcher" {
+  provider_id                 = "launcher"
+  label                       = "Workforce SSO"
+  raw_idp_metadata_xml        = "https://sso.example.com/metadata"
+  idp_initiated_login_enabled = true
+}
+
 resource "ory_organization" "acme" {
   label   = "Acme"
   domains = ["acme.example.com"]
@@ -133,6 +141,21 @@ resource "ory_saml_provider" "acme_sso" {
 - **`audience_override_base_url`** — Overrides the base URL used when computing the SAML SP audience (EntityID). Use when Ory is reached through a custom domain and you need the EntityID to match that domain instead of the default `*.projects.oryapis.com` hostname.
 - **`proxy_saml_audience_override`** — Replaces the SP audience (EntityID) entirely. Use when the IDP trust was established against a pre-existing audience that you cannot change on the IDP side.
 
+## IdP-Initiated Login
+
+Set `idp_initiated_login_enabled = true` to let users start a login from the identity provider's app launcher. Ory Polis then validates the unsolicited SAML response and hands the browser to the Ory IdP-initiated login entry point, which starts a regular login flow. The setting also changes the Polis connection's default redirect URL from the SAML callback to that entry point.
+
+```hcl
+resource "ory_saml_provider" "corporate" {
+  provider_id                 = "corporate"
+  label                       = "Sign in with Corporate SSO"
+  raw_idp_metadata_xml        = "base64://${base64encode(file("${path.module}/corporate-idp-metadata.xml"))}"
+  idp_initiated_login_enabled = true
+}
+```
+
+The API stores the flag only while it is `true`. A `false` value is accepted and then dropped from the configuration, and the provider keeps `false` in state so the plan stays clean.
+
 ## Important Behaviors
 
 - **`provider_id` cannot be changed** after creation. Changing it forces a new resource.
@@ -160,6 +183,7 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 ### Optional
 
 - `audience_override_base_url` (String) Override the base URL used when computing the SAML SP audience (EntityID). Useful when running Ory behind a custom domain.
+- `idp_initiated_login_enabled` (Boolean) Enable IdP-initiated login for this provider. When true, users can start a login from the identity provider's app launcher, and the Polis connection's default redirect URL points at the Ory IdP-initiated login entry point instead of the SAML callback. Defaults to false.
 - `label` (String) Human-readable label for the provider, displayed on the login button (e.g., "Sign in with Corporate SSO").
 - `mapper_url` (String) Jsonnet mapper URL for mapping SAML attributes to identity traits. Accepts a URL (http/https) or a base64-encoded Jsonnet template prefixed with `base64://`. If not set, a default mapper that extracts email from claims will be used.
 - `organization_id` (String) Organization ID to associate this SAML provider with (for B2B SSO).
