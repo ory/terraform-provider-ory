@@ -4,4 +4,4 @@
 # The spec is pinned here instead of derived from the client-go module version
 # because the SDK publish job can stall while ory/sdk keeps receiving new specs.
 # renovate: datasource=custom.ory-sdk-client-spec depName=ory-client-openapi-spec
-version: v1.22.78
+version: v1.22.79
