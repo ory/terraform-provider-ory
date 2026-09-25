@@ -87,6 +87,19 @@ resource "ory_social_provider" "google_sync_on_login" {
   update_identity_on_login = "automatic"
 }
 
+# Google Sign-In with OpenID Connect Front-Channel Logout
+resource "ory_social_provider" "google_front_channel_logout" {
+  provider_id   = "google-fcl"
+  provider_type = "google"
+  client_id     = var.google_client_id
+  client_secret = var.google_client_secret
+  scope         = ["email", "profile"]
+
+  # Lets Google end the Ory session from its own sign-out page.
+  # The provider must return the sid claim in the ID token.
+  front_channel_logout = true
+}
+
 # Generic OIDC with a custom base redirect URI (e.g., when using a custom domain)
 resource "ory_social_provider" "corporate_sso_custom_domain" {
   provider_id       = "corporate-sso-custom-domain"

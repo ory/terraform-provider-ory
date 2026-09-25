@@ -91,6 +91,7 @@ type SocialProviderResourceModel struct {
 	FedcmConfigURL             types.String `tfsdk:"fedcm_config_url"`
 	NetIDTokenOriginHeader     types.String `tfsdk:"net_id_token_origin_header"`
 	UpdateIdentityOnLogin      types.String `tfsdk:"update_identity_on_login"`
+	FrontChannelLogout         types.Bool   `tfsdk:"front_channel_logout"`
 }
 
 func (r *SocialProviderResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -299,6 +300,10 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				Validators: []validator.String{
 					stringvalidator.OneOf("never", "automatic"),
 				},
+			},
+			"front_channel_logout": schema.BoolAttribute{
+				Description: "Enable OpenID Connect Front-Channel Logout for this provider. When true, a login issues a companion cookie that lets the provider end the resulting Ory session from its own sign-out page. Requires the provider to return the sid claim in the ID token. Leave unset to keep the Ory default (disabled).",
+				Optional:    true,
 			},
 		},
 	}
@@ -554,6 +559,13 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 	// default ("never"), which Read collapses to null.
 	if !plan.UpdateIdentityOnLogin.IsNull() && !plan.UpdateIdentityOnLogin.IsUnknown() {
 		config["update_identity_on_login"] = plan.UpdateIdentityOnLogin.ValueString()
+	}
+
+	// front_channel_logout — only send when set. The API stores true and false
+	// alike and returns the key on read; omitting it on the full-object replace
+	// performed by Update clears it server-side, which Read collapses to null.
+	if !plan.FrontChannelLogout.IsNull() && !plan.FrontChannelLogout.IsUnknown() {
+		config["front_channel_logout"] = plan.FrontChannelLogout.ValueBool()
 	}
 
 	// fedcm_config_url — only send when set to a non-empty value. Omitting it on
@@ -1037,6 +1049,15 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		state.UpdateIdentityOnLogin = types.StringValue(uiol)
 	} else {
 		state.UpdateIdentityOnLogin = types.StringNull()
+	}
+
+	// Read front_channel_logout from the API (returned on read for both true and
+	// false), clearing stale state when the API omits it, which it does only
+	// when the attribute was never set.
+	if fcl, ok := provider["front_channel_logout"].(bool); ok {
+		state.FrontChannelLogout = types.BoolValue(fcl)
+	} else {
+		state.FrontChannelLogout = types.BoolNull()
 	}
 
 	// Read fedcm_config_url from the API (returned on read), clearing stale state
