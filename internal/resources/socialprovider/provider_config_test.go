@@ -146,3 +146,42 @@ func TestBuildProviderConfig_NetIDFedcmPair(t *testing.T) {
 	assert.Equal(t, "https://broker.netid.de/fedcm.json", config["fedcm_config_url"])
 	assert.Equal(t, "https://www.example.com", config["net_id_token_origin_header"])
 }
+
+// front_channel_logout is a plain optional bool: the API stores true and false
+// alike and returns the key on read, and a full-object replace without the key
+// clears it. The payload must carry either configured value and nothing when the
+// attribute is unset or unknown.
+func TestBuildProviderConfig_FrontChannelLogout(t *testing.T) {
+	tests := []struct {
+		name        string
+		value       types.Bool
+		wantPresent bool
+		wantValue   bool
+	}{
+		{name: "true", value: types.BoolValue(true), wantPresent: true, wantValue: true},
+		{name: "false", value: types.BoolValue(false), wantPresent: true, wantValue: false},
+		{name: "null", value: types.BoolNull(), wantPresent: false},
+		{name: "unknown", value: types.BoolUnknown(), wantPresent: false},
+	}
+
+	r := &SocialProviderResource{}
+	ctx := context.Background()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plan := baseProviderPlan()
+			plan.FrontChannelLogout = tt.value
+
+			config := r.buildProviderConfig(ctx, plan,
+				plan.ClientID, types.StringValue("test-client-secret"), types.StringNull())
+
+			got, ok := config["front_channel_logout"]
+			if !tt.wantPresent {
+				assert.False(t, ok, "front_channel_logout must be absent from the payload")
+				return
+			}
+			require.True(t, ok, "front_channel_logout must be sent to the API")
+			assert.Equal(t, tt.wantValue, got)
+		})
+	}
+}

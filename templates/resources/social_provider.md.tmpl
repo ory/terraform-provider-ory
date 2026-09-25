@@ -282,6 +282,24 @@ resource "ory_social_provider" "google" {
 
 Leave the attribute unset to use the Ory default (`never`). The API accepts only the values `never` and `automatic`.
 
+## Front-Channel Logout
+
+Set `front_channel_logout = true` to enable OpenID Connect Front-Channel Logout for a provider. A login then issues a companion cookie that lets the provider end the resulting Ory session from its own sign-out page. The provider must return the `sid` claim in the ID token.
+
+```hcl
+resource "ory_social_provider" "google" {
+  provider_id   = "google"
+  provider_type = "google"
+  client_id     = var.google_client_id
+  client_secret = var.google_client_secret
+  scope         = ["email", "profile"]
+
+  front_channel_logout = true
+}
+```
+
+The API stores `true` and `false` alike and returns the value on read. Leave the attribute unset to keep the Ory default, which is disabled; removing it from the configuration clears the setting.
+
 ## Base Redirect URI
 
 The `base_redirect_uri` attribute overrides the base URL Ory uses when constructing OIDC callback URLs. Use this when your project is accessible under a custom domain and you want callbacks to go to that domain rather than the default Ory project URL.

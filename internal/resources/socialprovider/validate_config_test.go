@@ -55,6 +55,7 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 		"fedcm_config_url":              tfStringValue(model.FedcmConfigURL),
 		"net_id_token_origin_header":    tfStringValue(model.NetIDTokenOriginHeader),
 		"update_identity_on_login":      tfStringValue(model.UpdateIdentityOnLogin),
+		"front_channel_logout":          tfBoolValue(model.FrontChannelLogout),
 	}
 
 	objType := tftypes.Object{
@@ -92,6 +93,7 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 			"fedcm_config_url":              tftypes.String,
 			"net_id_token_origin_header":    tftypes.String,
 			"update_identity_on_login":      tftypes.String,
+			"front_channel_logout":          tftypes.Bool,
 		},
 	}
 

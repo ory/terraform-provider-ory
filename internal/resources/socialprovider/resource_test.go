@@ -834,6 +834,70 @@ func TestAccSocialProviderResource_updateIdentityOnLogin(t *testing.T) {
 	})
 }
 
+// TestAccSocialProviderResource_frontChannelLogout drives front_channel_logout
+// through create, update, removal, and import. The API stores true and false
+// alike and returns the key on read, so both values must round-trip and an
+// omitted attribute must read back as absent.
+func TestAccSocialProviderResource_frontChannelLogout(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_front_channel_logout.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-google-fcl"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "front_channel_logout", "true"),
+				),
+			},
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_front_channel_logout.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// An explicit false must persist and not be collapsed to absence.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_front_channel_logout_disabled.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "front_channel_logout", "false"),
+				),
+			},
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_front_channel_logout_disabled.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Removing the attribute clears the key server-side.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_front_channel_logout_removed.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "front_channel_logout"),
+				),
+			},
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_front_channel_logout_removed.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Re-enable so import verifies the value round-trips.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_front_channel_logout.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "front_channel_logout", "true"),
+				),
+			},
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           "test-google-fcl",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+		},
+	})
+}
+
 // TestAccSocialProviderResource_mapperURLNoDrift verifies that a configured
 // base64:// mapper_url does not produce a perpetual diff even though Ory rewrites
 // it into an opaque GCS URL server-side. The provider preserves the configured
