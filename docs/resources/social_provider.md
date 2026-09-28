@@ -175,16 +175,19 @@ resource "ory_social_provider" "google_sync_on_login" {
   update_identity_on_login = "automatic"
 }
 
-# Google Sign-In with OpenID Connect Front-Channel Logout
-resource "ory_social_provider" "google_front_channel_logout" {
-  provider_id   = "google-fcl"
-  provider_type = "google"
-  client_id     = var.google_client_id
-  client_secret = var.google_client_secret
-  scope         = ["email", "profile"]
+# Generic OIDC provider with OpenID Connect Front-Channel Logout
+resource "ory_social_provider" "corporate_front_channel_logout" {
+  provider_id   = "corporate-fcl"
+  provider_type = "generic"
+  client_id     = var.sso_client_id
+  client_secret = var.sso_client_secret
+  issuer_url    = "https://sso.example.com"
+  scope         = ["openid", "email", "profile"]
 
-  # Lets Google end the Ory session from its own sign-out page.
-  # The provider must return the sid claim in the ID token.
+  # Lets the identity provider end the Ory session from its own sign-out page.
+  # The provider must implement OpenID Connect Front-Channel Logout and return
+  # the sid claim in its ID tokens (Ory Hydra, Keycloak, Okta, Auth0). Google
+  # does not issue sid, so the flag has no effect on a google provider.
   front_channel_logout = true
 }
 
@@ -580,15 +583,18 @@ Leave the attribute unset to use the Ory default (`never`). The API accepts only
 
 ## Front-Channel Logout
 
-Set `front_channel_logout = true` to enable OpenID Connect Front-Channel Logout for a provider. A login then issues a companion cookie that lets the provider end the resulting Ory session from its own sign-out page. The provider must return the `sid` claim in the ID token.
+Set `front_channel_logout = true` to enable OpenID Connect Front-Channel Logout for a provider. A login then issues a companion cookie that lets the provider end the resulting Ory session from its own sign-out page.
+
+The identity provider must implement [OpenID Connect Front-Channel Logout](https://openid.net/specs/openid-connect-frontchannel-1_0.html) and return the `sid` claim in its ID tokens. Enterprise and self-hosted providers such as Ory Hydra, Keycloak, Okta, and Auth0 do. Google does not issue a `sid` claim, so the flag has no effect on a `google` provider.
 
 ```hcl
-resource "ory_social_provider" "google" {
-  provider_id   = "google"
-  provider_type = "google"
-  client_id     = var.google_client_id
-  client_secret = var.google_client_secret
-  scope         = ["email", "profile"]
+resource "ory_social_provider" "corporate_sso" {
+  provider_id   = "corporate"
+  provider_type = "generic"
+  client_id     = var.sso_client_id
+  client_secret = var.sso_client_secret
+  issuer_url    = "https://sso.example.com"
+  scope         = ["openid", "email", "profile"]
 
   front_channel_logout = true
 }

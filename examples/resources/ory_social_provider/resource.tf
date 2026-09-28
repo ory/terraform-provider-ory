@@ -87,16 +87,19 @@ resource "ory_social_provider" "google_sync_on_login" {
   update_identity_on_login = "automatic"
 }
 
-# Google Sign-In with OpenID Connect Front-Channel Logout
-resource "ory_social_provider" "google_front_channel_logout" {
-  provider_id   = "google-fcl"
-  provider_type = "google"
-  client_id     = var.google_client_id
-  client_secret = var.google_client_secret
-  scope         = ["email", "profile"]
+# Generic OIDC provider with OpenID Connect Front-Channel Logout
+resource "ory_social_provider" "corporate_front_channel_logout" {
+  provider_id   = "corporate-fcl"
+  provider_type = "generic"
+  client_id     = var.sso_client_id
+  client_secret = var.sso_client_secret
+  issuer_url    = "https://sso.example.com"
+  scope         = ["openid", "email", "profile"]
 
-  # Lets Google end the Ory session from its own sign-out page.
-  # The provider must return the sid claim in the ID token.
+  # Lets the identity provider end the Ory session from its own sign-out page.
+  # The provider must implement OpenID Connect Front-Channel Logout and return
+  # the sid claim in its ID tokens (Ory Hydra, Keycloak, Okta, Auth0). Google
+  # does not issue sid, so the flag has no effect on a google provider.
   front_channel_logout = true
 }
 
