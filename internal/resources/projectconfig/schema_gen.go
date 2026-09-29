@@ -984,7 +984,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			ElementType: types.StringType,
 		},
 		"keto_namespace_configuration": schema.StringAttribute{
-			Description: "URL pointing to an OPL file with the Keto namespace configuration. Conflicts with keto_namespaces because both replace the same configuration member.",
+			Description: "URL pointing to an OPL file with the Keto namespace configuration. Ory accepts either an OPL location or an inline namespace list, so this conflicts with keto_namespaces.",
 			Optional:    true,
 			Validators: []validator.String{
 				stringvalidator.ConflictsWith(path.MatchRoot("keto_namespaces")),

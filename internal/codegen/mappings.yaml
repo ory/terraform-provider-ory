@@ -1265,7 +1265,7 @@ attributes:
     # The spec path is used for reads; writes replace the whole namespaces
     # member because a fresh project stores it as an array.
     custom_patch: true
-    description: "URL pointing to an OPL file with the Keto namespace configuration. Conflicts with keto_namespaces because both replace the same configuration member."
+    description: "URL pointing to an OPL file with the Keto namespace configuration. Ory accepts either an OPL location or an inline namespace list, so this conflicts with keto_namespaces."
     validators:
       conflicts_with:
         - keto_namespaces
