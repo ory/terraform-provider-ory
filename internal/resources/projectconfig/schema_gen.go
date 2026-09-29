@@ -8,6 +8,7 @@ import (
 	"regexp"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
@@ -18,6 +19,7 @@ import (
 // Ensure imported packages are used.
 var (
 	_ = stringvalidator.OneOf
+	_ = path.MatchRoot
 	_ = booldefault.StaticBool
 	_ = int64default.StaticInt64
 	_ validator.String
@@ -982,8 +984,11 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			ElementType: types.StringType,
 		},
 		"keto_namespace_configuration": schema.StringAttribute{
-			Description: "URL pointing to an OPL file with the Keto namespace configuration.",
+			Description: "URL pointing to an OPL file with the Keto namespace configuration. Ory accepts either an OPL location or an inline namespace list, so this conflicts with keto_namespaces.",
 			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.ConflictsWith(path.MatchRoot("keto_namespaces")),
+			},
 		},
 		"keto_secrets_pagination": schema.ListAttribute{
 			Description: "Pagination encryption keys for the permission service.",

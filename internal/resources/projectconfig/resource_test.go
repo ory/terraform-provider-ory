@@ -4,6 +4,7 @@ package projectconfig_test
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"regexp"
 	"testing"
@@ -1142,6 +1143,40 @@ func TestAccProjectConfigResource_ketoStrictModeLocked(t *testing.T) {
 					resource.TestCheckResourceAttrSet("ory_project_config.locked", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.locked", "keto_feature_flags_strict_mode", "true"),
 				),
+			},
+		},
+	})
+}
+
+// A fresh project's namespaces value starts as an array. This exercises the
+// whole-member OPL patch and read-back without a preconfigured test project.
+func TestAccProjectConfigResource_ketoNamespaceConfigurationFreshProject(t *testing.T) {
+	acctest.RequireProjectTests(t)
+	projectName := fmt.Sprintf("%s-keto-opl-%d", acctest.TestProjectPrefix, time.Now().UnixNano())
+	oplURL := func(source string) string {
+		return "base64://" + base64.StdEncoding.EncodeToString([]byte(source))
+	}
+	const oplImport = "import { Namespace } from \"@ory/keto-namespace-types\"\n"
+	firstOPL := oplURL(oplImport + "class Document implements Namespace {}\n")
+	updatedOPL := oplURL(oplImport + "class Document implements Namespace {}\nclass Folder implements Namespace {}\n")
+	config := func(opl string) string {
+		return acctest.LoadTestConfig(t, "testdata/keto_namespace_configuration_fresh_project.tf.tmpl", map[string]string{
+			"Name": projectName,
+			"OPL":  opl,
+		})
+	}
+
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: config(firstOPL),
+				Check:  resource.TestCheckResourceAttr("ory_project_config.opl", "keto_namespace_configuration", firstOPL),
+			},
+			{
+				Config: config(updatedOPL),
+				Check:  resource.TestCheckResourceAttr("ory_project_config.opl", "keto_namespace_configuration", updatedOPL),
 			},
 		},
 	})

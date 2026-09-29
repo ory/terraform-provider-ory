@@ -20,6 +20,31 @@ func findPatch(patches []ory.JsonPatch, path string) *ory.JsonPatch {
 	return nil
 }
 
+func TestBuildPatches_KetoNamespaceConfiguration(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		KetoNamespaceConfiguration: types.StringValue("base64://b3Bs"),
+	}
+
+	patches := (&ProjectConfigResource{}).buildPatches(context.Background(), plan)
+	require.Equal(t, []ory.JsonPatch{{
+		Op:   "add",
+		Path: "/services/permission/config/namespaces",
+		Value: map[string]interface{}{
+			"location": "base64://b3Bs",
+		},
+	}}, patches)
+	assert.Nil(t, findPatch(patches, "/services/permission/config/namespaces/location"))
+}
+
+func TestBuildPatches_NullKetoNamespaceConfiguration(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		KetoNamespaceConfiguration: types.StringNull(),
+	}
+
+	patches := (&ProjectConfigResource{}).buildPatches(context.Background(), plan)
+	assert.Empty(t, patches)
+}
+
 func TestBuildPatches_EmptyDefaultReturnURL(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{

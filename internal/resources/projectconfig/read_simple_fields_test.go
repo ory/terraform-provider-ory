@@ -23,6 +23,37 @@ func identityProject(config map[string]interface{}) *ory.Project {
 	}
 }
 
+func TestReadSimpleFields_KetoNamespaceConfiguration(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		namespaces interface{}
+		want       string
+	}{
+		{"OPL object", map[string]interface{}{"location": "base64://bmV3"}, "base64://bmV3"},
+		{"namespace array", []interface{}{}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			project := &ory.Project{Services: ory.ProjectServices{
+				Permission: &ory.ProjectServicePermission{Config: map[string]interface{}{
+					"namespaces": tc.namespaces,
+				}},
+			}}
+			state := &ProjectConfigResourceModel{
+				KetoNamespaceConfiguration: types.StringValue("base64://b2xk"),
+			}
+
+			readSimpleFields(context.Background(), project, state)
+			if tc.want == "" {
+				if !state.KetoNamespaceConfiguration.IsNull() {
+					t.Fatalf("keto_namespace_configuration = %q, want null", state.KetoNamespaceConfiguration.ValueString())
+				}
+			} else if got := state.KetoNamespaceConfiguration.ValueString(); got != tc.want {
+				t.Fatalf("keto_namespace_configuration = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // oidcConfig nests value under selfservice.methods.oidc.config using key, or
 // produces an OIDC config with no keys at all when key is empty.
 func oidcConfig(key string, value interface{}) map[string]interface{} {

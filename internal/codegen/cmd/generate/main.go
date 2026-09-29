@@ -30,6 +30,7 @@ type Attribute struct {
 	GoField         string `yaml:"go_field"`
 	Type            string `yaml:"type"` // string, bool, int64, list_string, map_string
 	PatchPath       string `yaml:"patch_path"`
+	CustomPatch     bool   `yaml:"custom_patch"`     // keep generated schema/read entries; write through resource.go
 	OpenAPIProperty string `yaml:"openapi_property"` // maps to normalizedProjectRevision property name
 	Description     string `yaml:"description"`
 	Computed        bool   `yaml:"computed"`
@@ -112,9 +113,10 @@ type BoolEnum struct {
 }
 
 type Validator struct {
-	OneOf        []string `yaml:"one_of"`
-	Regex        string   `yaml:"regex"`
-	RegexMessage string   `yaml:"regex_message"`
+	OneOf         []string `yaml:"one_of"`
+	Regex         string   `yaml:"regex"`
+	RegexMessage  string   `yaml:"regex_message"`
+	ConflictsWith []string `yaml:"conflicts_with"`
 }
 
 type Mappings struct {
@@ -417,6 +419,12 @@ func main() {
 		}
 		if a.StorageURLContent && a.Type != typeString {
 			log.Fatalf("attribute %q: storage_url_content is only supported for type string, got %q", a.Name, a.Type)
+		}
+		if a.CustomPatch && a.Type != typeString {
+			log.Fatalf("attribute %q: custom_patch is only supported for type string, got %q", a.Name, a.Type)
+		}
+		if a.Validators != nil && len(a.Validators.ConflictsWith) > 0 && a.Type != typeString {
+			log.Fatalf("attribute %q: validators.conflicts_with is only supported for type string, got %q", a.Name, a.Type)
 		}
 		if a.StorageURLContent && a.WriteOnly {
 			log.Fatalf("attribute %q: storage_url_content and write_only are mutually exclusive (write_only removes the attribute from the read path)", a.Name)
@@ -1167,6 +1175,13 @@ func buildSchemaAttr(a Attribute) string {
 
 	if a.Validators != nil && a.Type == typeString {
 		var validatorExprs []string
+		if len(a.Validators.ConflictsWith) > 0 {
+			paths := make([]string, len(a.Validators.ConflictsWith))
+			for i, name := range a.Validators.ConflictsWith {
+				paths[i] = fmt.Sprintf("path.MatchRoot(%q)", name)
+			}
+			validatorExprs = append(validatorExprs, fmt.Sprintf("stringvalidator.ConflictsWith(%s)", strings.Join(paths, ", ")))
+		}
 		if len(a.Validators.OneOf) > 0 {
 			quoted := make([]string, len(a.Validators.OneOf))
 			for i, s := range a.Validators.OneOf {
@@ -1243,6 +1258,7 @@ import (
 {{- end }}
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
@@ -1253,6 +1269,7 @@ import (
 // Ensure imported packages are used.
 var (
 	_ = stringvalidator.OneOf
+	_ = path.MatchRoot
 	_ = booldefault.StaticBool
 	_ = int64default.StaticInt64
 	_ validator.String
@@ -1333,7 +1350,9 @@ type MapStringPatchEntry struct {
 func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEntry {
 	return []StringPatchEntry{
 {{- range filterType .Attributes "string" }}
+{{- if not .CustomPatch }}
 		{&plan.{{ .GoField }}, {{ if .DeprecatedGoField }}&plan.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, {{ printf "%q" .PatchPath }}},
+{{- end }}
 {{- end }}
 	}
 }
