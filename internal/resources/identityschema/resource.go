@@ -596,14 +596,55 @@ func (r *IdentitySchemaResource) Update(ctx context.Context, req resource.Update
 }
 
 func (r *IdentitySchemaResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	// Ory Network does not support deleting identity schemas.
-	// See: https://github.com/ory/network/issues/262
-	//
-	// We just remove it from Terraform state. The schema will remain in Ory.
-	resp.Diagnostics.AddWarning(
-		"Schema Not Deleted",
-		"Ory Network does not support deleting identity schemas. The schema has been removed from Terraform state but still exists in Ory Network.",
-	)
+	var state IdentitySchemaResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	projectID := helpers.ResolveProjectID(state.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	schemas, err := r.getSchemas(ctx, projectID)
+	if err != nil {
+		resp.Diagnostics.AddError("Error Getting Schemas", err.Error())
+		return
+	}
+
+	// Locate the schema in the project's identity schema list, trying every
+	// candidate ID the resource may be known by (stored hash ID, the
+	// user-provided ID, and a URL-content match).
+	index := -1
+	for _, id := range r.collectCandidateIDs(schemas, state.ID.ValueString(), state.SchemaID.ValueString(), state.Schema) {
+		if idx := r.findSchemaIndex(schemas, id); idx >= 0 {
+			index = idx
+			break
+		}
+	}
+
+	// The schema is already absent from the project configuration (e.g. removed
+	// out of band). Deletion is idempotent, so treat this as success.
+	if index < 0 {
+		return
+	}
+
+	patches := []ory.JsonPatch{{
+		Op:   "remove",
+		Path: fmt.Sprintf("/services/identity/config/identity/schemas/%d", index),
+	}}
+
+	if _, err := r.client.PatchProject(ctx, projectID, patches); err != nil {
+		resp.Diagnostics.AddError(
+			"Error Deleting Identity Schema",
+			"Could not remove the identity schema from the project.\n\n"+
+				"If existing identities still use this schema, Ory Network refuses the "+
+				"removal with a 409 Conflict. Remove or migrate those identities first, "+
+				"then retry. If this schema is the project's default, set a different "+
+				"default schema before removing it.\n\n"+err.Error())
+		return
+	}
 }
 
 // collectCandidateIDs returns a deduplicated list of schema IDs that could be our schema.
