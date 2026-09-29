@@ -693,7 +693,7 @@ terraform plan  # verify no changes
 - `identity_secrets_default` (List of String, Sensitive) Default signing secrets for the identity service.
 - `identity_secrets_pagination` (List of String, Sensitive) Pagination encryption keys for the identity service.
 - `keto_feature_flags_strict_mode` (Boolean) Enable Ory Keto strict mode. In strict mode, relation tuples for permits are not checked directly (only the OPL rewrites apply) and subject sets are only expanded when declared with SubjectSet<...>, which makes permission checks faster. New projects are created with strict mode enabled and locked; on a locked project the API accepts a write but keeps the stored value, so only projects created before the lock can change it. The provider fails the apply with an error instead of sending a value that the lock would discard.
-- `keto_namespace_configuration` (String) URL pointing to an OPL file with the Keto namespace configuration.
+- `keto_namespace_configuration` (String) URL pointing to an OPL file with the Keto namespace configuration. Conflicts with keto_namespaces because both replace the same configuration member.
 - `keto_namespaces` (List of String) List of Keto namespace names to configure for Ory Permissions. Namespaces define the types of resources in your permission model (e.g., 'documents', 'folders'). Each namespace name must be unique.
 - `keto_secrets_pagination` (List of String, Sensitive) Pagination encryption keys for the permission service.
 - `login_style` (String, Deprecated) Login flow style: 'unified' (default) shows all auth methods on one screen, 'identifier_first' collects the identifier before showing auth methods.

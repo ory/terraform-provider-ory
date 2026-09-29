@@ -1262,7 +1262,13 @@ attributes:
     go_field: KetoNamespaceConfiguration
     type: string
     openapi_property: keto_namespace_configuration
-    description: "URL pointing to an OPL file with the Keto namespace configuration."
+    # The spec path is used for reads; writes replace the whole namespaces
+    # member because a fresh project stores it as an array.
+    custom_patch: true
+    description: "URL pointing to an OPL file with the Keto namespace configuration. Conflicts with keto_namespaces because both replace the same configuration member."
+    validators:
+      conflicts_with:
+        - keto_namespaces
 
   - name: keto_secrets_pagination
     go_field: KetoSecretsPagination
@@ -1638,4 +1644,3 @@ attributes:
     type: bool
     openapi_property: kratos_feature_flags_enforce_identity_schema_guards
     description: "Enforces the identity schema guards. If enabled, an identity schema that does not pass the identity schema guards is rejected. If disabled, the result is logged and the schema is used."
-

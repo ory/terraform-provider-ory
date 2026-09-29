@@ -153,7 +153,6 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.SelfserviceMethodsPasskeyConfigRPID, nil, "/services/identity/config/selfservice/methods/passkey/config/rp/id"},
 		{&plan.SelfserviceMethodsWebAuthnConfigRPIcon, nil, "/services/identity/config/selfservice/methods/webauthn/config/rp/icon"},
 		{&plan.AccountExperienceLocaleBehavior, nil, "/services/account_experience/config/locale_behavior"},
-		{&plan.KetoNamespaceConfiguration, nil, "/services/permission/config/namespaces/location"},
 		{&plan.PreviewDefaultReadConsistencyLevel, nil, "/services/identity/config/preview/default_read_consistency_level"},
 		{&plan.SelfserviceMethodsCaptchaConfigCFTurnstileSecret, nil, "/services/identity/config/selfservice/methods/captcha/config/cf_turnstile/secret"},
 		{&plan.SelfserviceMethodsCaptchaConfigCFTurnstileSitekey, nil, "/services/identity/config/selfservice/methods/captcha/config/cf_turnstile/sitekey"},

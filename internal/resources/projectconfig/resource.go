@@ -1094,8 +1094,17 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 	// written as data URIs. See account_experience.go.
 	patches = append(patches, accountExperienceImagePatches(plan)...)
 
-	// Keto/Permissions Namespaces
-	if !plan.KetoNamespaces.IsNull() && !plan.KetoNamespaces.IsUnknown() {
+	// Both OPL and the namespace list replace the same member. The schema
+	// rejects configuring both, so at most one whole-member patch is sent.
+	if !plan.KetoNamespaceConfiguration.IsNull() && !plan.KetoNamespaceConfiguration.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:   "add",
+			Path: "/services/permission/config/namespaces",
+			Value: map[string]interface{}{
+				"location": plan.KetoNamespaceConfiguration.ValueString(),
+			},
+		})
+	} else if !plan.KetoNamespaces.IsNull() && !plan.KetoNamespaces.IsUnknown() {
 		var namespaceNames []string
 		plan.KetoNamespaces.ElementsAs(ctx, &namespaceNames, false)
 		namespaces := make([]map[string]interface{}, len(namespaceNames))
