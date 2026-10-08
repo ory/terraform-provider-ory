@@ -776,6 +776,8 @@ func (c *OryClient) requireConsoleClient(operation string) error {
 			"requires a workspace API key (ORY_WORKSPACE_API_KEY, ory_wak_...) to perform. "+
 			"A project API key (ory_pat_...) can manage project data such as identities and "+
 			"OAuth2 clients, but cannot read or change project configuration. "+
+			"A Console user access token from `ory auth` is also accepted in place of the "+
+			"workspace key; access is then limited by the user's project role. "+
 			"To limit which projects a workspace key may touch, set allowed_project_ids. "+
 			"See https://www.ory.com/docs/guides/manage-project-via-api",
 			operation, ErrConsoleClientNotConfigured)

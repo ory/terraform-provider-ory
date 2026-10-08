@@ -139,6 +139,21 @@ Project configuration and project-level resources are managed through the Ory Co
 
 As a result, `ory_project_config`, `ory_action`, `ory_email_template`, `ory_social_provider`, `ory_saml_provider`, `ory_scim_client`, `ory_identity_schema`, `ory_custom_domain`, `ory_event_stream`, `ory_organization`, and `ory_project_api_key` all require a workspace API key. For more detail, see [Manage Ory Network projects through the API](https://www.ory.com/docs/guides/manage-project-via-api).
 
+## Managing a project without a workspace API key
+
+The Console API also accepts the access token of a signed-in Console user, which is what the Ory CLI uses after `ory auth`. Access is then governed by the user's [project role](https://www.ory.com/docs/console/roles-and-permissions): a project **Developer** can read and write the project configuration, identity schemas, the Account Experience, custom domains, event streams, and project API keys, with no access to the workspace or to other projects.
+
+This is useful when developers should manage their own project but must not hold a workspace API key. Have a workspace owner create the project and add the developer as a project Developer. The developer then signs in with the Ory CLI and passes the resulting access token where the provider expects the workspace API key:
+
+```bash
+ory auth                      # browser login, stores the token in ~/.ory-cloud.json
+ory list projects >/dev/null  # any CLI call refreshes an expired token
+export ORY_WORKSPACE_API_KEY="$(jq -r .access_token.access_token ~/.ory-cloud.json)"
+terraform apply
+```
+
+The token expires after about an hour and is refreshed by any `ory` CLI command, so this suits local runs. CI pipelines should keep using a workspace API key stored as a secret, bounded with `allowed_project_ids`.
+
 ## Limiting blast radius with `allowed_project_ids`
 
 A workspace API key can read and modify every project in the workspace, including production. To reduce the risk of an accidental change to the wrong project, set `allowed_project_ids` to the project IDs this configuration is permitted to touch. When set, the provider refuses any project operation whose target project ID is not in the list, before any request is sent to Ory.
