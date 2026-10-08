@@ -6,6 +6,12 @@ resource "ory_project_config" "basic" {
   session_lifespan                                        = "720h0m0s" # 30 days
 }
 
+# Ory Permission Language namespaces. This replaces keto_namespaces: configure
+# one representation or the other for a project.
+resource "ory_project_config" "with_opl" {
+  keto_namespace_configuration = "base64://${base64encode(file("${path.module}/namespaces.ts"))}"
+}
+
 # Project configuration with a write-only (ephemeral) SMTP connection URI from Vault.
 # smtp_connection_uri_wo is never stored in Terraform state or plan (Terraform 1.11+).
 # Bump smtp_connection_uri_wo_version whenever the secret rotates so Terraform re-sends it.

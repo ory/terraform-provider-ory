@@ -30,6 +30,10 @@ This resource supports drift detection — `terraform plan` will detect changes 
 
 {{ tffile "examples/resources/ory_project_config/resource.tf" }}
 
+## OPL Namespace Configuration
+
+Set `keto_namespace_configuration` to a `base64://` value containing an Ory Permission Language file, or set `keto_namespaces` to an inline namespace list. These attributes replace the same API member and cannot be configured together. The API stores inline OPL at a hash-named storage URL; the provider compares its content hash with the configured payload so an unchanged file produces an empty plan. After import, the first plan may show a one-time in-place update to apply the configured OPL value.
+
 ## Courier HTTP Request Body
 
 Set `courier_http_request_config_body` to a `base64://` value that carries the Jsonnet template inline. The Ory API rejects a plain Jsonnet string, and it rejects a URL outside its own storage:

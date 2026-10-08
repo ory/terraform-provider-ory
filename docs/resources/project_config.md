@@ -37,6 +37,12 @@ resource "ory_project_config" "basic" {
   session_lifespan                                        = "720h0m0s" # 30 days
 }
 
+# Ory Permission Language namespaces. This replaces keto_namespaces: configure
+# one representation or the other for a project.
+resource "ory_project_config" "with_opl" {
+  keto_namespace_configuration = "base64://${base64encode(file("${path.module}/namespaces.ts"))}"
+}
+
 # Project configuration with a write-only (ephemeral) SMTP connection URI from Vault.
 # smtp_connection_uri_wo is never stored in Terraform state or plan (Terraform 1.11+).
 # Bump smtp_connection_uri_wo_version whenever the secret rotates so Terraform re-sends it.
@@ -386,6 +392,10 @@ resource "ory_project_config" "sign_in_after_registration" {
   selfservice_flows_registration_after_password_hook_session = true
 }
 ```
+
+## OPL Namespace Configuration
+
+Set `keto_namespace_configuration` to a `base64://` value containing an Ory Permission Language file, or set `keto_namespaces` to an inline namespace list. These attributes replace the same API member and cannot be configured together. The API stores inline OPL at a hash-named storage URL; the provider compares its content hash with the configured payload so an unchanged file produces an empty plan. After import, the first plan may show a one-time in-place update to apply the configured OPL value.
 
 ## Courier HTTP Request Body
 
