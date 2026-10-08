@@ -133,11 +133,11 @@ terraform plan
 | `ory_identity`, `ory_oauth2_client`, `ory_relationship` | `project_api_key`, `project_slug` |
 | `ory_json_web_key_set` | `project_api_key`, `project_slug` |
 
-## Why project configuration requires a workspace API key
+## Why project configuration cannot use a project API key
 
-Project configuration and project-level resources are managed through the Ory Console API, which requires a **workspace API key** (`ory_wak_...`). A **project API key** (`ory_pat_...`) authenticates project *data* operations such as identities, OAuth2 clients, and relationships, but is not authorized to read or change project *configuration*. This is a property of the Ory Network API, not the provider: the Console endpoints reject a project API key with `403 Forbidden`.
+Project configuration and project-level resources are managed through the Ory Console API, which accepts a **workspace API key** (`ory_wak_...`) or the access token of a signed-in Console user (see the next section). A **project API key** (`ory_pat_...`) authenticates project *data* operations such as identities, OAuth2 clients, and relationships, but is not authorized to read or change project *configuration*. This is a property of the Ory Network API, not the provider: the Console endpoints reject a project API key with `403 Forbidden`.
 
-As a result, `ory_project_config`, `ory_action`, `ory_email_template`, `ory_social_provider`, `ory_saml_provider`, `ory_scim_client`, `ory_identity_schema`, `ory_custom_domain`, `ory_event_stream`, `ory_organization`, and `ory_project_api_key` all require a workspace API key. For more detail, see [Manage Ory Network projects through the API](https://www.ory.com/docs/guides/manage-project-via-api).
+As a result, `ory_project_config`, `ory_action`, `ory_email_template`, `ory_social_provider`, `ory_saml_provider`, `ory_scim_client`, `ory_identity_schema`, `ory_custom_domain`, `ory_event_stream`, `ory_organization`, and `ory_project_api_key` all need one of those Console credentials; a project API key is not enough. For more detail, see [Manage Ory Network projects through the API](https://www.ory.com/docs/guides/manage-project-via-api).
 
 ## Managing a project without a workspace API key
 
