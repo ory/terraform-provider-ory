@@ -4,6 +4,6 @@ resource "ory_project" "opl" {
 }
 
 resource "ory_project_config" "opl" {
-  project_id                   = ory_project.opl.id
-  keto_namespace_configuration = "[[ .OPL ]]"
+  project_id = ory_project.opl.id
+  [[ .NamespaceConfig ]]
 }

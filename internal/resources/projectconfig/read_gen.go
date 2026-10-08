@@ -728,7 +728,7 @@ func oauth2ListStringReadEntries(state *ProjectConfigResourceModel) []ListString
 
 func permissionStringReadEntries(state *ProjectConfigResourceModel) []StringReadEntry {
 	return []StringReadEntry{
-		{&state.KetoNamespaceConfiguration, nil, []string{"namespaces", "location"}, false, false, false},
+		{&state.KetoNamespaceConfiguration, nil, []string{"namespaces", "location"}, false, false, true},
 	}
 }
 

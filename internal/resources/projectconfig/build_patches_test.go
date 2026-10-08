@@ -33,7 +33,22 @@ func TestBuildPatches_KetoNamespaceConfiguration(t *testing.T) {
 			"location": "base64://b3Bs",
 		},
 	}}, patches)
-	assert.Nil(t, findPatch(patches, "/services/permission/config/namespaces/location"))
+}
+
+func TestBuildPatches_KetoNamespaces(t *testing.T) {
+	namespaces, diags := types.ListValueFrom(context.Background(), types.StringType, []string{"Document"})
+	require.False(t, diags.HasError())
+	plan := &ProjectConfigResourceModel{KetoNamespaces: namespaces}
+
+	patches := (&ProjectConfigResource{}).buildPatches(context.Background(), plan)
+	require.Equal(t, []ory.JsonPatch{{
+		Op:   "add",
+		Path: "/services/permission/config/namespaces",
+		Value: []map[string]interface{}{{
+			"name": "Document",
+			"id":   1,
+		}},
+	}}, patches)
 }
 
 func TestBuildPatches_NullKetoNamespaceConfiguration(t *testing.T) {

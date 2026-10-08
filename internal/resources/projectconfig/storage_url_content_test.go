@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	ory "github.com/ory/client-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -187,6 +188,27 @@ func TestReadSimpleFields_ResolvesCourierBodyStorageURL(t *testing.T) {
 	assert.Zero(t, *calls)
 }
 
+// The permission service stores OPL at a hash-named .txt URL. A refresh must
+// preserve the configured inline value when the stored content has not changed.
+func TestReadSimpleFields_ResolvesKetoNamespaceStorageURL(t *testing.T) {
+	configured := base64Value(jsonnetPayload)
+	calls := stubFetcher(t, "", errors.New("a matching hash must not download OPL"))
+	url := strings.TrimSuffix(storageURL(jsonnetPayload), ".jsonnet") + ".txt"
+	state := &ProjectConfigResourceModel{
+		KetoNamespaceConfiguration: types.StringValue(configured),
+	}
+	project := &ory.Project{Services: ory.ProjectServices{
+		Permission: &ory.ProjectServicePermission{Config: map[string]interface{}{
+			"namespaces": map[string]interface{}{"location": url},
+		}},
+	}}
+
+	readSimpleFields(context.Background(), project, state)
+
+	assert.Equal(t, configured, state.KetoNamespaceConfiguration.ValueString())
+	assert.Zero(t, *calls)
+}
+
 func TestReadSimpleFields_NullsCourierBodyRemovedOutOfBand(t *testing.T) {
 	state := &ProjectConfigResourceModel{
 		CourierHTTPRequestConfigBody: types.StringValue(base64Value(jsonnetPayload)),
@@ -217,12 +239,20 @@ func TestGeneratedReadEntries_StorageURLFlag(t *testing.T) {
 	require.Equal(t, []string{"courier.http.request_config.body"}, storageURLKeys,
 		"unexpected set of storage-URL attributes; update this test when mappings.yaml changes")
 
+	var permissionKeys []string
+	for _, e := range permissionStringReadEntries(state) {
+		if e.StorageURL {
+			permissionKeys = append(permissionKeys, strings.Join(e.Keys, "."))
+		}
+	}
+	require.Equal(t, []string{"namespaces.location"}, permissionKeys,
+		"keto_namespace_configuration must resolve storage URLs")
+
 	// No other service reports storage-backed content today. A new one showing up
 	// here means the mapping changed and the resolver behavior needs a look.
 	for name, entries := range map[string][]StringReadEntry{
 		"oauth2":             oauth2StringReadEntries(state),
 		"account_experience": account_experienceStringReadEntries(state),
-		"permission":         permissionStringReadEntries(state),
 	} {
 		for _, e := range entries {
 			assert.False(t, e.StorageURL, fmt.Sprintf("%s has an unexpected storage-URL attribute", name))
