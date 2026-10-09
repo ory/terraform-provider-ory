@@ -2,11 +2,13 @@ package projectconfig
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -108,20 +110,49 @@ func TestImportProjectConfig_LegacyIDDoesNotAcquireFields(t *testing.T) {
 	assert.Equal(t, types.StringValue("proj-1"), state.ProjectID)
 	assert.True(t, state.SessionLifespan.IsNull())
 	assert.True(t, state.CorsEnabled.IsNull())
-	assert.NotEmpty(t, resp.Diagnostics.Warnings())
+	// Without a read there is no live value to compare, so the default
+	// hazard is always worth a warning on this path.
+	assert.Contains(t, corsWarning(resp.Diagnostics), "disables public CORS")
+}
+
+// corsWarning returns the detail of the CORS default warning, or "" when the
+// diagnostics carry none.
+func corsWarning(diags diag.Diagnostics) string {
+	for _, warning := range diags.Warnings() {
+		if warning.Summary() == "Project Config Import Leaves CORS Defaulted" {
+			return warning.Detail()
+		}
+	}
+	return ""
 }
 
 func TestImportProjectConfig_WarnsForUnselectedCORS(t *testing.T) {
-	srv := jsonServer(t, http.StatusOK, strings.Replace(importProjectDocument, `"enabled":false`, `"enabled":true`, 1))
-	for _, selection := range []string{"session_lifespan", "session_lifespan,cors_enabled"} {
-		t.Run(selection, func(t *testing.T) {
-			resp := importConfig(t, projectConfigResourceForServer(t, srv.URL), "proj-1:"+selection)
+	for _, tc := range []struct {
+		selection   string
+		liveEnabled bool
+		wantWarning bool
+	}{
+		{selection: "session_lifespan", liveEnabled: true, wantWarning: true},
+		{selection: "session_lifespan", liveEnabled: false, wantWarning: false}, // the default matches the project
+		{selection: "session_lifespan,cors_enabled", liveEnabled: true, wantWarning: false},
+	} {
+		t.Run(fmt.Sprintf("%s/live=%t", tc.selection, tc.liveEnabled), func(t *testing.T) {
+			document := importProjectDocument
+			if tc.liveEnabled {
+				document = strings.Replace(document, `"enabled":false`, `"enabled":true`, 1)
+			}
+			srv := jsonServer(t, http.StatusOK, document)
+			resp := importConfig(t, projectConfigResourceForServer(t, srv.URL), "proj-1:"+tc.selection)
 			require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
-			if selection == "session_lifespan" {
-				require.NotEmpty(t, resp.Diagnostics.Warnings(), "omitting CORS needs guidance about its default")
-				assert.Contains(t, resp.Diagnostics.Warnings()[0].Detail(), "cors_enabled")
+			if tc.wantWarning {
+				assert.Contains(t, corsWarning(resp.Diagnostics), "cors_enabled", "omitting CORS on a project that has it enabled needs guidance about the default")
 			} else {
-				assert.Empty(t, resp.Diagnostics.Warnings(), "selected CORS must not trigger omission guidance")
+				assert.Empty(t, corsWarning(resp.Diagnostics))
+			}
+			if !strings.Contains(tc.selection, "cors_enabled") {
+				var state ProjectConfigResourceModel
+				require.False(t, resp.State.Get(context.Background(), &state).HasError())
+				assert.True(t, state.CorsEnabled.IsNull(), "the value read for the check must not enter state")
 			}
 		})
 	}

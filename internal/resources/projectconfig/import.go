@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -66,6 +67,14 @@ func (r *ProjectConfigResource) importSelectedFields(ctx context.Context, projec
 		}
 	}
 
+	// cors_enabled is read even when it was not selected, so the warning
+	// below can be limited to projects where its default would change
+	// something. It is returned to null afterwards.
+	_, selectedCORS := selected["cors_enabled"]
+	if !selectedCORS {
+		selected["cors_enabled"] = types.BoolUnknown()
+	}
+
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), projectID)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), projectID)...)
 	for name, value := range selected {
@@ -97,11 +106,24 @@ func (r *ProjectConfigResource) importSelectedFields(ctx context.Context, projec
 			resp.Diagnostics.AddError("Project Config Import Field Unavailable", fmt.Sprintf("The provider could not read a value for %q. The API may have omitted the value, the attribute may have no reader, or a read request may have failed. If you selected a setting and its deprecated alias, keep one of them. Check the provider logs and retry if a request failed. Otherwise, omit this field from the selection. No default has been substituted.", name))
 		}
 	}
-	if !resp.Diagnostics.HasError() {
-		resp.State = read.State
-		if _, selectedCORS := selected["cors_enabled"]; !selectedCORS {
-			resp.Diagnostics.AddWarning("Project Config Import Leaves CORS Defaulted",
-				"cors_enabled was not selected and has a provider default of false. If your configuration also omits it, the next plan will propose false, and applying that plan can disable public CORS. To adopt its current value, include cors_enabled in both your configuration and import selection.")
-		}
+	if resp.Diagnostics.HasError() {
+		return
 	}
+	if !selectedCORS {
+		var live types.Bool
+		resp.Diagnostics.Append(read.State.GetAttribute(ctx, path.Root("cors_enabled"), &live)...)
+		if live.IsUnknown() || live.IsNull() || live.ValueBool() {
+			warnCORSDefault(&resp.Diagnostics)
+		}
+		resp.Diagnostics.Append(read.State.SetAttribute(ctx, path.Root("cors_enabled"), types.BoolNull())...)
+	}
+	resp.State = read.State
+}
+
+// warnCORSDefault explains the one schema default that can change a project
+// after import. Both import forms leave cors_enabled null unless it was
+// selected, and the default of false then materializes on the next plan.
+func warnCORSDefault(diags *diag.Diagnostics) {
+	diags.AddWarning("Project Config Import Leaves CORS Defaulted",
+		"cors_enabled was not imported and has a provider default of false. If your configuration also omits it, the next plan proposes false, and applying that plan disables public CORS. Set cors_enabled to the project's current value in your configuration, or import it by field selection: terraform import ory_project_config.main '<project-id>:cors_enabled,...'.")
 }
