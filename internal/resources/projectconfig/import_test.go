@@ -213,7 +213,6 @@ func TestImportProjectConfig_RejectsUnsafeSelectionBeforeReading(t *testing.T) {
 		"proj-1:smtp_connection_uri_wo", "proj-1:keto_namespaces",
 		"proj-1:session_tokenizer_templates",
 		"proj-1:courier_http_request_config_body",
-		"proj-1:selfservice_flows_registration_after_password_hook_session",
 		"proj-1:mfa_enforcement",
 		"proj-1:smtp_connection_uri_wo_version",
 	} {
@@ -257,6 +256,53 @@ func TestImportProjectConfig_DoesNotInventUnreadableValues(t *testing.T) {
 				assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), `could not read a value for "password_min_length"`)
 				assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), tc.guidance)
 			}
+		})
+	}
+}
+
+// withFlowHooks returns the import document with the given JSON value at
+// selfservice.flows.<flow>.after.<method>.hooks.
+func withFlowHooks(flow, method, hooks string) string {
+	return strings.Replace(importProjectDocument, `"flows":{`, `"flows":{"`+flow+`":{"after":{"`+method+`":{"hooks":`+hooks+`}}},`, 1)
+}
+
+// Hook toggles read true when the hook is present and false when the hook or
+// its flow block is absent, exactly as Read resolves them after an apply. A
+// hooks value that is not a list cannot be read and must fail the import
+// instead of importing as false.
+func TestImportProjectConfig_HookAttributes(t *testing.T) {
+	const session = "selfservice_flows_registration_after_password_hook_session"
+	for _, tc := range []struct {
+		name     string
+		document string
+		field    string
+		want     bool
+		wantErr  bool
+	}{
+		{name: "present", document: withFlowHooks("registration", "password", `[{"hook":"organization"},{"hook":"session"}]`), field: session, want: true},
+		{name: "absent hook", document: withFlowHooks("registration", "password", `[{"hook":"organization"}]`), field: session, want: false},
+		{name: "absent flow", document: importProjectDocument, field: session, want: false},
+		{name: "not a list", document: withFlowHooks("registration", "password", `"unreadable"`), field: session, wantErr: true},
+		{name: "object", document: withFlowHooks("registration", "password", `{}`), field: session, wantErr: true},
+		{name: "config-bearing hook", document: withFlowHooks("settings", "profile", `[{"hook":"notify_previous_addresses","config":{"recipients":"all"}}]`), field: "selfservice_flows_settings_after_profile_hook_notify_previous_addresses", want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := jsonServer(t, http.StatusOK, tc.document)
+			resp := importConfig(t, projectConfigResourceForServer(t, srv.URL), "proj-1:"+tc.field)
+			if tc.wantErr {
+				require.True(t, resp.Diagnostics.HasError(), "an unreadable hook list must not import as false")
+				assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), tc.field)
+				return
+			}
+			require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+			var got types.Bool
+			require.False(t, resp.State.GetAttribute(context.Background(), path.Root(tc.field), &got).HasError())
+			assert.Equal(t, types.BoolValue(tc.want), got)
+			// Only the selected toggle enters state: the recipient scope of a
+			// config-bearing hook stays unmanaged unless it is selected too.
+			var state ProjectConfigResourceModel
+			require.False(t, resp.State.Get(context.Background(), &state).HasError())
+			assert.True(t, state.SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddressesRecipients.IsNull())
 		})
 	}
 }

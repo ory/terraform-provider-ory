@@ -457,7 +457,7 @@ resource "ory_project_config" "main" {
 
 Only the listed fields enter state. Import uses reads only. An unset or unreadable selected value fails the whole import.
 
-Select readable, non-sensitive strings, booleans, or integers. Collections, nested objects, secrets, fields derived from hook lists, and the courier HTTP request body are not supported by this import form. The courier body reader returns a storage URL without recovering the inline payload. For renamed fields, select either the current name or its deprecated alias, never both.
+Select readable, non-sensitive strings, booleans, or integers, including the hook toggles such as `selfservice_flows_registration_after_password_hook_session`, which read as true when the hook is present and false when it is absent. Collections, nested objects, secrets, and the courier HTTP request body are not supported by this import form. The courier body reader returns a storage URL without recovering the inline payload. For renamed fields, select either the current name or its deprecated alias, never both.
 
 Run a normal plan after import. It can still propose changes for configured fields omitted from the selection, provider defaults, or differences from the live values. Import does not improve the resource's existing drift coverage.
 

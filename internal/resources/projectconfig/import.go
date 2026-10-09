@@ -36,11 +36,6 @@ func (r *ProjectConfigResource) importSelectedFields(ctx context.Context, projec
 			resp.Diagnostics.AddError("Duplicate Project Config Import Field", fmt.Sprintf("%q is listed more than once.", name))
 			return
 		}
-		// Hook readers cannot distinguish malformed lists from absent hooks.
-		if strings.HasPrefix(name, "selfservice_flows_") && strings.Contains(name, "_hook_") {
-			resp.Diagnostics.AddError("Unsupported Project Config Import Field", fmt.Sprintf("%q is derived from a hook list and cannot be imported by field selection.", name))
-			return
-		}
 		if attribute.IsSensitive() || attribute.IsWriteOnly() {
 			resp.Diagnostics.AddError("Unsupported Project Config Import Field", fmt.Sprintf("%q is sensitive or write-only and cannot be imported by field selection.", name))
 			return
