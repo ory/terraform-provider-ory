@@ -576,7 +576,9 @@ Import using the project ID:
 terraform import ory_project_config.main <project-id>
 ` + "```" + `
 
-### Import selected scalar settings without an apply
+Either form leaves cors_enabled null unless it is selected. Its provider default of false then applies on the next plan, and applying that plan disables public CORS on a project that has it enabled. Set cors_enabled in your configuration, or select it on import. The provider warns about this on import; the field-selection form only does so when public CORS is currently enabled.
+
+### Import selected settings without an apply
 
 A project-ID-only import leaves configuration fields unset. To read existing values into state during import, append a comma-separated list of attributes:
 
@@ -596,9 +598,9 @@ resource "ory_project_config" "main" {
 
 Only the listed fields enter state. Import uses reads only. An unset or unreadable selected value fails the whole import.
 
-Select readable, non-sensitive strings, booleans, or integers. Collections, nested objects, secrets, fields derived from hook lists, and the courier HTTP request body are not supported by this import form. The courier body reader returns a storage URL without recovering the inline payload. For renamed fields, select either the current name or its deprecated alias, never both.
+Select readable, non-sensitive strings, booleans, integers, lists of strings, or maps of strings, including the hook toggles such as ` + "`" + `selfservice_flows_registration_after_password_hook_session` + "`" + `, which read as true when the hook is present and false when it is absent. Nested objects, secrets, allowed_return_urls, and the courier HTTP request body are not supported by this import form. The server appends its own entries to allowed_return_urls and the provider filters them against your configuration, so there is no live baseline to adopt. The courier body reader returns a storage URL without recovering the inline payload. For renamed fields, select either the current name or its deprecated alias, never both.
 
-Run a normal plan after import. It can still propose changes for configured fields omitted from the selection, provider defaults, or differences from the live values. Include defaulted fields such as ` + "`" + `cors_enabled` + "`" + ` explicitly when establishing a baseline. If you omit cors_enabled from both the selection and configuration, a later apply can disable public CORS through its default. Import does not improve the resource's existing drift coverage.
+Run a normal plan after import. It can still propose changes for configured fields omitted from the selection, provider defaults, or differences from the live values. Import does not improve the resource's existing drift coverage.
 
 ### Avoiding "Forces Replacement" After Import
 
@@ -1536,9 +1538,12 @@ func buildHookPatches(plan *ProjectConfigResourceModel, currentProject *ory.Proj
 		pathKey := strings.Join(e.PathKeys, "/")
 		acc, ok := accumulators[pathKey]
 		if !ok {
+			// An unreadable list is replaced wholesale; the API never
+			// stores one, so there is nothing to preserve in it.
+			hooks, _ := readHookList(identityConfig, e.PathKeys)
 			acc = &accum{
 				pathKeys: e.PathKeys,
-				hooks:    readHookList(identityConfig, e.PathKeys),
+				hooks:    hooks,
 			}
 			accumulators[pathKey] = acc
 			order = append(order, pathKey)
@@ -1558,14 +1563,19 @@ func buildHookPatches(plan *ProjectConfigResourceModel, currentProject *ory.Proj
 }
 
 // readHookList extracts the hooks list at the given path from the identity
-// config map, returning an empty slice when the path or array is missing.
-func readHookList(identityConfig map[string]interface{}, pathKeys []string) []map[string]interface{} {
+// config map. A missing path or array reads as an empty list. The second
+// result is false when the path holds a value that is not a list: nothing
+// can be read from it, and callers must not mistake that for "no hooks".
+func readHookList(identityConfig map[string]interface{}, pathKeys []string) ([]map[string]interface{}, bool) {
 	keys := append([]string{}, pathKeys...)
 	keys = append(keys, "hooks")
 	raw := getNestedValue(identityConfig, keys...)
+	if raw == nil {
+		return nil, true
+	}
 	arr, ok := raw.([]interface{})
 	if !ok {
-		return nil
+		return nil, false
 	}
 	hooks := make([]map[string]interface{}, 0, len(arr))
 	for _, item := range arr {
@@ -1573,7 +1583,7 @@ func readHookList(identityConfig map[string]interface{}, pathKeys []string) []ma
 			hooks = append(hooks, m)
 		}
 	}
-	return hooks
+	return hooks, true
 }
 
 // setHookPresent returns a copy of hooks with the given hook name either
@@ -1619,21 +1629,23 @@ func hookMap(hookName string, config map[string]interface{}) map[string]interfac
 }
 
 // hookListContains reports whether the hooks list at the given path includes
-// the named hook.
-func hookListContains(identityConfig map[string]interface{}, pathKeys []string, hookName string) bool {
-	for _, h := range readHookList(identityConfig, pathKeys) {
+// the named hook. The second result is false when the list is unreadable.
+func hookListContains(identityConfig map[string]interface{}, pathKeys []string, hookName string) (bool, bool) {
+	hooks, ok := readHookList(identityConfig, pathKeys)
+	for _, h := range hooks {
 		if name, _ := h["hook"].(string); name == hookName {
-			return true
+			return true, ok
 		}
 	}
-	return false
+	return false, ok
 }
 
 // readHookConfig returns the "config" object of the named hook at the given
 // path, or nil when the hook is absent or carries no config. Ory omits the key
 // entirely when a hook runs with its defaults.
 func readHookConfig(identityConfig map[string]interface{}, pathKeys []string, hookName string) map[string]interface{} {
-	for _, h := range readHookList(identityConfig, pathKeys) {
+	hooks, _ := readHookList(identityConfig, pathKeys)
+	for _, h := range hooks {
 		if name, _ := h["hook"].(string); name != hookName {
 			continue
 		}
@@ -2054,7 +2066,14 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 			if e.Field.IsNull() {
 				continue
 			}
-			present := hookListContains(identityConfig, e.PathKeys, e.HookName)
+			present, ok := hookListContains(identityConfig, e.PathKeys, e.HookName)
+			if !ok {
+				// The hooks value is not a list, so presence cannot be
+				// determined. Keep the state value: an unknown one, set by
+				// a field-selected import, then fails the import instead
+				// of reading as false.
+				continue
+			}
 			e.Set(state, types.BoolValue(present))
 			if present && e.SetConfig != nil {
 				e.SetConfig(state, readHookConfig(identityConfig, e.PathKeys, e.HookName))
@@ -2432,4 +2451,5 @@ func (r *ProjectConfigResource) ImportState(ctx context.Context, req resource.Im
 			"    # project_id inherits from provider\n"+
 			"  }\n\n"+
 			"If you see 'project_id forces replacement', the project_id in your config doesn't match the imported project.")
+	warnCORSDefault(&resp.Diagnostics)
 }

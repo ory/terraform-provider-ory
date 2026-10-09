@@ -2,11 +2,13 @@ package projectconfig
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -19,14 +21,16 @@ import (
 const importProjectDocument = `{
   "id":"proj-1", "name":"example", "slug":"example", "environment":"stage",
   "home_region":"eu-central", "revision_id":"revision-1", "organizations":[], "state":"running",
-  "cors_public":{"enabled":false},
+  "cors_public":{"enabled":false,"origins":["https://app.example.com"]},
   "services":{"identity":{"config":{
     "session":{"lifespan":"20m0s", "cookie":{"same_site":"Lax"}},
+    "courier":{"smtp":{"headers":{"X-Env":"test"}}},
     "selfservice":{
       "default_browser_return_url":"https://app.example.com/",
       "allowed_return_urls":["https://app.example.com/"],
       "flows":{"login":{"ui_url":"https://app.example.com/login"}},
-      "methods":{"password":{"enabled":true},"totp":{"enabled":false}}
+      "methods":{"password":{"enabled":true},"totp":{"enabled":false},
+                 "webauthn":{"config":{"rp":{"origins":["https://app.example.com"]}}}}
     }
   }}}
 }`
@@ -59,7 +63,7 @@ func importConfig(t *testing.T, r *ProjectConfigResource, id string) *resource.I
 
 // Selecting fields must load their actual values without taking ownership of
 // unrelated settings. Import must issue no mutating API request.
-func TestImportProjectConfig_SelectedScalars(t *testing.T) {
+func TestImportProjectConfig_SelectedFields(t *testing.T) {
 	reads := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		assert.Equal(t, http.MethodGet, req.Method)
@@ -71,7 +75,7 @@ func TestImportProjectConfig_SelectedScalars(t *testing.T) {
 	defer srv.Close()
 
 	r := projectConfigResourceForServer(t, srv.URL)
-	resp := importConfig(t, r, "proj-1:session_lifespan,cors_enabled,selfservice_methods_password_enabled,selfservice_methods_totp_enabled,selfservice_flows_login_ui_url,selfservice_default_browser_return_url")
+	resp := importConfig(t, r, "proj-1:session_lifespan,cors_enabled,selfservice_methods_password_enabled,selfservice_methods_totp_enabled,selfservice_flows_login_ui_url,selfservice_default_browser_return_url,cors_origins,webauthn_rp_origins,smtp_headers")
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 	var state ProjectConfigResourceModel
 	require.False(t, resp.State.Get(context.Background(), &state).HasError())
@@ -83,11 +87,16 @@ func TestImportProjectConfig_SelectedScalars(t *testing.T) {
 	assert.Equal(t, types.BoolValue(false), state.SelfserviceMethodsTOTPEnabled)
 	assert.Equal(t, types.StringValue("https://app.example.com/login"), state.SelfserviceFlowsLoginUIURL)
 	assert.Equal(t, types.StringValue("https://app.example.com/"), state.SelfserviceDefaultBrowserReturnURL)
+	origins, _ := types.ListValueFrom(context.Background(), types.StringType, []string{"https://app.example.com"})
+	assert.Equal(t, origins, state.CorsOrigins)
+	assert.Equal(t, origins, state.WebAuthnRPOrigins)
+	headers, _ := types.MapValueFrom(context.Background(), types.StringType, map[string]string{"X-Env": "test"})
+	assert.Equal(t, headers, state.SMTPHeaders)
 	var values map[string]tftypes.Value
 	require.NoError(t, resp.State.Raw.As(&values))
 	for name, value := range values {
 		switch name {
-		case "id", "project_id", "session_lifespan", "cors_enabled", "selfservice_methods_password_enabled", "selfservice_methods_totp_enabled", "selfservice_flows_login_ui_url", "selfservice_default_browser_return_url":
+		case "id", "project_id", "session_lifespan", "cors_enabled", "selfservice_methods_password_enabled", "selfservice_methods_totp_enabled", "selfservice_flows_login_ui_url", "selfservice_default_browser_return_url", "cors_origins", "webauthn_rp_origins", "smtp_headers":
 		default:
 			assert.True(t, value.IsNull(), "unselected field %s must remain unmanaged", name)
 		}
@@ -108,20 +117,49 @@ func TestImportProjectConfig_LegacyIDDoesNotAcquireFields(t *testing.T) {
 	assert.Equal(t, types.StringValue("proj-1"), state.ProjectID)
 	assert.True(t, state.SessionLifespan.IsNull())
 	assert.True(t, state.CorsEnabled.IsNull())
-	assert.NotEmpty(t, resp.Diagnostics.Warnings())
+	// Without a read there is no live value to compare, so the default
+	// hazard is always worth a warning on this path.
+	assert.Contains(t, corsWarning(resp.Diagnostics), "disables public CORS")
+}
+
+// corsWarning returns the detail of the CORS default warning, or "" when the
+// diagnostics carry none.
+func corsWarning(diags diag.Diagnostics) string {
+	for _, warning := range diags.Warnings() {
+		if warning.Summary() == "Project Config Import Leaves CORS Defaulted" {
+			return warning.Detail()
+		}
+	}
+	return ""
 }
 
 func TestImportProjectConfig_WarnsForUnselectedCORS(t *testing.T) {
-	srv := jsonServer(t, http.StatusOK, strings.Replace(importProjectDocument, `"enabled":false`, `"enabled":true`, 1))
-	for _, selection := range []string{"session_lifespan", "session_lifespan,cors_enabled"} {
-		t.Run(selection, func(t *testing.T) {
-			resp := importConfig(t, projectConfigResourceForServer(t, srv.URL), "proj-1:"+selection)
+	for _, tc := range []struct {
+		selection   string
+		liveEnabled bool
+		wantWarning bool
+	}{
+		{selection: "session_lifespan", liveEnabled: true, wantWarning: true},
+		{selection: "session_lifespan", liveEnabled: false, wantWarning: false}, // the default matches the project
+		{selection: "session_lifespan,cors_enabled", liveEnabled: true, wantWarning: false},
+	} {
+		t.Run(fmt.Sprintf("%s/live=%t", tc.selection, tc.liveEnabled), func(t *testing.T) {
+			document := importProjectDocument
+			if tc.liveEnabled {
+				document = strings.Replace(document, `"enabled":false`, `"enabled":true`, 1)
+			}
+			srv := jsonServer(t, http.StatusOK, document)
+			resp := importConfig(t, projectConfigResourceForServer(t, srv.URL), "proj-1:"+tc.selection)
 			require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
-			if selection == "session_lifespan" {
-				require.NotEmpty(t, resp.Diagnostics.Warnings(), "omitting CORS needs guidance about its default")
-				assert.Contains(t, resp.Diagnostics.Warnings()[0].Detail(), "cors_enabled")
+			if tc.wantWarning {
+				assert.Contains(t, corsWarning(resp.Diagnostics), "cors_enabled", "omitting CORS on a project that has it enabled needs guidance about the default")
 			} else {
-				assert.Empty(t, resp.Diagnostics.Warnings(), "selected CORS must not trigger omission guidance")
+				assert.Empty(t, corsWarning(resp.Diagnostics))
+			}
+			if !strings.Contains(tc.selection, "cors_enabled") {
+				var state ProjectConfigResourceModel
+				require.False(t, resp.State.Get(context.Background(), &state).HasError())
+				assert.True(t, state.CorsEnabled.IsNull(), "the value read for the check must not enter state")
 			}
 		})
 	}
@@ -179,10 +217,9 @@ func TestImportProjectConfig_RejectsUnsafeSelectionBeforeReading(t *testing.T) {
 		":session_lifespan", "proj-1:", "proj-1:session_lifespan,",
 		"proj-1:session_lifespan,session_lifespan", "proj-1:no_such_field",
 		"proj-1:id", "proj-1:project_id", "proj-1:smtp_connection_uri",
-		"proj-1:smtp_connection_uri_wo", "proj-1:keto_namespaces",
-		"proj-1:session_tokenizer_templates",
+		"proj-1:smtp_connection_uri_wo", "proj-1:allowed_return_urls",
+		"proj-1:session_tokenizer_templates", "proj-1:courier_channels",
 		"proj-1:courier_http_request_config_body",
-		"proj-1:selfservice_flows_registration_after_password_hook_session",
 		"proj-1:mfa_enforcement",
 		"proj-1:smtp_connection_uri_wo_version",
 	} {
@@ -194,6 +231,10 @@ func TestImportProjectConfig_RejectsUnsafeSelectionBeforeReading(t *testing.T) {
 				require.Len(t, resp.Diagnostics.Errors(), 1)
 				assert.Equal(t, "Unsupported Project Config Import Field", resp.Diagnostics.Errors()[0].Summary())
 				assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), "has no reader")
+			}
+			if id == "proj-1:allowed_return_urls" {
+				require.Len(t, resp.Diagnostics.Errors(), 1)
+				assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), "server-appended")
 			}
 		})
 	}
@@ -207,6 +248,8 @@ func TestImportProjectConfig_DoesNotInventUnreadableValues(t *testing.T) {
 	}{
 		{field: "selfservice_methods_totp_config_issuer"},                  // Readable string, absent from the response.
 		{field: "selfservice_methods_password_config_min_password_length"}, // Readable integer, absent from the response.
+		{field: "selfservice_methods_captcha_config_allowed_domains"},      // Readable list, absent: must not become an empty list.
+		{field: "oauth2_provider_headers"},                                 // Readable map on a service the response omits.
 		{
 			field:    "selfservice_methods_password_config_min_password_length,password_min_length",
 			document: strings.Replace(importProjectDocument, `"password":{"enabled":true}`, `"password":{"enabled":true,"config":{"min_password_length":12}}`, 1),
@@ -226,6 +269,53 @@ func TestImportProjectConfig_DoesNotInventUnreadableValues(t *testing.T) {
 				assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), `could not read a value for "password_min_length"`)
 				assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), tc.guidance)
 			}
+		})
+	}
+}
+
+// withFlowHooks returns the import document with the given JSON value at
+// selfservice.flows.<flow>.after.<method>.hooks.
+func withFlowHooks(flow, method, hooks string) string {
+	return strings.Replace(importProjectDocument, `"flows":{`, `"flows":{"`+flow+`":{"after":{"`+method+`":{"hooks":`+hooks+`}}},`, 1)
+}
+
+// Hook toggles read true when the hook is present and false when the hook or
+// its flow block is absent, exactly as Read resolves them after an apply. A
+// hooks value that is not a list cannot be read and must fail the import
+// instead of importing as false.
+func TestImportProjectConfig_HookAttributes(t *testing.T) {
+	const session = "selfservice_flows_registration_after_password_hook_session"
+	for _, tc := range []struct {
+		name     string
+		document string
+		field    string
+		want     bool
+		wantErr  bool
+	}{
+		{name: "present", document: withFlowHooks("registration", "password", `[{"hook":"organization"},{"hook":"session"}]`), field: session, want: true},
+		{name: "absent hook", document: withFlowHooks("registration", "password", `[{"hook":"organization"}]`), field: session, want: false},
+		{name: "absent flow", document: importProjectDocument, field: session, want: false},
+		{name: "not a list", document: withFlowHooks("registration", "password", `"unreadable"`), field: session, wantErr: true},
+		{name: "object", document: withFlowHooks("registration", "password", `{}`), field: session, wantErr: true},
+		{name: "config-bearing hook", document: withFlowHooks("settings", "profile", `[{"hook":"notify_previous_addresses","config":{"recipients":"all"}}]`), field: "selfservice_flows_settings_after_profile_hook_notify_previous_addresses", want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := jsonServer(t, http.StatusOK, tc.document)
+			resp := importConfig(t, projectConfigResourceForServer(t, srv.URL), "proj-1:"+tc.field)
+			if tc.wantErr {
+				require.True(t, resp.Diagnostics.HasError(), "an unreadable hook list must not import as false")
+				assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), tc.field)
+				return
+			}
+			require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+			var got types.Bool
+			require.False(t, resp.State.GetAttribute(context.Background(), path.Root(tc.field), &got).HasError())
+			assert.Equal(t, types.BoolValue(tc.want), got)
+			// Only the selected toggle enters state: the recipient scope of a
+			// config-bearing hook stays unmanaged unless it is selected too.
+			var state ProjectConfigResourceModel
+			require.False(t, resp.State.Get(context.Background(), &state).HasError())
+			assert.True(t, state.SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddressesRecipients.IsNull())
 		})
 	}
 }

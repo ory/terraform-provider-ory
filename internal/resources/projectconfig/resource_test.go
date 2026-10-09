@@ -133,24 +133,30 @@ func TestAccProjectConfigResource_basic(t *testing.T) {
 					"smtp_connection_uri",
 				},
 			},
-			// Selected-field import must recover both configured scalar values.
+			// Selected-field import must recover the configured scalars and
+			// the origins list.
 			{
 				ResourceName:      "ory_project_config.test",
 				ImportState:       true,
 				ImportStateVerify: true,
-				ImportStateIdFunc: func(s *terraform.State) (string, error) {
-					rs, ok := s.RootModule().Resources["ory_project_config.test"]
-					if !ok {
-						return "", fmt.Errorf("ory_project_config.test not in state")
-					}
-					return rs.Primary.ID + ":cors_enabled,selfservice_methods_password_config_min_password_length", nil
-				},
-				// cors_origins is a list, which field selection does not support;
+				ImportStateIdFunc: selectedImportID("cors_enabled,cors_origins,selfservice_methods_password_config_min_password_length"),
 				// smtp_connection_uri is write-only.
-				ImportStateVerifyIgnore: []string{"cors_origins", "smtp_connection_uri"},
+				ImportStateVerifyIgnore: []string{"smtp_connection_uri"},
 			},
 		},
 	})
+}
+
+// selectedImportID builds the "<project-id>:field,field" import ID for the
+// project config under test.
+func selectedImportID(fields string) resource.ImportStateIdFunc {
+	return func(s *terraform.State) (string, error) {
+		rs, ok := s.RootModule().Resources["ory_project_config.test"]
+		if !ok {
+			return "", fmt.Errorf("ory_project_config.test not in state")
+		}
+		return rs.Primary.ID + ":" + fields, nil
+	}
 }
 
 // TestAccProjectConfigResource_smtpConnectionURIWriteOnly verifies that
@@ -1280,6 +1286,18 @@ func TestAccProjectConfigResource_sessionHookOnPasswordRegistration(t *testing.T
 				ImportStateVerify: true,
 				ImportStateVerifyIgnore: []string{
 					"selfservice_flows_registration_after_password_hook_session",
+					"cors_enabled",
+					"selfservice_methods_password_config_min_password_length",
+					"smtp_connection_uri",
+				},
+			},
+			// Selected-field import must read the toggle from the live hook list.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: selectedImportID("selfservice_flows_registration_after_password_hook_session"),
+				ImportStateVerifyIgnore: []string{
 					"cors_enabled",
 					"selfservice_methods_password_config_min_password_length",
 					"smtp_connection_uri",

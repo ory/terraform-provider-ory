@@ -12,8 +12,9 @@ import (
 // readStateFromHooks runs the resource read path over a project whose
 // settings.after.profile and login.after.password hook arrays hold the given
 // entries. The OIDC login flow mirrors the password flow, so a caller that
-// only cares about the password flow still exercises both.
-func readStateFromHooks(state *ProjectConfigResourceModel, loginPasswordHooks, settingsProfileHooks []interface{}) {
+// only cares about the password flow still exercises both. The values are
+// untyped so a test can also hand in something that is not a list.
+func readStateFromHooks(state *ProjectConfigResourceModel, loginPasswordHooks, settingsProfileHooks interface{}) {
 	project := &ory.Project{
 		Services: ory.ProjectServices{
 			Identity: &ory.ProjectServiceIdentity{
@@ -146,4 +147,19 @@ func TestReadProjectConfig_NotifyPreviousAddressesRecipientsKeptWhenHookAbsent(t
 
 	assert.False(t, state.SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddresses.ValueBool())
 	assert.Equal(t, "all", state.SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddressesRecipients.ValueString())
+}
+
+// A hooks value that is not a list is unreadable, not empty: the tracked
+// value is kept rather than flipped to false, and an unknown value stays
+// unknown so a field-selected import fails instead of inventing false.
+func TestReadProjectConfig_UnreadableHooksKeepState(t *testing.T) {
+	state := &ProjectConfigResourceModel{
+		SelfserviceFlowsLoginAfterPasswordHookRequireVerifiedAddress: types.BoolValue(true),
+		SelfserviceFlowsSettingsAfterProfileHookVerifyNewAddress:     types.BoolUnknown(),
+	}
+
+	readStateFromHooks(state, "unreadable", map[string]interface{}{})
+
+	assert.True(t, state.SelfserviceFlowsLoginAfterPasswordHookRequireVerifiedAddress.ValueBool())
+	assert.True(t, state.SelfserviceFlowsSettingsAfterProfileHookVerifyNewAddress.IsUnknown())
 }
