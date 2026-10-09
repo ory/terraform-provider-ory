@@ -133,15 +133,15 @@ func TestAccProjectConfigResource_basic(t *testing.T) {
 					"smtp_connection_uri",
 				},
 			},
-			// Selected-field import must recover both configured scalar values.
+			// Selected-field import must recover the configured scalars and
+			// the origins list.
 			{
 				ResourceName:      "ory_project_config.test",
 				ImportState:       true,
 				ImportStateVerify: true,
-				ImportStateIdFunc: selectedImportID("cors_enabled,selfservice_methods_password_config_min_password_length"),
-				// cors_origins is a list, which field selection does not support;
+				ImportStateIdFunc: selectedImportID("cors_enabled,cors_origins,selfservice_methods_password_config_min_password_length"),
 				// smtp_connection_uri is write-only.
-				ImportStateVerifyIgnore: []string{"cors_origins", "smtp_connection_uri"},
+				ImportStateVerifyIgnore: []string{"smtp_connection_uri"},
 			},
 		},
 	})

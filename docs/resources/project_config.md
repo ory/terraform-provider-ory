@@ -437,7 +437,7 @@ terraform import ory_project_config.main <project-id>
 
 Either form leaves cors_enabled null unless it is selected. Its provider default of false then applies on the next plan, and applying that plan disables public CORS on a project that has it enabled. Set cors_enabled in your configuration, or select it on import. The provider warns about this on import; the field-selection form only does so when public CORS is currently enabled.
 
-### Import selected scalar settings without an apply
+### Import selected settings without an apply
 
 A project-ID-only import leaves configuration fields unset. To read existing values into state during import, append a comma-separated list of attributes:
 
@@ -457,7 +457,7 @@ resource "ory_project_config" "main" {
 
 Only the listed fields enter state. Import uses reads only. An unset or unreadable selected value fails the whole import.
 
-Select readable, non-sensitive strings, booleans, or integers, including the hook toggles such as `selfservice_flows_registration_after_password_hook_session`, which read as true when the hook is present and false when it is absent. Collections, nested objects, secrets, and the courier HTTP request body are not supported by this import form. The courier body reader returns a storage URL without recovering the inline payload. For renamed fields, select either the current name or its deprecated alias, never both.
+Select readable, non-sensitive strings, booleans, integers, lists of strings, or maps of strings, including the hook toggles such as `selfservice_flows_registration_after_password_hook_session`, which read as true when the hook is present and false when it is absent. Nested objects, secrets, `allowed_return_urls`, and the courier HTTP request body are not supported by this import form. The server appends its own entries to `allowed_return_urls` and the provider filters them against your configuration, so there is no live baseline to adopt. The courier body reader returns a storage URL without recovering the inline payload. For renamed fields, select either the current name or its deprecated alias, never both.
 
 Run a normal plan after import. It can still propose changes for configured fields omitted from the selection, provider defaults, or differences from the live values. Import does not improve the resource's existing drift coverage.
 

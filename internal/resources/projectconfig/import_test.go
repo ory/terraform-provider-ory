@@ -21,14 +21,16 @@ import (
 const importProjectDocument = `{
   "id":"proj-1", "name":"example", "slug":"example", "environment":"stage",
   "home_region":"eu-central", "revision_id":"revision-1", "organizations":[], "state":"running",
-  "cors_public":{"enabled":false},
+  "cors_public":{"enabled":false,"origins":["https://app.example.com"]},
   "services":{"identity":{"config":{
     "session":{"lifespan":"20m0s", "cookie":{"same_site":"Lax"}},
+    "courier":{"smtp":{"headers":{"X-Env":"test"}}},
     "selfservice":{
       "default_browser_return_url":"https://app.example.com/",
       "allowed_return_urls":["https://app.example.com/"],
       "flows":{"login":{"ui_url":"https://app.example.com/login"}},
-      "methods":{"password":{"enabled":true},"totp":{"enabled":false}}
+      "methods":{"password":{"enabled":true},"totp":{"enabled":false},
+                 "webauthn":{"config":{"rp":{"origins":["https://app.example.com"]}}}}
     }
   }}}
 }`
@@ -61,7 +63,7 @@ func importConfig(t *testing.T, r *ProjectConfigResource, id string) *resource.I
 
 // Selecting fields must load their actual values without taking ownership of
 // unrelated settings. Import must issue no mutating API request.
-func TestImportProjectConfig_SelectedScalars(t *testing.T) {
+func TestImportProjectConfig_SelectedFields(t *testing.T) {
 	reads := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		assert.Equal(t, http.MethodGet, req.Method)
@@ -73,7 +75,7 @@ func TestImportProjectConfig_SelectedScalars(t *testing.T) {
 	defer srv.Close()
 
 	r := projectConfigResourceForServer(t, srv.URL)
-	resp := importConfig(t, r, "proj-1:session_lifespan,cors_enabled,selfservice_methods_password_enabled,selfservice_methods_totp_enabled,selfservice_flows_login_ui_url,selfservice_default_browser_return_url")
+	resp := importConfig(t, r, "proj-1:session_lifespan,cors_enabled,selfservice_methods_password_enabled,selfservice_methods_totp_enabled,selfservice_flows_login_ui_url,selfservice_default_browser_return_url,cors_origins,webauthn_rp_origins,smtp_headers")
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 	var state ProjectConfigResourceModel
 	require.False(t, resp.State.Get(context.Background(), &state).HasError())
@@ -85,11 +87,16 @@ func TestImportProjectConfig_SelectedScalars(t *testing.T) {
 	assert.Equal(t, types.BoolValue(false), state.SelfserviceMethodsTOTPEnabled)
 	assert.Equal(t, types.StringValue("https://app.example.com/login"), state.SelfserviceFlowsLoginUIURL)
 	assert.Equal(t, types.StringValue("https://app.example.com/"), state.SelfserviceDefaultBrowserReturnURL)
+	origins, _ := types.ListValueFrom(context.Background(), types.StringType, []string{"https://app.example.com"})
+	assert.Equal(t, origins, state.CorsOrigins)
+	assert.Equal(t, origins, state.WebAuthnRPOrigins)
+	headers, _ := types.MapValueFrom(context.Background(), types.StringType, map[string]string{"X-Env": "test"})
+	assert.Equal(t, headers, state.SMTPHeaders)
 	var values map[string]tftypes.Value
 	require.NoError(t, resp.State.Raw.As(&values))
 	for name, value := range values {
 		switch name {
-		case "id", "project_id", "session_lifespan", "cors_enabled", "selfservice_methods_password_enabled", "selfservice_methods_totp_enabled", "selfservice_flows_login_ui_url", "selfservice_default_browser_return_url":
+		case "id", "project_id", "session_lifespan", "cors_enabled", "selfservice_methods_password_enabled", "selfservice_methods_totp_enabled", "selfservice_flows_login_ui_url", "selfservice_default_browser_return_url", "cors_origins", "webauthn_rp_origins", "smtp_headers":
 		default:
 			assert.True(t, value.IsNull(), "unselected field %s must remain unmanaged", name)
 		}
@@ -210,8 +217,8 @@ func TestImportProjectConfig_RejectsUnsafeSelectionBeforeReading(t *testing.T) {
 		":session_lifespan", "proj-1:", "proj-1:session_lifespan,",
 		"proj-1:session_lifespan,session_lifespan", "proj-1:no_such_field",
 		"proj-1:id", "proj-1:project_id", "proj-1:smtp_connection_uri",
-		"proj-1:smtp_connection_uri_wo", "proj-1:keto_namespaces",
-		"proj-1:session_tokenizer_templates",
+		"proj-1:smtp_connection_uri_wo", "proj-1:allowed_return_urls",
+		"proj-1:session_tokenizer_templates", "proj-1:courier_channels",
 		"proj-1:courier_http_request_config_body",
 		"proj-1:mfa_enforcement",
 		"proj-1:smtp_connection_uri_wo_version",
@@ -225,6 +232,10 @@ func TestImportProjectConfig_RejectsUnsafeSelectionBeforeReading(t *testing.T) {
 				assert.Equal(t, "Unsupported Project Config Import Field", resp.Diagnostics.Errors()[0].Summary())
 				assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), "has no reader")
 			}
+			if id == "proj-1:allowed_return_urls" {
+				require.Len(t, resp.Diagnostics.Errors(), 1)
+				assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), "server-appended")
+			}
 		})
 	}
 }
@@ -237,6 +248,8 @@ func TestImportProjectConfig_DoesNotInventUnreadableValues(t *testing.T) {
 	}{
 		{field: "selfservice_methods_totp_config_issuer"},                  // Readable string, absent from the response.
 		{field: "selfservice_methods_password_config_min_password_length"}, // Readable integer, absent from the response.
+		{field: "selfservice_methods_captcha_config_allowed_domains"},      // Readable list, absent: must not become an empty list.
+		{field: "oauth2_provider_headers"},                                 // Readable map on a service the response omits.
 		{
 			field:    "selfservice_methods_password_config_min_password_length,password_min_length",
 			document: strings.Replace(importProjectDocument, `"password":{"enabled":true}`, `"password":{"enabled":true,"config":{"min_password_length":12}}`, 1),
