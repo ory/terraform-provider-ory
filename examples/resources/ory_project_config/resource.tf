@@ -27,9 +27,9 @@ resource "ory_project_config" "with_write_only_smtp" {
 
 # Full security configuration
 resource "ory_project_config" "secure" {
-  # Public CORS
+  # Public CORS (includes the restricted origin below so its pages can read responses)
   cors_enabled = true
-  cors_origins = ["https://app.example.com", "https://admin.example.com"]
+  cors_origins = ["https://app.example.com", "https://admin.example.com", "https://embed.example.com"]
 
   # Admin CORS
   cors_admin_enabled = true

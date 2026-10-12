@@ -1697,16 +1697,16 @@ attributes:
     go_field: SelfserviceMethodsPasskeyConfigTimeoutsLogin
     type: string
     openapi_property: kratos_selfservice_methods_passkey_config_timeouts_login
-    description: "Timeout for the passkey login ceremony as a Go duration (e.g. '60s', '5m'). When unset, the library default applies: 5m with user verification, 2m without."
+    description: "Timeout for the passkey login ceremony as a Go duration such as '60s', '5m', or '1h30m'. The API rejects zero-valued segments such as '1h0m0s'. When unset, the library default applies: 5m with user verification, 2m without."
     validators:
       regex: "^([1-9][0-9]*(ns|us|ms|s|m|h))+$"
-      regex_message: "must be a Go duration string (e.g., '60s', '5m')"
+      regex_message: "must be a Go duration made of non-zero units such as '60s', '5m', or '1h30m'; the API rejects zero-valued segments like '1h0m0s'"
 
   - name: selfservice_methods_passkey_config_timeouts_registration
     go_field: SelfserviceMethodsPasskeyConfigTimeoutsRegistration
     type: string
     openapi_property: kratos_selfservice_methods_passkey_config_timeouts_registration
-    description: "Timeout for the passkey registration ceremony as a Go duration (e.g. '60s', '5m'). When unset, the library default applies: 5m with user verification, 2m without."
+    description: "Timeout for the passkey registration ceremony as a Go duration such as '60s', '5m', or '1h30m'. The API rejects zero-valued segments such as '1h0m0s'. When unset, the library default applies: 5m with user verification, 2m without."
     validators:
       regex: "^([1-9][0-9]*(ns|us|ms|s|m|h))+$"
-      regex_message: "must be a Go duration string (e.g., '60s', '5m')"
+      regex_message: "must be a Go duration made of non-zero units such as '60s', '5m', or '1h30m'; the API rejects zero-valued segments like '1h0m0s'"

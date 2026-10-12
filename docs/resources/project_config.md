@@ -58,9 +58,9 @@ resource "ory_project_config" "with_write_only_smtp" {
 
 # Full security configuration
 resource "ory_project_config" "secure" {
-  # Public CORS
+  # Public CORS (includes the restricted origin below so its pages can read responses)
   cors_enabled = true
-  cors_origins = ["https://app.example.com", "https://admin.example.com"]
+  cors_origins = ["https://app.example.com", "https://admin.example.com", "https://embed.example.com"]
 
   # Admin CORS
   cors_admin_enabled = true
@@ -925,8 +925,8 @@ terraform plan  # verify no changes
 - `selfservice_methods_passkey_config_rp_display_name` (String) Passkey relying party display name.
 - `selfservice_methods_passkey_config_rp_id` (String) Passkey relying party ID (typically your domain).
 - `selfservice_methods_passkey_config_rp_origins` (List of String) Allowed origins for passkey relying party verification. An empty list is replaced by the server's default origins (derived from the project slug and custom domains), which the next plan reports as a change; omit the attribute instead of setting it empty.
-- `selfservice_methods_passkey_config_timeouts_login` (String) Timeout for the passkey login ceremony as a Go duration (e.g. '60s', '5m'). When unset, the library default applies: 5m with user verification, 2m without.
-- `selfservice_methods_passkey_config_timeouts_registration` (String) Timeout for the passkey registration ceremony as a Go duration (e.g. '60s', '5m'). When unset, the library default applies: 5m with user verification, 2m without.
+- `selfservice_methods_passkey_config_timeouts_login` (String) Timeout for the passkey login ceremony as a Go duration such as '60s', '5m', or '1h30m'. The API rejects zero-valued segments such as '1h0m0s'. When unset, the library default applies: 5m with user verification, 2m without.
+- `selfservice_methods_passkey_config_timeouts_registration` (String) Timeout for the passkey registration ceremony as a Go duration such as '60s', '5m', or '1h30m'. The API rejects zero-valued segments such as '1h0m0s'. When unset, the library default applies: 5m with user verification, 2m without.
 - `selfservice_methods_passkey_enabled` (Boolean) Enable Passkey authentication.
 - `selfservice_methods_password_config_haveibeenpwned_enabled` (Boolean) Check passwords against HaveIBeenPwned.
 - `selfservice_methods_password_config_identifier_similarity_check_enabled` (Boolean) Check password similarity to identifier.

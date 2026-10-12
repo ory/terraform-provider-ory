@@ -1252,22 +1252,22 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			},
 		},
 		"selfservice_methods_passkey_config_timeouts_login": schema.StringAttribute{
-			Description: "Timeout for the passkey login ceremony as a Go duration (e.g. '60s', '5m'). When unset, the library default applies: 5m with user verification, 2m without.",
+			Description: "Timeout for the passkey login ceremony as a Go duration such as '60s', '5m', or '1h30m'. The API rejects zero-valued segments such as '1h0m0s'. When unset, the library default applies: 5m with user verification, 2m without.",
 			Optional:    true,
 			Validators: []validator.String{
 				stringvalidator.RegexMatches(
 					regexp.MustCompile("^([1-9][0-9]*(ns|us|ms|s|m|h))+$"),
-					"must be a Go duration string (e.g., '60s', '5m')",
+					"must be a Go duration made of non-zero units such as '60s', '5m', or '1h30m'; the API rejects zero-valued segments like '1h0m0s'",
 				),
 			},
 		},
 		"selfservice_methods_passkey_config_timeouts_registration": schema.StringAttribute{
-			Description: "Timeout for the passkey registration ceremony as a Go duration (e.g. '60s', '5m'). When unset, the library default applies: 5m with user verification, 2m without.",
+			Description: "Timeout for the passkey registration ceremony as a Go duration such as '60s', '5m', or '1h30m'. The API rejects zero-valued segments such as '1h0m0s'. When unset, the library default applies: 5m with user verification, 2m without.",
 			Optional:    true,
 			Validators: []validator.String{
 				stringvalidator.RegexMatches(
 					regexp.MustCompile("^([1-9][0-9]*(ns|us|ms|s|m|h))+$"),
-					"must be a Go duration string (e.g., '60s', '5m')",
+					"must be a Go duration made of non-zero units such as '60s', '5m', or '1h30m'; the API rejects zero-valued segments like '1h0m0s'",
 				),
 			},
 		},
