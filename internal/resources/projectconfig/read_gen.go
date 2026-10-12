@@ -567,6 +567,12 @@ func identityStringReadEntries(state *ProjectConfigResourceModel) []StringReadEn
 		{&state.SelfserviceMethodsCaptchaConfigCFTurnstileSitekey, nil, []string{"selfservice", "methods", "captcha", "config", "cf_turnstile", "sitekey"}, false, false, false},
 		{&state.CourierHTTPRequestConfigAuthType, nil, []string{"courier", "http", "request_config", "auth", "type"}, false, false, false},
 		{&state.CourierHTTPRequestConfigMethod, nil, []string{"courier", "http", "request_config", "method"}, false, false, false},
+		{&state.SelfserviceMethodsPasskeyConfigAttestationPreference, nil, []string{"selfservice", "methods", "passkey", "config", "attestation", "preference"}, false, false, false},
+		{&state.SelfserviceMethodsPasskeyConfigAuthenticatorSelectionAttachment, nil, []string{"selfservice", "methods", "passkey", "config", "authenticator_selection", "attachment"}, false, false, false},
+		{&state.SelfserviceMethodsPasskeyConfigAuthenticatorSelectionResidentKey, nil, []string{"selfservice", "methods", "passkey", "config", "authenticator_selection", "resident_key"}, false, false, false},
+		{&state.SelfserviceMethodsPasskeyConfigAuthenticatorSelectionUserVerification, nil, []string{"selfservice", "methods", "passkey", "config", "authenticator_selection", "user_verification"}, false, false, false},
+		{&state.SelfserviceMethodsPasskeyConfigTimeoutsLogin, nil, []string{"selfservice", "methods", "passkey", "config", "timeouts", "login"}, false, false, false},
+		{&state.SelfserviceMethodsPasskeyConfigTimeoutsRegistration, nil, []string{"selfservice", "methods", "passkey", "config", "timeouts", "registration"}, false, false, false},
 	}
 }
 
@@ -620,6 +626,7 @@ func identityBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry 
 		{&state.FeatureFlagsWebhookResponseDirectives, nil, []string{"feature_flags", "webhook_response_directives"}, false, nil},
 		{&state.SelfserviceMethodsDeviceauthnConfigAndroidAllowExpiredFactoryCertificates, nil, []string{"selfservice", "methods", "deviceauthn", "config", "android_allow_expired_factory_certificates"}, false, nil},
 		{&state.FeatureFlagsEnforceIdentitySchemaGuards, nil, []string{"feature_flags", "enforce_identity_schema_guards"}, false, nil},
+		{&state.PreviewEnableNativeSAMLEngine, nil, []string{"preview", "enable_native_saml_engine"}, false, nil},
 	}
 }
 
@@ -643,6 +650,7 @@ func identityListStringReadEntries(state *ProjectConfigResourceModel) []ListStri
 		{&state.WebAuthnRPOrigins, nil, []string{"selfservice", "methods", "webauthn", "config", "rp", "origins"}, false},
 		{&state.SelfserviceMethodsDeviceauthnConfigAndroidAppIds, nil, []string{"selfservice", "methods", "deviceauthn", "config", "android_app_ids"}, false},
 		{&state.SelfserviceMethodsDeviceauthnConfigIosAppIds, nil, []string{"selfservice", "methods", "deviceauthn", "config", "ios_app_ids"}, false},
+		{&state.SecurityRestrictedOrigins, nil, []string{"security", "restricted_origins"}, false},
 	}
 }
 

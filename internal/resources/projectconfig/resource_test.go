@@ -1216,6 +1216,125 @@ func TestAccProjectConfigResource_ketoNamespaceConfigurationFreshProject(t *test
 	})
 }
 
+// TestAccProjectConfigResource_passkeyConfig covers the passkey ceremony
+// settings and the restricted origins list added in spec v1.22.81: create,
+// update to the other enum variants, and import, with the selected-field
+// import verifying the exact values the API reports back.
+func TestAccProjectConfigResource_passkeyConfig(t *testing.T) {
+	const newAttrs = "selfservice_methods_passkey_config_attestation_preference," +
+		"selfservice_methods_passkey_config_authenticator_selection_attachment," +
+		"selfservice_methods_passkey_config_authenticator_selection_resident_key," +
+		"selfservice_methods_passkey_config_authenticator_selection_user_verification," +
+		"selfservice_methods_passkey_config_timeouts_login," +
+		"selfservice_methods_passkey_config_timeouts_registration," +
+		"security_restricted_origins"
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/passkey_config.tf.tmpl", map[string]string{
+					"Attestation":         "direct",
+					"Attachment":          "platform",
+					"ResidentKey":         "preferred",
+					"UserVerification":    "required",
+					"LoginTimeout":        "60s",
+					"RegistrationTimeout": "5m",
+					"RestrictedOrigins":   `["https://embed.example.com"]`,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_attestation_preference", "direct"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_authenticator_selection_attachment", "platform"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_authenticator_selection_resident_key", "preferred"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_authenticator_selection_user_verification", "required"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_timeouts_login", "60s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_timeouts_registration", "5m"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "security_restricted_origins.#", "1"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "security_restricted_origins.0", "https://embed.example.com"),
+				),
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/passkey_config.tf.tmpl", map[string]string{
+					"Attestation":         "none",
+					"Attachment":          "cross-platform",
+					"ResidentKey":         "required",
+					"UserVerification":    "discouraged",
+					"LoginTimeout":        "2m",
+					"RegistrationTimeout": "90s",
+					"RestrictedOrigins":   `["https://embed.example.com", "https://widget.example.org"]`,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_attestation_preference", "none"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_authenticator_selection_attachment", "cross-platform"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_authenticator_selection_resident_key", "required"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_authenticator_selection_user_verification", "discouraged"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_timeouts_login", "2m"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_timeouts_registration", "90s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "security_restricted_origins.#", "2"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "security_restricted_origins.1", "https://widget.example.org"),
+				),
+			},
+			// A plain import only sets id/project_id, so the configured
+			// attributes are not populated until the next apply.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"selfservice_methods_passkey_enabled",
+					"selfservice_methods_passkey_config_attestation_preference",
+					"selfservice_methods_passkey_config_authenticator_selection_attachment",
+					"selfservice_methods_passkey_config_authenticator_selection_resident_key",
+					"selfservice_methods_passkey_config_authenticator_selection_user_verification",
+					"selfservice_methods_passkey_config_timeouts_login",
+					"selfservice_methods_passkey_config_timeouts_registration",
+					"security_restricted_origins",
+					"cors_enabled",
+					"smtp_connection_uri",
+				},
+			},
+			// The selected-field import must recover every new attribute.
+			{
+				ResourceName:            "ory_project_config.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateIdFunc:       selectedImportID("selfservice_methods_passkey_enabled," + newAttrs),
+				ImportStateVerifyIgnore: []string{"cors_enabled", "smtp_connection_uri"},
+			},
+		},
+	})
+}
+
+// TestAccProjectConfigResource_nativeSAMLEngineFreshProject toggles the native
+// SAML engine preview flag on a fresh project instead of the shared one, since
+// the flag changes how enabled SAML providers behave. The flag is gated by the
+// native_saml_engine feature, which the test workspace holds. Gated like the
+// project tests because it creates and deletes a real project.
+func TestAccProjectConfigResource_nativeSAMLEngineFreshProject(t *testing.T) {
+	acctest.RequireProjectTests(t)
+	projectName := fmt.Sprintf("%s-native-saml-%d", acctest.TestProjectPrefix, time.Now().UnixNano())
+	config := func(enabled string) string {
+		return acctest.LoadTestConfig(t, "testdata/native_saml_engine_fresh_project.tf.tmpl", map[string]string{
+			"Name":    projectName,
+			"Enabled": enabled,
+		})
+	}
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: config("true"),
+				Check:  resource.TestCheckResourceAttr("ory_project_config.saml", "preview_enable_native_saml_engine", "true"),
+			},
+			{
+				Config: config("false"),
+				Check:  resource.TestCheckResourceAttr("ory_project_config.saml", "preview_enable_native_saml_engine", "false"),
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_recoveryFlow(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },

@@ -58,13 +58,17 @@ resource "ory_project_config" "with_write_only_smtp" {
 
 # Full security configuration
 resource "ory_project_config" "secure" {
-  # Public CORS
+  # Public CORS (includes the restricted origin below so its pages can read responses)
   cors_enabled = true
-  cors_origins = ["https://app.example.com", "https://admin.example.com"]
+  cors_origins = ["https://app.example.com", "https://admin.example.com", "https://embed.example.com"]
 
   # Admin CORS
   cors_admin_enabled = true
   cors_admin_origins = ["https://admin.example.com"]
+
+  # Restricted Origins (scheme and host only): these pages may only check the
+  # session, use FedCM, and log out. Responses to them never contain identity data.
+  security_restricted_origins = ["https://embed.example.com"]
 
   # Sessions
   session_lifespan                 = "168h0m0s" # 7 days
@@ -86,6 +90,14 @@ resource "ory_project_config" "secure" {
   selfservice_methods_oidc_enable_auto_link_policy = true # Allow social providers with auto_link to link existing identities
   selfservice_methods_passkey_enabled              = true
   selfservice_methods_profile_enabled              = true # Allow users to update profile traits via settings flow
+
+  # Passkey Ceremony Configuration
+  selfservice_methods_passkey_config_attestation_preference                    = "none"      # none, indirect, direct, or enterprise
+  selfservice_methods_passkey_config_authenticator_selection_attachment        = "platform"  # platform or cross-platform; omit to allow both
+  selfservice_methods_passkey_config_authenticator_selection_resident_key      = "required"  # required, preferred, or discouraged
+  selfservice_methods_passkey_config_authenticator_selection_user_verification = "preferred" # required, preferred, or discouraged
+  selfservice_methods_passkey_config_timeouts_login                            = "2m"        # Go duration
+  selfservice_methods_passkey_config_timeouts_registration                     = "5m"        # Go duration
 
   # Code Method Configuration
   selfservice_methods_code_config_lifespan                            = "15m0s" # How long a code remains valid
@@ -813,11 +825,13 @@ terraform plan  # verify no changes
 - `password_max_breaches` (Number, Deprecated) Maximum allowed breaches in HaveIBeenPwned.
 - `password_min_length` (Number, Deprecated) Minimum password length.
 - `preview_default_read_consistency_level` (String) Default read consistency level for identity APIs ('strong' or 'eventual').
+- `preview_enable_native_saml_engine` (Boolean) Enable the native Ory Kratos SAML engine (preview). While false or unset, native SAML providers are inert and the native endpoints respond with 404. Enabling it requires the native_saml_engine feature on the workspace plan; without the entitlement the API rejects the write with an HTTP 403 (feature_not_available).
 - `project_id` (String) Project ID to configure. If not set, uses provider's project_id.
 - `recovery_ui_url` (String, Deprecated) URL for the password recovery UI.
 - `registration_ui_url` (String, Deprecated) URL for the registration UI.
 - `required_aal` (String, Deprecated) Required Authenticator Assurance Level for the settings flow: 'aal1' or 'highest_available'.
 - `security_account_enumeration_mitigate` (Boolean) Mitigate account enumeration when using identifier-first login.
+- `security_restricted_origins` (List of String) Origins that may only check the session, use FedCM, and log out, such as pages that run third-party scripts. Responses to these origins never contain identity data. To let these origins read responses, also add them to cors_origins. Each entry is a scheme and host such as https://embed.example.com; the API rejects paths and wildcards.
 - `selfservice_default_browser_return_url` (String) Default browser return URL for self-service flows.
 - `selfservice_flows_error_ui_url` (String) URL for the error UI.
 - `selfservice_flows_login_after_code_default_browser_return_url` (String) Return URL after login via code method.
@@ -904,9 +918,15 @@ terraform plan  # verify no changes
 - `selfservice_methods_oidc_config_base_redirect_uri` (String) Base redirect URI for OIDC/social sign-in callbacks.
 - `selfservice_methods_oidc_enable_auto_link_policy` (Boolean) Enable the OIDC auto-link policy. When true, social sign-in providers with auto_link enabled (on ory_social_provider) can automatically link to existing identities that share the same identifier (e.g., email). This is an enterprise-gated feature that Ory must enable for the project (the `use_auto_link` feature flag); without the entitlement, setting this to true is rejected by the API with an HTTP 403 (feature_not_available).
 - `selfservice_methods_oidc_enabled` (Boolean) Enable OIDC (OpenID Connect) social sign-in. Must be enabled for social providers (e.g. Google, GitHub) to work.
+- `selfservice_methods_passkey_config_attestation_preference` (String) Attestation conveyance preference sent to the authenticator during passkey registration. 'none' (the default) requests no attestation statement, which is what most consumer passkeys support; 'indirect' lets the client decide; 'direct' requests the raw attestation statement; 'enterprise' requests uniquely identifying attestation.
+- `selfservice_methods_passkey_config_authenticator_selection_attachment` (String) Authenticator attachment modality eligible for passkey registration. 'platform' allows built-in authenticators only (Touch ID, Windows Hello); 'cross-platform' allows roaming authenticators only (security keys). Omit the attribute to let users register either type, which is the recommended default for passkeys.
+- `selfservice_methods_passkey_config_authenticator_selection_resident_key` (String) Whether the authenticator must create a client-side discoverable passkey (the WebAuthn residentKey requirement): 'required' (the default), 'preferred', or 'discouraged'.
+- `selfservice_methods_passkey_config_authenticator_selection_user_verification` (String) Whether passkey ceremonies require user verification such as biometrics or a PIN: 'required', 'preferred' (the default), or 'discouraged'.
 - `selfservice_methods_passkey_config_rp_display_name` (String) Passkey relying party display name.
 - `selfservice_methods_passkey_config_rp_id` (String) Passkey relying party ID (typically your domain).
 - `selfservice_methods_passkey_config_rp_origins` (List of String) Allowed origins for passkey relying party verification. An empty list is replaced by the server's default origins (derived from the project slug and custom domains), which the next plan reports as a change; omit the attribute instead of setting it empty.
+- `selfservice_methods_passkey_config_timeouts_login` (String) Timeout for the passkey login ceremony as a Go duration such as '60s', '5m', or '1h30m'. The API rejects zero-valued segments such as '1h0m0s'. When unset, the library default applies: 5m with user verification, 2m without.
+- `selfservice_methods_passkey_config_timeouts_registration` (String) Timeout for the passkey registration ceremony as a Go duration such as '60s', '5m', or '1h30m'. The API rejects zero-valued segments such as '1h0m0s'. When unset, the library default applies: 5m with user verification, 2m without.
 - `selfservice_methods_passkey_enabled` (Boolean) Enable Passkey authentication.
 - `selfservice_methods_password_config_haveibeenpwned_enabled` (Boolean) Check passwords against HaveIBeenPwned.
 - `selfservice_methods_password_config_identifier_similarity_check_enabled` (Boolean) Check password similarity to identifier.

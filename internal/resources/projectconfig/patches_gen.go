@@ -169,6 +169,12 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.OAuth2UrlsDeviceSuccess, nil, "/services/oauth2/config/urls/device/success"},
 		{&plan.OAuth2UrlsDeviceVerification, nil, "/services/oauth2/config/urls/device/verification"},
 		{&plan.OAuth2WebfingerOIDCDiscoveryDeviceAuthorizationURL, nil, "/services/oauth2/config/webfinger/oidc_discovery/device_authorization_url"},
+		{&plan.SelfserviceMethodsPasskeyConfigAttestationPreference, nil, "/services/identity/config/selfservice/methods/passkey/config/attestation/preference"},
+		{&plan.SelfserviceMethodsPasskeyConfigAuthenticatorSelectionAttachment, nil, "/services/identity/config/selfservice/methods/passkey/config/authenticator_selection/attachment"},
+		{&plan.SelfserviceMethodsPasskeyConfigAuthenticatorSelectionResidentKey, nil, "/services/identity/config/selfservice/methods/passkey/config/authenticator_selection/resident_key"},
+		{&plan.SelfserviceMethodsPasskeyConfigAuthenticatorSelectionUserVerification, nil, "/services/identity/config/selfservice/methods/passkey/config/authenticator_selection/user_verification"},
+		{&plan.SelfserviceMethodsPasskeyConfigTimeoutsLogin, nil, "/services/identity/config/selfservice/methods/passkey/config/timeouts/login"},
+		{&plan.SelfserviceMethodsPasskeyConfigTimeoutsRegistration, nil, "/services/identity/config/selfservice/methods/passkey/config/timeouts/registration"},
 	}
 }
 
@@ -238,6 +244,7 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 		{&plan.FeatureFlagsWebhookResponseDirectives, nil, "/services/identity/config/feature_flags/webhook_response_directives", nil},
 		{&plan.SelfserviceMethodsDeviceauthnConfigAndroidAllowExpiredFactoryCertificates, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/android_allow_expired_factory_certificates", nil},
 		{&plan.FeatureFlagsEnforceIdentitySchemaGuards, nil, "/services/identity/config/feature_flags/enforce_identity_schema_guards", nil},
+		{&plan.PreviewEnableNativeSAMLEngine, nil, "/services/identity/config/preview/enable_native_saml_engine", nil},
 	}
 }
 
@@ -288,6 +295,7 @@ func simpleListStringPatchEntries(plan *ProjectConfigResourceModel) []ListString
 		{&plan.WebAuthnRPOrigins, nil, "/services/identity/config/selfservice/methods/webauthn/config/rp/origins"},
 		{&plan.SelfserviceMethodsDeviceauthnConfigAndroidAppIds, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/android_app_ids"},
 		{&plan.SelfserviceMethodsDeviceauthnConfigIosAppIds, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/ios_app_ids"},
+		{&plan.SecurityRestrictedOrigins, nil, "/services/identity/config/security/restricted_origins"},
 	}
 }
 

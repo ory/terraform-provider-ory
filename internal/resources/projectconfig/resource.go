@@ -468,6 +468,16 @@ type ProjectConfigResourceModel struct {
 
 	// Auto-discovered (review naming before release)
 	FeatureFlagsEnforceIdentitySchemaGuards types.Bool `tfsdk:"feature_flags_enforce_identity_schema_guards"`
+
+	// Added from spec v1.22.81
+	PreviewEnableNativeSAMLEngine                                         types.Bool   `tfsdk:"preview_enable_native_saml_engine"`
+	SecurityRestrictedOrigins                                             types.List   `tfsdk:"security_restricted_origins"`
+	SelfserviceMethodsPasskeyConfigAttestationPreference                  types.String `tfsdk:"selfservice_methods_passkey_config_attestation_preference"`
+	SelfserviceMethodsPasskeyConfigAuthenticatorSelectionAttachment       types.String `tfsdk:"selfservice_methods_passkey_config_authenticator_selection_attachment"`
+	SelfserviceMethodsPasskeyConfigAuthenticatorSelectionResidentKey      types.String `tfsdk:"selfservice_methods_passkey_config_authenticator_selection_resident_key"`
+	SelfserviceMethodsPasskeyConfigAuthenticatorSelectionUserVerification types.String `tfsdk:"selfservice_methods_passkey_config_authenticator_selection_user_verification"`
+	SelfserviceMethodsPasskeyConfigTimeoutsLogin                          types.String `tfsdk:"selfservice_methods_passkey_config_timeouts_login"`
+	SelfserviceMethodsPasskeyConfigTimeoutsRegistration                   types.String `tfsdk:"selfservice_methods_passkey_config_timeouts_registration"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---
