@@ -131,13 +131,37 @@ import block, note it, and hand-write that resource later.
   **no** `_wo` variant, so they must come from a `sensitive` variable.
   `smtp_connection_uri_wo` is the only write-only argument on
   `ory_project_config`.
-- **Populate `ory_project_config` yourself — it generates as an empty shell.**
-  The provider intentionally refreshes only attributes already tracked in
-  state (so unmanaged settings never drift), and a fresh import tracks
-  nothing. `-generate-config-out` therefore emits an all-null block for this
-  resource. Delete the null lines and add the attributes you want Terraform
-  to own, copying current values from the revision dump (`GET /projects/{id}`
-  under `.services.identity.config`, `.services.oauth2.config`,
+- **`ory_project_config` generates only the attributes named in its import
+  ID.** The provider refreshes only attributes already tracked in state (so
+  unmanaged settings never drift), and a bare `{project_id}` import tracks
+  nothing, which makes `-generate-config-out` emit an all-null block. The
+  script therefore emits the `{project_id}:attr,attr` form: the provider reads
+  each named attribute from the live project during import, so the generated
+  block carries their current values and the first plan reports only the
+  import. The default list covers the readable settings the Console surfaces
+  (CORS, session, sign-in methods, flow URLs and lifespans, OAuth2 TTLs and
+  URLs), filtered to the keys the project actually reports. Set
+  `ORY_PROJECT_CONFIG_FIELDS=attr,attr` before running the script to choose
+  the list yourself; readable strings, booleans, integers, lists of strings,
+  maps of strings, and the hook toggles
+  (`selfservice_flows_*_hook_*`) are all accepted. The limits:
+  - An attribute the project does not report fails the whole import with
+    `Project Config Import Field Unavailable`. The API omits keys that hold
+    their default, so drop that attribute from the list and set it by hand if
+    you want to own it.
+  - Secrets, nested objects (`courier_channels`,
+    `session_tokenizer_templates`, `courier_http_request_config`,
+    `oauth2_token_hook_auth`), `allowed_return_urls` (the server appends its
+    own entries) and `courier_http_request_config_body` are rejected. Copy
+    those from the revision dump as described below.
+  - Keep `cors_enabled` in the list. It is the one attribute with a schema
+    default (`false`); leaving it out of both the import and the config
+    makes the first apply disable public CORS on a project that has it
+    enabled. The provider warns about this on import.
+
+  For attributes outside the list, add them to the block and copy current
+  values from the revision dump (`GET /projects/{id}` under
+  `.services.identity.config`, `.services.oauth2.config`,
   `.services.permission.config`, and `.services.account_experience.config`).
   The first plan shows those attributes as additions (`+`) even when the values
   match the server, and the first apply just records them in state because the
@@ -207,7 +231,7 @@ Project API = `https://{slug}.projects.oryapis.com` with the project API key.
 |---|---|---|
 | `ory_workspace` | `.workspace_id` on the project payload (the script emits this one commented out) | `{workspace_id}` |
 | `ory_project` | `GET /workspaces/{ws}/projects` (console) | `{project_id}` |
-| `ory_project_config` | `GET /projects/{id}` (console) | `{project_id}` |
+| `ory_project_config` | `GET /projects/{id}` (console) | `{project_id}:attr_a,attr_b` reads the named attributes during import (the script emits this form); a bare `{project_id}` imports nothing but the ID |
 | `ory_custom_domain` | `GET /projects/{id}/cname` (console) | `{project_id}/{domain_id}` |
 | `ory_event_stream` | `GET /projects/{id}/eventstreams` (console) | `{project_id}/{stream_id}` |
 | `ory_organization` | `GET /projects/{id}/organizations` (console) | `{project_id}/{org_id}` |
@@ -300,11 +324,13 @@ explicit `{project_id}/...` form in generated files.
   workspace subscription. Copy the imported project's actual environment into
   config before the first apply. `home_region` still forces replacement, so
   that one fails loudly instead.
-- **Other attributes with static schema defaults** (e.g. `cors_enabled`) plan a
-  one-time `+ <default>` change right after import even when unconfigured,
-  because import leaves them null and the default then materializes. When the
-  server already holds the default value the apply is a remote no-op; set the
-  attribute explicitly if you want the plan to say so.
+- **`cors_enabled` has a static schema default** (`false`). The script keeps
+  it in the import field list so its live value lands in state and config. If
+  you import `ory_project_config` with a bare project ID or a list that omits
+  it, the attribute is null after import, the default materializes on the next
+  plan, and applying that plan disables public CORS on a project that has it
+  enabled. The provider warns about this on import; set the attribute to the
+  project's current value before the first apply.
 - **`ory_action` and `ory_project_config` share two hook arrays.** The
   `selfservice_flows_login_after_password_hook_require_verified_address`,
   `..._login_after_oidc_...`, and the three
@@ -312,9 +338,11 @@ explicit `{project_id}/...` form in generated files.
   same `login.after.<method>.hooks` and `settings.after.profile.hooks` arrays
   that `ory_action` read-modify-writes. The inventory script only reports
   `hook == "web_hook"` entries, so the non-webhook hooks those attributes
-  control are invisible to it. Set them on `ory_project_config` explicitly if
-  the Console has them enabled, otherwise they stay unmanaged and an
-  `ory_action` delete on the same array can drop them.
+  control are invisible to it. Add them to `ORY_PROJECT_CONFIG_FIELDS` (they
+  import as `true` when the hook is present and `false` when it is absent) or
+  set them on `ory_project_config` by hand if the Console has them enabled,
+  otherwise they stay unmanaged and an `ory_action` delete on the same array
+  can drop them.
 - **`ory_social_provider` blanks provider keys its schema does not model.**
   Create and Update replace the whole provider object, so any key Ory stores
   that the provider version does not know about is dropped on the next apply.

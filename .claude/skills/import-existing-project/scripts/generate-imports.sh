@@ -9,6 +9,8 @@
 #   export ORY_PROJECT_API_KEY=ory_pat_...     # optional: OAuth2 clients, JWKS,
 #                                              #   trusted issuers, identity count
 #   export ORY_JWKS_SETS=my-set,other-set      # optional: JWKS set IDs to import
+#   export ORY_PROJECT_CONFIG_FIELDS=a,b       # optional: ory_project_config
+#                                              #   attributes to read on import
 #   ./generate-imports.sh > imports.tf
 #
 # Endpoint overrides (self-explanatory defaults for Ory Network production):
@@ -216,7 +218,69 @@ EOF
 
 # --- Project and project config (always present) -----------------------------
 emit "ory_project.main" "$ORY_PROJECT_ID"
-emit "ory_project_config.main" "$ORY_PROJECT_ID"
+
+# A bare project ID imports ory_project_config with nothing tracked, so config
+# generation emits an all-null block. Appending ":attr,attr" to the import ID
+# reads those attributes from the live project during import instead, and the
+# generated block then carries their values. The default list below names the
+# readable settings the Console surfaces, filtered to the ones this project
+# reports: the API omits keys that hold their default, and the import fails on
+# any selected attribute it cannot read. ORY_PROJECT_CONFIG_FIELDS=attr,attr
+# replaces the list verbatim (lists, maps and hook toggles are allowed too).
+if [ -n "${ORY_PROJECT_CONFIG_FIELDS:-}" ]; then
+  CONFIG_FIELDS="$ORY_PROJECT_CONFIG_FIELDS"
+else
+  CONFIG_FIELDS=""
+  IDENTITY='.services.identity.config'
+  OAUTH2='.services.oauth2.config'
+  for candidate in \
+    cors_enabled=.cors_public.enabled \
+    session_lifespan=$IDENTITY.session.lifespan \
+    session_cookie_same_site=$IDENTITY.session.cookie.same_site \
+    session_cookie_persistent=$IDENTITY.session.cookie.persistent \
+    selfservice_default_browser_return_url=$IDENTITY.selfservice.default_browser_return_url \
+    selfservice_methods_password_enabled=$IDENTITY.selfservice.methods.password.enabled \
+    selfservice_methods_password_config_min_password_length=$IDENTITY.selfservice.methods.password.config.min_password_length \
+    selfservice_methods_code_enabled=$IDENTITY.selfservice.methods.code.enabled \
+    selfservice_methods_code_passwordless_enabled=$IDENTITY.selfservice.methods.code.passwordless_enabled \
+    selfservice_methods_link_enabled=$IDENTITY.selfservice.methods.link.enabled \
+    selfservice_methods_lookup_secret_enabled=$IDENTITY.selfservice.methods.lookup_secret.enabled \
+    selfservice_methods_oidc_enabled=$IDENTITY.selfservice.methods.oidc.enabled \
+    selfservice_methods_passkey_enabled=$IDENTITY.selfservice.methods.passkey.enabled \
+    selfservice_methods_profile_enabled=$IDENTITY.selfservice.methods.profile.enabled \
+    selfservice_methods_totp_enabled=$IDENTITY.selfservice.methods.totp.enabled \
+    selfservice_methods_webauthn_enabled=$IDENTITY.selfservice.methods.webauthn.enabled \
+    selfservice_flows_error_ui_url=$IDENTITY.selfservice.flows.error.ui_url \
+    selfservice_flows_login_ui_url=$IDENTITY.selfservice.flows.login.ui_url \
+    selfservice_flows_login_lifespan=$IDENTITY.selfservice.flows.login.lifespan \
+    selfservice_flows_recovery_enabled=$IDENTITY.selfservice.flows.recovery.enabled \
+    selfservice_flows_recovery_ui_url=$IDENTITY.selfservice.flows.recovery.ui_url \
+    selfservice_flows_recovery_lifespan=$IDENTITY.selfservice.flows.recovery.lifespan \
+    selfservice_flows_registration_enabled=$IDENTITY.selfservice.flows.registration.enabled \
+    selfservice_flows_registration_ui_url=$IDENTITY.selfservice.flows.registration.ui_url \
+    selfservice_flows_registration_lifespan=$IDENTITY.selfservice.flows.registration.lifespan \
+    selfservice_flows_settings_ui_url=$IDENTITY.selfservice.flows.settings.ui_url \
+    selfservice_flows_settings_lifespan=$IDENTITY.selfservice.flows.settings.lifespan \
+    selfservice_flows_settings_privileged_session_max_age=$IDENTITY.selfservice.flows.settings.privileged_session_max_age \
+    selfservice_flows_settings_required_aal=$IDENTITY.selfservice.flows.settings.required_aal \
+    selfservice_flows_verification_enabled=$IDENTITY.selfservice.flows.verification.enabled \
+    selfservice_flows_verification_ui_url=$IDENTITY.selfservice.flows.verification.ui_url \
+    selfservice_flows_verification_lifespan=$IDENTITY.selfservice.flows.verification.lifespan \
+    oauth2_ttl_access_token=$OAUTH2.ttl.access_token \
+    oauth2_ttl_auth_code=$OAUTH2.ttl.auth_code \
+    oauth2_ttl_id_token=$OAUTH2.ttl.id_token \
+    oauth2_ttl_refresh_token=$OAUTH2.ttl.refresh_token \
+    oauth2_urls_consent=$OAUTH2.urls.consent \
+    oauth2_urls_error=$OAUTH2.urls.error \
+    oauth2_urls_login=$OAUTH2.urls.login \
+    oauth2_urls_logout=$OAUTH2.urls.logout; do
+    if echo "$PROJECT_JSON" | jq -e "${candidate#*=} != null" >/dev/null 2>&1; then
+      CONFIG_FIELDS="${CONFIG_FIELDS:+$CONFIG_FIELDS,}${candidate%%=*}"
+    fi
+  done
+fi
+emit "ory_project_config.main" "$ORY_PROJECT_ID${CONFIG_FIELDS:+:$CONFIG_FIELDS}"
+log "project config fields: ${CONFIG_FIELDS:-none (bare project ID)}"
 
 if [ -n "$WORKSPACE_ID" ]; then
   cat <<EOF
