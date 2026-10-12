@@ -1214,5 +1214,62 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Enforces the identity schema guards. If enabled, an identity schema that does not pass the identity schema guards is rejected. If disabled, the result is logged and the schema is used.",
 			Optional:    true,
 		},
+		"preview_enable_native_saml_engine": schema.BoolAttribute{
+			Description: "Enable the native Ory Kratos SAML engine (preview). While false or unset, native SAML providers are inert and the native endpoints respond with 404. Enabling it requires the native_saml_engine feature on the workspace plan; without the entitlement the API rejects the write with an HTTP 403 (feature_not_available).",
+			Optional:    true,
+		},
+		"security_restricted_origins": schema.ListAttribute{
+			Description: "Origins that may only check the session, use FedCM, and log out, such as pages that run third-party scripts. Responses to these origins never contain identity data. To let these origins read responses, also add them to cors_origins. Each entry is a scheme and host such as https://embed.example.com; the API rejects paths and wildcards.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"selfservice_methods_passkey_config_attestation_preference": schema.StringAttribute{
+			Description: "Attestation conveyance preference sent to the authenticator during passkey registration. 'none' (the default) requests no attestation statement, which is what most consumer passkeys support; 'indirect' lets the client decide; 'direct' requests the raw attestation statement; 'enterprise' requests uniquely identifying attestation.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.OneOf("none", "indirect", "direct", "enterprise"),
+			},
+		},
+		"selfservice_methods_passkey_config_authenticator_selection_attachment": schema.StringAttribute{
+			Description: "Authenticator attachment modality eligible for passkey registration. 'platform' allows built-in authenticators only (Touch ID, Windows Hello); 'cross-platform' allows roaming authenticators only (security keys). Omit the attribute to let users register either type, which is the recommended default for passkeys.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.OneOf("platform", "cross-platform"),
+			},
+		},
+		"selfservice_methods_passkey_config_authenticator_selection_resident_key": schema.StringAttribute{
+			Description: "Whether the authenticator must create a client-side discoverable passkey (the WebAuthn residentKey requirement): 'required' (the default), 'preferred', or 'discouraged'.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.OneOf("required", "preferred", "discouraged"),
+			},
+		},
+		"selfservice_methods_passkey_config_authenticator_selection_user_verification": schema.StringAttribute{
+			Description: "Whether passkey ceremonies require user verification such as biometrics or a PIN: 'required', 'preferred' (the default), or 'discouraged'.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.OneOf("required", "preferred", "discouraged"),
+			},
+		},
+		"selfservice_methods_passkey_config_timeouts_login": schema.StringAttribute{
+			Description: "Timeout for the passkey login ceremony as a Go duration (e.g. '60s', '5m'). When unset, the library default applies: 5m with user verification, 2m without.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.RegexMatches(
+					regexp.MustCompile("^([1-9][0-9]*(ns|us|ms|s|m|h))+$"),
+					"must be a Go duration string (e.g., '60s', '5m')",
+				),
+			},
+		},
+		"selfservice_methods_passkey_config_timeouts_registration": schema.StringAttribute{
+			Description: "Timeout for the passkey registration ceremony as a Go duration (e.g. '60s', '5m'). When unset, the library default applies: 5m with user verification, 2m without.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.RegexMatches(
+					regexp.MustCompile("^([1-9][0-9]*(ns|us|ms|s|m|h))+$"),
+					"must be a Go duration string (e.g., '60s', '5m')",
+				),
+			},
+		},
 	}
 }

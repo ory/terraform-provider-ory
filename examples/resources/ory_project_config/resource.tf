@@ -35,6 +35,10 @@ resource "ory_project_config" "secure" {
   cors_admin_enabled = true
   cors_admin_origins = ["https://admin.example.com"]
 
+  # Restricted Origins (scheme and host only): these pages may only check the
+  # session, use FedCM, and log out. Responses to them never contain identity data.
+  security_restricted_origins = ["https://embed.example.com"]
+
   # Sessions
   session_lifespan                 = "168h0m0s" # 7 days
   session_earliest_possible_extend = "24h"      # Only extend sessions in the last 24h to avoid excessive writes
@@ -55,6 +59,14 @@ resource "ory_project_config" "secure" {
   selfservice_methods_oidc_enable_auto_link_policy = true # Allow social providers with auto_link to link existing identities
   selfservice_methods_passkey_enabled              = true
   selfservice_methods_profile_enabled              = true # Allow users to update profile traits via settings flow
+
+  # Passkey Ceremony Configuration
+  selfservice_methods_passkey_config_attestation_preference                    = "none"      # none, indirect, direct, or enterprise
+  selfservice_methods_passkey_config_authenticator_selection_attachment        = "platform"  # platform or cross-platform; omit to allow both
+  selfservice_methods_passkey_config_authenticator_selection_resident_key      = "required"  # required, preferred, or discouraged
+  selfservice_methods_passkey_config_authenticator_selection_user_verification = "preferred" # required, preferred, or discouraged
+  selfservice_methods_passkey_config_timeouts_login                            = "2m"        # Go duration
+  selfservice_methods_passkey_config_timeouts_registration                     = "5m"        # Go duration
 
   # Code Method Configuration
   selfservice_methods_code_config_lifespan                            = "15m0s" # How long a code remains valid
