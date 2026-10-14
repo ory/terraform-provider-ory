@@ -298,6 +298,7 @@ func TestImportProjectConfig_HookAttributes(t *testing.T) {
 		{name: "not a list", document: withFlowHooks("registration", "password", `"unreadable"`), field: session, wantErr: true},
 		{name: "object", document: withFlowHooks("registration", "password", `{}`), field: session, wantErr: true},
 		{name: "config-bearing hook", document: withFlowHooks("settings", "profile", `[{"hook":"notify_previous_addresses","config":{"recipients":"all"}}]`), field: "selfservice_flows_settings_after_profile_hook_notify_previous_addresses", want: true},
+		{name: "passkey registration hook", document: withFlowHooks("registration", "passkey", `[{"hook":"show_verification_ui"},{"hook":"session"}]`), field: "selfservice_flows_registration_after_passkey_hook_show_verification_ui", want: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := jsonServer(t, http.StatusOK, tc.document)

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -1568,6 +1569,85 @@ func TestAccProjectConfigResource_emailVerificationHooks(t *testing.T) {
 					"selfservice_methods_password_config_min_password_length",
 					"smtp_connection_uri",
 				},
+			},
+		},
+	})
+}
+
+// The passkey and WebAuthn flows get their own show_verification_ui and
+// require_verified_address toggles. Ory Network appends a session hook to the
+// registration lists on read, so the PlanOnly step proves that the merge
+// keeps it without producing a diff.
+func TestAccProjectConfigResource_passwordlessVerificationHooks(t *testing.T) {
+	const (
+		passkeyRegistration  = "selfservice_flows_registration_after_passkey_hook_show_verification_ui"
+		webauthnRegistration = "selfservice_flows_registration_after_webauthn_hook_show_verification_ui"
+		passkeyLogin         = "selfservice_flows_login_after_passkey_hook_require_verified_address"
+		webauthnLogin        = "selfservice_flows_login_after_webauthn_hook_require_verified_address"
+	)
+	config := func(passkey, webauthn string) string {
+		return acctest.LoadTestConfig(t, "testdata/passwordless_verification_hooks.tf.tmpl", map[string]string{
+			"PasskeyRegistration":  passkey,
+			"WebAuthnRegistration": webauthn,
+			"PasskeyLogin":         passkey,
+			"WebAuthnLogin":        webauthn,
+		})
+	}
+	commonIgnores := []string{"cors_enabled", "selfservice_methods_password_config_min_password_length", "smtp_connection_uri"}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Enable all four hooks.
+			{
+				Config: config("true", "true"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", passkeyRegistration, "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", webauthnRegistration, "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", passkeyLogin, "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", webauthnLogin, "true"),
+				),
+			},
+			// Re-apply the same config to confirm no perpetual diff.
+			{
+				Config:   config("true", "true"),
+				PlanOnly: true,
+			},
+			// Import then verify state. The bare import leaves the toggles unset.
+			{
+				ResourceName:            "ory_project_config.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: append([]string{passkeyRegistration, webauthnRegistration, passkeyLogin, webauthnLogin}, commonIgnores...),
+			},
+			// Selected-field import must read every toggle from its live hook list.
+			{
+				ResourceName:            "ory_project_config.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateIdFunc:       selectedImportID(strings.Join([]string{passkeyRegistration, webauthnRegistration, passkeyLogin, webauthnLogin}, ",")),
+				ImportStateVerifyIgnore: commonIgnores,
+			},
+			// Disable the passkey hooks only: the WebAuthn lists are separate
+			// arrays and must be left alone.
+			{
+				Config: config("false", "true"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", passkeyRegistration, "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", webauthnRegistration, "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", passkeyLogin, "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", webauthnLogin, "true"),
+				),
+			},
+			// Disable the rest, leaving the shared project as it was.
+			{
+				Config: config("false", "false"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", webauthnRegistration, "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", webauthnLogin, "false"),
+				),
 			},
 		},
 	})
