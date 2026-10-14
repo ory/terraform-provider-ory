@@ -1,0 +1,9 @@
+resource "ory_project" "opl" {
+  name        = "[[ .Name ]]"
+  environment = "prod"
+}
+
+resource "ory_project_config" "opl" {
+  project_id = ory_project.opl.id
+  [[ .NamespaceConfig ]]
+}

@@ -269,6 +269,13 @@ func (r *TrustedJwtIssuerResource) Read(ctx context.Context, req resource.ReadRe
 
 	issuer, err := r.client.GetTrustedOAuth2JwtGrantIssuer(ctx, state.ID.ValueString())
 	if err != nil {
+		if client.IsNotFoundStatus(err) {
+			// The issuer was deleted outside Terraform. Drop it from state so the
+			// next plan recreates it, instead of failing every plan until the
+			// operator runs `terraform state rm`.
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Error Reading Trusted JWT Grant Issuer",
 			"Could not read trusted JWT grant issuer "+state.ID.ValueString()+": "+err.Error(),

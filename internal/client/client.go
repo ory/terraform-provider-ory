@@ -33,11 +33,24 @@ var ErrConsoleClientNotConfigured = errors.New("console API client not configure
 // can check with errors.Is.
 var ErrProjectNotAllowed = errors.New("project not allowed by allowed_project_ids")
 
+// ErrNotFound tags an API error whose HTTP response carried 404. The tag exists
+// to be narrow, not to detect more: the substring match in IsNotFound already
+// recognizes these 404s, but it also matches any error text that happens to
+// contain "404". A caller that must not act on a false positive — see
+// IsNotFoundStatus — checks the tag instead.
+var ErrNotFound = errors.New("resource not found")
+
 const (
-	// maxRetries is the maximum number of retry attempts for rate-limited requests.
-	maxRetries = 3
-	// initialBackoff is the initial backoff duration before first retry.
-	initialBackoff = 1 * time.Second
+	// defaultOrganizationRetryBaseDelay is the unit of the exponential backoff
+	// between the organization consistency retries in GetOrganization
+	// (1x, 2x, 4x, 8x), used when the config leaves it unset.
+	defaultOrganizationRetryBaseDelay = time.Second
+)
+
+const (
+	// maxErrorBodyBytes is the maximum length of a raw response body included in
+	// a wrapped API error before it is truncated.
+	maxErrorBodyBytes = 2048
 )
 
 const (
@@ -238,12 +251,76 @@ func wrapAPIError(err error, operation string) error {
 			operation, debugInfo.RequestID, err)
 	}
 
-	// For any other error, include the request ID if available
+	// For any other error, surface the HTTP status and raw response body so the
+	// underlying cause is not masked by an SDK decode error.
+	detail := operation
+	if debugInfo.StatusCode != 0 {
+		detail += fmt.Sprintf(": HTTP %d", debugInfo.StatusCode)
+	}
 	if debugInfo.RequestID != "" {
-		return fmt.Errorf("%s: %w (Request ID: %s)", operation, err, debugInfo.RequestID)
+		detail += fmt.Sprintf(" (Request ID: %s)", debugInfo.RequestID)
+	}
+	if body := strings.TrimSpace(debugInfo.RawBody); body != "" && body != errStr {
+		return fmt.Errorf("%s: %w\nResponse body: %s", detail, err, truncateErrorBody(body))
+	}
+	if detail != operation {
+		return fmt.Errorf("%s: %w", detail, err)
 	}
 
 	return err
+}
+
+// notFoundIfStatus tags err with ErrNotFound when the response carried HTTP 404,
+// so callers can rely on IsNotFound regardless of the error body's shape.
+func notFoundIfStatus(resp *http.Response, err error) error {
+	if err == nil || resp == nil || resp.StatusCode != http.StatusNotFound {
+		return err
+	}
+	return fmt.Errorf("%w: %w", ErrNotFound, err)
+}
+
+// IsNotFound reports whether err is an Ory API 404 (Not Found) — e.g. a project
+// that has been purged. Callers use it to treat a missing resource as already
+// gone rather than a hard failure.
+//
+// The last resort is a substring match, which over-matches: any error text that
+// happens to contain "404" or "Not Found" passes, including a 500 whose request
+// ID contains those digits. That is tolerable where a false positive only makes
+// a teardown path give up early. It is not tolerable where the answer decides
+// whether to drop a live resource from state — use IsNotFoundStatus there.
+func IsNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	if IsNotFoundStatus(err) {
+		return true
+	}
+	if extractDebugInfo(err).StatusCode == 404 {
+		return true
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "404") || strings.Contains(errStr, "Not Found")
+}
+
+// IsNotFoundStatus reports whether err came from a response that carried HTTP
+// 404, and nothing weaker. Use it for the one decision a false positive would
+// ruin: removing a resource from Terraform state because it looks deleted. A
+// transient 500 must not drop a live resource, and IsNotFound's substring
+// fallback cannot make that promise.
+//
+// Only errors from a getter that calls notFoundIfStatus carry the tag, so a Read
+// that switches to this check needs its getter tagged first.
+func IsNotFoundStatus(err error) bool {
+	return errors.Is(err, ErrNotFound)
+}
+
+// truncateErrorBody trims a raw response body to maxErrorBodyBytes so error
+// messages stay readable.
+func truncateErrorBody(body string) string {
+	if len(body) <= maxErrorBodyBytes {
+		return body
+	}
+	return body[:maxErrorBodyBytes] + "... (truncated)"
 }
 
 // isRateLimitError checks if the error is a rate limit (429) error.
@@ -278,38 +355,6 @@ func IsTransientError(err error) bool {
 	return isRetryableError(err) || isRateLimitError(err)
 }
 
-// retryWithBackoff executes a function with exponential backoff on rate limit errors.
-func retryWithBackoff[T any](ctx context.Context, operation string, fn func() (T, error)) (T, error) {
-	var result T
-	var err error
-	backoff := initialBackoff
-
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		result, err = fn()
-		if err == nil {
-			return result, nil
-		}
-
-		if !isRateLimitError(err) {
-			return result, err
-		}
-
-		if attempt == maxRetries {
-			return result, fmt.Errorf("%s: rate limit exceeded after %d retries: %w", operation, maxRetries, err)
-		}
-
-		// Wait before retrying
-		select {
-		case <-ctx.Done():
-			return result, ctx.Err()
-		case <-time.After(backoff):
-			backoff *= 2 // Exponential backoff
-		}
-	}
-
-	return result, err
-}
-
 // OryClientConfig holds configuration for the Ory API client.
 type OryClientConfig struct {
 	WorkspaceAPIKey string
@@ -326,6 +371,30 @@ type OryClientConfig struct {
 	// project ID not in this list is refused before the request is sent. When
 	// empty, no restriction is applied. See OryClient.checkProjectAllowed.
 	AllowedProjectIDs []string
+
+	// OrganizationRetryBaseDelay is the unit of the exponential backoff between
+	// the organization consistency retries in GetOrganization. Zero means
+	// defaultOrganizationRetryBaseDelay; tests shorten it so the retry path can
+	// be covered without waiting fifteen seconds.
+	OrganizationRetryBaseDelay time.Duration
+
+	// MaxRetries is how many more times a request that the Ory API rejected
+	// with HTTP 429 is sent before the error reaches the caller. A nil pointer
+	// means DefaultMaxRetries, and a pointer to 0 turns the retry off. The
+	// field is a pointer because those two cases differ. See rateLimitTransport.
+	MaxRetries *int
+}
+
+// maxRetries returns the configured 429 retry count, or DefaultMaxRetries when
+// the config leaves it unset.
+func (c OryClientConfig) maxRetries() int {
+	if c.MaxRetries == nil {
+		return DefaultMaxRetries
+	}
+	if *c.MaxRetries < 0 {
+		return 0
+	}
+	return *c.MaxRetries
 }
 
 // Equal reports whether two configs are equivalent. It is used to decide
@@ -340,7 +409,9 @@ func (c OryClientConfig) Equal(other OryClientConfig) bool {
 		c.WorkspaceID != other.WorkspaceID ||
 		c.ConsoleAPIURL != other.ConsoleAPIURL ||
 		c.ProjectAPIURL != other.ProjectAPIURL ||
-		c.UserAgent != other.UserAgent {
+		c.UserAgent != other.UserAgent ||
+		c.OrganizationRetryBaseDelay != other.OrganizationRetryBaseDelay ||
+		c.maxRetries() != other.maxRetries() {
 		return false
 	}
 	if len(c.AllowedProjectIDs) != len(other.AllowedProjectIDs) {
@@ -364,6 +435,13 @@ type OryClient struct {
 	// allowedProjects is the set of project IDs console operations may target,
 	// derived from config.AllowedProjectIDs. When empty, no restriction applies.
 	allowedProjects map[string]struct{}
+
+	// httpClient sends every request to the Ory API, both through the SDK and
+	// through the raw console calls the SDK does not cover. Its transport
+	// retries an HTTP 429, so a bulk apply survives the rate limit. It is nil on
+	// a zero-valued OryClient, and rawHTTPClient falls back to the package
+	// default in that case.
+	httpClient *http.Client
 
 	// Console API client (for organizations, projects, workspaces)
 	consoleClient *ory.APIClient
@@ -404,7 +482,11 @@ func (c *OryClient) patchProjectMutex(projectID string) *sync.Mutex {
 
 // NewOryClient creates a new Ory API client.
 func NewOryClient(cfg OryClientConfig) (*OryClient, error) {
-	client := &OryClient{config: cfg, allowedProjects: buildProjectSet(cfg.AllowedProjectIDs)}
+	client := &OryClient{
+		config:          cfg,
+		allowedProjects: buildProjectSet(cfg.AllowedProjectIDs),
+		httpClient:      newOryHTTPClient(cfg.maxRetries()),
+	}
 
 	// Initialize console client if workspace API key is provided
 	if cfg.WorkspaceAPIKey != "" {
@@ -418,6 +500,7 @@ func NewOryClient(cfg OryClientConfig) (*OryClient, error) {
 		}
 
 		consoleCfg := ory.NewConfiguration()
+		consoleCfg.HTTPClient = client.httpClient
 		consoleCfg.UserAgent = cfg.UserAgent
 		consoleCfg.Host = parsedURL.Host
 		consoleCfg.Scheme = parsedURL.Scheme
@@ -487,6 +570,7 @@ func NewOryClient(cfg OryClientConfig) (*OryClient, error) {
 		}
 
 		projectCfg := ory.NewConfiguration()
+		projectCfg.HTTPClient = client.httpClient
 		projectCfg.UserAgent = cfg.UserAgent
 		projectCfg.Host = parsedURL.Host
 		projectCfg.Scheme = parsedURL.Scheme
@@ -577,6 +661,7 @@ func (c *OryClient) WithProjectCredentials(slug, apiKey string) *OryClient {
 	return &OryClient{
 		config:          newConfig,
 		allowedProjects: c.allowedProjects,
+		httpClient:      c.httpClient,
 		consoleClient:   c.consoleClient,
 		// projectClient is nil — ensureProjectClient will lazily initialize it
 		// projectClientMu and cachedProjects are zero-valued (valid)
@@ -657,6 +742,7 @@ func (c *OryClient) ensureProjectClient() error {
 	}
 
 	projectCfg := ory.NewConfiguration()
+	projectCfg.HTTPClient = c.rawHTTPClient()
 	projectCfg.UserAgent = c.config.UserAgent
 	projectCfg.Host = parsedURL.Host
 	projectCfg.Scheme = parsedURL.Scheme
@@ -669,6 +755,17 @@ func (c *OryClient) ensureProjectClient() error {
 	return nil
 }
 
+// rawHTTPClient returns the HTTP client that sends requests to the Ory API. A
+// client built by NewOryClient always has one. A zero-valued OryClient, which
+// only tests construct, falls back to the package default so its requests still
+// retry an HTTP 429.
+func (c *OryClient) rawHTTPClient() *http.Client {
+	if c.httpClient != nil {
+		return c.httpClient
+	}
+	return consoleHTTPClient
+}
+
 // requireConsoleClient returns an error wrapping ErrConsoleClientNotConfigured
 // if the console API client is not initialized (no workspace API key).
 // This prevents nil pointer panics when methods are called without credentials.
@@ -676,7 +773,9 @@ func (c *OryClient) requireConsoleClient(operation string) error {
 	if c.consoleClient == nil {
 		return fmt.Errorf("%s: %w. "+
 			"This operation manages project configuration, which the Ory Console API "+
-			"requires a workspace API key (ORY_WORKSPACE_API_KEY, ory_wak_...) to perform. "+
+			"only performs with a workspace API key (ORY_WORKSPACE_API_KEY, ory_wak_...) "+
+			"or a Console user access token from `ory auth` passed in its place; access "+
+			"with a user token is limited by the user's project role. "+
 			"A project API key (ory_pat_...) can manage project data such as identities and "+
 			"OAuth2 clients, but cannot read or change project configuration. "+
 			"To limit which projects a workspace key may touch, set allowed_project_ids. "+
@@ -720,6 +819,7 @@ func (c *OryClient) GetProject(ctx context.Context, projectID string) (*ory.Proj
 		return nil, err
 	}
 	project, httpResp, err := c.consoleClient.ProjectAPI.GetProject(ctx, projectID).Execute()
+	err = notFoundIfStatus(httpResp, err)
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
@@ -789,6 +889,260 @@ func (c *OryClient) GetCachedProject(projectID string) *ory.Project {
 	return nil
 }
 
+// doConsoleRawRequest issues a request against a console API endpoint that is
+// missing from the generated client-go SDK, with the standard auth headers. A
+// non-nil payload is sent as JSON. The caller owns the response body.
+//
+// The client's transport retries an HTTP 429, so this method only reports the
+// one that survives every retry. bytes.Reader gives the request a GetBody, so
+// the transport can replay the payload on each attempt.
+func (c *OryClient) doConsoleRawRequest(ctx context.Context, operation, method, endpoint string, payload []byte) (*http.Response, error) {
+	var body io.Reader
+	if payload != nil {
+		body = bytes.NewReader(payload)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.config.WorkspaceAPIKey)
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("Accept", "application/json")
+	if c.config.UserAgent != "" {
+		req.Header.Set("User-Agent", c.config.UserAgent)
+	}
+	resp, err := c.rawHTTPClient().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		respBody, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("%s: 429 Too Many Requests after %d retries: %s",
+			operation, c.config.maxRetries(), strings.TrimSpace(string(respBody)))
+	}
+	return resp, nil
+}
+
+// normalizedProjectResponse is the subset of the console API's normalized
+// project representation the provider needs: the current revision as a raw
+// map, since the generated SDK has no model for these endpoints.
+type normalizedProjectResponse struct {
+	CurrentRevision map[string]interface{} `json:"current_revision"`
+}
+
+// GetProjectNormalizedRevision fetches the project's current normalized
+// revision via GET /normalized/projects/{id}. Unlike the project document,
+// the normalized revision exposes top-level revision columns such as
+// disable_account_experience_welcome_screen, which no document read reports.
+// The endpoint is not part of the generated client-go SDK, so the request is
+// issued directly against the console API, mirroring SetProjectEnvironment.
+func (c *OryClient) GetProjectNormalizedRevision(ctx context.Context, projectID string) (map[string]interface{}, error) {
+	const operation = "getting normalized project revision"
+	if c.consoleClient == nil {
+		return nil, fmt.Errorf("%s: %w. Set workspace_api_key (ORY_WORKSPACE_API_KEY)",
+			operation, ErrConsoleClientNotConfigured)
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
+
+	endpoint := strings.TrimRight(c.config.ConsoleAPIURL, "/") + "/normalized/projects/" + url.PathEscape(projectID)
+	resp, err := c.doConsoleRawRequest(ctx, operation, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, wrapAPIError(err, operation)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading normalized project response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, wrapAPIError(fmt.Errorf("unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(body))), operation)
+	}
+
+	var parsed normalizedProjectResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("decoding normalized project response: %w", err)
+	}
+	if parsed.CurrentRevision == nil {
+		return nil, fmt.Errorf("%s: response has no current_revision", operation)
+	}
+	return parsed.CurrentRevision, nil
+}
+
+// RevisionPatchBuilder computes the JSON Patch operations for one attempt of
+// PatchProjectRevisionWith. It receives the revision that attempt patches, so
+// an operation that addresses a revision array by index, for example
+// /scim_clients/2, is computed from the same revision it is applied to.
+// Returning no operations skips the PATCH for that attempt.
+type RevisionPatchBuilder func(revision map[string]interface{}) ([]ory.JsonPatch, error)
+
+// PatchProjectRevision applies JSON Patch operations to the project's current
+// normalized revision via PATCH /normalized/projects/{id}/revision/{rev}. A
+// few settings are top-level revision columns with no key in the per-service
+// config documents (e.g. disable_account_experience_welcome_screen); both the
+// document-based PatchProject and the document-shaped
+// PATCH /projects/{id}/revision/{rev} accept writes to them with HTTP 200 and
+// silently discard them, because unknown document fields are dropped. Only
+// this normalized endpoint patches the revision columns themselves. Revision
+// columns carry over into revisions created by later document patches, so a
+// value set here persists.
+//
+// The endpoint is compare-and-swap on the revision ID and answers HTTP 409
+// when the supplied revision is stale, so each attempt resolves the current
+// revision first and conflicts are retried. It shares PatchProject's
+// per-project mutex, which leaves only out-of-band writers as a conflict
+// source. Like SetProjectEnvironment, the endpoint is missing from the
+// generated SDK and is called directly.
+//
+// The operations are fixed, so this suits a write whose paths do not depend
+// on the current revision. A read-modify-write on a revision array, such as
+// scim_clients, uses PatchProjectRevisionWith so the paths are rebuilt after
+// a conflict.
+func (c *OryClient) PatchProjectRevision(ctx context.Context, projectID string, patches []ory.JsonPatch) error {
+	_, err := c.PatchProjectRevisionWith(ctx, projectID, func(map[string]interface{}) ([]ory.JsonPatch, error) {
+		return patches, nil
+	})
+	return err
+}
+
+// PatchProjectRevisionWith is PatchProjectRevision for a read-modify-write.
+// build runs on every attempt against the revision that attempt targets, so a
+// stale-revision conflict re-reads the revision and rebuilds the operations
+// instead of replaying operations computed against the old one. The read and
+// the patch run under the per-project mutex, which serializes the resources
+// in one apply that all modify the same revision array.
+//
+// It returns the revision the API reports after the patch. When build returns
+// no operations nothing is sent, and the revision that was read is returned.
+func (c *OryClient) PatchProjectRevisionWith(ctx context.Context, projectID string, build RevisionPatchBuilder) (map[string]interface{}, error) {
+	const operation = "patching project revision"
+	if c.consoleClient == nil {
+		return nil, fmt.Errorf("%s: %w. Set workspace_api_key (ORY_WORKSPACE_API_KEY)",
+			operation, ErrConsoleClientNotConfigured)
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
+	mu := c.patchProjectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
+
+	const maxAttempts = 3
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		revision, err := c.GetProjectNormalizedRevision(ctx, projectID)
+		if err != nil {
+			return nil, err
+		}
+		revisionID, _ := revision["id"].(string)
+		if revisionID == "" {
+			return nil, fmt.Errorf("%s: current revision has no id", operation)
+		}
+		patches, err := build(revision)
+		if err != nil {
+			return nil, err
+		}
+		if len(patches) == 0 {
+			return revision, nil
+		}
+		payload, err := json.Marshal(patches)
+		if err != nil {
+			return nil, fmt.Errorf("encoding revision patch request: %w", err)
+		}
+
+		endpoint := strings.TrimRight(c.config.ConsoleAPIURL, "/") + "/normalized/projects/" +
+			url.PathEscape(projectID) + "/revision/" + url.PathEscape(revisionID)
+		resp, err := c.doConsoleRawRequest(ctx, operation, http.MethodPatch, endpoint, payload)
+		if err != nil {
+			return nil, wrapAPIError(err, operation)
+		}
+		body, readErr := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if readErr != nil {
+			return nil, fmt.Errorf("reading revision patch response: %w", readErr)
+		}
+		if resp.StatusCode == http.StatusOK {
+			return c.revisionFromPatchResponse(ctx, projectID, body)
+		}
+		lastErr = fmt.Errorf("unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		if resp.StatusCode != http.StatusConflict {
+			return nil, wrapAPIError(lastErr, operation)
+		}
+		// Stale revision: an out-of-band update created a newer one between
+		// resolving the ID and patching. Loop to re-resolve, rebuild, and retry.
+	}
+	return nil, wrapAPIError(lastErr, operation)
+}
+
+// revisionFromPatchResponse returns the current_revision carried by a
+// successful revision PATCH. The endpoint answers with the whole normalized
+// project, the same shape GET /normalized/projects/{id} returns. A response
+// without one falls back to a fresh read, so callers always get the
+// post-patch revision.
+func (c *OryClient) revisionFromPatchResponse(ctx context.Context, projectID string, body []byte) (map[string]interface{}, error) {
+	var parsed normalizedProjectResponse
+	if err := json.Unmarshal(body, &parsed); err == nil && parsed.CurrentRevision != nil {
+		return parsed.CurrentRevision, nil
+	}
+	return c.GetProjectNormalizedRevision(ctx, projectID)
+}
+
+// SetProjectEnvironment changes a project's environment tier (dev, stage, prod)
+// in place via the Console API's PUT /projects/{id}/environment endpoint — the
+// same call the Ory Console makes.
+//
+// PatchProject cannot do this: it patches the project *configuration* and
+// silently ignores the top-level environment field (it returns 200 without
+// changing anything). This dedicated endpoint updates the environment directly.
+// The change is validated server-side: the project must belong to a workspace,
+// the workspace subscription must permit the target tier, and any
+// environment-specific configuration options must be compatible with the target
+// environment. A workspace API key is an accepted caller.
+//
+// The endpoint is not part of the generated client-go SDK, so the request is
+// issued directly against the console API, mirroring ListWorkspaceIdentitySchemas.
+// A successful (HTTP 200) call is the success signal; callers read the resulting
+// state via GetProject, which reflects the new environment immediately.
+func (c *OryClient) SetProjectEnvironment(ctx context.Context, projectID, environment string) error {
+	if c.consoleClient == nil {
+		return fmt.Errorf("setting project environment: %w. "+
+			"Set workspace_api_key (ORY_WORKSPACE_API_KEY)", ErrConsoleClientNotConfigured)
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return err
+	}
+
+	endpoint := strings.TrimRight(c.config.ConsoleAPIURL, "/") + "/projects/" + url.PathEscape(projectID) + "/environment"
+	payload, err := json.Marshal(map[string]string{"environment": environment})
+	if err != nil {
+		return fmt.Errorf("encoding set-environment request: %w", err)
+	}
+
+	resp, err := c.doConsoleRawRequest(ctx, "setting project environment", http.MethodPut, endpoint, payload)
+	if err != nil {
+		return wrapAPIError(err, "setting project environment")
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("reading set-environment response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return wrapAPIError(fmt.Errorf("unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(body))),
+			"setting project environment")
+	}
+	// The endpoint returns the updated project, but its serialization omits
+	// fields the SDK's Project model requires, so the body is intentionally not
+	// parsed — the 200 status is authoritative.
+	return nil
+}
+
 // =============================================================================
 // Workspace Operations (Console API)
 // =============================================================================
@@ -817,6 +1171,7 @@ func (c *OryClient) GetWorkspace(ctx context.Context, workspaceID string) (*ory.
 		return nil, err
 	}
 	workspace, httpResp, err := c.consoleClient.WorkspaceAPI.GetWorkspace(ctx, workspaceID).Execute()
+	err = notFoundIfStatus(httpResp, err)
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
@@ -824,20 +1179,40 @@ func (c *OryClient) GetWorkspace(ctx context.Context, workspaceID string) (*ory.
 		// Check if it's a 403 error - try fallback to list
 		errStr := err.Error()
 		if strings.Contains(errStr, "403") || strings.Contains(errStr, "Forbidden") {
-			// Fall back to listing workspaces and finding by ID
-			listResp, listHttpResp, listErr := c.consoleClient.WorkspaceAPI.ListWorkspaces(ctx).Execute()
-			if listHttpResp != nil {
-				_ = listHttpResp.Body.Close()
-			}
-			if listErr != nil {
-				return nil, err // Return original error
-			}
-			for _, w := range listResp.Workspaces {
-				if w.GetId() == workspaceID {
-					return &w, nil
+			// Fall back to listing workspaces and finding by ID. The listing is
+			// paginated, and every page has to be read before "absent" means
+			// anything: callers treat absence as deletion, so stopping at the
+			// first page would drop a live workspace from Terraform state.
+			var pageToken string
+			for {
+				listReq := c.consoleClient.WorkspaceAPI.ListWorkspaces(ctx)
+				if pageToken != "" {
+					listReq = listReq.PageToken(pageToken)
 				}
+				listResp, listHttpResp, listErr := listReq.Execute()
+				if listHttpResp != nil {
+					_ = listHttpResp.Body.Close()
+				}
+				if listErr != nil {
+					return nil, err // Return original error
+				}
+				for _, w := range listResp.Workspaces {
+					if w.GetId() == workspaceID {
+						return &w, nil
+					}
+				}
+				next := listResp.GetNextPageToken()
+				// A repeated token would loop forever; treat it as the end.
+				if !listResp.GetHasNextPage() || next == "" || next == pageToken {
+					break
+				}
+				pageToken = next
 			}
-			return nil, fmt.Errorf("workspace %s not found", workspaceID)
+			// Every page has been read and the workspace is not in any of them,
+			// which is the same answer a 404 gives. Tag it so callers that must
+			// tell "gone" from "failed" — see IsNotFoundStatus — get the same
+			// signal on both paths.
+			return nil, fmt.Errorf("%w: workspace %s not found", ErrNotFound, workspaceID)
 		}
 		return nil, err
 	}
@@ -915,6 +1290,15 @@ func (c *OryClient) CreateOrganization(ctx context.Context, projectID, label str
 	return org, nil
 }
 
+// organizationRetryBaseDelay returns the configured backoff unit for the
+// organization consistency retries, falling back to the production default.
+func (c *OryClient) organizationRetryBaseDelay() time.Duration {
+	if c.config.OrganizationRetryBaseDelay > 0 {
+		return c.config.OrganizationRetryBaseDelay
+	}
+	return defaultOrganizationRetryBaseDelay
+}
+
 // GetOrganization retrieves an organization by ID.
 // Includes retry logic to handle eventual consistency after organization creation.
 func (c *OryClient) GetOrganization(ctx context.Context, projectID, orgID string) (*ory.Organization, error) {
@@ -931,6 +1315,7 @@ func (c *OryClient) GetOrganization(ctx context.Context, projectID, orgID string
 	var lastErr error
 	for attempt := 0; attempt < 5; attempt++ {
 		resp, httpResp, err := c.consoleClient.ProjectAPI.GetOrganization(ctx, projectID, orgID).Execute()
+		err = notFoundIfStatus(httpResp, err)
 		if httpResp != nil {
 			_ = httpResp.Body.Close()
 		}
@@ -951,7 +1336,7 @@ func (c *OryClient) GetOrganization(ctx context.Context, projectID, orgID string
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
-			case <-time.After(time.Duration(1<<attempt) * time.Second):
+			case <-time.After(time.Duration(1<<attempt) * c.organizationRetryBaseDelay()):
 			}
 		}
 	}
@@ -1032,60 +1417,52 @@ func (c *OryClient) DeleteOrganization(ctx context.Context, projectID, orgID str
 // Identity Operations (Project API)
 // =============================================================================
 
-// CreateIdentity creates a new identity with retry on rate limit.
+// CreateIdentity creates a new identity. The client's transport retries an
+// HTTP 429, so a rate limit only reaches the caller once every retry is spent.
 func (c *OryClient) CreateIdentity(ctx context.Context, body ory.CreateIdentityBody) (*ory.Identity, error) {
 	if err := c.ensureProjectClient(); err != nil {
 		return nil, fmt.Errorf("creating identity: %w", err)
 	}
-	return retryWithBackoff(ctx, "creating identity", func() (*ory.Identity, error) {
-		identity, httpResp, err := c.projectClient.IdentityAPI.CreateIdentity(ctx).CreateIdentityBody(body).Execute()
-		if httpResp != nil {
-			_ = httpResp.Body.Close()
-		}
-		return identity, err
-	})
+	identity, httpResp, err := c.projectClient.IdentityAPI.CreateIdentity(ctx).CreateIdentityBody(body).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	return identity, err
 }
 
-// GetIdentity retrieves an identity by ID with retry on rate limit.
+// GetIdentity retrieves an identity by ID.
 func (c *OryClient) GetIdentity(ctx context.Context, identityID string) (*ory.Identity, error) {
 	if err := c.ensureProjectClient(); err != nil {
 		return nil, fmt.Errorf("getting identity: %w", err)
 	}
-	return retryWithBackoff(ctx, "getting identity", func() (*ory.Identity, error) {
-		identity, httpResp, err := c.projectClient.IdentityAPI.GetIdentity(ctx, identityID).Execute()
-		if httpResp != nil {
-			_ = httpResp.Body.Close()
-		}
-		return identity, err
-	})
+	identity, httpResp, err := c.projectClient.IdentityAPI.GetIdentity(ctx, identityID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	return identity, err
 }
 
-// UpdateIdentity updates an identity with retry on rate limit.
+// UpdateIdentity updates an identity.
 func (c *OryClient) UpdateIdentity(ctx context.Context, identityID string, body ory.UpdateIdentityBody) (*ory.Identity, error) {
 	if err := c.ensureProjectClient(); err != nil {
 		return nil, fmt.Errorf("updating identity: %w", err)
 	}
-	return retryWithBackoff(ctx, "updating identity", func() (*ory.Identity, error) {
-		identity, httpResp, err := c.projectClient.IdentityAPI.UpdateIdentity(ctx, identityID).UpdateIdentityBody(body).Execute()
-		if httpResp != nil {
-			_ = httpResp.Body.Close()
-		}
-		return identity, err
-	})
+	identity, httpResp, err := c.projectClient.IdentityAPI.UpdateIdentity(ctx, identityID).UpdateIdentityBody(body).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	return identity, err
 }
 
-// DeleteIdentity deletes an identity with retry on rate limit.
+// DeleteIdentity deletes an identity.
 func (c *OryClient) DeleteIdentity(ctx context.Context, identityID string) error {
 	if err := c.ensureProjectClient(); err != nil {
 		return fmt.Errorf("deleting identity: %w", err)
 	}
-	_, err := retryWithBackoff(ctx, "deleting identity", func() (struct{}, error) {
-		httpResp, err := c.projectClient.IdentityAPI.DeleteIdentity(ctx, identityID).Execute()
-		if httpResp != nil {
-			_ = httpResp.Body.Close()
-		}
-		return struct{}{}, err
-	})
+	httpResp, err := c.projectClient.IdentityAPI.DeleteIdentity(ctx, identityID).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
 	return err
 }
 
@@ -1102,7 +1479,7 @@ func (c *OryClient) CreateOAuth2Client(ctx context.Context, oauthClient ory.OAut
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
-	return result, err
+	return result, wrapAPIError(err, "creating OAuth2 client")
 }
 
 // GetOAuth2Client retrieves an OAuth2 client by ID.
@@ -1111,10 +1488,11 @@ func (c *OryClient) GetOAuth2Client(ctx context.Context, clientID string) (*ory.
 		return nil, fmt.Errorf("reading OAuth2 client: %w", err)
 	}
 	oauthClient, httpResp, err := c.projectClient.OAuth2API.GetOAuth2Client(ctx, clientID).Execute()
+	err = notFoundIfStatus(httpResp, err)
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
-	return oauthClient, err
+	return oauthClient, wrapAPIError(err, "reading OAuth2 client")
 }
 
 // UpdateOAuth2Client updates an OAuth2 client.
@@ -1126,7 +1504,7 @@ func (c *OryClient) UpdateOAuth2Client(ctx context.Context, clientID string, oau
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
-	return result, err
+	return result, wrapAPIError(err, "updating OAuth2 client")
 }
 
 // DeleteOAuth2Client deletes an OAuth2 client.
@@ -1138,7 +1516,7 @@ func (c *OryClient) DeleteOAuth2Client(ctx context.Context, clientID string) err
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
-	return err
+	return wrapAPIError(err, "deleting OAuth2 client")
 }
 
 // =============================================================================
@@ -1146,14 +1524,14 @@ func (c *OryClient) DeleteOAuth2Client(ctx context.Context, clientID string) err
 // =============================================================================
 
 // CreateProjectAPIKey creates a new API key for a project.
-func (c *OryClient) CreateProjectAPIKey(ctx context.Context, projectID string, body ory.CreateProjectApiKeyRequest) (*ory.ProjectApiKey, error) {
+func (c *OryClient) CreateProjectAPIKey(ctx context.Context, projectID string, body ory.CreateProjectApiKeyBody) (*ory.ProjectApiKey, error) {
 	if err := c.requireConsoleClient("creating project API key"); err != nil {
 		return nil, err
 	}
 	if err := c.checkProjectAllowed(projectID); err != nil {
 		return nil, err
 	}
-	key, httpResp, err := c.consoleClient.ProjectAPI.CreateProjectApiKey(ctx, projectID).CreateProjectApiKeyRequest(body).Execute()
+	key, httpResp, err := c.consoleClient.ProjectAPI.CreateProjectApiKey(ctx, projectID).CreateProjectApiKeyBody(body).Execute()
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
@@ -1175,7 +1553,18 @@ func (c *OryClient) ListProjectAPIKeys(ctx context.Context, projectID string) ([
 	return keys, err
 }
 
-// DeleteProjectAPIKey deletes an API key with retry logic for transient errors.
+const (
+	// serverErrorRetries is how many more times DeleteProjectAPIKey sends a
+	// request that the console API failed with a 5xx.
+	serverErrorRetries = 3
+	// serverErrorBackoff is the first wait between those attempts. It doubles
+	// on each further attempt.
+	serverErrorBackoff = 1 * time.Second
+)
+
+// DeleteProjectAPIKey deletes an API key, and retries a server error. A rate
+// limit needs no handling here: the client's transport already retries an
+// HTTP 429, so one that reaches this code has spent every retry.
 func (c *OryClient) DeleteProjectAPIKey(ctx context.Context, projectID, keyID string) error {
 	if err := c.requireConsoleClient("deleting project API key"); err != nil {
 		return err
@@ -1184,9 +1573,9 @@ func (c *OryClient) DeleteProjectAPIKey(ctx context.Context, projectID, keyID st
 		return err
 	}
 	var lastErr error
-	backoff := initialBackoff
+	backoff := serverErrorBackoff
 
-	for attempt := 0; attempt <= maxRetries; attempt++ {
+	for attempt := 0; attempt <= serverErrorRetries; attempt++ {
 		httpResp, err := c.consoleClient.ProjectAPI.DeleteProjectApiKey(ctx, projectID, keyID).Execute()
 		if httpResp != nil {
 			_ = httpResp.Body.Close()
@@ -1198,12 +1587,12 @@ func (c *OryClient) DeleteProjectAPIKey(ctx context.Context, projectID, keyID st
 
 		lastErr = err
 
-		// Only retry on rate limit or 5xx errors
-		if !isRateLimitError(err) && !isRetryableError(err) {
+		// Only retry on 5xx errors
+		if !isRetryableError(err) {
 			return err
 		}
 
-		if attempt == maxRetries {
+		if attempt == serverErrorRetries {
 			break
 		}
 
@@ -1216,7 +1605,7 @@ func (c *OryClient) DeleteProjectAPIKey(ctx context.Context, projectID, keyID st
 		}
 	}
 
-	return fmt.Errorf("deleting API key: failed after %d retries: %w", maxRetries, lastErr)
+	return fmt.Errorf("deleting API key: failed after %d retries: %w", serverErrorRetries, lastErr)
 }
 
 // =============================================================================
@@ -1442,6 +1831,7 @@ func (c *OryClient) GetTrustedOAuth2JwtGrantIssuer(ctx context.Context, id strin
 		return nil, fmt.Errorf("getting trusted JWT grant issuer: %w", err)
 	}
 	issuer, httpResp, err := c.projectClient.OAuth2API.GetTrustedOAuth2JwtGrantIssuer(ctx, id).Execute()
+	err = notFoundIfStatus(httpResp, err)
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
@@ -1506,6 +1896,7 @@ func (c *OryClient) GetOIDCDynamicClient(ctx context.Context, clientID string) (
 		return nil, fmt.Errorf("getting OIDC dynamic client: %w", err)
 	}
 	result, httpResp, err := c.projectClient.OAuth2API.GetOAuth2Client(ctx, clientID).Execute()
+	err = notFoundIfStatus(httpResp, err)
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
@@ -1678,11 +2069,13 @@ func (c *OryClient) ListIdentitySchemasViaProject(ctx context.Context, projectID
 	return extractSchemasFromProjectConfig(ctx, project)
 }
 
-// consoleHTTPClient is used for direct calls to the console API (the workspace
-// identity-schemas endpoint) that the SDK does not yet expose. It carries an
-// explicit timeout so a stalled upstream cannot block reads indefinitely, and
-// is a variable so tests can override it.
-var consoleHTTPClient = &http.Client{Timeout: 30 * time.Second}
+// consoleHTTPClient is the fallback for direct calls to the console API (the
+// workspace identity-schemas endpoint) that the SDK does not yet expose. A
+// client built by NewOryClient carries its own, so this one only serves a
+// zero-valued OryClient. Its transport retries an HTTP 429 and guards a stalled
+// upstream with a per-attempt response-header timeout. It is a variable so
+// tests can override it.
+var consoleHTTPClient = newOryHTTPClient(DefaultMaxRetries)
 
 // managedIdentitySchema mirrors the response of the backoffice
 // GET /identity-schemas endpoint. It is defined locally so the method does not
@@ -1720,18 +2113,9 @@ func (c *OryClient) ListWorkspaceIdentitySchemas(ctx context.Context) ([]ory.Ide
 		req.Header.Set("User-Agent", c.config.UserAgent)
 	}
 
-	resp, err := retryWithBackoff(ctx, "listing workspace identity schemas", func() (*http.Response, error) {
-		r, doErr := consoleHTTPClient.Do(req)
-		if doErr != nil {
-			return nil, doErr
-		}
-		if r.StatusCode == http.StatusTooManyRequests {
-			body, _ := io.ReadAll(r.Body)
-			_ = r.Body.Close()
-			return nil, fmt.Errorf("429 Too Many Requests: %s", strings.TrimSpace(string(body)))
-		}
-		return r, nil
-	})
+	// The client's transport retries an HTTP 429, so a rate limit only reaches
+	// the caller once every retry is spent.
+	resp, err := c.rawHTTPClient().Do(req)
 	if err != nil {
 		return nil, wrapAPIError(err, "listing workspace identity schemas")
 	}

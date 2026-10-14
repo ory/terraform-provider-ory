@@ -96,7 +96,7 @@ Some tests require specific Ory plan features. Enable them with environment vari
 | Environment Variable | Description |
 |---------------------|-------------|
 | `ORY_KETO_TESTS_ENABLED=true` | Run relationship/Keto tests |
-| `ORY_B2B_ENABLED=true` | Run B2B/organization tests (requires B2B plan) |
+| `ORY_B2B_ENABLED=true` | Run B2B tests: organizations and SCIM clients (requires B2B plan and a `prod` or `stage` project) |
 | `ORY_SOCIAL_PROVIDER_TESTS_ENABLED=true` | Run social provider tests |
 | `ORY_SCHEMA_TESTS_ENABLED=true` | Run identity schema tests |
 | `ORY_PROJECT_TESTS_ENABLED=true` | Run project creation/deletion tests |
@@ -274,7 +274,7 @@ The generated `*_gen.go` files are **overwritten** on every `make generate`. Han
 
 #### The "governs" pattern
 
-The published OpenAPI spec (`ory/client-go`) includes descriptions like:
+The published OpenAPI spec (`spec/client/<version>.json` in [ory/sdk](https://github.com/ory/sdk/tree/master/spec/client), the file `ory/client-go` is generated from) includes descriptions like:
 
 ```
 This governs the "session.lifespan" setting.
@@ -284,16 +284,18 @@ The codegen tool uses this to automatically derive JSON Patch paths:
 - `kratos_` prefix + `governs "session.lifespan"` → `/services/identity/config/session/lifespan`
 - `hydra_` prefix + `governs "ttl.access_token"` → `/services/oauth2/config/ttl/access_token`
 
-When the OpenAPI spec is present locally (`internal/codegen/openapi.yaml`), `make generate` automatically derives patch paths from the spec's governs descriptions. All patch paths are derived from the spec — no hardcoded paths in `mappings.yaml`.
+When the OpenAPI spec is present locally (`internal/codegen/openapi.json`), `make generate` automatically derives patch paths from the spec's governs descriptions. Patch paths are derived from the spec, with two exceptions kept in `mappings.yaml`: `patch_path_override` replaces a spec-derived path whose config key the API does not actually read, and `revision_property` attributes bypass the config document entirely (see the fields table below). Both carry a comment recording the live-API verification — do not remove them during regeneration work.
 
 #### Adding a new simple config field
 
 1. Check if the field exists in the OpenAPI spec:
 
 ```bash
-make download-spec   # Download latest spec
+make download-spec   # Download the spec version pinned in .deps/ory-openapi-spec.yaml
 make discover        # Shows unmapped spec properties with YAML entries ready to copy
 ```
+
+To look ahead of the pin, run `make discover SPEC_VERSION=latest`. It resolves the newest spec published to `ory/sdk` (or pass an explicit `SPEC_VERSION=v1.22.77`).
 
 2. Add an entry to `internal/codegen/mappings.yaml`:
 
@@ -330,6 +332,12 @@ That's it — the field appears in the Terraform schema, JSON Patch operations, 
 | `sensitive` | No | If `true`, value is masked in Terraform output |
 | `skip_empty_read` | No | If `true`, skip reading empty strings from API (used for account_experience fields) |
 | `write_only` | No | If `true`, the attribute is sent on create/update but never read back from the API. Use for secrets the API does not return (or returns masked, e.g. `****`), so the configured value is always preserved and never produces a spurious diff |
+| `preserve_on_missing` | No | If `true`, Read keeps the state value when the API response omits the key. Use for attributes the API accepts with HTTP 200 but never reports back, where nulling state would create a diff no apply can settle. Verify with curl before setting it |
+| `read_path` | No | The config path the API reports the value under, when that differs from the path the value is written to (e.g. `max_submissions` is written at `...code.max_submissions` and reported at `...code.config.max_submissions`). Reads use it instead of the patch path |
+| `storage_url_content` | No | If `true`, the read path resolves an object-storage URL back to the configured `base64://` value. Use for a Jsonnet payload the API uploads and then reports as `https://storage.googleapis.com/.../<sha512>.jsonnet`. `string` only, and not combinable with `write_only` |
+| `patch_path_override` | No | Replaces the spec-derived patch path when the governs description names a config key the API does not actually read (the write returns HTTP 200 and is silently discarded). Reads use it too unless `read_path` is also set. Verify the real key against the live API and record the verification in a comment (see `enable_ax_v2`) |
+| `bool_enum` | No | `true_value: ...` + `false_value: ...`. For a bool attribute whose config key stores a string enum instead of a JSON bool. The patch sends the enum string and the read maps it back by comparing with `true_value`. Without it a raw bool write is accepted with HTTP 200 but normalized by string comparison, silently storing the false variant (see `feature_flags_password_profile_registration_node_group`) |
+| `revision_property` | No | If `true`, the attribute is a top-level normalized revision column with no key in any service config document — document patches (including `PATCH /projects/{id}/revision/{rev}`, which is document-shaped) accept writes to it and silently drop them. The write goes through `PATCH /normalized/projects/{id}/revision/{rev}` (`client.PatchProjectRevision`, compare-and-swap with conflict retry) with op path `/<openapi_property>`, and the read through `GET /normalized/projects/{id}` (`client.GetProjectNormalizedRevision`), so drift is detected. `bool` only (see `disable_account_experience_welcome_screen`) |
 | `validators` | No | `one_of: [...]` or `regex: "..."` + `regex_message: "..."` |
 | `deprecated_name` | No | Old terraform attribute name (shows deprecation warning in Terraform) |
 | `deprecated_go_field` | No | Old Go struct field name for the deprecated attribute |
@@ -338,18 +346,43 @@ That's it — the field appears in the Terraform schema, JSON Patch operations, 
 
 | Target | Description |
 |--------|-------------|
-| `make generate` | Generate Go files from mappings.yaml. Auto-validates against the OpenAPI spec if `internal/codegen/openapi.yaml` exists |
-| `make download-spec` | Download the latest OpenAPI spec from `ory/client-go` |
+| `make generate` | Generate Go files from mappings.yaml. Auto-validates against the OpenAPI spec if `internal/codegen/openapi.json` exists |
+| `make download-spec` | Download the OpenAPI spec pinned in `.deps/ory-openapi-spec.yaml` from `ory/sdk`. `SPEC_VERSION=vX.Y.Z` or `SPEC_VERSION=latest` overrides the pin |
 | `make discover` | Download spec and output YAML entries + Go struct fields for all unmapped properties |
 | `make check-coverage` | Download spec and fail if any properties are unmapped (used in CI to detect drift) |
+| `make probe ATTRS=a,b` | Write sentinel and empty values to the named attributes on a throwaway project and classify what the live API reports back (see below) |
+
+#### Probing attributes against the live API
+
+The spec cannot be trusted alone: governs descriptions sometimes name config keys the API never reads, declared types sometimes differ from the wire format (a bool spec property can store a string enum), and the API prunes or refuses some values. All of these return HTTP 200 on write and only surface later as perpetual plan diffs (issue #321). `make probe ATTRS=attr_one,attr_two` writes a sentinel value and the type's empty value to each attribute's patch path on a throwaway project (created and deleted automatically; set `ORY_PROBE_PROJECT_ID` to reuse one) and classifies the result:
+
+| Classification | Meaning | Action |
+|---|---|---|
+| `OK` / `EMPTY PRUNED` / `EMPTY OK` | Value echoed back; empty value pruned or round-trips | None — handled generically |
+| `TYPE MISMATCH` | The key stores a different JSON type than the schema declares | Add `bool_enum` or fix the type |
+| `VALUE CHANGED` | The API normalized or substituted the non-empty value | Verify the synthesized value is valid, then document the normalization or adjust the mapping |
+| `REPORTED ELSEWHERE` | The value came back under a different key | Add `read_path` |
+| `NOT REPORTED` | Accepted and never echoed | Verify the path with curl: wrong governs path (`patch_path_override` / `revision_property`), plan-gated, environment-constrained, or `preserve_on_missing` |
+| `DEFAULT SUBSTITUTED` | The empty value was replaced by a server default | Mention the default in the description |
+| `CANNOT CLEAR` | The empty write left the previous value in place | Mention it in the description; the server refuses to clear the key |
+| `WRITE REJECTED` | The synthesized probe value failed validation | Probe manually with a valid value |
+| `WRITE FAILED` | The request could not be created, sent, or read (for example, a network error or timeout) | Check the Console API endpoint and network, then retry |
+| `READ FAILED` | The successful PATCH response could not be parsed, or the expected service was absent | Inspect the response and verify that the service is available on the project |
+| `UNKNOWN ATTRIBUTE` | The name passed in `ATTRS` is absent from `mappings.yaml` | Correct the attribute name |
+
+The regenerate workflow runs this probe automatically for every attribute that auto-discovery appends after a client-go bump and embeds the report in the draft PR, so a lying spec is caught at review time instead of after a release.
+
+#### Spec version pin
+
+The spec version lives in `.deps/ory-openapi-spec.yaml`. Renovate tracks the newest version published to `ory/sdk` through the `ory-sdk-client-spec` custom datasource in `renovate.json` and opens a bump PR. The pin is independent of the `github.com/ory/client-go` module version on purpose. The SDK publish job that produces client-go can stall for weeks while `ory/sdk` keeps receiving new specs, and the generated attributes only need the spec: they patch and read the generic config document, not typed SDK fields.
 
 #### CI drift detection
 
-A GitHub Actions workflow (`.github/workflows/regenerate-config.yml`) triggers when `go.sum` changes on main (e.g., Renovate merges a client-go bump) and:
-1. Downloads the latest OpenAPI spec from `ory/client-go`
-2. Regenerates code and creates a PR if the generated files changed
-3. Runs `--strict` mode to detect unmapped properties
-4. If new properties are found, creates a GitHub issue with the `codegen-drift` label listing the new properties and instructions to add them
+A GitHub Actions workflow (`.github/workflows/regenerate-config.yml`) runs when `.deps/ory-openapi-spec.yaml` or `go.sum` changes on main (e.g., Renovate merges a spec or client-go bump) and every Monday at 06:00 UTC. It:
+1. Downloads the pinned OpenAPI spec and the latest one from `ory/sdk`
+2. Regenerates code, auto-appends new pinned-spec properties, probes them against the live API, and creates a PR if the generated files changed
+3. Runs `--strict` mode against the latest spec to detect unmapped properties
+4. If the latest spec has properties the pinned one lacks, creates a GitHub issue with the `codegen-drift` label listing them
 
 #### Renaming attributes (deprecated aliases)
 
@@ -402,11 +435,28 @@ These require hand-written code in `resource.go` because they have non-trivial s
 - `default_return_url` / `allowed_return_urls` (remove-on-empty semantics)
 - `mfa_enforcement` (maps string values to different API fields)
 
-> **Note:** `smtp_connection_uri` is fully codegen'd, but uses `write_only: true`
-> (see the mappings table above). The Ory API never returns the connection URI in
-> project-config responses, so the provider sends it on create/update but never
-> reads it back — this keeps it from showing a perpetual diff if the API returns an
-> empty value or a masked sentinel.
+> **Note:** `smtp_connection_uri`, `courier_http_request_config_auth_basic_auth_password`,
+> and `courier_http_request_config_auth_api_key_value` are fully codegen'd, but use
+> `write_only: true` (see the mappings table above). The Ory API does not return these
+> secrets in project-config responses, so the provider sends them on create/update but
+> never reads them back — this keeps them from showing a perpetual diff if the API
+> returns an empty value or a masked sentinel.
+
+> **Note:** `courier_http_request_config_body` is codegen'd with
+> `storage_url_content: true`. The API uploads the decoded `base64://` payload to
+> object storage and reports an `https://storage.googleapis.com/.../<sha512>.jsonnet`
+> URL, so the read path resolves that URL back to the configured value. The
+> resolver lives in `resolveStorageURLContent` in `helpers.go`. It compares the
+> hash in the URL with the payload in state, and only downloads the stored payload
+> when the hash differs.
+
+> **Note:** The API prunes empty values (empty string, empty list, empty map,
+> integer zero) from stored configs: the write returns HTTP 200 and the key
+> never appears in any read. The generated Read therefore treats a missing key
+> as matching an empty state value and keeps it, and only nulls state (to
+> surface out-of-band drift) when the state value is non-empty. Without this,
+> configurations that set `[]`, `{}`, `""`, or `0` would show a diff on every
+> plan that no apply can settle (issue #321).
 
 ### Adding a New Resource
 

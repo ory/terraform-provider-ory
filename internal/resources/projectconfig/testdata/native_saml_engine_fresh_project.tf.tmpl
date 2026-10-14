@@ -1,0 +1,9 @@
+resource "ory_project" "saml" {
+  name        = "[[ .Name ]]"
+  environment = "prod"
+}
+
+resource "ory_project_config" "saml" {
+  project_id                        = ory_project.saml.id
+  preview_enable_native_saml_engine = [[ .Enabled ]]
+}

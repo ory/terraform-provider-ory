@@ -1,0 +1,9 @@
+resource "ory_social_provider" "test" {
+  provider_id                = "test-netid-origin"
+  provider_type              = "netid"
+  client_id                  = "test-netid-client-id"
+  client_secret              = "test-netid-client-secret"
+  scope                      = ["openid", "email"]
+  fedcm_config_url           = "https://broker.netid.de/fedcm.json"
+  net_id_token_origin_header = "https://news.example.com"
+}

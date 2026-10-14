@@ -42,6 +42,49 @@ func TestGovernsToPatchPath(t *testing.T) {
 	}
 }
 
+// ReadPreservesOnMissing decides whether the generated Read nulls a state value
+// when the API omits its key. Getting it wrong either hides a real removal or
+// creates a diff no apply can settle, so each input that sets it is pinned here.
+func TestReadPreservesOnMissing(t *testing.T) {
+	tests := []struct {
+		name string
+		attr Attribute
+		want bool
+	}{
+		{"plain attribute is nulled on absence", Attribute{Name: "session_lifespan"}, false},
+		{"sensitive is preserved", Attribute{Name: "identity_secrets_cipher", Sensitive: true}, true},
+		{"skip_empty_read is preserved", Attribute{Name: "account_experience_locale", SkipEmptyRead: true}, true},
+		{"preserve_on_missing is preserved", Attribute{Name: "session_earliest_possible_extend", PreserveOnMissing: true}, true},
+		{"write_only is irrelevant here, it never reaches the read tables", Attribute{Name: "smtp_connection_uri", WriteOnly: true}, false},
+	}
+
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, tt.attr.ReadPreservesOnMissing(), tt.name)
+	}
+}
+
+// A few attributes are written to one config path and reported back under
+// another, so the read table cannot simply reuse patch_path. Writes must keep
+// using patch_path either way.
+func TestReadKeysPath(t *testing.T) {
+	const (
+		writePath = "/services/identity/config/selfservice/methods/code/max_submissions"
+		readPath  = "/services/identity/config/selfservice/methods/code/config/max_submissions"
+	)
+
+	symmetric := Attribute{Name: "session_lifespan", PatchPath: "/services/identity/config/session/lifespan"}
+	assert.Equal(t, symmetric.PatchPath, symmetric.ReadKeysPath(),
+		"without read_path the read table follows patch_path")
+
+	asymmetric := Attribute{
+		Name:      "selfservice_methods_code_config_max_submissions",
+		PatchPath: writePath,
+		ReadPath:  readPath,
+	}
+	assert.Equal(t, readPath, asymmetric.ReadKeysPath(), "read_path wins for reads")
+	assert.Equal(t, writePath, asymmetric.PatchPath, "read_path must not affect writes")
+}
+
 func TestCleanDescription(t *testing.T) {
 	tests := []struct {
 		input string

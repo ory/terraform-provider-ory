@@ -11,6 +11,11 @@ on:
     branches: [main]
     paths:
       - 'go.sum'
+      - '.deps/ory-openapi-spec.yaml'
+  schedule:
+    # Weekly drift check against the newest spec published to ory/sdk, so a
+    # stalled Renovate run cannot hide new project_config properties for long.
+    - cron: '0 6 * * 1'
 
 permissions:
   contents: write
@@ -22,10 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
 
@@ -34,14 +39,15 @@ jobs:
         with:
           terraform_wrapper: false
 
-      - name: Download OpenAPI spec (pinned to go.mod version)
+      - name: Download OpenAPI spec (pinned in .deps/ory-openapi-spec.yaml)
         run: make download-spec
 
       - name: Download latest spec for drift detection
-        run: |
-          # ory/client-go uses 'master' as its default branch
-          curl -sSfL "https://raw.githubusercontent.com/ory/client-go/master/api/openapi.yaml" \
-            -o /tmp/openapi-master.yaml
+        # ory/sdk publishes every spec version under spec/client/ and points
+        # spec/client/latest at the newest one. The pinned spec is read from
+        # the same place, so this compares like with like even while the SDK
+        # publish job that produces ory/client-go is stalled.
+        run: make download-spec SPEC_VERSION=latest SPEC_OUT=/tmp/openapi-latest.json
 
       - name: Run codegen with spec validation
         id: generate
@@ -49,17 +55,17 @@ jobs:
           set -o pipefail
           go run ./internal/codegen/cmd/generate/ \
             -mappings ./internal/codegen/mappings.yaml \
-            -spec ./internal/codegen/openapi.yaml \
+            -spec ./internal/codegen/openapi.json \
             -out ./internal/resources/projectconfig/ 2>&1 | tee /tmp/codegen-output.txt
 
-      - name: Check for unmapped properties (against latest master spec)
+      - name: Check for unmapped properties (against the latest published spec)
         id: unmapped
         run: |
           set -o pipefail
           TMPDIR=$(mktemp -d)
           if ! go run ./internal/codegen/cmd/generate/ \
             -mappings ./internal/codegen/mappings.yaml \
-            -spec /tmp/openapi-master.yaml \
+            -spec /tmp/openapi-latest.json \
             -strict \
             -out "$TMPDIR" 2>&1 | tee /tmp/strict-output.txt; then
             # Expected strict-mode failure (unmapped properties) is not a job error.
@@ -86,7 +92,7 @@ jobs:
           set -o pipefail
           if ! go run ./internal/codegen/cmd/generate/ \
             -mappings ./internal/codegen/mappings.yaml \
-            -spec ./internal/codegen/openapi.yaml \
+            -spec ./internal/codegen/openapi.json \
             -discover-apply \
             -out ./internal/resources/projectconfig/ 2>&1 | tee /tmp/apply-output.txt; then
             exit 1
@@ -97,8 +103,36 @@ jobs:
             # Regenerate _gen.go files to reflect the newly-appended entries.
             go run ./internal/codegen/cmd/generate/ \
               -mappings ./internal/codegen/mappings.yaml \
-              -spec ./internal/codegen/openapi.yaml \
+              -spec ./internal/codegen/openapi.json \
               -out ./internal/resources/projectconfig/
+          fi
+
+      - name: Probe auto-discovered attributes against the live API
+        id: probe
+        if: steps.apply.outputs.count != '0'
+        env:
+          ORY_CONSOLE_API_URL: ${{ secrets.ORY_CONSOLE_API_URL }}
+          ORY_WORKSPACE_API_KEY: ${{ secrets.ORY_WORKSPACE_API_KEY }}
+          ORY_WORKSPACE_ID: ${{ secrets.ORY_WORKSPACE_ID }}
+        run: |
+          # The spec cannot be trusted alone: governs paths are sometimes wrong
+          # and declared types sometimes differ from the wire format, both of
+          # which return HTTP 200 on write and surface later as perpetual plan
+          # diffs (issue #321). Write each newly-appended attribute to a
+          # throwaway project and classify what the API reports back, so the
+          # reviewer of the draft PR sees which attributes need a mapping flag.
+          # Report-only: a probe failure must not block regeneration. The
+          # || true keeps the extraction non-fatal under -e/pipefail when the
+          # diff has no matches (or its format changes); the -n guard below
+          # then simply skips the probe.
+          NEW_ATTRS=$(git diff -- internal/codegen/mappings.yaml | grep -oP '^\+  - name: \K\S+' | paste -sd, - || true)
+          if [ -n "$NEW_ATTRS" ]; then
+            echo "Probing: $NEW_ATTRS"
+            go run ./internal/codegen/cmd/generate/ \
+              -mappings ./internal/codegen/mappings.yaml \
+              -spec ./internal/codegen/openapi.json \
+              -probe-attributes "$NEW_ATTRS" \
+              -probe-report /tmp/probe-report.md || echo "WARNING: probe failed; the draft PR will not include a probe report"
           fi
 
       - name: Check for codegen changes (pre-format)
@@ -131,7 +165,7 @@ jobs:
           APPLIED="${{ steps.apply.outputs.count }}"
           {
             echo "## Summary"
-            echo "- Auto-regenerated project_config schema, patches, and read tables from the latest OpenAPI spec"
+            echo "- Auto-regenerated project_config schema, patches, and read tables from the OpenAPI spec pinned in \`.deps/ory-openapi-spec.yaml\` (the latest published spec is only used for drift detection)"
             if [ "${APPLIED:-0}" -gt 0 ]; then
               echo "- Auto-discovered **${APPLIED} new attribute(s)** from the spec and appended entries to \`mappings.yaml\` + \`ProjectConfigResourceModel\`"
             fi
@@ -143,7 +177,15 @@ jobs:
               echo "- [ ] Review truncated descriptions (some may need rewording)"
               echo "- [ ] Confirm types (bool/string/int64/list_string/map_string) are correct"
               echo "- [ ] Decide if any new attribute should be \`sensitive\` or \`skip_empty_read\`"
+              echo "- [ ] Review the live API probe report below; anything not OK/EMPTY PRUNED/EMPTY OK needs a mapping flag (\`bool_enum\`, \`read_path\`, \`patch_path_override\`, \`preserve_on_missing\`, \`revision_property\`) or a docs note"
               echo "- [ ] Add acceptance test coverage if applicable"
+              echo ""
+            fi
+            if [ -f /tmp/probe-report.md ]; then
+              cat /tmp/probe-report.md
+              echo ""
+            elif [ "${APPLIED:-0}" -gt 0 ]; then
+              echo "> The live API probe did not produce a report (the probe step was skipped or failed). Run \`make probe ATTRS=...\` locally for the new attributes."
               echo ""
             fi
             echo "## Codegen Output"
@@ -168,7 +210,7 @@ jobs:
             echo "title=feat: auto-discover ${APPLIED} new project_config attribute(s) + regenerate" >> "$GITHUB_OUTPUT"
             echo "draft=true" >> "$GITHUB_OUTPUT"
           else
-            echo "title=feat: regenerate project_config from latest OpenAPI spec" >> "$GITHUB_OUTPUT"
+            echo "title=feat: regenerate project_config from the pinned OpenAPI spec" >> "$GITHUB_OUTPUT"
             echo "draft=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -189,7 +231,7 @@ jobs:
           delete-branch: true
           draft: ${{ steps.pr_meta.outputs.draft == 'true' }}
 
-      - name: Create issue for master-ahead-of-pinned drift
+      - name: Create issue for latest-ahead-of-pinned drift
         if: steps.unmapped.outputs.found == 'true' && steps.apply.outputs.count == '0'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
@@ -206,20 +248,20 @@ jobs:
               labels: 'codegen-drift',
             });
 
-            const body = `The daily OpenAPI spec check found **${count} new properties** in the \`normalizedProjectRevision\` schema (master branch of ory/client-go) that are not yet mapped in the Terraform provider. These are not yet in the pinned client-go version, so auto-discovery could not append them.\n\n\`\`\`\n${output}\n\`\`\`\n\n## Next steps\n\n- Wait for Renovate to bump client-go to a version that includes these properties. On merge, the regenerate workflow will auto-append them to \`mappings.yaml\` and open a draft PR.\n- Or, bump client-go manually and run \`make discover\` locally.\n\nSee [CONTRIBUTING.md](CONTRIBUTING.md#project-config-codegen) for details.`;
+            const body = `The scheduled OpenAPI spec check found **${count} new properties** in the \`normalizedProjectRevision\` schema of the latest spec published to ory/sdk that are not yet mapped in the Terraform provider. They are not in the spec version pinned in \`.deps/ory-openapi-spec.yaml\`, so auto-discovery could not append them.\n\n\`\`\`\n${output}\n\`\`\`\n\n## Next steps\n\n- Merge the Renovate PR that bumps \`.deps/ory-openapi-spec.yaml\`. On merge, the regenerate workflow will auto-append the properties to \`mappings.yaml\` and open a draft PR.\n- Or, bump the version in \`.deps/ory-openapi-spec.yaml\` by hand and run \`make discover\` locally.\n\nSee [CONTRIBUTING.md](CONTRIBUTING.md#project-config-codegen) for details.`;
 
             if (issues.data.length > 0) {
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issues.data[0].number,
-                body: `Daily spec check found ${count} unmapped master-only properties.\n\n\`\`\`\n${output}\n\`\`\``,
+                body: `Scheduled spec check found ${count} unmapped latest-only properties.\n\n\`\`\`\n${output}\n\`\`\``,
               });
             } else {
               await github.rest.issues.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                title: `feat: ${count} new API properties detected in master OpenAPI spec`,
+                title: `feat: ${count} new API properties detected in the latest published OpenAPI spec`,
                 labels: ['codegen-drift'],
                 body: body,
               });
@@ -247,6 +289,6 @@ jobs:
             fi
             if [ "${{ steps.unmapped.outputs.found }}" == "true" ] && [ "${{ steps.apply.outputs.count }}" == "0" ]; then
               echo ""
-              echo "**${{ steps.unmapped.outputs.count }} unmapped master-only properties detected** -- issue created/updated"
+              echo "**${{ steps.unmapped.outputs.count }} unmapped latest-only properties detected** -- issue created/updated"
             fi
           } >> "$GITHUB_STEP_SUMMARY"

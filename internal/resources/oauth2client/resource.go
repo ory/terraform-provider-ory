@@ -707,6 +707,13 @@ func (r *OAuth2ClientResource) Read(ctx context.Context, req resource.ReadReques
 
 	oauthClient, err := r.client.GetOAuth2Client(ctx, state.ClientID.ValueString())
 	if err != nil {
+		if client.IsNotFoundStatus(err) {
+			// The client was deleted outside Terraform. Drop it from state so the
+			// next plan recreates it, instead of failing every plan until the
+			// operator runs `terraform state rm`.
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Error Reading OAuth2 Client",
 			"Could not read OAuth2 client "+state.ClientID.ValueString()+": "+err.Error(),

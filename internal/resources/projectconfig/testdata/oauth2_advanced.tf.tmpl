@@ -4,4 +4,7 @@ resource "ory_project_config" "test" {
   oauth2_grant_jwt_iat_optional = true
   oauth2_exclude_not_before_claim = true
   oauth2_client_credentials_default_grant_allowed_scope = false
+
+  oidc_subject_identifiers_supported_types = ["public", "pairwise"]
+  oidc_subject_identifiers_pairwise_salt   = "[[ .PairwiseSalt ]]"
 }

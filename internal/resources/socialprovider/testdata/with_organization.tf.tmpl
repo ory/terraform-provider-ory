@@ -1,0 +1,14 @@
+resource "ory_organization" "test" {
+  label = "[[ .OrgLabel ]]"
+}
+
+resource "ory_social_provider" "test" {
+  provider_id     = "test-oidc-b2b-sso"
+  provider_type   = "generic"
+  client_id       = "test-b2b-client-id"
+  client_secret   = "test-b2b-client-secret"
+  issuer_url      = "https://accounts.google.com"
+  scope           = ["openid", "email"]
+  label           = "B2B SSO"
+  organization_id = ory_organization.test.id
+}

@@ -4,11 +4,16 @@ package projectconfig_test
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
+	"regexp"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	ory "github.com/ory/client-go"
@@ -65,10 +70,47 @@ func TestAccProjectConfigResource_smtpConnectionURIWriteOnlyArgument(t *testing.
 	})
 }
 
+// minPasswordLengthPath is where ory_project_config writes
+// selfservice_methods_password_config_min_password_length, which
+// testdata/basic.tf.tmpl sets to 10.
+const minPasswordLengthPath = "/services/identity/config/selfservice/methods/password/config/min_password_length"
+
+// checkConfigSurvivesDestroy asserts the value this test wrote is still stored
+// after destroy. ory_project_config has an intentional no-op Delete: a project's
+// configuration cannot be deleted, only changed. Pinning that means a change that
+// starts really deleting, or that starts resetting the config to defaults, fails
+// here instead of silently reverting a user's project on `terraform destroy`.
+//
+// The assertion is on the value this test set rather than on a parent node
+// existing, because the parent nodes are populated by defaults on every project
+// and would survive a reset that wiped everything this test configured.
+// See issue #333.
+func checkConfigSurvivesDestroy(t *testing.T, wantMinPasswordLength float64) resource.TestCheckFunc {
+	return func(*terraform.State) error {
+		return acctest.Eventually(func() error {
+			projectID := acctest.GetTestProject(t).ID
+			value, ok, err := acctest.ProjectConfigValue(t, projectID, minPasswordLengthPath)
+			if err != nil {
+				return fmt.Errorf("could not read project %s after destroy: %w", projectID, err)
+			}
+			if !ok {
+				return fmt.Errorf("destroy removed %s from project %s", minPasswordLengthPath, projectID)
+			}
+			// JSON numbers decode to float64.
+			if got, _ := value.(float64); got != wantMinPasswordLength {
+				return fmt.Errorf("%s is %v after destroy, want %v",
+					minPasswordLengthPath, value, wantMinPasswordLength)
+			}
+			return nil
+		})
+	}
+}
+
 func TestAccProjectConfigResource_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		CheckDestroy:             checkConfigSurvivesDestroy(t, 10),
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
@@ -91,8 +133,30 @@ func TestAccProjectConfigResource_basic(t *testing.T) {
 					"smtp_connection_uri",
 				},
 			},
+			// Selected-field import must recover the configured scalars and
+			// the origins list.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: selectedImportID("cors_enabled,cors_origins,selfservice_methods_password_config_min_password_length"),
+				// smtp_connection_uri is write-only.
+				ImportStateVerifyIgnore: []string{"smtp_connection_uri"},
+			},
 		},
 	})
+}
+
+// selectedImportID builds the "<project-id>:field,field" import ID for the
+// project config under test.
+func selectedImportID(fields string) resource.ImportStateIdFunc {
+	return func(s *terraform.State) (string, error) {
+		rs, ok := s.RootModule().Resources["ory_project_config.test"]
+		if !ok {
+			return "", fmt.Errorf("ory_project_config.test not in state")
+		}
+		return rs.Primary.ID + ":" + fields, nil
+	}
 }
 
 // TestAccProjectConfigResource_smtpConnectionURIWriteOnly verifies that
@@ -299,18 +363,34 @@ func TestAccProjectConfigResource_mfaPolicy(t *testing.T) {
 }
 
 func TestAccProjectConfigResource_codeMFA(t *testing.T) {
+	// max_submissions is here to cover the corrected patch path. The spec's
+	// governs description points at selfservice.methods.code.max_submissions,
+	// which the API accepts and discards; the value only sticks under
+	// selfservice.methods.code.config.max_submissions. The PlanOnly steps are
+	// what prove it, since a discarded value would refresh to null and show a
+	// diff forever.
+	createData := map[string]string{"CodeMFAEnabled": "true", "MaxSubmissions": "5"}
+	updateData := map[string]string{"CodeMFAEnabled": "false", "MaxSubmissions": "3"}
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			// Create with code MFA enabled
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", map[string]string{"CodeMFAEnabled": "true"}),
+				Config: acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", createData),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_enabled", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_mfa_enabled", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_config_max_submissions", "5"),
 				),
+			},
+			// Verify no perpetual diff on create
+			{
+				Config:             acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", createData),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 			// ImportState — config fields are ignored because import only sets
 			// id/project_id; Read only refreshes fields that are non-null in
@@ -321,21 +401,23 @@ func TestAccProjectConfigResource_codeMFA(t *testing.T) {
 				ImportStateVerify: true,
 				ImportStateVerifyIgnore: []string{
 					"selfservice_methods_code_enabled", "selfservice_methods_code_mfa_enabled",
+					"selfservice_methods_code_config_max_submissions",
 					"cors_enabled", "selfservice_methods_password_config_min_password_length",
 					"smtp_connection_uri",
 				},
 			},
 			// Update to disabled
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", map[string]string{"CodeMFAEnabled": "false"}),
+				Config: acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", updateData),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_enabled", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_mfa_enabled", "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_config_max_submissions", "3"),
 				),
 			},
 			// Verify no perpetual diff
 			{
-				Config:             acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", map[string]string{"CodeMFAEnabled": "false"}),
+				Config:             acctest.LoadTestConfig(t, "testdata/code_mfa.tf.tmpl", updateData),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
@@ -626,6 +708,21 @@ func clearTokenizerTemplatesOutOfBand(t *testing.T) func() {
 		t.Log("Cleared tokenizer templates out-of-band to simulate drift")
 	}
 }
+
+// Note on drift detection for values removed outside Terraform.
+//
+// There is deliberately no acceptance test that clears a project_config value
+// out-of-band and asserts the next refresh notices. It cannot pass. The client
+// caches the PatchProject response with no expiry, Read prefers that cache over
+// a live GetProject, and Provider.Configure reuses the same client for the whole
+// provider server lifecycle to work around API eventual consistency. Because the
+// test framework builds the provider once per test case, every refresh after the
+// first apply sees the cached pre-drift project, so a PreConfig hook that
+// patches through a second client is invisible.
+//
+// Real terraform runs are unaffected: each CLI command is a fresh process with
+// an empty cache. Coverage lives in read_simple_fields_test.go, which drives
+// readSimpleFields against API responses that omit the key.
 
 func TestAccProjectConfigResource_emptyReturnURLs(t *testing.T) {
 	acctest.RunTest(t, resource.TestCase{
@@ -945,6 +1042,65 @@ func TestAccProjectConfigResource_courierHTTP(t *testing.T) {
 	})
 }
 
+// courierBodyTemplate and courierBodyTemplateUpdated are `base64://` Jsonnet
+// payloads for the flat courier_http_request_config_body attribute. The Ory API
+// stores the decoded payload and reports a storage URL instead, so each step's
+// implicit post-apply plan check is what proves the read path resolves that URL
+// back to the configured value. See issue #315.
+const (
+	courierBodyTemplate        = "base64://ewogICJyZWNpcGllbnQiOiB7eyAucmVjaXBpZW50IH19LAogICJib2R5Ijoge3sgLmJvZHkgfX0KfQ=="
+	courierBodyTemplateUpdated = "base64://ewogICJyZWNpcGllbnQiOiB7eyAucmVjaXBpZW50IH19LAogICJzdWJqZWN0Ijoge3sgLnN1YmplY3QgfX0sCiAgImJvZHkiOiB7eyAuYm9keSB9fQp9"
+)
+
+// TestAccProjectConfigResource_courierHTTPBody covers the flat courier body
+// attribute end to end: create, refresh, update, and import. Before the storage
+// URL fix, the refresh after step 1 wrote
+// `https://storage.googleapis.com/.../<sha512>.jsonnet` into state and the step
+// failed with a non-empty plan.
+func TestAccProjectConfigResource_courierHTTPBody(t *testing.T) {
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/courier_http_body.tf.tmpl", map[string]string{
+					"Body": courierBodyTemplate,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "courier_delivery_strategy", "http"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "courier_http_request_config_url", "https://example.com/mail-api/send"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "courier_http_request_config_body", courierBodyTemplate),
+				),
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/courier_http_body.tf.tmpl", map[string]string{
+					"Body": courierBodyTemplateUpdated,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "courier_http_request_config_body", courierBodyTemplateUpdated),
+				),
+			},
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				// Import starts from empty state, so every optional attribute
+				// comes back null. That is the resource's existing import
+				// behavior and is not what this test covers.
+				ImportStateVerifyIgnore: []string{
+					"courier_delivery_strategy",
+					"courier_http_request_config_url",
+					"courier_http_request_config_body",
+					"smtp_connection_uri",
+					"cors_enabled",
+					"selfservice_methods_password_config_min_password_length",
+				},
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_featureFlags(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
@@ -955,7 +1111,10 @@ func TestAccProjectConfigResource_featureFlags(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "feature_flags_cacheable_sessions", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "feature_flags_enforce_identity_schema_guards", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "feature_flags_use_continue_with_transitions", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "feature_flags_webhook_response_directives", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_deviceauthn_config_android_allow_expired_factory_certificates", "true"),
 				),
 			},
 			{
@@ -965,11 +1124,212 @@ func TestAccProjectConfigResource_featureFlags(t *testing.T) {
 				ImportStateVerifyIgnore: []string{
 					"feature_flags_cacheable_sessions",
 					"feature_flags_cacheable_sessions_max_age",
+					"feature_flags_enforce_identity_schema_guards",
 					"feature_flags_use_continue_with_transitions",
+					"feature_flags_webhook_response_directives",
+					"selfservice_methods_deviceauthn_config_android_allow_expired_factory_certificates",
 					"cors_enabled",
 					"selfservice_methods_password_config_min_password_length",
 					"smtp_connection_uri",
 				},
+			},
+		},
+	})
+}
+
+// TestAccProjectConfigResource_ketoStrictModeLocked creates a fresh project,
+// which the API locks with strict mode enabled, and checks that the provider
+// refuses the one write the API would silently discard while still accepting
+// the value the lock keeps. Gated like the project tests because it creates
+// and deletes a real project.
+func TestAccProjectConfigResource_ketoStrictModeLocked(t *testing.T) {
+	acctest.RequireProjectTests(t)
+	projectName := fmt.Sprintf("%s-keto-lock-%d", acctest.TestProjectPrefix, time.Now().UnixNano())
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/keto_strict_mode_locked.tf.tmpl", map[string]string{
+					"Name":       projectName,
+					"StrictMode": "false",
+				}),
+				ExpectError: regexp.MustCompile(`Keto strict mode is locked on this project`),
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/keto_strict_mode_locked.tf.tmpl", map[string]string{
+					"Name":       projectName,
+					"StrictMode": "true",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.locked", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.locked", "keto_feature_flags_strict_mode", "true"),
+				),
+			},
+		},
+	})
+}
+
+// A fresh project's namespaces value starts as an array. This exercises both
+// namespace shapes and the OPL read-back without a preconfigured test project.
+func TestAccProjectConfigResource_ketoNamespaceConfigurationFreshProject(t *testing.T) {
+	acctest.RequireProjectTests(t)
+	projectName := fmt.Sprintf("%s-keto-opl-%d", acctest.TestProjectPrefix, time.Now().UnixNano())
+	oplURL := func(source string) string {
+		return "base64://" + base64.StdEncoding.EncodeToString([]byte(source))
+	}
+	const oplImport = "import { Namespace } from \"@ory/keto-namespace-types\"\n"
+	firstOPL := oplURL(oplImport + "class Document implements Namespace {}\n")
+	updatedOPL := oplURL(oplImport + "class Document implements Namespace {}\nclass Folder implements Namespace {}\n")
+	config := func(namespaceConfig string) string {
+		return acctest.LoadTestConfig(t, "testdata/keto_namespace_configuration_fresh_project.tf.tmpl", map[string]string{
+			"Name":            projectName,
+			"NamespaceConfig": namespaceConfig,
+		})
+	}
+	inline := `keto_namespaces = ["Document"]`
+	oplConfig := func(opl string) string {
+		return fmt.Sprintf(`keto_namespace_configuration = %q`, opl)
+	}
+
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: config(inline),
+				Check:  resource.TestCheckResourceAttr("ory_project_config.opl", "keto_namespaces.0", "Document"),
+			},
+			{
+				Config: config(oplConfig(firstOPL)),
+				Check:  resource.TestCheckResourceAttr("ory_project_config.opl", "keto_namespace_configuration", firstOPL),
+			},
+			{
+				Config: config(oplConfig(updatedOPL)),
+				Check:  resource.TestCheckResourceAttr("ory_project_config.opl", "keto_namespace_configuration", updatedOPL),
+			},
+			{
+				Config: config(inline),
+				Check:  resource.TestCheckResourceAttr("ory_project_config.opl", "keto_namespaces.0", "Document"),
+			},
+		},
+	})
+}
+
+// TestAccProjectConfigResource_passkeyConfig covers the passkey ceremony
+// settings and the restricted origins list added in spec v1.22.81: create,
+// update to the other enum variants, and import, with the selected-field
+// import verifying the exact values the API reports back.
+func TestAccProjectConfigResource_passkeyConfig(t *testing.T) {
+	const newAttrs = "selfservice_methods_passkey_config_attestation_preference," +
+		"selfservice_methods_passkey_config_authenticator_selection_attachment," +
+		"selfservice_methods_passkey_config_authenticator_selection_resident_key," +
+		"selfservice_methods_passkey_config_authenticator_selection_user_verification," +
+		"selfservice_methods_passkey_config_timeouts_login," +
+		"selfservice_methods_passkey_config_timeouts_registration," +
+		"security_restricted_origins"
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/passkey_config.tf.tmpl", map[string]string{
+					"Attestation":         "direct",
+					"Attachment":          "platform",
+					"ResidentKey":         "preferred",
+					"UserVerification":    "required",
+					"LoginTimeout":        "60s",
+					"RegistrationTimeout": "5m",
+					"RestrictedOrigins":   `["https://embed.example.com"]`,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_attestation_preference", "direct"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_authenticator_selection_attachment", "platform"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_authenticator_selection_resident_key", "preferred"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_authenticator_selection_user_verification", "required"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_timeouts_login", "60s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_timeouts_registration", "5m"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "security_restricted_origins.#", "1"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "security_restricted_origins.0", "https://embed.example.com"),
+				),
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/passkey_config.tf.tmpl", map[string]string{
+					"Attestation":         "none",
+					"Attachment":          "cross-platform",
+					"ResidentKey":         "required",
+					"UserVerification":    "discouraged",
+					"LoginTimeout":        "2m",
+					"RegistrationTimeout": "90s",
+					"RestrictedOrigins":   `["https://embed.example.com", "https://widget.example.org"]`,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_attestation_preference", "none"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_authenticator_selection_attachment", "cross-platform"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_authenticator_selection_resident_key", "required"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_authenticator_selection_user_verification", "discouraged"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_timeouts_login", "2m"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_passkey_config_timeouts_registration", "90s"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "security_restricted_origins.#", "2"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "security_restricted_origins.1", "https://widget.example.org"),
+				),
+			},
+			// A plain import only sets id/project_id, so the configured
+			// attributes are not populated until the next apply.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"selfservice_methods_passkey_enabled",
+					"selfservice_methods_passkey_config_attestation_preference",
+					"selfservice_methods_passkey_config_authenticator_selection_attachment",
+					"selfservice_methods_passkey_config_authenticator_selection_resident_key",
+					"selfservice_methods_passkey_config_authenticator_selection_user_verification",
+					"selfservice_methods_passkey_config_timeouts_login",
+					"selfservice_methods_passkey_config_timeouts_registration",
+					"security_restricted_origins",
+					"cors_enabled",
+					"smtp_connection_uri",
+				},
+			},
+			// The selected-field import must recover every new attribute.
+			{
+				ResourceName:            "ory_project_config.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateIdFunc:       selectedImportID("selfservice_methods_passkey_enabled," + newAttrs),
+				ImportStateVerifyIgnore: []string{"cors_enabled", "smtp_connection_uri"},
+			},
+		},
+	})
+}
+
+// TestAccProjectConfigResource_nativeSAMLEngineFreshProject toggles the native
+// SAML engine preview flag on a fresh project instead of the shared one, since
+// the flag changes how enabled SAML providers behave. The flag is gated by the
+// native_saml_engine feature, which the test workspace holds. Gated like the
+// project tests because it creates and deletes a real project.
+func TestAccProjectConfigResource_nativeSAMLEngineFreshProject(t *testing.T) {
+	acctest.RequireProjectTests(t)
+	projectName := fmt.Sprintf("%s-native-saml-%d", acctest.TestProjectPrefix, time.Now().UnixNano())
+	config := func(enabled string) string {
+		return acctest.LoadTestConfig(t, "testdata/native_saml_engine_fresh_project.tf.tmpl", map[string]string{
+			"Name":    projectName,
+			"Enabled": enabled,
+		})
+	}
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: config("true"),
+				Check:  resource.TestCheckResourceAttr("ory_project_config.saml", "preview_enable_native_saml_engine", "true"),
+			},
+			{
+				Config: config("false"),
+				Check:  resource.TestCheckResourceAttr("ory_project_config.saml", "preview_enable_native_saml_engine", "false"),
 			},
 		},
 	})
@@ -1050,6 +1410,18 @@ func TestAccProjectConfigResource_sessionHookOnPasswordRegistration(t *testing.T
 					"smtp_connection_uri",
 				},
 			},
+			// Selected-field import must read the toggle from the live hook list.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: selectedImportID("selfservice_flows_registration_after_password_hook_session"),
+				ImportStateVerifyIgnore: []string{
+					"cors_enabled",
+					"selfservice_methods_password_config_min_password_length",
+					"smtp_connection_uri",
+				},
+			},
 		},
 	})
 }
@@ -1114,19 +1486,136 @@ func TestAccProjectConfigResource_showVerificationUIHooks(t *testing.T) {
 	})
 }
 
+func TestAccProjectConfigResource_emailVerificationHooks(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Enable all three Email verification hooks.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/email_verification_hooks.tf.tmpl", map[string]string{
+					"RequireVerifiedAddress":     "true",
+					"RequireVerifiedAddressOIDC": "true",
+					"VerifyNewAddress":           "true",
+					"NotifyPreviousAddresses":    "true",
+					"Recipients":                 "all_verified",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_login_after_password_hook_require_verified_address", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_login_after_oidc_hook_require_verified_address", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_after_profile_hook_verify_new_address", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_after_profile_hook_notify_previous_addresses", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients", "all_verified"),
+				),
+			},
+			// Re-apply the same config to confirm no perpetual diff.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/email_verification_hooks.tf.tmpl", map[string]string{
+					"RequireVerifiedAddress":     "true",
+					"RequireVerifiedAddressOIDC": "true",
+					"VerifyNewAddress":           "true",
+					"NotifyPreviousAddresses":    "true",
+					"Recipients":                 "all_verified",
+				}),
+				PlanOnly: true,
+			},
+			// Change only the recipient scope: the hook is updated in place.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/email_verification_hooks.tf.tmpl", map[string]string{
+					"RequireVerifiedAddress":     "true",
+					"RequireVerifiedAddressOIDC": "true",
+					"VerifyNewAddress":           "true",
+					"NotifyPreviousAddresses":    "true",
+					"Recipients":                 "all",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients", "all"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_after_profile_hook_notify_previous_addresses", "true"),
+				),
+			},
+			// Disable the login and notify hooks, keep verify_new_address on.
+			// Both hooks share the profile hooks array, so this also covers a
+			// removal that must not disturb its neighbour.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/email_verification_hooks.tf.tmpl", map[string]string{
+					"RequireVerifiedAddress":     "false",
+					"RequireVerifiedAddressOIDC": "false",
+					"VerifyNewAddress":           "true",
+					"NotifyPreviousAddresses":    "false",
+					"Recipients":                 "all",
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_login_after_password_hook_require_verified_address", "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_login_after_oidc_hook_require_verified_address", "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_after_profile_hook_verify_new_address", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_flows_settings_after_profile_hook_notify_previous_addresses", "false"),
+				),
+			},
+			// Import then verify state.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"selfservice_flows_login_after_password_hook_require_verified_address",
+					"selfservice_flows_login_after_oidc_hook_require_verified_address",
+					"selfservice_flows_settings_after_profile_hook_verify_new_address",
+					"selfservice_flows_settings_after_profile_hook_notify_previous_addresses",
+					"selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients",
+					"selfservice_flows_verification_enabled",
+					"cors_enabled",
+					"selfservice_methods_password_config_min_password_length",
+					"smtp_connection_uri",
+				},
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_oauth2Advanced(t *testing.T) {
+	// The pairwise salt is a write-only secret. The API accepts the write at
+	// oidc.subject_identifiers.pairwise_salt and redacts the salt from project
+	// revision responses, so the provider never reads it back and state holds
+	// the configured value. The PlanOnly steps prove that neither the create
+	// nor the rotation leaves a diff, and the import step ignores the attribute
+	// because a redacted secret cannot be imported.
+	const salt = "tf-acc-pairwise-salt"
+	const rotatedSalt = "tf-acc-pairwise-salt-rotated"
+	templateData := map[string]string{"PairwiseSalt": salt}
+	rotatedData := map[string]string{"PairwiseSalt": rotatedSalt}
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
 			{
-				Config: acctest.LoadTestConfig(t, "testdata/oauth2_advanced.tf.tmpl", nil),
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_advanced.tf.tmpl", templateData),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_grant_jwt_jti_optional", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_grant_jwt_iat_optional", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_exclude_not_before_claim", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oidc_subject_identifiers_pairwise_salt", salt),
 				),
+			},
+			// Verify no perpetual diff: the redacted salt must not null state
+			{
+				Config:             acctest.LoadTestConfig(t, "testdata/oauth2_advanced.tf.tmpl", templateData),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			// Rotate the salt: update sends the new value and state follows the plan
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/oauth2_advanced.tf.tmpl", rotatedData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "oidc_subject_identifiers_pairwise_salt", rotatedSalt),
+				),
+			},
+			{
+				Config:             acctest.LoadTestConfig(t, "testdata/oauth2_advanced.tf.tmpl", rotatedData),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 			{
 				ResourceName:      "ory_project_config.test",
@@ -1138,6 +1627,150 @@ func TestAccProjectConfigResource_oauth2Advanced(t *testing.T) {
 					"oauth2_grant_jwt_iat_optional",
 					"oauth2_exclude_not_before_claim",
 					"oauth2_client_credentials_default_grant_allowed_scope",
+					"oidc_subject_identifiers_supported_types",
+					"oidc_subject_identifiers_pairwise_salt",
+					"cors_enabled",
+					"selfservice_methods_password_config_min_password_length",
+					"smtp_connection_uri",
+				},
+			},
+		},
+	})
+}
+
+func TestAccProjectConfigResource_emptyValuesAndEnumFlags(t *testing.T) {
+	// Issue #321: the API accepts empty lists/maps/strings and integer zero
+	// with HTTP 200 and prunes them from the stored config, so the keys never
+	// appear in any read. Nulling state on the missing keys produced a diff on
+	// every plan that no apply could settle. The PlanOnly steps are the
+	// regression proof.
+	//
+	// The two bools cover the other perpetual-diff classes:
+	// feature_flags_password_profile_registration_node_group is stored as the
+	// string enum "password"/"default" (a raw bool write silently lands as
+	// "default"), and enable_ax_v2 is reported under the config key "enabled".
+	createData := map[string]string{"PasswordProfileNodeGroup": "false", "EnableAXV2": "true"}
+	// End at the server defaults (flag true = "password", AX v2 off) so the
+	// shared acceptance project is left in its default state.
+	updateData := map[string]string{"PasswordProfileNodeGroup": "true", "EnableAXV2": "false"}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create — fails on unfixed code with "the refresh plan was not empty".
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/empty_values.tf.tmpl", createData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_allowed_top_level_claims.#", "0"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_webfinger_oidc_discovery_supported_claims.#", "0"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_webfinger_oidc_discovery_supported_scope.#", "0"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oidc_dynamic_client_registration_default_scope.#", "0"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_captcha_config_allowed_domains.#", "0"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_provider_headers.%", "0"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_prefix", ""),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_password_config_max_breaches", "0"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "feature_flags_password_profile_registration_node_group", "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "enable_ax_v2", "true"),
+				),
+			},
+			// Verify no perpetual diff after create
+			{
+				Config:             acctest.LoadTestConfig(t, "testdata/empty_values.tf.tmpl", createData),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			// Update flips both bools; the empty values stay put.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/empty_values.tf.tmpl", updateData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "feature_flags_password_profile_registration_node_group", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "enable_ax_v2", "false"),
+				),
+			},
+			// Verify no perpetual diff after update
+			{
+				Config:             acctest.LoadTestConfig(t, "testdata/empty_values.tf.tmpl", updateData),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			// ImportState — import only sets id/project_id; Read only refreshes
+			// fields that are non-null in state, so config attributes won't be
+			// populated until apply.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"oauth2_allowed_top_level_claims",
+					"oauth2_webfinger_oidc_discovery_supported_claims",
+					"oauth2_webfinger_oidc_discovery_supported_scope",
+					"oidc_dynamic_client_registration_default_scope",
+					"selfservice_methods_captcha_config_allowed_domains",
+					"oauth2_provider_headers",
+					"oauth2_token_prefix",
+					"selfservice_methods_password_config_max_breaches",
+					"feature_flags_password_profile_registration_node_group",
+					"enable_ax_v2",
+					"cors_enabled",
+					"selfservice_methods_password_config_min_password_length",
+					"smtp_connection_uri",
+				},
+			},
+		},
+	})
+}
+
+func TestAccProjectConfigResource_welcomeScreenFlag(t *testing.T) {
+	// disable_account_experience_welcome_screen is a top-level revision column
+	// with no config document key: document patches to the spec-derived path
+	// return HTTP 200 and are silently discarded. The provider writes it via
+	// PATCH /normalized/projects/{id}/revision/{rev} and reads it back from
+	// GET /normalized/projects/{id}. The PlanOnly steps prove the write is
+	// really stored and read back unchanged (a discarded write would refresh
+	// to the old value and show a diff), and the update step proves both
+	// values round-trip on a real project.
+	createData := map[string]string{"DisableWelcomeScreen": "true"}
+	// End at false, the server default, so the shared acceptance project is
+	// left in its default state.
+	updateData := map[string]string{"DisableWelcomeScreen": "false"}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/welcome_screen.tf.tmpl", createData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_project_config.test", "id"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "disable_account_experience_welcome_screen", "true"),
+				),
+			},
+			{
+				Config:             acctest.LoadTestConfig(t, "testdata/welcome_screen.tf.tmpl", createData),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/welcome_screen.tf.tmpl", updateData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "disable_account_experience_welcome_screen", "false"),
+				),
+			},
+			{
+				Config:             acctest.LoadTestConfig(t, "testdata/welcome_screen.tf.tmpl", updateData),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			// ImportState — import only sets id/project_id; the flag has no read
+			// path, so it stays unset until the first apply.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"disable_account_experience_welcome_screen",
 					"cors_enabled",
 					"selfservice_methods_password_config_min_password_length",
 					"smtp_connection_uri",

@@ -42,8 +42,8 @@ dist/
 .env.*
 !.env.example
 
-# Downloaded OpenAPI spec (fetched by make generate-with-spec)
-internal/codegen/openapi.yaml
+# Downloaded OpenAPI spec (fetched by make download-spec)
+internal/codegen/openapi.json
 
 # OS files
 .DS_Store

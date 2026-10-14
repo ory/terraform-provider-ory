@@ -1,0 +1,5 @@
+resource "ory_project_config" "test" {
+  # Top-level revision column: applied and read via the normalized project
+  # revision API, not the config document.
+  disable_account_experience_welcome_screen = [[ .DisableWelcomeScreen ]]
+}

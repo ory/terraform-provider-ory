@@ -26,6 +26,7 @@ The `provider_type` attribute determines which OAuth2/OIDC integration to use:
 | `discord` | Discord |
 | `facebook` | Facebook |
 | `gitlab` | GitLab |
+| `netid` | NetID (supports FedCM, see below) |
 | `slack` | Slack |
 | `spotify` | Spotify |
 | `twitch` | Twitch |
@@ -147,6 +148,20 @@ resource "ory_social_provider" "google_fedcm" {
   fedcm_config_url = "https://accounts.google.com/gsi/fedcm.json"
 }
 
+# NetID Sign-In with FedCM. NetID needs the origin header Ory sends when it
+# exchanges the FedCM token for an ID token. The value must be one of the
+# `origin_uris` registered on the NetID client.
+resource "ory_social_provider" "netid_fedcm" {
+  provider_id   = "netid"
+  provider_type = "netid"
+  client_id     = var.netid_client_id
+  client_secret = var.netid_client_secret
+  scope         = ["openid", "email"]
+
+  fedcm_config_url           = "https://broker.netid.de/fedcm.json"
+  net_id_token_origin_header = "https://www.example.com"
+}
+
 # Google Sign-In that refreshes identity traits from OIDC claims on every login
 resource "ory_social_provider" "google_sync_on_login" {
   provider_id   = "google-sync"
@@ -158,6 +173,22 @@ resource "ory_social_provider" "google_sync_on_login" {
   # "automatic" re-runs the claims mapper on each login and updates the identity.
   # Omit or set "never" (the default) to keep the identity unchanged after sign-up.
   update_identity_on_login = "automatic"
+}
+
+# Generic OIDC provider with OpenID Connect Front-Channel Logout
+resource "ory_social_provider" "corporate_front_channel_logout" {
+  provider_id   = "corporate-fcl"
+  provider_type = "generic"
+  client_id     = var.sso_client_id
+  client_secret = var.sso_client_secret
+  issuer_url    = "https://sso.example.com"
+  scope         = ["openid", "email", "profile"]
+
+  # Lets the identity provider end the Ory session from its own sign-out page.
+  # The provider must implement OpenID Connect Front-Channel Logout and return
+  # the sid claim in its ID tokens (Ory Hydra, Keycloak, Okta, Auth0). Google
+  # does not issue sid, so the flag has no effect on a google provider.
+  front_channel_logout = true
 }
 
 # Generic OIDC with a custom base redirect URI (e.g., when using a custom domain)
@@ -222,6 +253,25 @@ resource "ory_social_provider" "enterprise_sso" {
   aal2_amr_values = ["mfa", "otp", "hwk"]
 }
 
+# OIDC provider scoped to an organization (B2B SSO). Ory offers this provider
+# only to users of the organization, and routes users to it by the domain of the
+# email address they enter on the login screen.
+resource "ory_organization" "acme" {
+  label   = "Acme"
+  domains = ["acme.example.com"]
+}
+
+resource "ory_social_provider" "acme_sso" {
+  provider_id     = "acme-sso"
+  provider_type   = "generic"
+  client_id       = var.acme_client_id
+  client_secret   = var.acme_client_secret
+  issuer_url      = "https://sso.acme.example.com"
+  scope           = ["openid", "profile", "email"]
+  label           = "Acme SSO"
+  organization_id = ory_organization.acme.id
+}
+
 # Generic OIDC Provider with custom claims mapping
 resource "ory_social_provider" "corporate_sso" {
   provider_id   = "corporate-sso"
@@ -252,6 +302,15 @@ variable "google_client_id" {
 }
 
 variable "google_client_secret" {
+  type      = string
+  sensitive = true
+}
+
+variable "netid_client_id" {
+  type = string
+}
+
+variable "netid_client_secret" {
   type      = string
   sensitive = true
 }
@@ -299,6 +358,15 @@ variable "apple_private_key" {
   sensitive   = true
 }
 
+variable "acme_client_id" {
+  type = string
+}
+
+variable "acme_client_secret" {
+  type      = string
+  sensitive = true
+}
+
 variable "sso_client_id" {
   type = string
 }
@@ -332,6 +400,36 @@ If not set, the provider uses a default mapper that extracts the email claim.
 ## Label
 
 The `label` attribute sets a human-readable label for the provider. This is displayed on the login button in the default UI (e.g., "Sign in with Corporate SSO"). If not set, the default label for the provider type is used.
+
+## Organization Scoping (B2B SSO)
+
+Set `organization_id` to associate an OIDC provider with a specific organization. Ory then offers the provider only to users of that organization instead of to everyone on the login screen, and the callback URL gains an `/organization/<organization_id>` segment. This is the OIDC counterpart of the same attribute on `ory_saml_provider`, and it is what the Ory Console shows as "via `<organization>` SSO" in the Social Sign-In (OIDC) tab.
+
+```hcl
+resource "ory_organization" "acme" {
+  label   = "Acme"
+  domains = ["acme.example.com"]
+}
+
+resource "ory_social_provider" "acme_sso" {
+  provider_id     = "acme-sso"
+  provider_type   = "generic"
+  client_id       = var.acme_client_id
+  client_secret   = var.acme_client_secret
+  issuer_url      = "https://sso.acme.example.com"
+  scope           = ["openid", "email", "profile"]
+  label           = "Acme SSO"
+  organization_id = ory_organization.acme.id
+}
+```
+
+Give the organization one or more `domains` to let Ory route a user to this provider by the domain of the email address they enter.
+
+~> **Note:** `organization_id` must be the ID of an organization that exists in the same project. The API rejects a value that is not a UUID with `HTTP 400`, and a UUID that matches no organization with `HTTP 500` and a foreign key error. Reference an `ory_organization` resource so Terraform creates the organization first.
+
+Removing `organization_id` from your configuration clears the link and turns the resource back into a normal social sign-in provider that every user can use.
+
+-> **Plan:** B2B SSO requires a plan with B2B or Enterprise features. Check your Ory Network plan before using this attribute.
 
 ## Account Linking Mode
 
@@ -443,6 +541,23 @@ resource "ory_social_provider" "google" {
 
 Leave the attribute unset to disable FedCM for the provider. Removing it from your configuration clears the value server-side.
 
+FedCM is supported for Google and NetID. A NetID provider needs one more attribute: `net_id_token_origin_header`. Ory sends it as the `Origin` header when it exchanges the NetID FedCM token for an ID token, so the value must be one of the `origin_uris` registered on the NetID client. Without it, FedCM sign-in through NetID fails.
+
+```hcl
+resource "ory_social_provider" "netid" {
+  provider_id   = "netid"
+  provider_type = "netid"
+  client_id     = var.netid_client_id
+  client_secret = var.netid_client_secret
+  scope         = ["openid", "email"]
+
+  fedcm_config_url           = "https://broker.netid.de/fedcm.json"
+  net_id_token_origin_header = "https://www.example.com"
+}
+```
+
+Leave `net_id_token_origin_header` unset for every provider other than NetID. Removing it from your configuration clears the value server-side.
+
 ## Update Identity on Login
 
 The `update_identity_on_login` attribute controls whether an identity's traits and metadata are refreshed from the upstream OIDC claims every time the user signs in:
@@ -465,6 +580,27 @@ resource "ory_social_provider" "google" {
 ```
 
 Leave the attribute unset to use the Ory default (`never`). The API accepts only the values `never` and `automatic`.
+
+## Front-Channel Logout
+
+Set `front_channel_logout = true` to enable OpenID Connect Front-Channel Logout for a provider. A login then issues a companion cookie that lets the provider end the resulting Ory session from its own sign-out page.
+
+The identity provider must implement [OpenID Connect Front-Channel Logout](https://openid.net/specs/openid-connect-frontchannel-1_0.html) and return the `sid` claim in its ID tokens. Enterprise and self-hosted providers such as Ory Hydra, Keycloak, Okta, and Auth0 do. Google does not issue a `sid` claim, so the flag has no effect on a `google` provider.
+
+```hcl
+resource "ory_social_provider" "corporate_sso" {
+  provider_id   = "corporate"
+  provider_type = "generic"
+  client_id     = var.sso_client_id
+  client_secret = var.sso_client_secret
+  issuer_url    = "https://sso.example.com"
+  scope         = ["openid", "email", "profile"]
+
+  front_channel_logout = true
+}
+```
+
+The API stores `true` and `false` alike and returns the value on read. Leave the attribute unset to keep the Ory default, which is disabled; removing it from the configuration clears the setting.
 
 ## Base Redirect URI
 
@@ -534,9 +670,12 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 - `client_secret_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of client_secret (Terraform 1.11+ write-only argument): the value is sent to Ory but never stored in Terraform state or plan. Use this to source the client secret from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change client_secret_wo_version to rotate it. Mutually exclusive with client_secret.
 - `client_secret_wo_version` (String) Version trigger for client_secret_wo. Change this value whenever the write-only client_secret_wo changes so Terraform sends the new secret to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless client_secret_wo is set.
 - `fedcm_config_url` (String) URL of the provider's FedCM (Federated Credential Management) configuration file. When set, Ory can use the browser's FedCM API for sign-in with this provider instead of a full-page redirect. For example, Google's FedCM configuration is served at "https://accounts.google.com/gsi/fedcm.json". Leave unset to disable FedCM for this provider.
+- `front_channel_logout` (Boolean) Enable OpenID Connect Front-Channel Logout for this provider. When true, a login issues a companion cookie that lets the provider end the resulting Ory session from its own sign-out page. Requires the provider to return the sid claim in the ID token. Leave unset to keep the Ory default (disabled).
 - `issuer_url` (String) OIDC issuer URL (required for generic providers).
 - `label` (String) Human-readable label for the provider, displayed on the login button (e.g., "Sign in with Corporate SSO").
 - `mapper_url` (String) Jsonnet mapper URL for claims mapping. Can be a URL or base64-encoded Jsonnet (base64://...). If not set, a default mapper that extracts email from claims will be used.
+- `net_id_token_origin_header` (String) Origin header Ory sends when it exchanges a NetID FedCM token for an ID token. The value must be one of the `origin_uris` registered on the NetID client, for example "https://www.example.com". Set it together with fedcm_config_url on a NetID provider. Leave it unset for every other provider.
+- `organization_id` (String) Organization ID to associate this OIDC provider with (for B2B SSO). Set it to the ID of an existing `ory_organization`. The provider is then only offered to users of that organization, and the callback URL gains an `/organization/<organization_id>` segment. Leave it unset for a normal social sign-in provider that every user can use. Requires a B2B plan.
 - `pkce` (String) PKCE (Proof Key for Code Exchange) behavior for the OAuth2 authorization code flow. "auto" (default) enables PKCE when the upstream provider advertises support via OIDC discovery; "force" always sends PKCE (use only with providers known to support it); "never" disables PKCE.
 - `project_id` (String) Project ID. If not set, uses provider's project_id.
 - `scope` (List of String) OAuth2 scopes to request.

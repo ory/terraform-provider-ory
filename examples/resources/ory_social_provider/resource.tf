@@ -60,6 +60,20 @@ resource "ory_social_provider" "google_fedcm" {
   fedcm_config_url = "https://accounts.google.com/gsi/fedcm.json"
 }
 
+# NetID Sign-In with FedCM. NetID needs the origin header Ory sends when it
+# exchanges the FedCM token for an ID token. The value must be one of the
+# `origin_uris` registered on the NetID client.
+resource "ory_social_provider" "netid_fedcm" {
+  provider_id   = "netid"
+  provider_type = "netid"
+  client_id     = var.netid_client_id
+  client_secret = var.netid_client_secret
+  scope         = ["openid", "email"]
+
+  fedcm_config_url           = "https://broker.netid.de/fedcm.json"
+  net_id_token_origin_header = "https://www.example.com"
+}
+
 # Google Sign-In that refreshes identity traits from OIDC claims on every login
 resource "ory_social_provider" "google_sync_on_login" {
   provider_id   = "google-sync"
@@ -71,6 +85,22 @@ resource "ory_social_provider" "google_sync_on_login" {
   # "automatic" re-runs the claims mapper on each login and updates the identity.
   # Omit or set "never" (the default) to keep the identity unchanged after sign-up.
   update_identity_on_login = "automatic"
+}
+
+# Generic OIDC provider with OpenID Connect Front-Channel Logout
+resource "ory_social_provider" "corporate_front_channel_logout" {
+  provider_id   = "corporate-fcl"
+  provider_type = "generic"
+  client_id     = var.sso_client_id
+  client_secret = var.sso_client_secret
+  issuer_url    = "https://sso.example.com"
+  scope         = ["openid", "email", "profile"]
+
+  # Lets the identity provider end the Ory session from its own sign-out page.
+  # The provider must implement OpenID Connect Front-Channel Logout and return
+  # the sid claim in its ID tokens (Ory Hydra, Keycloak, Okta, Auth0). Google
+  # does not issue sid, so the flag has no effect on a google provider.
+  front_channel_logout = true
 }
 
 # Generic OIDC with a custom base redirect URI (e.g., when using a custom domain)
@@ -135,6 +165,25 @@ resource "ory_social_provider" "enterprise_sso" {
   aal2_amr_values = ["mfa", "otp", "hwk"]
 }
 
+# OIDC provider scoped to an organization (B2B SSO). Ory offers this provider
+# only to users of the organization, and routes users to it by the domain of the
+# email address they enter on the login screen.
+resource "ory_organization" "acme" {
+  label   = "Acme"
+  domains = ["acme.example.com"]
+}
+
+resource "ory_social_provider" "acme_sso" {
+  provider_id     = "acme-sso"
+  provider_type   = "generic"
+  client_id       = var.acme_client_id
+  client_secret   = var.acme_client_secret
+  issuer_url      = "https://sso.acme.example.com"
+  scope           = ["openid", "profile", "email"]
+  label           = "Acme SSO"
+  organization_id = ory_organization.acme.id
+}
+
 # Generic OIDC Provider with custom claims mapping
 resource "ory_social_provider" "corporate_sso" {
   provider_id   = "corporate-sso"
@@ -165,6 +214,15 @@ variable "google_client_id" {
 }
 
 variable "google_client_secret" {
+  type      = string
+  sensitive = true
+}
+
+variable "netid_client_id" {
+  type = string
+}
+
+variable "netid_client_secret" {
   type      = string
   sensitive = true
 }
@@ -210,6 +268,15 @@ variable "apple_private_key" {
   description = "Apple private key in PEM format (.p8 file contents)"
   type        = string
   sensitive   = true
+}
+
+variable "acme_client_id" {
+  type = string
+}
+
+variable "acme_client_secret" {
+  type      = string
+  sensitive = true
 }
 
 variable "sso_client_id" {

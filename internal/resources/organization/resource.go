@@ -219,6 +219,14 @@ func (r *OrganizationResource) Read(ctx context.Context, req resource.ReadReques
 
 	org, err := r.client.GetOrganization(ctx, projectID, state.ID.ValueString())
 	if err != nil {
+		if client.IsNotFoundStatus(err) {
+			// The organization was deleted outside Terraform, and the consistency
+			// retries in GetOrganization did not turn it up. Drop it from state so
+			// the next plan recreates it, instead of failing every plan until the
+			// operator runs `terraform state rm`.
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Error Reading Organization",
 			"Could not read organization ID "+state.ID.ValueString()+": "+err.Error(),

@@ -1,0 +1,13 @@
+resource "ory_saml_provider" "keep" {
+  provider_id          = "test-saml-keep"
+  label                = "Keep"
+  raw_idp_metadata_xml = "[[ .MetadataXML ]]"
+}
+
+resource "ory_saml_provider" "remove" {
+  provider_id          = "test-saml-remove"
+  label                = "Remove"
+  raw_idp_metadata_xml = "[[ .MetadataXML ]]"
+
+  depends_on = [ory_saml_provider.keep]
+}

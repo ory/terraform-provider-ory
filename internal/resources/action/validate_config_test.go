@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // buildActionTestConfig creates a ValidateConfigRequest from an ActionResourceModel.
@@ -135,6 +136,80 @@ func TestValidateConfig_AuthMethodOnAuthScopedFlow_NoWarn(t *testing.T) {
 			assert.Empty(t, resp.Diagnostics.Warnings(), "did not expect a warning for auth_method on %s flow: %v", flow, resp.Diagnostics.Warnings())
 		})
 	}
+}
+
+// TestValidateConfig_ProfileOnSettings_NoWarn is the plan-time regression for
+// issue #328: auth_method = "profile" is valid on the settings flow and must
+// neither error nor warn.
+func TestValidateConfig_ProfileOnSettings_NoWarn(t *testing.T) {
+	r := &ActionResource{}
+	ctx := context.Background()
+
+	req := buildActionTestConfig(t, ActionResourceModel{
+		Flow:       types.StringValue("settings"),
+		Timing:     types.StringValue("after"),
+		AuthMethod: types.StringValue("profile"),
+		URL:        types.StringValue("https://example.com/webhook"),
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	assert.False(t, resp.Diagnostics.HasError(), "auth_method \"profile\" on settings must not error: %v", resp.Diagnostics.Errors())
+	assert.Empty(t, resp.Diagnostics.Warnings(), "auth_method \"profile\" on settings must not warn: %v", resp.Diagnostics.Warnings())
+}
+
+// TestValidateConfig_MethodNotOnFlow_Warns verifies that a method the schema
+// accepts but the chosen flow has no key for warns at plan time. Ory accepts such
+// a write with HTTP 200 and discards the hook, so without the warning the first
+// signal is an opaque verification failure during apply.
+func TestValidateConfig_MethodNotOnFlow_Warns(t *testing.T) {
+	cases := []struct{ flow, method string }{
+		{"login", "profile"},
+		{"registration", "profile"},
+		{"settings", "code"},
+		{"registration", "totp"},
+		{"registration", "lookup_secret"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.flow+"/"+tt.method, func(t *testing.T) {
+			r := &ActionResource{}
+			ctx := context.Background()
+
+			req := buildActionTestConfig(t, ActionResourceModel{
+				Flow:       types.StringValue(tt.flow),
+				Timing:     types.StringValue("after"),
+				AuthMethod: types.StringValue(tt.method),
+				URL:        types.StringValue("https://example.com/webhook"),
+			})
+			var resp resource.ValidateConfigResponse
+			r.ValidateConfig(ctx, req, &resp)
+
+			assert.False(t, resp.Diagnostics.HasError(),
+				"an unsupported method must warn, not error: %v", resp.Diagnostics.Errors())
+			require.NotEmpty(t, resp.Diagnostics.Warnings(),
+				"expected a warning for auth_method %q on the %q flow", tt.method, tt.flow)
+			assert.Contains(t, resp.Diagnostics.Warnings()[0].Detail(), "does not support auth_method")
+		})
+	}
+}
+
+// TestValidateConfig_MethodNotOnFlow_UnknownTiming_NoWarn verifies the
+// unsupported-method warning is suppressed while timing is unknown, since
+// auth_method is ignored outright for "before" hooks.
+func TestValidateConfig_MethodNotOnFlow_UnknownTiming_NoWarn(t *testing.T) {
+	r := &ActionResource{}
+	ctx := context.Background()
+
+	req := buildActionTestConfig(t, ActionResourceModel{
+		Flow:       types.StringValue("login"),
+		Timing:     types.StringUnknown(),
+		AuthMethod: types.StringValue("profile"),
+		URL:        types.StringValue("https://example.com/webhook"),
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	assert.Empty(t, resp.Diagnostics.Warnings(), "did not expect a warning while timing is unknown: %v", resp.Diagnostics.Warnings())
 }
 
 // TestValidateConfig_AuthMethodOnBeforeTiming_Warns verifies that auth_method set

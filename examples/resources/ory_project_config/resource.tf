@@ -6,6 +6,12 @@ resource "ory_project_config" "basic" {
   session_lifespan                                        = "720h0m0s" # 30 days
 }
 
+# Ory Permission Language namespaces. This replaces keto_namespaces: configure
+# one representation or the other for a project.
+resource "ory_project_config" "with_opl" {
+  keto_namespace_configuration = "base64://${base64encode(file("${path.module}/namespaces.ts"))}"
+}
+
 # Project configuration with a write-only (ephemeral) SMTP connection URI from Vault.
 # smtp_connection_uri_wo is never stored in Terraform state or plan (Terraform 1.11+).
 # Bump smtp_connection_uri_wo_version whenever the secret rotates so Terraform re-sends it.
@@ -21,13 +27,17 @@ resource "ory_project_config" "with_write_only_smtp" {
 
 # Full security configuration
 resource "ory_project_config" "secure" {
-  # Public CORS
+  # Public CORS (includes the restricted origin below so its pages can read responses)
   cors_enabled = true
-  cors_origins = ["https://app.example.com", "https://admin.example.com"]
+  cors_origins = ["https://app.example.com", "https://admin.example.com", "https://embed.example.com"]
 
   # Admin CORS
   cors_admin_enabled = true
   cors_admin_origins = ["https://admin.example.com"]
+
+  # Restricted Origins (scheme and host only): these pages may only check the
+  # session, use FedCM, and log out. Responses to them never contain identity data.
+  security_restricted_origins = ["https://embed.example.com"]
 
   # Sessions
   session_lifespan                 = "168h0m0s" # 7 days
@@ -49,6 +59,14 @@ resource "ory_project_config" "secure" {
   selfservice_methods_oidc_enable_auto_link_policy = true # Allow social providers with auto_link to link existing identities
   selfservice_methods_passkey_enabled              = true
   selfservice_methods_profile_enabled              = true # Allow users to update profile traits via settings flow
+
+  # Passkey Ceremony Configuration
+  selfservice_methods_passkey_config_attestation_preference                    = "none"      # none, indirect, direct, or enterprise
+  selfservice_methods_passkey_config_authenticator_selection_attachment        = "platform"  # platform or cross-platform; omit to allow both
+  selfservice_methods_passkey_config_authenticator_selection_resident_key      = "required"  # required, preferred, or discouraged
+  selfservice_methods_passkey_config_authenticator_selection_user_verification = "preferred" # required, preferred, or discouraged
+  selfservice_methods_passkey_config_timeouts_login                            = "2m"        # Go duration
+  selfservice_methods_passkey_config_timeouts_registration                     = "5m"        # Go duration
 
   # Code Method Configuration
   selfservice_methods_code_config_lifespan                            = "15m0s" # How long a code remains valid
@@ -248,6 +266,30 @@ resource "ory_project_config" "with_courier_http" {
   ]
 }
 
+locals {
+  courier_body = <<-JSONNET
+    {
+      "recipient": {{ .recipient }},
+      "subject": {{ .subject }},
+      "body": {{ .body }}
+    }
+  JSONNET
+}
+
+# The same courier HTTP delivery through the flat attributes. The body must be a
+# `base64://` value: the Ory API rejects a plain Jsonnet string. The API stores
+# the decoded payload and reports a storage URL, and the provider resolves that
+# URL back to this value, so plan stays empty while the payload matches.
+resource "ory_project_config" "with_courier_http_flat" {
+  courier_delivery_strategy       = "http"
+  courier_http_request_config_url = "https://mail-api.example.com/send"
+
+  courier_http_request_config_body = "base64://${base64encode(local.courier_body)}"
+
+  courier_http_request_config_auth_basic_auth_user     = "mailuser"
+  courier_http_request_config_auth_basic_auth_password = var.mail_password
+}
+
 variable "mail_password" {
   type        = string
   sensitive   = true
@@ -289,8 +331,37 @@ resource "ory_project_config" "show_verification_ui" {
   selfservice_flows_registration_after_password_hook_show_verification_ui = true
   # Same for social (OIDC) registration.
   selfservice_flows_registration_after_oidc_hook_show_verification_ui = true
-  # When users change their email in profile settings, force re-verification.
+  # After a profile settings update, redirect users to the verification UI.
+  # This only controls the redirect. To gate the address change itself on
+  # verification, see selfservice_flows_settings_after_profile_hook_verify_new_address
+  # below.
   selfservice_flows_settings_after_profile_hook_show_verification_ui = true
+}
+
+# The three toggles on the Ory Console "Email verification" page. Like the
+# hooks above, each one is an entry in a flow's hooks array, so other hooks at
+# the same path are preserved.
+resource "ory_project_config" "email_verification_hooks" {
+  selfservice_flows_verification_enabled = true
+
+  # "Require verified address for login": block sign-in until the identity has
+  # a verified address. feature_flags_legacy_require_verified_login_error only
+  # changes how the failure is reported, it does not enable the check.
+  #
+  # The Ory Console toggle writes the password flow only. Set the OIDC flow too
+  # to cover social logins.
+  selfservice_flows_login_after_password_hook_require_verified_address = true
+  selfservice_flows_login_after_oidc_hook_require_verified_address     = true
+
+  # "Verify new addresses": require verification of an address the user just
+  # added or changed in profile settings.
+  selfservice_flows_settings_after_profile_hook_verify_new_address = true
+
+  # "Notify previous addresses": email the identity's previous addresses when
+  # its verified addresses change. Recipients is one of "removed" (the Ory
+  # default), "all_verified", or "all".
+  selfservice_flows_settings_after_profile_hook_notify_previous_addresses            = true
+  selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients = "all_verified"
 }
 
 # Automatically sign users in after they register with email + password.

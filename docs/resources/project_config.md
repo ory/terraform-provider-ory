@@ -18,6 +18,12 @@ This resource supports drift detection — `terraform plan` will detect changes 
 
 ~> **Note:** Only attributes present in your Terraform configuration are tracked for drift. Attributes you have not configured will not appear in plan output, even if they have non-default values in the API.
 
+~> **Not drift-checked:** A few attributes are accepted by the Ory API but never returned by it, so the provider keeps the configured value instead of reporting a change that no apply could settle. Removing one of these outside Terraform is not detected. They are `session_earliest_possible_extend`, `selfservice_methods_webauthn_config_rp_icon`, and `selfservice_methods_captcha_config_byo`. The same applies to secrets the API redacts: `smtp_connection_uri`, the courier HTTP auth credentials, and `oidc_subject_identifiers_pairwise_salt`.
+
+~> **Empty values:** The Ory API prunes empty values (`""`, `[]`, `{}`, and integer `0`) from the stored configuration: the apply succeeds, but the key never appears in later reads. The provider treats such a missing key as matching an empty configured value, so applying an empty value does not produce a diff on every plan. Drift is still reported whenever your configuration holds a non-empty value. A few attributes substitute a server default instead of storing the empty value — `account_experience_enabled_locales`, `selfservice_methods_passkey_config_rp_origins`, `webauthn_rp_origins` (default origins derived from the project slug), and `selfservice_methods_totp_config_issuer` (defaults to the project name). For those, plan keeps reporting the substituted default as a change, so omit the attribute instead of setting it empty.
+
+~> **Conditionally reported:** Some attributes are only returned once the feature they belong to is configured. The `courier_smtp_*` attributes are reported after `smtp_connection_uri` is set, and the `courier_http_request_config_*` attributes after `courier_delivery_strategy = "http"`. Setting one without its prerequisite leaves the value unset on the server, which plan then reports on every run.
+
 ~> **Plan-gated features:** Some settings require a feature that your project's subscription must include, and the Ory API rejects them with an `HTTP 403 (feature_not_available)` otherwise. Notably, `selfservice_methods_oidc_enable_auto_link_policy = true` requires the OIDC auto-link policy (`use_auto_link`), an enterprise feature that Ory enables per project on request — being on an enterprise plan does not enable it automatically. If an apply fails with a `feature_not_available` error, the provider surfaces the feature name and a request ID; contact Ory support or your account executive to enable the feature.
 
 ## Example Usage
@@ -29,6 +35,12 @@ resource "ory_project_config" "basic" {
   cors_origins                                            = ["https://app.example.com"]
   selfservice_methods_password_config_min_password_length = 10
   session_lifespan                                        = "720h0m0s" # 30 days
+}
+
+# Ory Permission Language namespaces. This replaces keto_namespaces: configure
+# one representation or the other for a project.
+resource "ory_project_config" "with_opl" {
+  keto_namespace_configuration = "base64://${base64encode(file("${path.module}/namespaces.ts"))}"
 }
 
 # Project configuration with a write-only (ephemeral) SMTP connection URI from Vault.
@@ -46,13 +58,17 @@ resource "ory_project_config" "with_write_only_smtp" {
 
 # Full security configuration
 resource "ory_project_config" "secure" {
-  # Public CORS
+  # Public CORS (includes the restricted origin below so its pages can read responses)
   cors_enabled = true
-  cors_origins = ["https://app.example.com", "https://admin.example.com"]
+  cors_origins = ["https://app.example.com", "https://admin.example.com", "https://embed.example.com"]
 
   # Admin CORS
   cors_admin_enabled = true
   cors_admin_origins = ["https://admin.example.com"]
+
+  # Restricted Origins (scheme and host only): these pages may only check the
+  # session, use FedCM, and log out. Responses to them never contain identity data.
+  security_restricted_origins = ["https://embed.example.com"]
 
   # Sessions
   session_lifespan                 = "168h0m0s" # 7 days
@@ -74,6 +90,14 @@ resource "ory_project_config" "secure" {
   selfservice_methods_oidc_enable_auto_link_policy = true # Allow social providers with auto_link to link existing identities
   selfservice_methods_passkey_enabled              = true
   selfservice_methods_profile_enabled              = true # Allow users to update profile traits via settings flow
+
+  # Passkey Ceremony Configuration
+  selfservice_methods_passkey_config_attestation_preference                    = "none"      # none, indirect, direct, or enterprise
+  selfservice_methods_passkey_config_authenticator_selection_attachment        = "platform"  # platform or cross-platform; omit to allow both
+  selfservice_methods_passkey_config_authenticator_selection_resident_key      = "required"  # required, preferred, or discouraged
+  selfservice_methods_passkey_config_authenticator_selection_user_verification = "preferred" # required, preferred, or discouraged
+  selfservice_methods_passkey_config_timeouts_login                            = "2m"        # Go duration
+  selfservice_methods_passkey_config_timeouts_registration                     = "5m"        # Go duration
 
   # Code Method Configuration
   selfservice_methods_code_config_lifespan                            = "15m0s" # How long a code remains valid
@@ -273,6 +297,30 @@ resource "ory_project_config" "with_courier_http" {
   ]
 }
 
+locals {
+  courier_body = <<-JSONNET
+    {
+      "recipient": {{ .recipient }},
+      "subject": {{ .subject }},
+      "body": {{ .body }}
+    }
+  JSONNET
+}
+
+# The same courier HTTP delivery through the flat attributes. The body must be a
+# `base64://` value: the Ory API rejects a plain Jsonnet string. The API stores
+# the decoded payload and reports a storage URL, and the provider resolves that
+# URL back to this value, so plan stays empty while the payload matches.
+resource "ory_project_config" "with_courier_http_flat" {
+  courier_delivery_strategy       = "http"
+  courier_http_request_config_url = "https://mail-api.example.com/send"
+
+  courier_http_request_config_body = "base64://${base64encode(local.courier_body)}"
+
+  courier_http_request_config_auth_basic_auth_user     = "mailuser"
+  courier_http_request_config_auth_basic_auth_password = var.mail_password
+}
+
 variable "mail_password" {
   type        = string
   sensitive   = true
@@ -314,8 +362,37 @@ resource "ory_project_config" "show_verification_ui" {
   selfservice_flows_registration_after_password_hook_show_verification_ui = true
   # Same for social (OIDC) registration.
   selfservice_flows_registration_after_oidc_hook_show_verification_ui = true
-  # When users change their email in profile settings, force re-verification.
+  # After a profile settings update, redirect users to the verification UI.
+  # This only controls the redirect. To gate the address change itself on
+  # verification, see selfservice_flows_settings_after_profile_hook_verify_new_address
+  # below.
   selfservice_flows_settings_after_profile_hook_show_verification_ui = true
+}
+
+# The three toggles on the Ory Console "Email verification" page. Like the
+# hooks above, each one is an entry in a flow's hooks array, so other hooks at
+# the same path are preserved.
+resource "ory_project_config" "email_verification_hooks" {
+  selfservice_flows_verification_enabled = true
+
+  # "Require verified address for login": block sign-in until the identity has
+  # a verified address. feature_flags_legacy_require_verified_login_error only
+  # changes how the failure is reported, it does not enable the check.
+  #
+  # The Ory Console toggle writes the password flow only. Set the OIDC flow too
+  # to cover social logins.
+  selfservice_flows_login_after_password_hook_require_verified_address = true
+  selfservice_flows_login_after_oidc_hook_require_verified_address     = true
+
+  # "Verify new addresses": require verification of an address the user just
+  # added or changed in profile settings.
+  selfservice_flows_settings_after_profile_hook_verify_new_address = true
+
+  # "Notify previous addresses": email the identity's previous addresses when
+  # its verified addresses change. Recipients is one of "removed" (the Ory
+  # default), "all_verified", or "all".
+  selfservice_flows_settings_after_profile_hook_notify_previous_addresses            = true
+  selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients = "all_verified"
 }
 
 # Automatically sign users in after they register with email + password.
@@ -327,6 +404,27 @@ resource "ory_project_config" "sign_in_after_registration" {
   selfservice_flows_registration_after_password_hook_session = true
 }
 ```
+
+## OPL Namespace Configuration
+
+Set `keto_namespace_configuration` to a `base64://` value containing an Ory Permission Language file, or set `keto_namespaces` to an inline namespace list. These attributes replace the same API member and cannot be configured together. The API stores inline OPL at a hash-named storage URL; the provider compares its content hash with the configured payload so an unchanged file produces an empty plan. After import, the first plan may show a one-time in-place update to apply the configured OPL value.
+
+## Courier HTTP Request Body
+
+Set `courier_http_request_config_body` to a `base64://` value that carries the Jsonnet template inline. The Ory API rejects a plain Jsonnet string, and it rejects a URL outside its own storage:
+
+```hcl
+resource "ory_project_config" "main" {
+  courier_delivery_strategy       = "http"
+  courier_http_request_config_url = "https://mail.example.com/send"
+
+  courier_http_request_config_body = "base64://${base64encode(file("${path.module}/courier_body.jsonnet"))}"
+}
+```
+
+The API stores the decoded payload and reports an `https://storage.googleapis.com/.../<sha512>.jsonnet` URL instead of the value you set. The provider compares the hash in that URL with your configured payload, so a matching payload produces no change in plan. A payload edited in the Ory Console does not match the hash, so the provider downloads it and plan shows the difference in `base64://` form.
+
+The nested `courier_http_request_config` attribute and each entry in `courier_channels` take the same `base64://` value for their `body` field. For those two, the provider keeps the configured value whenever the API reports a URL, so a payload edited in the Ory Console is not reported as drift.
 
 ## Duration Format
 
@@ -348,6 +446,32 @@ Import using the project ID:
 ```shell
 terraform import ory_project_config.main <project-id>
 ```
+
+Either form leaves cors_enabled null unless it is selected. Its provider default of false then applies on the next plan, and applying that plan disables public CORS on a project that has it enabled. Set cors_enabled in your configuration, or select it on import. The provider warns about this on import; the field-selection form only does so when public CORS is currently enabled.
+
+### Import selected settings without an apply
+
+A project-ID-only import leaves configuration fields unset. To read existing values into state during import, append a comma-separated list of attributes:
+
+```shell
+terraform import ory_project_config.main '<project-id>:session_lifespan,cors_enabled'
+```
+
+Declare the selected attributes with their current live values:
+
+```hcl
+resource "ory_project_config" "main" {
+  project_id       = "<project-id>"
+  session_lifespan = "20m0s"
+  cors_enabled     = false
+}
+```
+
+Only the listed fields enter state. Import uses reads only. An unset or unreadable selected value fails the whole import.
+
+Select readable, non-sensitive strings, booleans, integers, lists of strings, or maps of strings, including the hook toggles such as `selfservice_flows_registration_after_password_hook_session`, which read as true when the hook is present and false when it is absent. Nested objects, secrets, `allowed_return_urls`, and the courier HTTP request body are not supported by this import form. The server appends its own entries to `allowed_return_urls` and the provider filters them against your configuration, so there is no live baseline to adopt. The courier body reader returns a storage URL without recovering the inline payload. For renamed fields, select either the current name or its deprecated alias, never both.
+
+Run a normal plan after import. It can still propose changes for configured fields omitted from the selection, provider defaults, or differences from the live values. Import does not improve the resource's existing drift coverage.
 
 ### Avoiding "Forces Replacement" After Import
 
@@ -401,6 +525,21 @@ The `smtp_connection_uri` attribute selects the SMTP security mode through the U
 
 For more detail, see the [Ory Kratos SMTP documentation](https://www.ory.com/docs/kratos/emails-sms/sending-emails-smtp).
 
+## Pairwise Subject Identifier Salt
+
+`oidc_subject_identifiers_pairwise_salt` is the secret input to the pairwise subject identifier hash. Set it together with `oidc_subject_identifiers_supported_types`:
+
+```hcl
+resource "ory_project_config" "main" {
+  oidc_subject_identifiers_supported_types = ["public", "pairwise"]
+  oidc_subject_identifiers_pairwise_salt   = var.pairwise_salt
+}
+```
+
+-> **Write-only:** The Ory API treats the salt as a secret and redacts it from project revision responses. The provider therefore treats `oidc_subject_identifiers_pairwise_salt` as write-only: it is sent on create and update but never read back, so the value in your configuration is authoritative. Out-of-band changes to the salt are not detected, and `terraform import` leaves the attribute unset until you add it to your configuration.
+
+~> **Rotation:** Changing the salt changes every pairwise subject identifier the project has issued, so relying parties that store the `sub` claim lose the link to the user. An empty value does not clear the salt: the API keeps the stored one.
+
 ## Verification After Registration / Settings
 
 Three boolean attributes toggle the [`show_verification_ui`](https://www.ory.com/docs/kratos/self-service/flows/user-registration) post-flow hook for each authentication method:
@@ -411,7 +550,49 @@ Three boolean attributes toggle the [`show_verification_ui`](https://www.ory.com
 
 When `true`, the provider adds the `show_verification_ui` hook to the corresponding flow; when `false`, it removes only that hook. Other hooks at the same path (for example `session` or `organization`) are preserved by reading the current hook list before each apply.
 
-To require a verified address before a user can log in (the "Require verified address for login" toggle in the Ory Console), set `feature_flags_legacy_require_verified_login_error = true`. When that flag is `false`, an unverified user is shown the `show_verification_ui` continuation step instead of receiving a form error.
+## Email Verification Hooks
+
+The three toggles on the Ory Console **Email verification** page are also post-flow hooks, each with its own attribute:
+
+| Ory Console toggle | Attribute | Flow |
+|---|---|---|
+| Require verified address for login | `selfservice_flows_login_after_password_hook_require_verified_address` | Password login |
+| (not in the Console) | `selfservice_flows_login_after_oidc_hook_require_verified_address` | Social login |
+| Verify new addresses | `selfservice_flows_settings_after_profile_hook_verify_new_address` | Profile settings |
+| Notify previous addresses | `selfservice_flows_settings_after_profile_hook_notify_previous_addresses` | Profile settings |
+
+The Ory Console toggle writes the password login flow only. The Ory config schema also supports the hook on the social login flow, so the provider exposes it there too. Set both to require a verified address on every login path.
+
+```hcl
+resource "ory_project_config" "main" {
+  selfservice_flows_verification_enabled = true
+
+  # Block sign-in until the identity has a verified address.
+  selfservice_flows_login_after_password_hook_require_verified_address = true
+  selfservice_flows_login_after_oidc_hook_require_verified_address     = true
+
+  # Require verification of an address the user just added or changed.
+  selfservice_flows_settings_after_profile_hook_verify_new_address = true
+
+  # Email the previous addresses when the verified addresses change.
+  selfservice_flows_settings_after_profile_hook_notify_previous_addresses            = true
+  selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients = "all_verified"
+}
+```
+
+`selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients` selects who is notified:
+
+- `removed` notifies only addresses that no longer exist after the change. This is the Ory default.
+- `all_verified` notifies every address that was verified before the change.
+- `all` notifies every address on the identity before the change.
+
+Leave the attribute out and the provider writes no scope at all, so Ory applies `removed`. Removing the attribute after a scope was already applied is different: the provider stops managing the scope and leaves the project on its current value, in line with how every other optional attribute on this resource behaves. Set it back to `removed` explicitly to return to the default.
+
+-> **`verify_new_address` is not `show_verification_ui`.** `selfservice_flows_settings_after_profile_hook_verify_new_address` gates the address change on verification. `selfservice_flows_settings_after_profile_hook_show_verification_ui` only controls the redirect to the verification UI after the flow. Set both if you want the address gated *and* the user sent to the verification screen.
+
+-> **`feature_flags_legacy_require_verified_login_error` is not an enable switch.** It controls how a failed verified-address check is reported, a form error instead of a `continue_with` step. It has no effect unless `selfservice_flows_login_after_password_hook_require_verified_address` is `true`.
+
+The Ory Console additionally turns on `selfservice_flows_registration_after_password_hook_show_verification_ui` when you enable "Require verified address for login" on a project that signs users in after registration. The provider does not infer that for you. Set the attribute yourself if you want that behavior.
 
 ## Account Experience Branding
 
@@ -489,8 +670,9 @@ terraform plan  # verify no changes
 
 > **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
 
+- `account_experience_contact_url` (String) Holds the URL to the account experience's Contact page.
 - `account_experience_default_locale` (String) Default locale for the hosted login UI (e.g., 'en', 'de').
-- `account_experience_enabled_locales` (List of String) Enabled locales for the hosted login UI.
+- `account_experience_enabled_locales` (List of String) Enabled locales for the hosted login UI. An empty list is replaced by the server's default locale set, which the next plan reports as a change; omit the attribute instead of setting it empty.
 - `account_experience_favicon_dark` (String) Favicon for the hosted Account Experience UI (dark theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
 - `account_experience_favicon_light` (String) Favicon for the hosted Account Experience UI (light theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
 - `account_experience_hide_ory_branding` (Boolean) Whether to hide the Ory branding badge on the account experience.
@@ -498,6 +680,8 @@ terraform plan  # verify no changes
 - `account_experience_locale_behavior` (String) Locale behavior: 'respect_accept_language' or 'force_default'.
 - `account_experience_logo_dark` (String) Logo for the hosted Account Experience UI (dark theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
 - `account_experience_logo_light` (String) Logo for the hosted Account Experience UI (light theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
+- `account_experience_privacy_policy_url` (String) Holds the URL to the account experience's Privacy Policy page.
+- `account_experience_terms_of_service_url` (String) Holds the URL to the account experience's Terms of Service page.
 - `account_experience_theme_variables_dark` (Map of String) Theme color variables for the hosted Account Experience UI (dark theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset.
 - `account_experience_theme_variables_light` (Map of String) Theme color variables for the hosted Account Experience UI (light theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset.
 - `allowed_return_urls` (List of String) List of allowed return URLs.
@@ -518,14 +702,14 @@ terraform plan  # verify no changes
 - `courier_http_request_config_auth_basic_auth_password` (String, Sensitive) Password for HTTP courier basic authentication.
 - `courier_http_request_config_auth_basic_auth_user` (String) Username for HTTP courier basic authentication.
 - `courier_http_request_config_auth_type` (String) Authentication type for the courier HTTP request (basic_auth, api_key, or empty).
-- `courier_http_request_config_body` (String) Base64-encoded Jsonnet template for the HTTP courier request body.
+- `courier_http_request_config_body` (String) Jsonnet template for the HTTP courier request body, as a `base64://<base64-encoded-payload>` value. The API stores the payload in object storage and reports an https URL back, so the read path resolves that URL to the configured value.
 - `courier_http_request_config_method` (String) HTTP method for the courier HTTP request.
 - `courier_http_request_config_url` (String) URL of the remote HTTP email sending service.
 - `courier_smtp_from_address` (String) Email address to send from.
 - `courier_smtp_from_name` (String) Name to display as sender.
 - `courier_smtp_local_name` (String) Local hostname used in SMTP HELO/EHLO commands.
 - `default_return_url` (String) Default URL to redirect after flows.
-- `disable_account_experience_welcome_screen` (Boolean) Disable the account experience welcome screen at /ui/welcome.
+- `disable_account_experience_welcome_screen` (Boolean) Disable the account experience welcome screen at /ui/welcome. Applied and read via the normalized project revision API.
 - `enable_ax_v2` (Boolean) Enable the new account experience UI.
 - `enable_code` (Boolean, Deprecated) Enable code-based authentication.
 - `enable_lookup_secret` (Boolean, Deprecated) Enable backup/recovery codes.
@@ -543,17 +727,21 @@ terraform plan  # verify no changes
 - `feature_flags_cacheable_sessions` (Boolean) Enable session caching.
 - `feature_flags_cacheable_sessions_max_age` (String) Maximum age for cached sessions (e.g. '5m').
 - `feature_flags_choose_recovery_address` (Boolean) Allow users to choose which recovery address to use.
+- `feature_flags_enforce_identity_schema_guards` (Boolean) Enforces the identity schema guards. If enabled, an identity schema that does not pass the identity schema guards is rejected. If disabled, the result is logged and the schema is used.
 - `feature_flags_faster_session_extend` (Boolean) Enable faster session extension by skipping the session lookup.
 - `feature_flags_legacy_continue_with_verification_ui` (Boolean) Deprecated. Restore legacy behavior of always including show_verification_ui in continue_with.
 - `feature_flags_legacy_oidc_registration_node_group` (Boolean) Use legacy 'oidc' node group for OIDC registration when required fields are missing.
 - `feature_flags_legacy_require_verified_login_error` (Boolean) Deprecated. Return a form error instead of continue_with when the login identifier is not verified.
 - `feature_flags_password_profile_registration_node_group` (Boolean) Use password method group for profile registration node group.
+- `feature_flags_refresh_login_choose_address` (Boolean) Render an address picker on the code refresh login screen
 - `feature_flags_use_continue_with_transitions` (Boolean) Enable continue_with transitions for session flows.
+- `feature_flags_webhook_response_directives` (Boolean) Honor flow directives in web hook responses. If true, a login after web hook with response parsing enabled can return a required_aal directive of aal2 to require step-up for that login; identities without a second factor are routed to enrollment. Off by default.
 - `identity_secrets_cipher` (List of String, Sensitive) Encryption secrets for identity data at rest.
 - `identity_secrets_cookie` (List of String, Sensitive) Cookie signing secrets for the identity service.
 - `identity_secrets_default` (List of String, Sensitive) Default signing secrets for the identity service.
 - `identity_secrets_pagination` (List of String, Sensitive) Pagination encryption keys for the identity service.
-- `keto_namespace_configuration` (String) URL pointing to an OPL file with the Keto namespace configuration.
+- `keto_feature_flags_strict_mode` (Boolean) Enable Ory Keto strict mode. In strict mode, relation tuples for permits are not checked directly (only the OPL rewrites apply) and subject sets are only expanded when declared with SubjectSet<...>, which makes permission checks faster. New projects are created with strict mode enabled and locked; on a locked project the API accepts a write but keeps the stored value, so only projects created before the lock can change it. The provider fails the apply with an error instead of sending a value that the lock would discard.
+- `keto_namespace_configuration` (String) URL pointing to an OPL file with the Keto namespace configuration. Ory accepts either an OPL location or an inline namespace list, so this conflicts with keto_namespaces.
 - `keto_namespaces` (List of String) List of Keto namespace names to configure for Ory Permissions. Namespaces define the types of resources in your permission model (e.g., 'documents', 'folders'). Each namespace name must be unique.
 - `keto_secrets_pagination` (List of String, Sensitive) Pagination encryption keys for the permission service.
 - `login_style` (String, Deprecated) Login flow style: 'unified' (default) shows all auth methods on one screen, 'identifier_first' collects the identifier before showing auth methods.
@@ -567,11 +755,14 @@ terraform plan  # verify no changes
 - `oauth2_consent_url` (String, Deprecated) OAuth2 consent endpoint URL.
 - `oauth2_cookies_same_site_legacy_workaround` (Boolean, Deprecated) Enable the SameSite=None legacy workaround for OAuth2 cookies. When enabled, a fallback cookie without SameSite is set alongside the main cookie for clients that don't support SameSite=None.
 - `oauth2_cookies_same_site_mode` (String, Deprecated) SameSite attribute for OAuth2 cookies ('Lax', 'Strict', 'None').
+- `oauth2_device_authorization_token_polling_interval` (String) How often a non-interactive device should poll the OAuth 2.0 Device Authorization Grant token endpoint
+- `oauth2_device_authorization_user_code_entropy_preset` (String) Picks a preset for the OAuth 2.0 Device Authorization Grant user_code length and character set
 - `oauth2_error_url` (String, Deprecated) OAuth2 error endpoint URL.
 - `oauth2_exclude_not_before_claim` (Boolean) Exclude the `nbf` (not before) claim from access tokens.
 - `oauth2_grant_jwt_iat_optional` (Boolean) Make the `iat` claim optional in JWT assertion grants (RFC 7523).
 - `oauth2_grant_jwt_jti_optional` (Boolean) Make the `jti` claim optional in JWT assertion grants (RFC 7523).
 - `oauth2_grant_jwt_max_ttl` (String) Maximum TTL for JWT assertions in grant flows (e.g. '720h').
+- `oauth2_grant_jwt_omit_assertion_audience` (Boolean) The audience (`aud`) claim from the assertion JSON Web Token (JWT) in the JWT Profile for OAuth 2.0 Client Authentication and Authorization Grants (RFC7523) is omitted from the resulting access token
 - `oauth2_grant_refresh_token_rotation_grace_period` (String) Grace period for refresh token rotation (e.g. '5s'). Set to '0s' to disable.
 - `oauth2_grant_refresh_token_rotation_grace_reuse_count` (Number) OAuth2 Grant Refresh Token Rotation Grace Reuse Count. The maximum number of times a refresh token can be reused within the grace period. If set to `null` or `0`, the limit is disabled.
 - `oauth2_id_token_lifespan` (String, Deprecated) OAuth2 ID token lifespan (e.g., '1h'). Requires Hydra service.
@@ -603,10 +794,13 @@ terraform plan  # verify no changes
 - `oauth2_token_prefix` (String) Sets a per-project Access Token, Refresh Token, and Authorization Code prefix
 - `oauth2_ttl_access_token` (String) OAuth2 access token lifespan (e.g., '1h', '30m'). Requires Hydra service.
 - `oauth2_ttl_auth_code` (String) OAuth2 authorization code lifespan (e.g., '30m'). Requires Hydra service.
+- `oauth2_ttl_device_user_code` (String) How long the device_code and user_code in the OAuth 2.0 Device Authorization Grant remain valid
 - `oauth2_ttl_id_token` (String) OAuth2 ID token lifespan (e.g., '1h'). Requires Hydra service.
 - `oauth2_ttl_login_consent_request` (String) OAuth2 login/consent request lifespan (e.g., '30m'). Requires Hydra service.
 - `oauth2_ttl_refresh_token` (String) OAuth2 refresh token lifespan (e.g., '720h' for 30 days). Requires Hydra service.
 - `oauth2_urls_consent` (String) OAuth2 consent endpoint URL.
+- `oauth2_urls_device_success` (String) Sets the URL the user is redirected to after successfully completing the OAuth 2.0 Device Authorization Grant user verification step
+- `oauth2_urls_device_verification` (String) Sets the URL of the user verification page for the OAuth 2.0 Device Authorization Grant (RFC 8628)
 - `oauth2_urls_error` (String) OAuth2 error endpoint URL.
 - `oauth2_urls_login` (String) OAuth2 login endpoint URL.
 - `oauth2_urls_logout` (String) OAuth2 logout endpoint URL.
@@ -616,6 +810,7 @@ terraform plan  # verify no changes
 - `oauth2_webfinger_jwks_broadcast_keys` (List of String) JWK set IDs to broadcast via OIDC discovery.
 - `oauth2_webfinger_oidc_discovery_auth_url` (String) Override the OAuth2 authorization URL in OIDC discovery.
 - `oauth2_webfinger_oidc_discovery_client_registration_url` (String) Override the dynamic client registration URL in OIDC discovery.
+- `oauth2_webfinger_oidc_discovery_device_authorization_url` (String) Override the OAuth 2.0 Device Authorization Endpoint URL that is advertised in the OpenID Connect discovery document (/.well-known/openid-configuration)
 - `oauth2_webfinger_oidc_discovery_jwks_url` (String) Override the JWKS URL in OIDC discovery.
 - `oauth2_webfinger_oidc_discovery_supported_claims` (List of String) Supported claims advertised in OIDC discovery.
 - `oauth2_webfinger_oidc_discovery_supported_scope` (List of String) Supported scopes advertised in OIDC discovery.
@@ -623,26 +818,30 @@ terraform plan  # verify no changes
 - `oauth2_webfinger_oidc_discovery_userinfo_url` (String) Override the userinfo endpoint URL in OIDC discovery.
 - `oidc_dynamic_client_registration_default_scope` (List of String) Default OAuth2 scopes granted to dynamically registered clients.
 - `oidc_dynamic_client_registration_enabled` (Boolean) Enable OpenID Connect dynamic client registration.
-- `oidc_subject_identifiers_pairwise_salt` (String) Salt for the OIDC pairwise subject identifier algorithm.
+- `oidc_subject_identifiers_pairwise_salt` (String, Sensitive) Salt for the OIDC pairwise subject identifier algorithm. Write-only: the Ory API treats the salt as a secret and redacts it from project revision responses, so the provider sends it on create and update but never reads it back, and out-of-band changes are not detected. Changing the salt changes every pairwise subject identifier the project has issued. An empty value keeps the stored salt.
 - `oidc_subject_identifiers_supported_types` (List of String) Supported OIDC subject identifier types ('public', 'pairwise').
 - `password_check_haveibeenpwned` (Boolean, Deprecated) Check passwords against HaveIBeenPwned.
 - `password_identifier_similarity` (Boolean, Deprecated) Check password similarity to identifier.
 - `password_max_breaches` (Number, Deprecated) Maximum allowed breaches in HaveIBeenPwned.
 - `password_min_length` (Number, Deprecated) Minimum password length.
 - `preview_default_read_consistency_level` (String) Default read consistency level for identity APIs ('strong' or 'eventual').
+- `preview_enable_native_saml_engine` (Boolean) Enable the native Ory Kratos SAML engine (preview). While false or unset, native SAML providers are inert and the native endpoints respond with 404. Enabling it requires the native_saml_engine feature on the workspace plan; without the entitlement the API rejects the write with an HTTP 403 (feature_not_available).
 - `project_id` (String) Project ID to configure. If not set, uses provider's project_id.
 - `recovery_ui_url` (String, Deprecated) URL for the password recovery UI.
 - `registration_ui_url` (String, Deprecated) URL for the registration UI.
 - `required_aal` (String, Deprecated) Required Authenticator Assurance Level for the settings flow: 'aal1' or 'highest_available'.
 - `security_account_enumeration_mitigate` (Boolean) Mitigate account enumeration when using identifier-first login.
+- `security_restricted_origins` (List of String) Origins that may only check the session, use FedCM, and log out, such as pages that run third-party scripts. Responses to these origins never contain identity data. To let these origins read responses, also add them to cors_origins. Each entry is a scheme and host such as https://embed.example.com; the API rejects paths and wildcards.
 - `selfservice_default_browser_return_url` (String) Default browser return URL for self-service flows.
 - `selfservice_flows_error_ui_url` (String) URL for the error UI.
 - `selfservice_flows_login_after_code_default_browser_return_url` (String) Return URL after login via code method.
 - `selfservice_flows_login_after_default_browser_return_url` (String) Default return URL after login.
 - `selfservice_flows_login_after_lookup_secret_default_browser_return_url` (String) Return URL after login via lookup secret method.
 - `selfservice_flows_login_after_oidc_default_browser_return_url` (String) Return URL after login via OIDC.
+- `selfservice_flows_login_after_oidc_hook_require_verified_address` (Boolean) Enable the `require_verified_address` hook after an OIDC (social) login, blocking sign-in until the identity has a verified address. The Ory Console "Require verified address for login" toggle only writes the password flow, so set this attribute as well to cover social logins. Existing hooks at this path (e.g., `organization`) are preserved.
 - `selfservice_flows_login_after_passkey_default_browser_return_url` (String) Return URL after login via passkey.
 - `selfservice_flows_login_after_password_default_browser_return_url` (String) Return URL after login via password.
+- `selfservice_flows_login_after_password_hook_require_verified_address` (Boolean) Enable the `require_verified_address` hook after a password login, blocking sign-in until the identity has a verified address. Mirrors the Ory Console "Require verified address for login" toggle. Use `feature_flags_legacy_require_verified_login_error` to control how the failure is reported, not whether the check runs. Existing hooks at this path (e.g., `organization`) are preserved.
 - `selfservice_flows_login_after_totp_default_browser_return_url` (String) Return URL after login via TOTP.
 - `selfservice_flows_login_after_webauthn_default_browser_return_url` (String) Return URL after login via WebAuthn.
 - `selfservice_flows_login_lifespan` (String) Lifespan of the login flow (e.g. '1h').
@@ -675,7 +874,10 @@ terraform plan  # verify no changes
 - `selfservice_flows_settings_after_passkey_default_browser_return_url` (String) Return URL after updating passkey in settings.
 - `selfservice_flows_settings_after_password_default_browser_return_url` (String) Return URL after updating password in settings.
 - `selfservice_flows_settings_after_profile_default_browser_return_url` (String) Return URL after updating profile in settings.
+- `selfservice_flows_settings_after_profile_hook_notify_previous_addresses` (Boolean) Enable the `notify_previous_addresses` hook after a profile settings update, emailing the identity's previous addresses when its verified addresses change. Mirrors the Ory Console "Notify previous addresses" toggle. Existing hooks at this path (e.g., `organization`) are preserved.
+- `selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients` (String) Which previous addresses the `notify_previous_addresses` hook notifies: `removed` for addresses that no longer exist after the change, `all_verified` for every address verified before the change, or `all` for every address on the identity before the change. Requires `selfservice_flows_settings_after_profile_hook_notify_previous_addresses` to be set. Leave this attribute out to let Ory apply its own default of `removed`. Note that removing it after a scope was already applied stops managing the scope rather than resetting it.
 - `selfservice_flows_settings_after_profile_hook_show_verification_ui` (Boolean) Enable the `show_verification_ui` hook after a successful profile settings update. When true, users are redirected to the verification UI after updating their profile (e.g., changing their email). Existing hooks at this path (e.g., `organization`) are preserved.
+- `selfservice_flows_settings_after_profile_hook_verify_new_address` (Boolean) Enable the `verify_new_address` hook after a profile settings update, requiring verification of an address the user just added or changed. Mirrors the Ory Console "Verify new addresses" toggle. Distinct from `selfservice_flows_settings_after_profile_hook_show_verification_ui`, which only controls the redirect to the verification UI. Existing hooks at this path (e.g., `organization`) are preserved.
 - `selfservice_flows_settings_after_totp_default_browser_return_url` (String) Return URL after updating TOTP in settings.
 - `selfservice_flows_settings_after_webauthn_default_browser_return_url` (String) Return URL after updating WebAuthn in settings.
 - `selfservice_flows_settings_lifespan` (String) Lifespan of the settings flow (e.g., '30m0s'). Controls how long a settings flow session remains valid.
@@ -688,7 +890,7 @@ terraform plan  # verify no changes
 - `selfservice_flows_verification_notify_unknown_recipients` (Boolean) When enabled, verification emails are sent even if the email address is not associated with any known identity.
 - `selfservice_flows_verification_ui_url` (String) URL for the verification UI.
 - `selfservice_flows_verification_use` (String) Verification method to use: 'code' (one-time code) or 'link' (magic link).
-- `selfservice_methods_captcha_config_allowed_domains` (List of String) Domains allowed for CAPTCHA verification.
+- `selfservice_methods_captcha_config_allowed_domains` (List of String) Domains allowed for CAPTCHA verification. Once set, the API refuses to clear this list: applying an empty list keeps the previous domains and the following plan reports the difference. Replace the entries instead of emptying them.
 - `selfservice_methods_captcha_config_byo` (Boolean) Use bring-your-own CAPTCHA widget instead of managed.
 - `selfservice_methods_captcha_config_cf_turnstile_secret` (String, Sensitive) Cloudflare Turnstile managed site secret (private).
 - `selfservice_methods_captcha_config_cf_turnstile_sitekey` (String) Cloudflare Turnstile site key for managed CAPTCHA.
@@ -701,7 +903,13 @@ terraform plan  # verify no changes
 - `selfservice_methods_code_mfa_enabled` (Boolean) Enable the code method as a second factor for MFA. When enabled, users can use one-time codes as a second authentication factor.
 - `selfservice_methods_code_passwordless_enabled` (Boolean) Enable passwordless login via the code method.
 - `selfservice_methods_code_passwordless_login_fallback_enabled` (Boolean) Allow code-based login as a fallback for users registered with other methods.
+- `selfservice_methods_deviceauthn_config_android_allow_expired_factory_certificates` (Boolean) Device authentication accepts expired CA certificates in Android factory attestation chains that lead to a pinned Google root key. Devices launched before 2021 ship factory keyboxes with expired certificates that Google still documents as trustworthy unless revoked. Revocation, signature, and leaf validity checks still apply. Defaults to false.
+- `selfservice_methods_deviceauthn_config_android_app_ids` (List of String) Allow-list of Android app signing-certificate digests that a device key may be bound to.
+- `selfservice_methods_deviceauthn_config_first_factor` (Boolean) Device authentication may be used as the sole first factor.
 - `selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation` (Boolean) Device authentication accepts relaxed attestations for testing. Only allowed on development projects and forced off otherwise.
+- `selfservice_methods_deviceauthn_config_ios_app_ids` (List of String) Allow-list of Apple App IDs that a device key may be bound to.
+- `selfservice_methods_deviceauthn_config_ios_biometric_first_factor` (Boolean) An iOS biometric device key may be used as the sole first factor.
+- `selfservice_methods_deviceauthn_config_pin_max_attempts` (Number) Consecutive wrong-PIN limit before a device key is locked.
 - `selfservice_methods_deviceauthn_enabled` (Boolean) Device authentication is enabled
 - `selfservice_methods_link_config_base_url` (String) Base URL for recovery, verification, and login links. Leave empty for automatic detection.
 - `selfservice_methods_link_config_lifespan` (String) Lifespan of magic links (e.g. '1h').
@@ -710,9 +918,15 @@ terraform plan  # verify no changes
 - `selfservice_methods_oidc_config_base_redirect_uri` (String) Base redirect URI for OIDC/social sign-in callbacks.
 - `selfservice_methods_oidc_enable_auto_link_policy` (Boolean) Enable the OIDC auto-link policy. When true, social sign-in providers with auto_link enabled (on ory_social_provider) can automatically link to existing identities that share the same identifier (e.g., email). This is an enterprise-gated feature that Ory must enable for the project (the `use_auto_link` feature flag); without the entitlement, setting this to true is rejected by the API with an HTTP 403 (feature_not_available).
 - `selfservice_methods_oidc_enabled` (Boolean) Enable OIDC (OpenID Connect) social sign-in. Must be enabled for social providers (e.g. Google, GitHub) to work.
+- `selfservice_methods_passkey_config_attestation_preference` (String) Attestation conveyance preference sent to the authenticator during passkey registration. 'none' (the default) requests no attestation statement, which is what most consumer passkeys support; 'indirect' lets the client decide; 'direct' requests the raw attestation statement; 'enterprise' requests uniquely identifying attestation.
+- `selfservice_methods_passkey_config_authenticator_selection_attachment` (String) Authenticator attachment modality eligible for passkey registration. 'platform' allows built-in authenticators only (Touch ID, Windows Hello); 'cross-platform' allows roaming authenticators only (security keys). Omit the attribute to let users register either type, which is the recommended default for passkeys.
+- `selfservice_methods_passkey_config_authenticator_selection_resident_key` (String) Whether the authenticator must create a client-side discoverable passkey (the WebAuthn residentKey requirement): 'required' (the default), 'preferred', or 'discouraged'.
+- `selfservice_methods_passkey_config_authenticator_selection_user_verification` (String) Whether passkey ceremonies require user verification such as biometrics or a PIN: 'required', 'preferred' (the default), or 'discouraged'.
 - `selfservice_methods_passkey_config_rp_display_name` (String) Passkey relying party display name.
 - `selfservice_methods_passkey_config_rp_id` (String) Passkey relying party ID (typically your domain).
-- `selfservice_methods_passkey_config_rp_origins` (List of String) Allowed origins for passkey relying party verification.
+- `selfservice_methods_passkey_config_rp_origins` (List of String) Allowed origins for passkey relying party verification. An empty list is replaced by the server's default origins (derived from the project slug and custom domains), which the next plan reports as a change; omit the attribute instead of setting it empty.
+- `selfservice_methods_passkey_config_timeouts_login` (String) Timeout for the passkey login ceremony as a Go duration such as '60s', '5m', or '1h30m'. The API rejects zero-valued segments such as '1h0m0s'. When unset, the library default applies: 5m with user verification, 2m without.
+- `selfservice_methods_passkey_config_timeouts_registration` (String) Timeout for the passkey registration ceremony as a Go duration such as '60s', '5m', or '1h30m'. The API rejects zero-valued segments such as '1h0m0s'. When unset, the library default applies: 5m with user verification, 2m without.
 - `selfservice_methods_passkey_enabled` (Boolean) Enable Passkey authentication.
 - `selfservice_methods_password_config_haveibeenpwned_enabled` (Boolean) Check passwords against HaveIBeenPwned.
 - `selfservice_methods_password_config_identifier_similarity_check_enabled` (Boolean) Check password similarity to identifier.
@@ -722,7 +936,7 @@ terraform plan  # verify no changes
 - `selfservice_methods_password_enabled` (Boolean) Enable password authentication.
 - `selfservice_methods_profile_enabled` (Boolean) Enable the profile authentication method. When enabled, users can update their identity traits (e.g., name, address) via the settings flow.
 - `selfservice_methods_saml_enabled` (Boolean) Enable SAML login method.
-- `selfservice_methods_totp_config_issuer` (String) TOTP issuer name shown in authenticator apps.
+- `selfservice_methods_totp_config_issuer` (String) TOTP issuer name shown in authenticator apps. An empty string is replaced by the project name, which the next plan reports as a change; omit the attribute instead of setting it empty.
 - `selfservice_methods_totp_enabled` (Boolean) Enable TOTP (Time-based One-Time Password).
 - `selfservice_methods_webauthn_config_passwordless` (Boolean) Enable passwordless WebAuthn authentication.
 - `selfservice_methods_webauthn_config_rp_display_name` (String) WebAuthn Relying Party display name.
@@ -744,7 +958,7 @@ terraform plan  # verify no changes
 - `smtp_from_address` (String, Deprecated) Email address to send from.
 - `smtp_from_name` (String, Deprecated) Name to display as sender.
 - `smtp_headers` (Map of String) Custom SMTP headers for outbound emails.
-- `totp_issuer` (String, Deprecated) TOTP issuer name shown in authenticator apps.
+- `totp_issuer` (String, Deprecated) TOTP issuer name shown in authenticator apps. An empty string is replaced by the project name, which the next plan reports as a change; omit the attribute instead of setting it empty.
 - `verification_lifespan` (String, Deprecated) Lifespan of the verification flow (e.g., '30m0s'). Controls how long a verification flow session remains valid.
 - `verification_notify_unknown_recipients` (Boolean, Deprecated) When enabled, verification emails are sent even if the email address is not associated with any known identity.
 - `verification_ui_url` (String, Deprecated) URL for the verification UI.
@@ -752,7 +966,7 @@ terraform plan  # verify no changes
 - `webauthn_passwordless` (Boolean, Deprecated) Enable passwordless WebAuthn authentication.
 - `webauthn_rp_display_name` (String, Deprecated) WebAuthn Relying Party display name.
 - `webauthn_rp_id` (String, Deprecated) WebAuthn Relying Party ID (typically your domain).
-- `webauthn_rp_origins` (List of String) Allowed origins for WebAuthn relying party.
+- `webauthn_rp_origins` (List of String) Allowed origins for WebAuthn relying party. An empty list is replaced by the server's default origins (derived from the project slug and custom domains), which the next plan reports as a change; omit the attribute instead of setting it empty.
 
 ### Read-Only
 

@@ -30,6 +30,14 @@
         ".deps/**"
       ],
       "groupName": "tool dependencies"
+    },
+    {
+      "description": "Keep the Ory client OpenAPI spec pin in its own PR so the regenerate workflow runs on its merge",
+      "matchDepNames": [
+        "ory-client-openapi-spec"
+      ],
+      "groupName": "ory client openapi spec",
+      "versioning": "semver-coerced"
     }
   ],
   "customManagers": [
@@ -44,5 +52,12 @@
       ],
       "extractVersionTemplate": "{{#if extractVersion}}{{{extractVersion}}}{{/if}}"
     }
-  ]
+  ],
+  "customDatasources": {
+    "ory-sdk-client-spec": {
+      "description": "Latest Ory client OpenAPI spec version published to ory/sdk (the file holds one version string)",
+      "defaultRegistryUrlTemplate": "https://raw.githubusercontent.com/ory/sdk/master/spec/client/latest",
+      "format": "plain"
+    }
+  }
 }

@@ -26,19 +26,56 @@ import (
 )
 
 type Attribute struct {
-	Name            string     `yaml:"name"`
-	GoField         string     `yaml:"go_field"`
-	Type            string     `yaml:"type"` // string, bool, int64, list_string, map_string
-	PatchPath       string     `yaml:"patch_path"`
-	OpenAPIProperty string     `yaml:"openapi_property"` // maps to normalizedProjectRevision property name
-	Description     string     `yaml:"description"`
-	Computed        bool       `yaml:"computed"`
-	DefaultBool     *bool      `yaml:"default_bool"`
-	DefaultInt64    *int64     `yaml:"default_int64"`
-	Sensitive       bool       `yaml:"sensitive"`
-	SkipEmptyRead   bool       `yaml:"skip_empty_read"`
-	WriteOnly       bool       `yaml:"write_only"` // omit from the API read path: sent on create/update but never read back into state (for secrets the API does not return, or returns masked)
-	Validators      *Validator `yaml:"validators"`
+	Name            string `yaml:"name"`
+	GoField         string `yaml:"go_field"`
+	Type            string `yaml:"type"` // string, bool, int64, list_string, map_string
+	PatchPath       string `yaml:"patch_path"`
+	CustomPatch     bool   `yaml:"custom_patch"`     // keep generated schema/read entries; write through resource.go
+	OpenAPIProperty string `yaml:"openapi_property"` // maps to normalizedProjectRevision property name
+	Description     string `yaml:"description"`
+	Computed        bool   `yaml:"computed"`
+	DefaultBool     *bool  `yaml:"default_bool"`
+	DefaultInt64    *int64 `yaml:"default_int64"`
+	Sensitive       bool   `yaml:"sensitive"`
+	SkipEmptyRead   bool   `yaml:"skip_empty_read"`
+	WriteOnly       bool   `yaml:"write_only"` // omit from the API read path: sent on create/update but never read back into state (for secrets the API does not return, or returns masked)
+	// PreserveOnMissing keeps the state value when the API response omits this
+	// attribute's key. Set it for attributes the API accepts with HTTP 200 but
+	// never reports back, where nulling state would create a diff that no apply
+	// can settle. Verify with curl before setting it: PATCH the value, then GET
+	// the project and check whether the key is in the response.
+	PreserveOnMissing bool `yaml:"preserve_on_missing"`
+	// ReadPath is the config path the API reports the value under, when that
+	// differs from the path the value is written to. Reads use it instead of
+	// PatchPath. Always record the verification in a comment next to the
+	// attribute.
+	ReadPath string `yaml:"read_path"`
+	// StorageURLContent marks a string attribute whose content the Ory API
+	// uploads to object storage. The write sends `base64://<payload>` and the
+	// API reports an https URL instead, so Read resolves the URL back to the
+	// configured value. Only valid for `type: string`.
+	StorageURLContent bool `yaml:"storage_url_content"`
+	// PatchPathOverride replaces the spec-derived patch path when the spec's
+	// governs description names a config key the API does not actually read
+	// (the write is accepted with HTTP 200 and silently discarded). Reads use
+	// it too unless read_path is also set. Always verify the override against
+	// the live API and record the verification in a comment.
+	PatchPathOverride string `yaml:"patch_path_override"`
+	// BoolEnum marks a bool attribute whose config key stores a string enum
+	// instead of a JSON bool. The patch sends true_value/false_value and Read
+	// maps the reported string back by comparing it to true_value. Sending a
+	// raw bool to such a key is accepted with HTTP 200 but normalized by
+	// string comparison, so it silently stores the false variant.
+	BoolEnum *BoolEnum `yaml:"bool_enum"`
+	// RevisionProperty marks an attribute that is a top-level normalized
+	// revision column with no key in any service config document. Document
+	// PATCHes cannot reach it (they return HTTP 200 and silently discard the
+	// write), so the write goes through the normalized revision endpoint
+	// (PATCH /normalized/projects/{id}/revision/{rev}) with op path
+	// /<openapi_property>, and the read comes from the normalized revision
+	// (GET /normalized/projects/{id}) instead of the project document.
+	RevisionProperty bool       `yaml:"revision_property"`
+	Validators       *Validator `yaml:"validators"`
 
 	// Deprecated alias support: when set, generates a second schema attribute
 	// with the old name that shows a deprecation warning directing users to Name.
@@ -46,10 +83,40 @@ type Attribute struct {
 	DeprecatedGoField string `yaml:"deprecated_go_field"` // old Go struct field name
 }
 
+// ReadPreservesOnMissing reports whether Read must keep the value already in
+// state when the API response omits this attribute's key, instead of nulling it
+// to signal drift.
+//
+// Three groups qualify. Sensitive attributes are redacted or dropped by the API
+// by design. skip_empty_read attributes are the ones the API does not report
+// faithfully. preserve_on_missing attributes are the ones the API accepts and
+// then never reports, so nulling them would produce a diff no apply can settle.
+func (a Attribute) ReadPreservesOnMissing() bool {
+	return a.Sensitive || a.SkipEmptyRead || a.PreserveOnMissing
+}
+
+// ReadKeysPath returns the config path the generated Read looks the value up
+// under. It is PatchPath for almost every attribute, and read_path for the few
+// the API reports somewhere other than where it accepts the write.
+func (a Attribute) ReadKeysPath() string {
+	if a.ReadPath != "" {
+		return a.ReadPath
+	}
+	return a.PatchPath
+}
+
+// BoolEnum holds the string values a bool_enum attribute's config key stores
+// for true and false (e.g. "password"/"default").
+type BoolEnum struct {
+	TrueValue  string `yaml:"true_value"`
+	FalseValue string `yaml:"false_value"`
+}
+
 type Validator struct {
-	OneOf        []string `yaml:"one_of"`
-	Regex        string   `yaml:"regex"`
-	RegexMessage string   `yaml:"regex_message"`
+	OneOf         []string `yaml:"one_of"`
+	Regex         string   `yaml:"regex"`
+	RegexMessage  string   `yaml:"regex_message"`
+	ConflictsWith []string `yaml:"conflicts_with"`
 }
 
 type Mappings struct {
@@ -274,6 +341,8 @@ func main() {
 	discoverApply := flag.Bool("discover-apply", false, "append YAML entries to mappings file and Go struct fields to resource.go for unmapped spec properties (requires --spec)")
 	resourceFile := flag.String("resource-file", "", "path to resource.go for -discover-apply struct field insertion (default: <out>/resource.go)")
 	strict := flag.Bool("strict", false, "fail if any spec properties are unmapped (use in CI to detect drift)")
+	probeAttrs := flag.String("probe-attributes", "", "comma-separated attribute names to probe against the live console API instead of generating. Requires --spec so patch/read paths resolve for entries that rely on governs derivation (entries with an explicit patch_path work without it), plus ORY_WORKSPACE_API_KEY and either ORY_WORKSPACE_ID (throwaway project) or ORY_PROBE_PROJECT_ID (reuse)")
+	probeReport := flag.String("probe-report", "", "file to write the probe markdown report to (default: stdout)")
 	flag.Parse()
 
 	cleanMappingsPath := filepath.Clean(*mappingsPath)
@@ -285,6 +354,14 @@ func main() {
 	var m Mappings
 	if err := yaml.Unmarshal(data, &m); err != nil {
 		log.Fatalf("parsing mappings: %v", err)
+	}
+
+	// Apply patch path overrides before spec resolution so a wrong governs
+	// path in the spec neither wins nor trips the mismatch check.
+	for i := range m.Attributes {
+		if m.Attributes[i].PatchPathOverride != "" {
+			m.Attributes[i].PatchPath = m.Attributes[i].PatchPathOverride
+		}
 	}
 
 	// If spec provided, parse it and use governs-based path derivation
@@ -331,7 +408,7 @@ func main() {
 
 	// Validate all attributes have required fields
 	for i, a := range m.Attributes {
-		if a.Name == "" || a.GoField == "" || a.Type == "" || a.PatchPath == "" {
+		if a.Name == "" || a.GoField == "" || a.Type == "" || (a.PatchPath == "" && !a.RevisionProperty) {
 			log.Fatalf("attribute %d (%s): name, go_field, type, and patch_path are required (patch_path can be derived from spec via openapi_property)", i, a.Name)
 		}
 		if a.Type != typeString && a.Type != typeBool && a.Type != typeInt64 && a.Type != typeListString && a.Type != typeMapString {
@@ -340,12 +417,64 @@ func main() {
 		if a.Description == "" {
 			log.Fatalf("attribute %q: description is required (set it in mappings.yaml or ensure openapi_property points to a spec entry with a description)", a.Name)
 		}
+		if a.StorageURLContent && a.Type != typeString {
+			log.Fatalf("attribute %q: storage_url_content is only supported for type string, got %q", a.Name, a.Type)
+		}
+		if a.CustomPatch && a.Type != typeString {
+			log.Fatalf("attribute %q: custom_patch is only supported for type string, got %q", a.Name, a.Type)
+		}
+		if a.Validators != nil && len(a.Validators.ConflictsWith) > 0 && a.Type != typeString {
+			log.Fatalf("attribute %q: validators.conflicts_with is only supported for type string, got %q", a.Name, a.Type)
+		}
+		if a.StorageURLContent && a.WriteOnly {
+			log.Fatalf("attribute %q: storage_url_content and write_only are mutually exclusive (write_only removes the attribute from the read path)", a.Name)
+		}
+		if a.BoolEnum != nil {
+			if a.Type != typeBool {
+				log.Fatalf("attribute %q: bool_enum is only supported for type bool, got %q", a.Name, a.Type)
+			}
+			if a.BoolEnum.TrueValue == "" || a.BoolEnum.FalseValue == "" {
+				log.Fatalf("attribute %q: bool_enum requires both true_value and false_value", a.Name)
+			}
+			if a.BoolEnum.TrueValue == a.BoolEnum.FalseValue {
+				log.Fatalf("attribute %q: bool_enum true_value and false_value must differ", a.Name)
+			}
+		}
+		if a.RevisionProperty {
+			if a.Type != typeBool {
+				log.Fatalf("attribute %q: revision_property is only supported for type bool, got %q", a.Name, a.Type)
+			}
+			if a.OpenAPIProperty == "" {
+				log.Fatalf("attribute %q: revision_property requires openapi_property (the revision patch op path is derived from it)", a.Name)
+			}
+			if a.BoolEnum != nil || a.WriteOnly || a.StorageURLContent || a.ReadPath != "" || a.PatchPathOverride != "" || a.DeprecatedName != "" {
+				log.Fatalf("attribute %q: revision_property cannot be combined with bool_enum, write_only, storage_url_content, read_path, patch_path_override, or deprecated aliases", a.Name)
+			}
+		}
 	}
 
-	// Group by service
+	// Probe mode: write sentinel and empty values to the named attributes on a
+	// live project and classify what comes back, instead of generating code.
+	if *probeAttrs != "" {
+		names := strings.Split(*probeAttrs, ",")
+		for i := range names {
+			names[i] = strings.TrimSpace(names[i])
+		}
+		if err := probeAttributes(m, names, *probeReport); err != nil {
+			log.Fatalf("probing attributes: %v", err)
+		}
+		return
+	}
+
+	// Group by service. Revision properties are not part of any service config
+	// document, so they get no read entries and stay out of the groups; the
+	// schema and revision patch templates iterate m.Attributes directly.
 	byService := make(map[string][]Attribute)
 	hasRegex := false
 	for _, a := range m.Attributes {
+		if a.RevisionProperty {
+			continue
+		}
 		svc, _ := parseService(a.PatchPath)
 		byService[svc] = append(byService[svc], a)
 		if a.Validators != nil && a.Validators.Regex != "" {
@@ -478,6 +607,20 @@ func resolveFromSpec(m *Mappings, specProps map[string]SpecProperty) {
 			if desc := cleanDescription(sp.Description); desc != "" {
 				a.Description = desc
 			}
+		}
+
+		// patch_path_override wins over the spec: the governs description names
+		// a config key the API does not actually read, so the mismatch with the
+		// derived path is intentional.
+		if a.PatchPathOverride != "" {
+			continue
+		}
+
+		// Revision properties are patched at /<openapi_property> on the
+		// revision endpoint; the spec's governs path names a config document
+		// key that does not exist, so no document patch path is derived.
+		if a.RevisionProperty {
+			continue
 		}
 
 		if sp.GovernsPath == "" {
@@ -857,6 +1000,10 @@ func excludedProperties() map[string]bool {
 		"id": true, "project_id": true, "created_at": true, "updated_at": true,
 		"name": true, "state": true, "workspace_id": true, "production": true,
 		"strict_security": true, "project_name": true,
+		// keto_strict_mode_readonly reports whether the project's Keto strict
+		// mode is locked. It is backoffice metadata with no key in the rendered
+		// Keto config, and the normalized revision PATCH rejects writes to it.
+		"keto_strict_mode_readonly": true,
 		// Managed by separate terraform resources
 		"kratos_identity_schemas":                          true,
 		"kratos_selfservice_methods_oidc_config_providers": true,
@@ -1028,6 +1175,13 @@ func buildSchemaAttr(a Attribute) string {
 
 	if a.Validators != nil && a.Type == typeString {
 		var validatorExprs []string
+		if len(a.Validators.ConflictsWith) > 0 {
+			paths := make([]string, len(a.Validators.ConflictsWith))
+			for i, name := range a.Validators.ConflictsWith {
+				paths[i] = fmt.Sprintf("path.MatchRoot(%q)", name)
+			}
+			validatorExprs = append(validatorExprs, fmt.Sprintf("stringvalidator.ConflictsWith(%s)", strings.Join(paths, ", ")))
+		}
 		if len(a.Validators.OneOf) > 0 {
 			quoted := make([]string, len(a.Validators.OneOf))
 			for i, s := range a.Validators.OneOf {
@@ -1104,6 +1258,7 @@ import (
 {{- end }}
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
@@ -1114,6 +1269,7 @@ import (
 // Ensure imported packages are used.
 var (
 	_ = stringvalidator.OneOf
+	_ = path.MatchRoot
 	_ = booldefault.StaticBool
 	_ = int64default.StaticInt64
 	_ validator.String
@@ -1153,11 +1309,20 @@ type StringPatchEntry struct {
 	Path       string
 }
 
+// BoolEnumValues holds the string values a config key stores in place of a
+// JSON bool. Sending a raw bool to such a key is accepted with HTTP 200 but
+// normalized by string comparison, so it silently stores the false variant.
+type BoolEnumValues struct {
+	True  string
+	False string
+}
+
 // BoolPatchEntry maps a bool field to its JSON Patch path.
 type BoolPatchEntry struct {
 	Field      *types.Bool
 	Deprecated *types.Bool // fallback when Field is null (deprecated alias)
 	Path       string
+	Enum       *BoolEnumValues // when set, patch the string enum instead of a raw bool
 }
 
 // Int64PatchEntry maps an int64 field to its JSON Patch path.
@@ -1185,7 +1350,9 @@ type MapStringPatchEntry struct {
 func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEntry {
 	return []StringPatchEntry{
 {{- range filterType .Attributes "string" }}
+{{- if not .CustomPatch }}
 		{&plan.{{ .GoField }}, {{ if .DeprecatedGoField }}&plan.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, {{ printf "%q" .PatchPath }}},
+{{- end }}
 {{- end }}
 	}
 }
@@ -1194,7 +1361,26 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 	return []BoolPatchEntry{
 {{- range filterType .Attributes "bool" }}
-		{&plan.{{ .GoField }}, {{ if .DeprecatedGoField }}&plan.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, {{ printf "%q" .PatchPath }}},
+{{- if not .RevisionProperty }}
+		{&plan.{{ .GoField }}, {{ if .DeprecatedGoField }}&plan.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, {{ printf "%q" .PatchPath }}, {{ if .BoolEnum }}&BoolEnumValues{ {{ printf "%q" .BoolEnum.TrueValue }}, {{ printf "%q" .BoolEnum.FalseValue }} }{{ else }}nil{{ end }}},
+{{- end }}
+{{- end }}
+	}
+}
+
+// revisionBoolPatchEntries returns bool attributes that are top-level
+// normalized revision columns. They have no key in any service config
+// document — a document patch is accepted with HTTP 200 and silently
+// discarded — so they are applied via the normalized revision endpoint
+// (client.PatchProjectRevision), with the op path being the normalized
+// property name. Reads go through revisionBoolReadEntries against the
+// normalized revision, not the project document.
+func revisionBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
+	return []BoolPatchEntry{
+{{- range filterType .Attributes "bool" }}
+{{- if .RevisionProperty }}
+		{&plan.{{ .GoField }}, nil, {{ printf "%q" (printf "/%s" .OpenAPIProperty) }}, nil},
+{{- end }}
 {{- end }}
 	}
 }
@@ -1255,37 +1441,72 @@ type StringReadEntry struct {
 	Deprecated *types.String // fallback: used only when the primary Field is null in state
 	Keys       []string
 	SkipEmpty  bool
+	// PreserveOnMissing keeps the state value when the API omits Keys, instead
+	// of nulling it to surface drift. Set for secrets the API never echoes back
+	// and for attributes it accepts but never reports, where a null would show a
+	// diff on every plan that no apply can settle.
+	PreserveOnMissing bool
+	// StorageURL marks a field whose content the API uploads to object storage
+	// and reports back as an https URL. Read resolves that URL to the value the
+	// configuration holds. See resolveStorageURLContent in helpers.go.
+	StorageURL bool
 }
 
 // BoolReadEntry maps a bool state field to its config read path.
 type BoolReadEntry struct {
-	Field      *types.Bool
-	Deprecated *types.Bool // fallback: used only when the primary Field is null in state
-	Keys       []string
+	Field             *types.Bool
+	Deprecated        *types.Bool // fallback: used only when the primary Field is null in state
+	Keys              []string
+	PreserveOnMissing bool
+	Enum              *BoolEnumValues // when set, the key stores a string enum; map it back by comparing to Enum.True
 }
 
 // Int64ReadEntry maps an int64 state field to its config read path.
 type Int64ReadEntry struct {
-	Field      *types.Int64
-	Deprecated *types.Int64 // fallback: used only when the primary Field is null in state
-	Keys       []string
+	Field             *types.Int64
+	Deprecated        *types.Int64 // fallback: used only when the primary Field is null in state
+	Keys              []string
+	PreserveOnMissing bool
 }
 
 // ListStringReadEntry maps a list(string) state field to its config read path.
 type ListStringReadEntry struct {
-	Field      *types.List
-	Deprecated *types.List // fallback: used only when the primary Field is null in state
-	Keys       []string
+	Field             *types.List
+	Deprecated        *types.List // fallback: used only when the primary Field is null in state
+	Keys              []string
+	PreserveOnMissing bool
 }
 
 // MapStringReadEntry maps a map(string) state field to its config read path.
 type MapStringReadEntry struct {
-	Field      *types.Map
-	Deprecated *types.Map // fallback: used only when the primary Field is null in state
-	Keys       []string
+	Field             *types.Map
+	Deprecated        *types.Map // fallback: used only when the primary Field is null in state
+	Keys              []string
+	PreserveOnMissing bool
+}
+
+// revisionBoolReadEntries returns bool attributes read from the normalized
+// project revision (client.GetProjectNormalizedRevision) instead of the
+// project document, keyed by their normalized property name. See
+// readRevisionProperties in resource.go.
+func revisionBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry {
+	return []BoolReadEntry{
+{{- range filterType .Attributes "bool" }}
+{{- if .RevisionProperty }}
+		{&state.{{ .GoField }}, nil, []string{ {{ printf "%q" .OpenAPIProperty }} }, false, nil},
+{{- end }}
+{{- end }}
+	}
 }
 
 // readSimpleFields reads all simple attributes from the API response into state.
+//
+// Missing-key semantics: the API prunes empty values (empty string, empty
+// list, empty map, integer zero) from stored configs, so a key the response
+// omits is indistinguishable from an applied empty value. When state already
+// holds the empty value for the type, the omission is exactly what the write
+// produced and the value is kept. Any other state value is nulled so genuine
+// out-of-band removals still surface as drift.
 func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectConfigResourceModel) {
 {{- range $svc := .ServiceNames }}
 {{- $attrs := index $.ByService $svc }}
@@ -1301,9 +1522,14 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 			}
 			if !target.IsNull() {
 				if v, ok := getNestedString({{ varName $svc }}Config, e.Keys...); ok {
+					if e.StorageURL {
+						v = resolveStorageURLContent(ctx, v, target.ValueString())
+					}
 					if !e.SkipEmpty || v != "" {
 						*target = types.StringValue(v)
 					}
+				} else if !e.PreserveOnMissing && target.ValueString() != "" {
+					*target = types.StringNull()
 				}
 			}
 		}
@@ -1316,8 +1542,16 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 				target = e.Deprecated
 			}
 			if !target.IsNull() {
-				if v, ok := getNestedBool({{ varName $svc }}Config, e.Keys...); ok {
+				if e.Enum != nil {
+					if v, ok := getNestedString({{ varName $svc }}Config, e.Keys...); ok {
+						*target = types.BoolValue(v == e.Enum.True)
+					} else if !e.PreserveOnMissing {
+						*target = types.BoolNull()
+					}
+				} else if v, ok := getNestedBool({{ varName $svc }}Config, e.Keys...); ok {
 					*target = types.BoolValue(v)
+				} else if !e.PreserveOnMissing {
+					*target = types.BoolNull()
 				}
 			}
 		}
@@ -1334,6 +1568,8 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 					if v == math.Trunc(v) {
 						*target = types.Int64Value(int64(v))
 					}
+				} else if !e.PreserveOnMissing && target.ValueInt64() != 0 {
+					*target = types.Int64Null()
 				}
 			}
 		}
@@ -1365,6 +1601,8 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 							}
 						}
 					}
+				} else if !e.PreserveOnMissing && len(target.Elements()) > 0 {
+					*target = types.ListNull(types.StringType)
 				}
 			}
 		}
@@ -1396,6 +1634,8 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 							}
 						}
 					}
+				} else if !e.PreserveOnMissing && len(target.Elements()) > 0 {
+					*target = types.MapNull(types.StringType)
 				}
 			}
 		}
@@ -1413,7 +1653,7 @@ func {{ $svc }}StringReadEntries(state *ProjectConfigResourceModel) []StringRead
 	return []StringReadEntry{
 {{- range $strings }}
 {{- if not .WriteOnly }}
-		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }, {{ .SkipEmptyRead }}},
+		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .SkipEmptyRead }}, {{ .ReadPreservesOnMissing }}, {{ .StorageURLContent }}},
 {{- end }}
 {{- end }}
 	}
@@ -1427,7 +1667,7 @@ func {{ $svc }}BoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntr
 	return []BoolReadEntry{
 {{- range $bools }}
 {{- if not .WriteOnly }}
-		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }},
+		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .ReadPreservesOnMissing }}, {{ if .BoolEnum }}&BoolEnumValues{ {{ printf "%q" .BoolEnum.TrueValue }}, {{ printf "%q" .BoolEnum.FalseValue }} }{{ else }}nil{{ end }}},
 {{- end }}
 {{- end }}
 	}
@@ -1441,7 +1681,7 @@ func {{ $svc }}Int64ReadEntries(state *ProjectConfigResourceModel) []Int64ReadEn
 	return []Int64ReadEntry{
 {{- range $ints }}
 {{- if not .WriteOnly }}
-		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }},
+		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .ReadPreservesOnMissing }}},
 {{- end }}
 {{- end }}
 	}
@@ -1455,7 +1695,7 @@ func {{ $svc }}ListStringReadEntries(state *ProjectConfigResourceModel) []ListSt
 	return []ListStringReadEntry{
 {{- range $listStrings }}
 {{- if not .WriteOnly }}
-		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }},
+		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .ReadPreservesOnMissing }}},
 {{- end }}
 {{- end }}
 	}
@@ -1469,7 +1709,7 @@ func {{ $svc }}MapStringReadEntries(state *ProjectConfigResourceModel) []MapStri
 	return []MapStringReadEntry{
 {{- range $mapStrings }}
 {{- if not .WriteOnly }}
-		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .PatchPath }} }},
+		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .ReadPreservesOnMissing }}},
 {{- end }}
 {{- end }}
 	}

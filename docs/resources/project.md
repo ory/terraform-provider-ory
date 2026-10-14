@@ -91,6 +91,8 @@ The `environment` attribute determines which features are available:
 ~> **Important:** If you plan to use `ory_organization` resources, you must use `prod` or `stage` environment.
 The `dev` environment does not support B2B features.
 
+-> **Changing the environment:** Unlike `home_region`, `environment` can be changed in place. Updating the value moves the project to the new tier **without destroying the project or its child resources** (OAuth2 clients, identity schemas, actions, social providers, custom domains, email templates, and so on). The change is validated server-side and fails, leaving the project untouched, if the project is not in a workspace, the workspace subscription does not permit the target tier (for example, moving to `prod` consumes a production-project slot), or the current configuration enables options unavailable in the target environment (for example, `dev`-only settings must be disabled before moving to `stage` or `prod`).
+
 ## Home Regions
 
 The `home_region` attribute determines where project data is stored:
@@ -103,6 +105,8 @@ The `home_region` attribute determines where project data is stored:
 | `us` | US |
 | `asia-northeast` | Asia Northeast |
 | `global` | Global |
+
+~> **Immutable:** Unlike `environment`, `home_region` cannot be changed after the project is created. Changing it forces the project to be destroyed and recreated.
 
 ## Plan Limits
 
@@ -137,7 +141,7 @@ output "project_state" {
 
 ### Optional
 
-- `environment` (String) The environment type. Must be one of: `prod` (production), `stage` (staging), or `dev` (development). Defaults to `prod`. **Cannot be changed after creation** - changing this will force a new resource. Note: `dev` environment does not support B2B Organizations.
+- `environment` (String) The environment type. Must be one of: `prod` (production), `stage` (staging), or `dev` (development). Defaults to `prod`. **Can be changed in place** — updating this value changes the project's tier without destroying the project, provided the project belongs to a workspace, the workspace subscription permits the target tier, and the project configuration has no options that are unavailable in the target environment. Note: `dev` environment does not support B2B Organizations.
 - `home_region` (String) The home region where the project data is stored. Must be one of: `eu-central` (Europe), `us-east`, `us-west`, `us`, `asia-northeast`, or `global`. Defaults to `eu-central`. **Cannot be changed after creation** - changing this will force a new resource.
 
 ### Read-Only

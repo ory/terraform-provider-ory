@@ -19,6 +19,13 @@ func tfStringValue(v types.String) tftypes.Value {
 	return tftypes.NewValue(tftypes.String, v.ValueString())
 }
 
+func tfBoolValue(v types.Bool) tftypes.Value {
+	if v.IsNull() {
+		return tftypes.NewValue(tftypes.Bool, nil)
+	}
+	return tftypes.NewValue(tftypes.Bool, v.ValueBool())
+}
+
 func buildTestConfig(t *testing.T, model SAMLProviderResourceModel) resource.ValidateConfigRequest {
 	t.Helper()
 
@@ -38,6 +45,7 @@ func buildTestConfig(t *testing.T, model SAMLProviderResourceModel) resource.Val
 		"organization_id":              tfStringValue(model.OrganizationID),
 		"audience_override_base_url":   tfStringValue(model.AudienceOverrideBaseURL),
 		"proxy_saml_audience_override": tfStringValue(model.ProxySAMLAudienceOverride),
+		"idp_initiated_login_enabled":  tfBoolValue(model.IdPInitiatedLoginEnabled),
 	}
 
 	objType := tftypes.Object{
@@ -51,6 +59,7 @@ func buildTestConfig(t *testing.T, model SAMLProviderResourceModel) resource.Val
 			"organization_id":              tftypes.String,
 			"audience_override_base_url":   tftypes.String,
 			"proxy_saml_audience_override": tftypes.String,
+			"idp_initiated_login_enabled":  tftypes.Bool,
 		},
 	}
 

@@ -1,0 +1,11 @@
+resource "ory_project_config" "test" {
+  selfservice_methods_passkey_enabled                                          = true
+  selfservice_methods_passkey_config_attestation_preference                    = "[[ .Attestation ]]"
+  selfservice_methods_passkey_config_authenticator_selection_attachment        = "[[ .Attachment ]]"
+  selfservice_methods_passkey_config_authenticator_selection_resident_key      = "[[ .ResidentKey ]]"
+  selfservice_methods_passkey_config_authenticator_selection_user_verification = "[[ .UserVerification ]]"
+  selfservice_methods_passkey_config_timeouts_login                            = "[[ .LoginTimeout ]]"
+  selfservice_methods_passkey_config_timeouts_registration                     = "[[ .RegistrationTimeout ]]"
+
+  security_restricted_origins = [[ .RestrictedOrigins ]]
+}

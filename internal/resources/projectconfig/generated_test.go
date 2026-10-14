@@ -5,8 +5,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	ory "github.com/ory/client-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -286,6 +288,63 @@ func TestSMTPConnectionURI_WriteOnly(t *testing.T) {
 	}
 }
 
+// TestCourierHTTPRequestConfigAuth_WriteOnly verifies the flat HTTP courier auth
+// secrets (basic-auth password and API-key value) are treated as write-only: they
+// are sent on create/update (they remain in the schema and patch tables) but are
+// never read back from the API. A value the API returns — empty or a masked
+// sentinel such as "****" — must never overwrite the configured value, otherwise
+// every plan would show a perpetual diff between the real secret in HCL and the
+// masked value in state.
+//
+// This is the provider-side guard for the Ory API stripping HTTP courier
+// credentials from project-config responses.
+func TestCourierHTTPRequestConfigAuth_WriteOnly(t *testing.T) {
+	const (
+		configuredPassword = "basic-auth-secret" //nolint:gosec // G101 false positive: test fixture, not a real credential
+		configuredAPIKey   = "api-key-secret"    //nolint:gosec // G101 false positive: test fixture, not a real credential
+	)
+
+	// 1. Both must be excluded from the generated read entries entirely.
+	state := &ProjectConfigResourceModel{
+		CourierHTTPRequestConfigAuthBasicAuthPassword: types.StringValue(configuredPassword),
+		CourierHTTPRequestConfigAuthAPIKeyValue:       types.StringValue(configuredAPIKey),
+	}
+	for _, e := range identityStringReadEntries(state) {
+		assert.NotSame(t, &state.CourierHTTPRequestConfigAuthBasicAuthPassword, e.Field,
+			"courier_http_request_config_auth_basic_auth_password must not appear in read entries — it is write-only")
+		assert.NotSame(t, &state.CourierHTTPRequestConfigAuthAPIKeyValue, e.Field,
+			"courier_http_request_config_auth_api_key_value must not appear in read entries — it is write-only")
+	}
+
+	// 2. readSimpleFields must preserve the configured values regardless of what
+	//    the API returns for the auth config secrets (absent, empty, or masked).
+	for _, apiValue := range []string{"", "****"} {
+		st := &ProjectConfigResourceModel{
+			CourierHTTPRequestConfigAuthBasicAuthPassword: types.StringValue(configuredPassword),
+			CourierHTTPRequestConfigAuthAPIKeyValue:       types.StringValue(configuredAPIKey),
+		}
+		project := projectWithIdentityConfig(map[string]interface{}{
+			"courier": map[string]interface{}{
+				"http": map[string]interface{}{
+					"request_config": map[string]interface{}{
+						"auth": map[string]interface{}{
+							"config": map[string]interface{}{
+								"password": apiValue,
+								"value":    apiValue,
+							},
+						},
+					},
+				},
+			},
+		})
+		readSimpleFields(context.Background(), project, st)
+		assert.Equal(t, configuredPassword, st.CourierHTTPRequestConfigAuthBasicAuthPassword.ValueString(),
+			"configured courier basic-auth password must be preserved when the API returns %q", apiValue)
+		assert.Equal(t, configuredAPIKey, st.CourierHTTPRequestConfigAuthAPIKeyValue.ValueString(),
+			"configured courier api-key value must be preserved when the API returns %q", apiValue)
+	}
+}
+
 // TestGeneratedSchemaAttributes_Count verifies generation produced a non-trivial
 // number of attributes. The AllOptional and ValidAndUnique tests verify correctness;
 // this test catches catastrophic generation failures (e.g., empty output).
@@ -315,5 +374,219 @@ func TestGeneratedSchemaAttributes_AllOptional(t *testing.T) {
 			continue
 		}
 		assert.True(t, optional, "attribute %q is not optional", name)
+	}
+}
+
+// TestGeneratedReadEntries_MissingKeySemantics mechanically pins the
+// missing-key behavior for EVERY generated read entry, so any codegen change
+// and any future attribute inherits the issue #321 semantics automatically:
+//
+//   - The API prunes empty values (empty string/list/map, integer zero) from
+//     stored configs, so a missing key matches an empty state value and the
+//     value is kept — otherwise the attribute diffs on every plan and no
+//     apply can settle it.
+//   - A non-empty state value still nulls on a missing key (unless the entry
+//     preserves on missing), so genuine out-of-band removals surface as drift.
+func TestGeneratedReadEntries_MissingKeySemantics(t *testing.T) {
+	emptyServicesProject := func() *ory.Project {
+		return &ory.Project{Services: ory.ProjectServices{
+			Identity:          &ory.ProjectServiceIdentity{Config: map[string]interface{}{}},
+			Oauth2:            &ory.ProjectServiceOAuth2{Config: map[string]interface{}{}},
+			Permission:        &ory.ProjectServicePermission{Config: map[string]interface{}{}},
+			AccountExperience: &ory.ProjectServiceAccountExperience{Config: map[string]interface{}{}},
+		}}
+	}
+
+	stringEntries := func(state *ProjectConfigResourceModel) []StringReadEntry {
+		all := identityStringReadEntries(state)
+		all = append(all, oauth2StringReadEntries(state)...)
+		all = append(all, permissionStringReadEntries(state)...)
+		all = append(all, account_experienceStringReadEntries(state)...)
+		return all
+	}
+	boolEntries := func(state *ProjectConfigResourceModel) []BoolReadEntry {
+		all := identityBoolReadEntries(state)
+		all = append(all, oauth2BoolReadEntries(state)...)
+		all = append(all, account_experienceBoolReadEntries(state)...)
+		return all
+	}
+	int64Entries := func(state *ProjectConfigResourceModel) []Int64ReadEntry {
+		all := identityInt64ReadEntries(state)
+		all = append(all, oauth2Int64ReadEntries(state)...)
+		return all
+	}
+	listEntries := func(state *ProjectConfigResourceModel) []ListStringReadEntry {
+		all := identityListStringReadEntries(state)
+		all = append(all, oauth2ListStringReadEntries(state)...)
+		all = append(all, permissionListStringReadEntries(state)...)
+		all = append(all, account_experienceListStringReadEntries(state)...)
+		return all
+	}
+	mapEntries := func(state *ProjectConfigResourceModel) []MapStringReadEntry {
+		all := identityMapStringReadEntries(state)
+		all = append(all, account_experienceMapStringReadEntries(state)...)
+		return all
+	}
+
+	t.Run("empty state values survive a missing key", func(t *testing.T) {
+		state := &ProjectConfigResourceModel{}
+		emptyList, diags := types.ListValueFrom(context.Background(), types.StringType, []string{})
+		require.False(t, diags.HasError())
+		emptyMap, diags := types.MapValue(types.StringType, map[string]attr.Value{})
+		require.False(t, diags.HasError())
+
+		for _, e := range stringEntries(state) {
+			*e.Field = types.StringValue("")
+		}
+		for _, e := range int64Entries(state) {
+			*e.Field = types.Int64Value(0)
+		}
+		for _, e := range listEntries(state) {
+			*e.Field = emptyList
+		}
+		for _, e := range mapEntries(state) {
+			*e.Field = emptyMap
+		}
+		// Bools have no empty value; the drift branch below covers them.
+
+		readSimpleFields(context.Background(), emptyServicesProject(), state)
+
+		for _, e := range stringEntries(state) {
+			assert.False(t, e.Field.IsNull(), "string entry %v: empty value must survive a missing key", e.Keys)
+		}
+		for _, e := range int64Entries(state) {
+			assert.False(t, e.Field.IsNull(), "int64 entry %v: zero must survive a missing key", e.Keys)
+		}
+		for _, e := range listEntries(state) {
+			assert.True(t, e.Field.Equal(emptyList), "list entry %v: empty list must survive a missing key", e.Keys)
+		}
+		for _, e := range mapEntries(state) {
+			assert.True(t, e.Field.Equal(emptyMap), "map entry %v: empty map must survive a missing key", e.Keys)
+		}
+	})
+
+	t.Run("non-empty state values null on a missing key", func(t *testing.T) {
+		state := &ProjectConfigResourceModel{}
+		probeList, diags := types.ListValueFrom(context.Background(), types.StringType, []string{"probe"})
+		require.False(t, diags.HasError())
+		probeMap, diags := types.MapValue(types.StringType, map[string]attr.Value{"probe": types.StringValue("v")})
+		require.False(t, diags.HasError())
+
+		for _, e := range stringEntries(state) {
+			*e.Field = types.StringValue("probe")
+		}
+		for _, e := range boolEntries(state) {
+			*e.Field = types.BoolValue(true)
+		}
+		for _, e := range int64Entries(state) {
+			*e.Field = types.Int64Value(7)
+		}
+		for _, e := range listEntries(state) {
+			*e.Field = probeList
+		}
+		for _, e := range mapEntries(state) {
+			*e.Field = probeMap
+		}
+
+		readSimpleFields(context.Background(), emptyServicesProject(), state)
+
+		for _, e := range stringEntries(state) {
+			if e.PreserveOnMissing {
+				assert.Equal(t, "probe", e.Field.ValueString(), "string entry %v: preserve-on-missing must keep state", e.Keys)
+			} else {
+				assert.True(t, e.Field.IsNull(), "string entry %v: non-empty value must null so removals surface as drift", e.Keys)
+			}
+		}
+		for _, e := range boolEntries(state) {
+			if e.PreserveOnMissing {
+				assert.True(t, e.Field.ValueBool(), "bool entry %v: preserve-on-missing must keep state", e.Keys)
+			} else {
+				assert.True(t, e.Field.IsNull(), "bool entry %v: value must null so removals surface as drift", e.Keys)
+			}
+		}
+		for _, e := range int64Entries(state) {
+			if e.PreserveOnMissing {
+				assert.EqualValues(t, 7, e.Field.ValueInt64(), "int64 entry %v: preserve-on-missing must keep state", e.Keys)
+			} else {
+				assert.True(t, e.Field.IsNull(), "int64 entry %v: non-zero value must null so removals surface as drift", e.Keys)
+			}
+		}
+		for _, e := range listEntries(state) {
+			if e.PreserveOnMissing {
+				assert.True(t, e.Field.Equal(probeList), "list entry %v: preserve-on-missing must keep state", e.Keys)
+			} else {
+				assert.True(t, e.Field.IsNull(), "list entry %v: non-empty list must null so removals surface as drift", e.Keys)
+			}
+		}
+		for _, e := range mapEntries(state) {
+			if e.PreserveOnMissing {
+				assert.True(t, e.Field.Equal(probeMap), "map entry %v: preserve-on-missing must keep state", e.Keys)
+			} else {
+				assert.True(t, e.Field.IsNull(), "map entry %v: non-empty map must null so removals surface as drift", e.Keys)
+			}
+		}
+	})
+}
+
+// TestOIDCSubjectIdentifiersPairwiseSalt_WriteOnly verifies the pairwise
+// subject identifier salt is treated as write-only: it stays in the schema as a
+// sensitive attribute and in the patch table, so create and update still send
+// it, but it never reaches the read tables. The Ory API redacts the salt from
+// project revision responses, and before the redaction it reported the value
+// under the nested oidc.subject_identifiers.pairwise.salt. Neither a missing
+// key nor an empty, masked, or rotated value at that path may overwrite the
+// configured value, otherwise every plan would show a diff no apply can settle.
+func TestOIDCSubjectIdentifiersPairwiseSalt_WriteOnly(t *testing.T) {
+	const configured = "configured-pairwise-salt"
+
+	// 1. The schema keeps the attribute and masks it in plan output.
+	attr, ok := simpleSchemaAttributes()["oidc_subject_identifiers_pairwise_salt"].(schema.StringAttribute)
+	require.True(t, ok, "oidc_subject_identifiers_pairwise_salt must be a generated string attribute")
+	assert.True(t, attr.Sensitive, "oidc_subject_identifiers_pairwise_salt must be sensitive")
+
+	// 2. The patch table still carries the write at the spec's governs path.
+	plan := &ProjectConfigResourceModel{
+		OIDCSubjectIdentifiersPairwiseSalt: types.StringValue(configured),
+	}
+	var patchPath string
+	for _, e := range simpleStringPatchEntries(plan) {
+		if e.Field == &plan.OIDCSubjectIdentifiersPairwiseSalt {
+			patchPath = e.Path
+		}
+	}
+	assert.Equal(t, "/services/oauth2/config/oidc/subject_identifiers/pairwise_salt", patchPath,
+		"oidc_subject_identifiers_pairwise_salt must still be sent on create/update")
+
+	// 3. It must be excluded from the generated read entries entirely.
+	state := &ProjectConfigResourceModel{
+		OIDCSubjectIdentifiersPairwiseSalt: types.StringValue(configured),
+	}
+	for _, e := range oauth2StringReadEntries(state) {
+		assert.NotSame(t, &state.OIDCSubjectIdentifiersPairwiseSalt, e.Field,
+			"oidc_subject_identifiers_pairwise_salt must not appear in read entries, it is write-only")
+	}
+
+	// 4. readSimpleFields must preserve the configured value regardless of what
+	//    the API reports under oidc.subject_identifiers: a missing key, an empty
+	//    or masked value, or a salt rotated out of band.
+	for name, subjectIdentifiers := range map[string]map[string]interface{}{
+		"absent":           {"supported_types": []interface{}{"public", "pairwise"}},
+		"empty":            {"pairwise": map[string]interface{}{"salt": ""}},
+		"masked":           {"pairwise": map[string]interface{}{"salt": "****"}},
+		"rotated":          {"pairwise": map[string]interface{}{"salt": "rotated-out-of-band"}},
+		"no oauth2 config": nil,
+	} {
+		st := &ProjectConfigResourceModel{
+			OIDCSubjectIdentifiersPairwiseSalt: types.StringValue(configured),
+		}
+		project := &ory.Project{Services: ory.ProjectServices{}}
+		if subjectIdentifiers != nil {
+			project.Services.Oauth2 = &ory.ProjectServiceOAuth2{Config: map[string]interface{}{
+				"oidc": map[string]interface{}{"subject_identifiers": subjectIdentifiers},
+			}}
+		}
+		readSimpleFields(context.Background(), project, st)
+		assert.Equal(t, configured, st.OIDCSubjectIdentifiersPairwiseSalt.ValueString(),
+			"configured oidc_subject_identifiers_pairwise_salt must be preserved when the API reports %s", name)
 	}
 }

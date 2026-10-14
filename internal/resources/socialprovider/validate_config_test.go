@@ -45,6 +45,7 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 		"apple_private_key_wo_version":  tfStringValue(model.ApplePrivateKeyWOVersion),
 		"auto_link":                     tfBoolValue(model.AutoLink),
 		"label":                         tfStringValue(model.Label),
+		"organization_id":               tfStringValue(model.OrganizationID),
 		"account_linking_mode":          tfStringValue(model.AccountLinkingMode),
 		"base_redirect_uri":             tfStringValue(model.BaseRedirectURI),
 		"additional_id_token_audiences": tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
@@ -52,7 +53,9 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 		"aal2_amr_values":               tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, nil),
 		"pkce":                          tfStringValue(model.Pkce),
 		"fedcm_config_url":              tfStringValue(model.FedcmConfigURL),
+		"net_id_token_origin_header":    tfStringValue(model.NetIDTokenOriginHeader),
 		"update_identity_on_login":      tfStringValue(model.UpdateIdentityOnLogin),
+		"front_channel_logout":          tfBoolValue(model.FrontChannelLogout),
 	}
 
 	objType := tftypes.Object{
@@ -80,6 +83,7 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 			"apple_private_key_wo_version":  tftypes.String,
 			"auto_link":                     tftypes.Bool,
 			"label":                         tftypes.String,
+			"organization_id":               tftypes.String,
 			"account_linking_mode":          tftypes.String,
 			"base_redirect_uri":             tftypes.String,
 			"additional_id_token_audiences": tftypes.List{ElementType: tftypes.String},
@@ -87,7 +91,9 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 			"aal2_amr_values":               tftypes.List{ElementType: tftypes.String},
 			"pkce":                          tftypes.String,
 			"fedcm_config_url":              tftypes.String,
+			"net_id_token_origin_header":    tftypes.String,
 			"update_identity_on_login":      tftypes.String,
+			"front_channel_logout":          tftypes.Bool,
 		},
 	}
 
@@ -219,6 +225,76 @@ func TestValidateConfig_EmptyFedcmConfigURL_Fails(t *testing.T) {
 	r.ValidateConfig(ctx, req, &resp)
 
 	assert.True(t, resp.Diagnostics.HasError(), "expected error for empty fedcm_config_url")
+}
+
+func TestValidateConfig_EmptyNetIDTokenOriginHeader_Fails(t *testing.T) {
+	r := &SocialProviderResource{}
+	ctx := context.Background()
+
+	req := buildTestConfig(t, SocialProviderResourceModel{
+		ProviderID:             types.StringValue("netid"),
+		ProviderType:           types.StringValue("netid"),
+		ClientID:               types.StringValue("my-client-id"),
+		ClientSecret:           types.StringValue("my-secret"),
+		NetIDTokenOriginHeader: types.StringValue(""), // empty string must fail
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	assert.True(t, resp.Diagnostics.HasError(), "expected error for empty net_id_token_origin_header")
+}
+
+func TestValidateConfig_NetIDTokenOriginHeader_Passes(t *testing.T) {
+	r := &SocialProviderResource{}
+	ctx := context.Background()
+
+	req := buildTestConfig(t, SocialProviderResourceModel{
+		ProviderID:             types.StringValue("netid"),
+		ProviderType:           types.StringValue("netid"),
+		ClientID:               types.StringValue("my-client-id"),
+		ClientSecret:           types.StringValue("my-secret"),
+		NetIDTokenOriginHeader: types.StringValue("https://www.example.com"),
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for a valid net_id_token_origin_header: %v", resp.Diagnostics.Errors())
+}
+
+// An empty organization_id would be sent as "" and rejected by the API with
+// HTTP 400, so reject it during validation instead.
+func TestValidateConfig_EmptyOrganizationID_Fails(t *testing.T) {
+	r := &SocialProviderResource{}
+	ctx := context.Background()
+
+	req := buildTestConfig(t, SocialProviderResourceModel{
+		ProviderID:     types.StringValue("acme-sso"),
+		ProviderType:   types.StringValue("generic"),
+		ClientID:       types.StringValue("my-client-id"),
+		ClientSecret:   types.StringValue("my-secret"),
+		OrganizationID: types.StringValue(""), // empty string must fail
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	assert.True(t, resp.Diagnostics.HasError(), "expected error for empty organization_id")
+}
+
+func TestValidateConfig_OrganizationID_Passes(t *testing.T) {
+	r := &SocialProviderResource{}
+	ctx := context.Background()
+
+	req := buildTestConfig(t, SocialProviderResourceModel{
+		ProviderID:     types.StringValue("acme-sso"),
+		ProviderType:   types.StringValue("generic"),
+		ClientID:       types.StringValue("my-client-id"),
+		ClientSecret:   types.StringValue("my-secret"),
+		OrganizationID: types.StringValue("64f12157-10fa-4a9b-899d-997cbc99fce3"),
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for a valid organization_id: %v", resp.Diagnostics.Errors())
 }
 
 func TestValidateConfig_WriteOnlyClientSecret_Passes(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"regexp"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
@@ -18,6 +19,7 @@ import (
 // Ensure imported packages are used.
 var (
 	_ = stringvalidator.OneOf
+	_ = path.MatchRoot
 	_ = booldefault.StaticBool
 	_ = int64default.StaticInt64
 	_ validator.String
@@ -543,11 +545,11 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			DeprecationMessage: "Use courier_smtp_from_name instead. This attribute will be removed in a future major version.",
 		},
 		"selfservice_methods_totp_config_issuer": schema.StringAttribute{
-			Description: "TOTP issuer name shown in authenticator apps.",
+			Description: "TOTP issuer name shown in authenticator apps. An empty string is replaced by the project name, which the next plan reports as a change; omit the attribute instead of setting it empty.",
 			Optional:    true,
 		},
 		"totp_issuer": schema.StringAttribute{
-			Description:        "TOTP issuer name shown in authenticator apps.",
+			Description:        "TOTP issuer name shown in authenticator apps. An empty string is replaced by the project name, which the next plan reports as a change; omit the attribute instead of setting it empty.",
 			Optional:           true,
 			DeprecationMessage: "Use selfservice_methods_totp_config_issuer instead. This attribute will be removed in a future major version.",
 		},
@@ -626,8 +628,9 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 		},
 		"oidc_subject_identifiers_pairwise_salt": schema.StringAttribute{
-			Description: "Salt for the OIDC pairwise subject identifier algorithm.",
+			Description: "Salt for the OIDC pairwise subject identifier algorithm. Write-only: the Ory API treats the salt as a secret and redacts it from project revision responses, so the provider sends it on create and update but never reads it back, and out-of-band changes are not detected. Changing the salt changes every pairwise subject identifier the project has issued. An empty value keeps the stored salt.",
 			Optional:    true,
+			Sensitive:   true,
 		},
 		"oauth2_urls_post_logout_redirect": schema.StringAttribute{
 			Description: "Default redirect URL after OAuth2 logout.",
@@ -684,7 +687,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 		},
 		"courier_http_request_config_body": schema.StringAttribute{
-			Description: "Base64-encoded Jsonnet template for the HTTP courier request body.",
+			Description: "Jsonnet template for the HTTP courier request body, as a `base64://<base64-encoded-payload>` value. The API stores the payload in object storage and reports an https URL back, so the read path resolves that URL to the configured value.",
 			Optional:    true,
 		},
 		"courier_http_request_config_url": schema.StringAttribute{
@@ -911,7 +914,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 		},
 		"account_experience_enabled_locales": schema.ListAttribute{
-			Description: "Enabled locales for the hosted login UI.",
+			Description: "Enabled locales for the hosted login UI. An empty list is replaced by the server's default locale set, which the next plan reports as a change; omit the attribute instead of setting it empty.",
 			Optional:    true,
 			ElementType: types.StringType,
 		},
@@ -930,7 +933,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			ElementType: types.StringType,
 		},
 		"disable_account_experience_welcome_screen": schema.BoolAttribute{
-			Description: "Disable the account experience welcome screen at /ui/welcome.",
+			Description: "Disable the account experience welcome screen at /ui/welcome. Applied and read via the normalized project revision API.",
 			Optional:    true,
 		},
 		"enable_ax_v2": schema.BoolAttribute{
@@ -981,8 +984,11 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			ElementType: types.StringType,
 		},
 		"keto_namespace_configuration": schema.StringAttribute{
-			Description: "URL pointing to an OPL file with the Keto namespace configuration.",
+			Description: "URL pointing to an OPL file with the Keto namespace configuration. Ory accepts either an OPL location or an inline namespace list, so this conflicts with keto_namespaces.",
 			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.ConflictsWith(path.MatchRoot("keto_namespaces")),
+			},
 		},
 		"keto_secrets_pagination": schema.ListAttribute{
 			Description: "Pagination encryption keys for the permission service.",
@@ -1036,7 +1042,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 		},
 		"selfservice_methods_captcha_config_allowed_domains": schema.ListAttribute{
-			Description: "Domains allowed for CAPTCHA verification.",
+			Description: "Domains allowed for CAPTCHA verification. Once set, the API refuses to clear this list: applying an empty list keeps the previous domains and the following plan reports the difference. Replace the entries instead of emptying them.",
 			Optional:    true,
 			ElementType: types.StringType,
 		},
@@ -1066,7 +1072,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 		},
 		"selfservice_methods_passkey_config_rp_origins": schema.ListAttribute{
-			Description: "Allowed origins for passkey relying party verification.",
+			Description: "Allowed origins for passkey relying party verification. An empty list is replaced by the server's default origins (derived from the project slug and custom domains), which the next plan reports as a change; omit the attribute instead of setting it empty.",
 			Optional:    true,
 			ElementType: types.StringType,
 		},
@@ -1076,7 +1082,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			ElementType: types.StringType,
 		},
 		"webauthn_rp_origins": schema.ListAttribute{
-			Description: "Allowed origins for WebAuthn relying party.",
+			Description: "Allowed origins for WebAuthn relying party. An empty list is replaced by the server's default origins (derived from the project slug and custom domains), which the next plan reports as a change; omit the attribute instead of setting it empty.",
 			Optional:    true,
 			ElementType: types.StringType,
 		},
@@ -1125,6 +1131,145 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 		"selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation": schema.BoolAttribute{
 			Description: "Device authentication accepts relaxed attestations for testing. Only allowed on development projects and forced off otherwise.",
 			Optional:    true,
+		},
+		"oauth2_grant_jwt_omit_assertion_audience": schema.BoolAttribute{
+			Description: "The audience (`aud`) claim from the assertion JSON Web Token (JWT) in the JWT Profile for OAuth 2.0 Client Authentication and Authorization Grants (RFC7523) is omitted from the resulting access token",
+			Optional:    true,
+		},
+		"feature_flags_refresh_login_choose_address": schema.BoolAttribute{
+			Description: "Render an address picker on the code refresh login screen",
+			Optional:    true,
+		},
+		"selfservice_methods_deviceauthn_config_android_app_ids": schema.ListAttribute{
+			Description: "Allow-list of Android app signing-certificate digests that a device key may be bound to.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"selfservice_methods_deviceauthn_config_ios_app_ids": schema.ListAttribute{
+			Description: "Allow-list of Apple App IDs that a device key may be bound to.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"selfservice_methods_deviceauthn_config_first_factor": schema.BoolAttribute{
+			Description: "Device authentication may be used as the sole first factor.",
+			Optional:    true,
+		},
+		"selfservice_methods_deviceauthn_config_ios_biometric_first_factor": schema.BoolAttribute{
+			Description: "An iOS biometric device key may be used as the sole first factor.",
+			Optional:    true,
+		},
+		"selfservice_methods_deviceauthn_config_pin_max_attempts": schema.Int64Attribute{
+			Description: "Consecutive wrong-PIN limit before a device key is locked.",
+			Optional:    true,
+		},
+		"account_experience_contact_url": schema.StringAttribute{
+			Description: "Holds the URL to the account experience's Contact page.",
+			Optional:    true,
+		},
+		"account_experience_privacy_policy_url": schema.StringAttribute{
+			Description: "Holds the URL to the account experience's Privacy Policy page.",
+			Optional:    true,
+		},
+		"account_experience_terms_of_service_url": schema.StringAttribute{
+			Description: "Holds the URL to the account experience's Terms of Service page.",
+			Optional:    true,
+		},
+		"oauth2_device_authorization_token_polling_interval": schema.StringAttribute{
+			Description: "How often a non-interactive device should poll the OAuth 2.0 Device Authorization Grant token endpoint",
+			Optional:    true,
+		},
+		"oauth2_device_authorization_user_code_entropy_preset": schema.StringAttribute{
+			Description: "Picks a preset for the OAuth 2.0 Device Authorization Grant user_code length and character set",
+			Optional:    true,
+		},
+		"oauth2_ttl_device_user_code": schema.StringAttribute{
+			Description: "How long the device_code and user_code in the OAuth 2.0 Device Authorization Grant remain valid",
+			Optional:    true,
+		},
+		"oauth2_urls_device_success": schema.StringAttribute{
+			Description: "Sets the URL the user is redirected to after successfully completing the OAuth 2.0 Device Authorization Grant user verification step",
+			Optional:    true,
+		},
+		"oauth2_urls_device_verification": schema.StringAttribute{
+			Description: "Sets the URL of the user verification page for the OAuth 2.0 Device Authorization Grant (RFC 8628)",
+			Optional:    true,
+		},
+		"oauth2_webfinger_oidc_discovery_device_authorization_url": schema.StringAttribute{
+			Description: "Override the OAuth 2.0 Device Authorization Endpoint URL that is advertised in the OpenID Connect discovery document (/.well-known/openid-configuration)",
+			Optional:    true,
+		},
+		"keto_feature_flags_strict_mode": schema.BoolAttribute{
+			Description: "Enable Ory Keto strict mode. In strict mode, relation tuples for permits are not checked directly (only the OPL rewrites apply) and subject sets are only expanded when declared with SubjectSet<...>, which makes permission checks faster. New projects are created with strict mode enabled and locked; on a locked project the API accepts a write but keeps the stored value, so only projects created before the lock can change it. The provider fails the apply with an error instead of sending a value that the lock would discard.",
+			Optional:    true,
+		},
+		"feature_flags_webhook_response_directives": schema.BoolAttribute{
+			Description: "Honor flow directives in web hook responses. If true, a login after web hook with response parsing enabled can return a required_aal directive of aal2 to require step-up for that login; identities without a second factor are routed to enrollment. Off by default.",
+			Optional:    true,
+		},
+		"selfservice_methods_deviceauthn_config_android_allow_expired_factory_certificates": schema.BoolAttribute{
+			Description: "Device authentication accepts expired CA certificates in Android factory attestation chains that lead to a pinned Google root key. Devices launched before 2021 ship factory keyboxes with expired certificates that Google still documents as trustworthy unless revoked. Revocation, signature, and leaf validity checks still apply. Defaults to false.",
+			Optional:    true,
+		},
+		"feature_flags_enforce_identity_schema_guards": schema.BoolAttribute{
+			Description: "Enforces the identity schema guards. If enabled, an identity schema that does not pass the identity schema guards is rejected. If disabled, the result is logged and the schema is used.",
+			Optional:    true,
+		},
+		"preview_enable_native_saml_engine": schema.BoolAttribute{
+			Description: "Enable the native Ory Kratos SAML engine (preview). While false or unset, native SAML providers are inert and the native endpoints respond with 404. Enabling it requires the native_saml_engine feature on the workspace plan; without the entitlement the API rejects the write with an HTTP 403 (feature_not_available).",
+			Optional:    true,
+		},
+		"security_restricted_origins": schema.ListAttribute{
+			Description: "Origins that may only check the session, use FedCM, and log out, such as pages that run third-party scripts. Responses to these origins never contain identity data. To let these origins read responses, also add them to cors_origins. Each entry is a scheme and host such as https://embed.example.com; the API rejects paths and wildcards.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"selfservice_methods_passkey_config_attestation_preference": schema.StringAttribute{
+			Description: "Attestation conveyance preference sent to the authenticator during passkey registration. 'none' (the default) requests no attestation statement, which is what most consumer passkeys support; 'indirect' lets the client decide; 'direct' requests the raw attestation statement; 'enterprise' requests uniquely identifying attestation.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.OneOf("none", "indirect", "direct", "enterprise"),
+			},
+		},
+		"selfservice_methods_passkey_config_authenticator_selection_attachment": schema.StringAttribute{
+			Description: "Authenticator attachment modality eligible for passkey registration. 'platform' allows built-in authenticators only (Touch ID, Windows Hello); 'cross-platform' allows roaming authenticators only (security keys). Omit the attribute to let users register either type, which is the recommended default for passkeys.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.OneOf("platform", "cross-platform"),
+			},
+		},
+		"selfservice_methods_passkey_config_authenticator_selection_resident_key": schema.StringAttribute{
+			Description: "Whether the authenticator must create a client-side discoverable passkey (the WebAuthn residentKey requirement): 'required' (the default), 'preferred', or 'discouraged'.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.OneOf("required", "preferred", "discouraged"),
+			},
+		},
+		"selfservice_methods_passkey_config_authenticator_selection_user_verification": schema.StringAttribute{
+			Description: "Whether passkey ceremonies require user verification such as biometrics or a PIN: 'required', 'preferred' (the default), or 'discouraged'.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.OneOf("required", "preferred", "discouraged"),
+			},
+		},
+		"selfservice_methods_passkey_config_timeouts_login": schema.StringAttribute{
+			Description: "Timeout for the passkey login ceremony as a Go duration such as '60s', '5m', or '1h30m'. The API rejects zero-valued segments such as '1h0m0s'. When unset, the library default applies: 5m with user verification, 2m without.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.RegexMatches(
+					regexp.MustCompile("^([1-9][0-9]*(ns|us|ms|s|m|h))+$"),
+					"must be a Go duration made of non-zero units such as '60s', '5m', or '1h30m'; the API rejects zero-valued segments like '1h0m0s'",
+				),
+			},
+		},
+		"selfservice_methods_passkey_config_timeouts_registration": schema.StringAttribute{
+			Description: "Timeout for the passkey registration ceremony as a Go duration such as '60s', '5m', or '1h30m'. The API rejects zero-valued segments such as '1h0m0s'. When unset, the library default applies: 5m with user verification, 2m without.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.RegexMatches(
+					regexp.MustCompile("^([1-9][0-9]*(ns|us|ms|s|m|h))+$"),
+					"must be a Go duration made of non-zero units such as '60s', '5m', or '1h30m'; the API rejects zero-valued segments like '1h0m0s'",
+				),
+			},
 		},
 	}
 }

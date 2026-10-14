@@ -426,11 +426,58 @@ type ProjectConfigResourceModel struct {
 	// the Ory Console "Enable sign in after registration" toggle.
 	SelfserviceFlowsRegistrationAfterPasswordHookSession types.Bool `tfsdk:"selfservice_flows_registration_after_password_hook_session"`
 
+	// Email verification hooks (custom: not in OpenAPI spec). These back the
+	// three toggles on the Ory Console "Email verification" page.
+	SelfserviceFlowsLoginAfterPasswordHookRequireVerifiedAddress types.Bool `tfsdk:"selfservice_flows_login_after_password_hook_require_verified_address"`
+	SelfserviceFlowsLoginAfterOIDCHookRequireVerifiedAddress     types.Bool `tfsdk:"selfservice_flows_login_after_oidc_hook_require_verified_address"`
+	SelfserviceFlowsSettingsAfterProfileHookVerifyNewAddress     types.Bool `tfsdk:"selfservice_flows_settings_after_profile_hook_verify_new_address"`
+
+	SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddresses           types.Bool   `tfsdk:"selfservice_flows_settings_after_profile_hook_notify_previous_addresses"`
+	SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddressesRecipients types.String `tfsdk:"selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients"`
+
 	// Auto-discovered (review naming before release)
 	SelfserviceMethodsDeviceauthnEnabled types.Bool `tfsdk:"selfservice_methods_deviceauthn_enabled"`
 
 	// Auto-discovered (review naming before release)
 	SelfserviceMethodsDeviceauthnConfigInsecureAllowRelaxedAttestation types.Bool `tfsdk:"selfservice_methods_deviceauthn_config_insecure_allow_relaxed_attestation"`
+
+	// Auto-discovered (review naming before release)
+	OAuth2GrantJWTOmitAssertionAudience              types.Bool `tfsdk:"oauth2_grant_jwt_omit_assertion_audience"`
+	FeatureFlagsRefreshLoginChooseAddress            types.Bool `tfsdk:"feature_flags_refresh_login_choose_address"`
+	SelfserviceMethodsDeviceauthnConfigAndroidAppIds types.List `tfsdk:"selfservice_methods_deviceauthn_config_android_app_ids"`
+	SelfserviceMethodsDeviceauthnConfigIosAppIds     types.List `tfsdk:"selfservice_methods_deviceauthn_config_ios_app_ids"`
+
+	// Auto-discovered (review naming before release)
+	SelfserviceMethodsDeviceauthnConfigFirstFactor             types.Bool  `tfsdk:"selfservice_methods_deviceauthn_config_first_factor"`
+	SelfserviceMethodsDeviceauthnConfigIosBiometricFirstFactor types.Bool  `tfsdk:"selfservice_methods_deviceauthn_config_ios_biometric_first_factor"`
+	SelfserviceMethodsDeviceauthnConfigPinMaxAttempts          types.Int64 `tfsdk:"selfservice_methods_deviceauthn_config_pin_max_attempts"`
+
+	// Auto-discovered (review naming before release)
+	AccountExperienceContactURL                                               types.String `tfsdk:"account_experience_contact_url"`
+	AccountExperiencePrivacyPolicyURL                                         types.String `tfsdk:"account_experience_privacy_policy_url"`
+	AccountExperienceTermsOfServiceURL                                        types.String `tfsdk:"account_experience_terms_of_service_url"`
+	OAuth2DeviceAuthorizationTokenPollingInterval                             types.String `tfsdk:"oauth2_device_authorization_token_polling_interval"`
+	OAuth2DeviceAuthorizationUserCodeEntropyPreset                            types.String `tfsdk:"oauth2_device_authorization_user_code_entropy_preset"`
+	OAuth2TTLDeviceUserCode                                                   types.String `tfsdk:"oauth2_ttl_device_user_code"`
+	OAuth2UrlsDeviceSuccess                                                   types.String `tfsdk:"oauth2_urls_device_success"`
+	OAuth2UrlsDeviceVerification                                              types.String `tfsdk:"oauth2_urls_device_verification"`
+	OAuth2WebfingerOIDCDiscoveryDeviceAuthorizationURL                        types.String `tfsdk:"oauth2_webfinger_oidc_discovery_device_authorization_url"`
+	KetoFeatureFlagsStrictMode                                                types.Bool   `tfsdk:"keto_feature_flags_strict_mode"`
+	FeatureFlagsWebhookResponseDirectives                                     types.Bool   `tfsdk:"feature_flags_webhook_response_directives"`
+	SelfserviceMethodsDeviceauthnConfigAndroidAllowExpiredFactoryCertificates types.Bool   `tfsdk:"selfservice_methods_deviceauthn_config_android_allow_expired_factory_certificates"`
+
+	// Auto-discovered (review naming before release)
+	FeatureFlagsEnforceIdentitySchemaGuards types.Bool `tfsdk:"feature_flags_enforce_identity_schema_guards"`
+
+	// Added from spec v1.22.81
+	PreviewEnableNativeSAMLEngine                                         types.Bool   `tfsdk:"preview_enable_native_saml_engine"`
+	SecurityRestrictedOrigins                                             types.List   `tfsdk:"security_restricted_origins"`
+	SelfserviceMethodsPasskeyConfigAttestationPreference                  types.String `tfsdk:"selfservice_methods_passkey_config_attestation_preference"`
+	SelfserviceMethodsPasskeyConfigAuthenticatorSelectionAttachment       types.String `tfsdk:"selfservice_methods_passkey_config_authenticator_selection_attachment"`
+	SelfserviceMethodsPasskeyConfigAuthenticatorSelectionResidentKey      types.String `tfsdk:"selfservice_methods_passkey_config_authenticator_selection_resident_key"`
+	SelfserviceMethodsPasskeyConfigAuthenticatorSelectionUserVerification types.String `tfsdk:"selfservice_methods_passkey_config_authenticator_selection_user_verification"`
+	SelfserviceMethodsPasskeyConfigTimeoutsLogin                          types.String `tfsdk:"selfservice_methods_passkey_config_timeouts_login"`
+	SelfserviceMethodsPasskeyConfigTimeoutsRegistration                   types.String `tfsdk:"selfservice_methods_passkey_config_timeouts_registration"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---
@@ -538,6 +585,32 @@ Import using the project ID:
 ` + "```shell" + `
 terraform import ory_project_config.main <project-id>
 ` + "```" + `
+
+Either form leaves cors_enabled null unless it is selected. Its provider default of false then applies on the next plan, and applying that plan disables public CORS on a project that has it enabled. Set cors_enabled in your configuration, or select it on import. The provider warns about this on import; the field-selection form only does so when public CORS is currently enabled.
+
+### Import selected settings without an apply
+
+A project-ID-only import leaves configuration fields unset. To read existing values into state during import, append a comma-separated list of attributes:
+
+` + "`" + `` + "`" + `` + "`" + `shell
+terraform import ory_project_config.main '<project-id>:session_lifespan,cors_enabled'
+` + "`" + `` + "`" + `` + "`" + `
+
+Declare the selected attributes with their current live values:
+
+` + "`" + `` + "`" + `` + "`" + `hcl
+resource "ory_project_config" "main" {
+  project_id       = "<project-id>"
+  session_lifespan = "20m0s"
+  cors_enabled     = false
+}
+` + "`" + `` + "`" + `` + "`" + `
+
+Only the listed fields enter state. Import uses reads only. An unset or unreadable selected value fails the whole import.
+
+Select readable, non-sensitive strings, booleans, integers, lists of strings, or maps of strings, including the hook toggles such as ` + "`" + `selfservice_flows_registration_after_password_hook_session` + "`" + `, which read as true when the hook is present and false when it is absent. Nested objects, secrets, allowed_return_urls, and the courier HTTP request body are not supported by this import form. The server appends its own entries to allowed_return_urls and the provider filters them against your configuration, so there is no live baseline to adopt. The courier body reader returns a storage URL without recovering the inline payload. For renamed fields, select either the current name or its deprecated alias, never both.
+
+Run a normal plan after import. It can still propose changes for configured fields omitted from the selection, provider defaults, or differences from the live values. Import does not improve the resource's existing drift coverage.
 
 ### Avoiding "Forces Replacement" After Import
 
@@ -781,6 +854,56 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 		Optional: true,
 	}
 
+	// Email verification hooks: the three toggles on the Ory Console
+	// "Email verification" page. Like the hooks above, each one is an entry in
+	// a flow's hooks array rather than a scalar config property.
+	attrs["selfservice_flows_login_after_password_hook_require_verified_address"] = schema.BoolAttribute{
+		Description: "Enable the `require_verified_address` hook after a password login, " +
+			"blocking sign-in until the identity has a verified address. Mirrors the Ory Console " +
+			"\"Require verified address for login\" toggle. " +
+			"Use `feature_flags_legacy_require_verified_login_error` to control how the failure is " +
+			"reported, not whether the check runs. " +
+			"Existing hooks at this path (e.g., `organization`) are preserved.",
+		Optional: true,
+	}
+	attrs["selfservice_flows_login_after_oidc_hook_require_verified_address"] = schema.BoolAttribute{
+		Description: "Enable the `require_verified_address` hook after an OIDC (social) login, " +
+			"blocking sign-in until the identity has a verified address. The Ory Console " +
+			"\"Require verified address for login\" toggle only writes the password flow, so set this " +
+			"attribute as well to cover social logins. " +
+			"Existing hooks at this path (e.g., `organization`) are preserved.",
+		Optional: true,
+	}
+	attrs["selfservice_flows_settings_after_profile_hook_verify_new_address"] = schema.BoolAttribute{
+		Description: "Enable the `verify_new_address` hook after a profile settings update, " +
+			"requiring verification of an address the user just added or changed. Mirrors the Ory Console " +
+			"\"Verify new addresses\" toggle. Distinct from " +
+			"`selfservice_flows_settings_after_profile_hook_show_verification_ui`, which only controls the " +
+			"redirect to the verification UI. " +
+			"Existing hooks at this path (e.g., `organization`) are preserved.",
+		Optional: true,
+	}
+	attrs["selfservice_flows_settings_after_profile_hook_notify_previous_addresses"] = schema.BoolAttribute{
+		Description: "Enable the `notify_previous_addresses` hook after a profile settings update, " +
+			"emailing the identity's previous addresses when its verified addresses change. Mirrors the Ory Console " +
+			"\"Notify previous addresses\" toggle. " +
+			"Existing hooks at this path (e.g., `organization`) are preserved.",
+		Optional: true,
+	}
+	attrs["selfservice_flows_settings_after_profile_hook_notify_previous_addresses_recipients"] = schema.StringAttribute{
+		Description: "Which previous addresses the `notify_previous_addresses` hook notifies: " +
+			"`removed` for addresses that no longer exist after the change, `all_verified` for every address " +
+			"verified before the change, or `all` for every address on the identity before the change. " +
+			"Requires `selfservice_flows_settings_after_profile_hook_notify_previous_addresses` to be set. " +
+			"Leave this attribute out to let Ory apply its own default of `removed`. Note that removing it " +
+			"after a scope was already applied stops managing the scope rather than resetting it.",
+		Optional: true,
+		Validators: []validator.String{
+			stringvalidator.OneOf("removed", "all_verified", "all"),
+			stringvalidator.AlsoRequires(path.MatchRoot("selfservice_flows_settings_after_profile_hook_notify_previous_addresses")),
+		},
+	}
+
 	// Courier HTTP Delivery
 	attrs["courier_http_request_config"] = courierHTTPRequestConfigSchemaAttr(
 		"HTTP request configuration for courier message delivery (used when courier_delivery_strategy is 'http').",
@@ -940,10 +1063,20 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 			field = e.Deprecated
 		}
 		if !field.IsNull() && !field.IsUnknown() {
+			var value interface{} = field.ValueBool()
+			if e.Enum != nil {
+				// The config key stores a string enum; a raw bool would be
+				// accepted but normalized to the false variant.
+				if field.ValueBool() {
+					value = e.Enum.True
+				} else {
+					value = e.Enum.False
+				}
+			}
 			patches = append(patches, ory.JsonPatch{
 				Op:    "replace",
 				Path:  e.Path,
-				Value: field.ValueBool(),
+				Value: value,
 			})
 		}
 	}
@@ -997,8 +1130,17 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 	// written as data URIs. See account_experience.go.
 	patches = append(patches, accountExperienceImagePatches(plan)...)
 
-	// Keto/Permissions Namespaces
-	if !plan.KetoNamespaces.IsNull() && !plan.KetoNamespaces.IsUnknown() {
+	// Both OPL and the namespace list replace the same member. The schema
+	// rejects configuring both, so at most one whole-member patch is sent.
+	if !plan.KetoNamespaceConfiguration.IsNull() && !plan.KetoNamespaceConfiguration.IsUnknown() {
+		patches = append(patches, ory.JsonPatch{
+			Op:   "add",
+			Path: "/services/permission/config/namespaces",
+			Value: map[string]interface{}{
+				"location": plan.KetoNamespaceConfiguration.ValueString(),
+			},
+		})
+	} else if !plan.KetoNamespaces.IsNull() && !plan.KetoNamespaces.IsUnknown() {
 		var namespaceNames []string
 		plan.KetoNamespaces.ElementsAs(ctx, &namespaceNames, false)
 		namespaces := make([]map[string]interface{}, len(namespaceNames))
@@ -1173,16 +1315,102 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 // hookEntry describes one boolean hook attribute: the field on the model, the
 // identity-config path whose hooks array it controls, the hook name within
 // that array, and a setter that writes the read-back value into state.
+//
+// Most hooks are bare `{"hook": "<name>"}` entries. A hook that carries
+// settings also populates Config and SetConfig, which write and read back the
+// entry's "config" object.
 type hookEntry struct {
 	Field    types.Bool
 	PathKeys []string // path under /services/identity/config, ending at the parent of "hooks"
 	HookName string
 	Set      func(state *ProjectConfigResourceModel, value types.Bool)
+
+	// Config is written under the hook entry's "config" key. A nil or empty
+	// map leaves whatever config the hook already has untouched, matching how
+	// the rest of the resource treats unconfigured attributes.
+	Config map[string]interface{}
+	// SetConfig writes a config object read back from the API into state. Nil
+	// for hooks that carry no config.
+	SetConfig func(state *ProjectConfigResourceModel, config map[string]interface{})
 }
 
+// The order of this slice is part of the provider's contract: Kratos runs a
+// flow's hooks in list order, and buildHookPatches prepends each hook as it is
+// added, so entries sharing a path end up in reverse order of their appearance
+// here. See TestBuildHookPatches_MergedProfileHookOrderIsStable.
+//
 // hookEntries returns every hook attribute the provider exposes. Adding a new
 // hook toggle is a matter of appending one entry here, declaring the model
 // field, and registering the schema attribute.
+// buildRevisionPatches returns the JSON Patch operations that must target the
+// normalized project revision endpoint instead of the project document. These
+// attributes are top-level revision columns (see revisionBoolPatchEntries); a
+// document patch cannot reach them.
+func buildRevisionPatches(plan *ProjectConfigResourceModel) []ory.JsonPatch {
+	var patches []ory.JsonPatch
+	for _, e := range revisionBoolPatchEntries(plan) {
+		if !e.Field.IsNull() && !e.Field.IsUnknown() {
+			patches = append(patches, ory.JsonPatch{
+				Op:    "replace",
+				Path:  e.Path,
+				Value: e.Field.ValueBool(),
+			})
+		}
+	}
+	return patches
+}
+
+// applyRevisionPatches applies the revision-level patches for the plan, if
+// any. It runs after the document patch so the patch lands on the revision
+// that patch created.
+func (r *ProjectConfigResource) applyRevisionPatches(ctx context.Context, projectID string, plan *ProjectConfigResourceModel, diags *diag.Diagnostics) {
+	patches := buildRevisionPatches(plan)
+	if len(patches) == 0 {
+		return
+	}
+	if err := r.client.PatchProjectRevision(ctx, projectID, patches); err != nil {
+		diags.AddError("Error Applying Project Revision Config", err.Error())
+	}
+}
+
+// readRevisionProperties refreshes attributes that live on the normalized
+// project revision rather than in the project document (see
+// revisionBoolReadEntries). The extra API call is made only when state tracks
+// at least one such attribute. A failed fetch keeps the state values: a
+// transient read error must not null tracked attributes into phantom drift.
+func (r *ProjectConfigResource) readRevisionProperties(ctx context.Context, projectID string, state *ProjectConfigResourceModel) {
+	entries := revisionBoolReadEntries(state)
+	tracked := false
+	for _, e := range entries {
+		if !e.Field.IsNull() {
+			tracked = true
+			break
+		}
+	}
+	if !tracked {
+		return
+	}
+
+	revision, err := r.client.GetProjectNormalizedRevision(ctx, projectID)
+	if err != nil {
+		tflog.Warn(ctx, "Could not read normalized project revision; keeping state values", map[string]interface{}{
+			"project_id": projectID,
+			"error":      err.Error(),
+		})
+		return
+	}
+	for _, e := range entries {
+		if e.Field.IsNull() {
+			continue
+		}
+		if v, ok := getNestedBool(revision, e.Keys...); ok {
+			*e.Field = types.BoolValue(v)
+		} else {
+			*e.Field = types.BoolNull()
+		}
+	}
+}
+
 func hookEntries(plan *ProjectConfigResourceModel) []hookEntry {
 	return []hookEntry{
 		{
@@ -1217,7 +1445,75 @@ func hookEntries(plan *ProjectConfigResourceModel) []hookEntry {
 				s.SelfserviceFlowsRegistrationAfterPasswordHookSession = v
 			},
 		},
+		{
+			// The Ory Console writes this hook to the password login flow only.
+			// The config schema also allows it on the OIDC flow, exposed below.
+			Field:    plan.SelfserviceFlowsLoginAfterPasswordHookRequireVerifiedAddress,
+			PathKeys: []string{"selfservice", "flows", "login", "after", "password"},
+			HookName: "require_verified_address",
+			Set: func(s *ProjectConfigResourceModel, v types.Bool) {
+				s.SelfserviceFlowsLoginAfterPasswordHookRequireVerifiedAddress = v
+			},
+		},
+		{
+			Field:    plan.SelfserviceFlowsLoginAfterOIDCHookRequireVerifiedAddress,
+			PathKeys: []string{"selfservice", "flows", "login", "after", "oidc"},
+			HookName: "require_verified_address",
+			Set: func(s *ProjectConfigResourceModel, v types.Bool) {
+				s.SelfserviceFlowsLoginAfterOIDCHookRequireVerifiedAddress = v
+			},
+		},
+		{
+			Field:    plan.SelfserviceFlowsSettingsAfterProfileHookVerifyNewAddress,
+			PathKeys: []string{"selfservice", "flows", "settings", "after", "profile"},
+			HookName: "verify_new_address",
+			Set: func(s *ProjectConfigResourceModel, v types.Bool) {
+				s.SelfserviceFlowsSettingsAfterProfileHookVerifyNewAddress = v
+			},
+		},
+		{
+			Field:    plan.SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddresses,
+			PathKeys: []string{"selfservice", "flows", "settings", "after", "profile"},
+			HookName: "notify_previous_addresses",
+			Config:   notifyPreviousAddressesConfig(plan),
+			Set: func(s *ProjectConfigResourceModel, v types.Bool) {
+				s.SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddresses = v
+			},
+			SetConfig: func(s *ProjectConfigResourceModel, config map[string]interface{}) {
+				// Only refresh a recipient scope the practitioner tracks, so an
+				// unset attribute does not start showing drift.
+				if s.SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddressesRecipients.IsNull() {
+					return
+				}
+				recipients, _ := config["recipients"].(string)
+				if recipients == "" {
+					// The hook is present without an explicit scope, so Ory
+					// applies its default.
+					recipients = notifyPreviousAddressesDefaultRecipients
+				}
+				s.SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddressesRecipients = types.StringValue(recipients)
+			},
+		},
 	}
+}
+
+// notifyPreviousAddressesDefaultRecipients is the recipient scope Ory applies
+// when the notify_previous_addresses hook carries no config.
+const notifyPreviousAddressesDefaultRecipients = "removed"
+
+// projectStateDeleted is the state Ory reports for a project that has been
+// deleted. The delete is soft: the project keeps answering GetProject with 200
+// and this state, rather than starting to 404.
+const projectStateDeleted = "deleted"
+
+// notifyPreviousAddressesConfig builds the config object for the
+// notify_previous_addresses hook entry, or nil when no scope is configured.
+func notifyPreviousAddressesConfig(plan *ProjectConfigResourceModel) map[string]interface{} {
+	recipients := plan.SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddressesRecipients
+	if recipients.IsNull() || recipients.IsUnknown() {
+		return nil
+	}
+	return map[string]interface{}{"recipients": recipients.ValueString()}
 }
 
 // buildHookPatches reconciles every configured hook attribute by merging the
@@ -1252,14 +1548,17 @@ func buildHookPatches(plan *ProjectConfigResourceModel, currentProject *ory.Proj
 		pathKey := strings.Join(e.PathKeys, "/")
 		acc, ok := accumulators[pathKey]
 		if !ok {
+			// An unreadable list is replaced wholesale; the API never
+			// stores one, so there is nothing to preserve in it.
+			hooks, _ := readHookList(identityConfig, e.PathKeys)
 			acc = &accum{
 				pathKeys: e.PathKeys,
-				hooks:    readHookList(identityConfig, e.PathKeys),
+				hooks:    hooks,
 			}
 			accumulators[pathKey] = acc
 			order = append(order, pathKey)
 		}
-		acc.hooks = setHookPresent(acc.hooks, e.HookName, e.Field.ValueBool())
+		acc.hooks = setHookPresent(acc.hooks, e.HookName, e.Field.ValueBool(), e.Config)
 	}
 
 	for _, pathKey := range order {
@@ -1274,14 +1573,19 @@ func buildHookPatches(plan *ProjectConfigResourceModel, currentProject *ory.Proj
 }
 
 // readHookList extracts the hooks list at the given path from the identity
-// config map, returning an empty slice when the path or array is missing.
-func readHookList(identityConfig map[string]interface{}, pathKeys []string) []map[string]interface{} {
+// config map. A missing path or array reads as an empty list. The second
+// result is false when the path holds a value that is not a list: nothing
+// can be read from it, and callers must not mistake that for "no hooks".
+func readHookList(identityConfig map[string]interface{}, pathKeys []string) ([]map[string]interface{}, bool) {
 	keys := append([]string{}, pathKeys...)
 	keys = append(keys, "hooks")
 	raw := getNestedValue(identityConfig, keys...)
+	if raw == nil {
+		return nil, true
+	}
 	arr, ok := raw.([]interface{})
 	if !ok {
-		return nil
+		return nil, false
 	}
 	hooks := make([]map[string]interface{}, 0, len(arr))
 	for _, item := range arr {
@@ -1289,13 +1593,17 @@ func readHookList(identityConfig map[string]interface{}, pathKeys []string) []ma
 			hooks = append(hooks, m)
 		}
 	}
-	return hooks
+	return hooks, true
 }
 
 // setHookPresent returns a copy of hooks with the given hook name either
 // prepended (if present == true and missing) or removed (if present == false).
 // Other hook entries are preserved in their original order.
-func setHookPresent(hooks []map[string]interface{}, hookName string, present bool) []map[string]interface{} {
+//
+// A non-empty config replaces the config of the matching entry, so a change to
+// a hook's settings applies without removing and re-adding the hook. An empty
+// config leaves an existing entry untouched.
+func setHookPresent(hooks []map[string]interface{}, hookName string, present bool, config map[string]interface{}) []map[string]interface{} {
 	filtered := make([]map[string]interface{}, 0, len(hooks)+1)
 	alreadyPresent := false
 	for _, h := range hooks {
@@ -1305,24 +1613,56 @@ func setHookPresent(hooks []map[string]interface{}, hookName string, present boo
 			if !present {
 				continue
 			}
+			if len(config) > 0 {
+				h = hookMap(hookName, config)
+			}
 		}
 		filtered = append(filtered, h)
 	}
 	if present && !alreadyPresent {
-		filtered = append([]map[string]interface{}{{"hook": hookName}}, filtered...)
+		// Prepended rather than appended: require_verified_address must run
+		// before any other hook on its flow, and the Ory Console orders it the
+		// same way.
+		filtered = append([]map[string]interface{}{hookMap(hookName, config)}, filtered...)
 	}
 	return filtered
 }
 
+// hookMap builds a single hooks-array entry, omitting the "config" key when
+// the hook carries no settings.
+func hookMap(hookName string, config map[string]interface{}) map[string]interface{} {
+	entry := map[string]interface{}{"hook": hookName}
+	if len(config) > 0 {
+		entry["config"] = config
+	}
+	return entry
+}
+
 // hookListContains reports whether the hooks list at the given path includes
-// the named hook.
-func hookListContains(identityConfig map[string]interface{}, pathKeys []string, hookName string) bool {
-	for _, h := range readHookList(identityConfig, pathKeys) {
+// the named hook. The second result is false when the list is unreadable.
+func hookListContains(identityConfig map[string]interface{}, pathKeys []string, hookName string) (bool, bool) {
+	hooks, ok := readHookList(identityConfig, pathKeys)
+	for _, h := range hooks {
 		if name, _ := h["hook"].(string); name == hookName {
-			return true
+			return true, ok
 		}
 	}
-	return false
+	return false, ok
+}
+
+// readHookConfig returns the "config" object of the named hook at the given
+// path, or nil when the hook is absent or carries no config. Ory omits the key
+// entirely when a hook runs with its defaults.
+func readHookConfig(identityConfig map[string]interface{}, pathKeys []string, hookName string) map[string]interface{} {
+	hooks, _ := readHookList(identityConfig, pathKeys)
+	for _, h := range hooks {
+		if name, _ := h["hook"].(string); name != hookName {
+			continue
+		}
+		config, _ := h["config"].(map[string]interface{})
+		return config
+	}
+	return nil
 }
 
 // needsHookPrefetch reports whether any hook attribute is set in the plan, in
@@ -1436,6 +1776,11 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
+	resp.Diagnostics.Append(r.checkKetoStrictModeWritable(ctx, projectID, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	patches := r.buildPatches(ctx, &plan)
 	patches = r.appendWriteOnlySMTPPatch(ctx, req.Config, patches, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -1468,6 +1813,11 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 		})
 	}
 
+	r.applyRevisionPatches(ctx, projectID, &plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	plan.ID = types.StringValue(projectID)
 	plan.ProjectID = types.StringValue(projectID)
 
@@ -1493,10 +1843,26 @@ func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadReque
 		var err error
 		project, err = r.client.GetProject(ctx, projectID)
 		if err != nil {
+			if client.IsNotFoundStatus(err) {
+				// The config is not an object of its own: it lives inside the
+				// project. A purged project takes its config with it, so drop the
+				// resource from state rather than failing every plan.
+				resp.State.RemoveResource(ctx)
+				return
+			}
 			resp.Diagnostics.AddError("Error Reading Project Config",
 				"Could not read project "+projectID+": "+err.Error())
 			return
 		}
+	}
+
+	// Deleting a project through the console is a soft delete: GetProject keeps
+	// answering 200 and only the state field changes, so the 404 above never
+	// fires for the case operators actually hit. A deleted project's config is
+	// gone with it, so drop the resource rather than reporting no changes.
+	if project.GetState() == projectStateDeleted {
+		resp.State.RemoveResource(ctx)
+		return
 	}
 
 	r.readProjectConfig(ctx, project, &state)
@@ -1511,6 +1877,10 @@ func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadReque
 func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *ory.Project, state *ProjectConfigResourceModel) {
 	// --- Generated simple attribute reads ---
 	readSimpleFields(ctx, project, state)
+
+	// Top-level revision columns are absent from the project document and are
+	// read from the normalized revision endpoint instead.
+	r.readRevisionProperties(ctx, project.Id, state)
 
 	// --- Custom reads for complex types ---
 
@@ -1559,7 +1929,7 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 
 		// URLs with special behavior
 		if !state.DefaultReturnURL.IsNull() {
-			if state.DefaultReturnURL.ValueString() != "" {
+			if state.DefaultReturnURL.IsUnknown() || state.DefaultReturnURL.ValueString() != "" {
 				if v, ok := getNestedString(identityConfig, "selfservice", "default_browser_return_url"); ok {
 					state.DefaultReturnURL = types.StringValue(v)
 				}
@@ -1706,8 +2076,18 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 			if e.Field.IsNull() {
 				continue
 			}
-			present := hookListContains(identityConfig, e.PathKeys, e.HookName)
+			present, ok := hookListContains(identityConfig, e.PathKeys, e.HookName)
+			if !ok {
+				// The hooks value is not a list, so presence cannot be
+				// determined. Keep the state value: an unknown one, set by
+				// a field-selected import, then fails the import instead
+				// of reading as false.
+				continue
+			}
 			e.Set(state, types.BoolValue(present))
+			if present && e.SetConfig != nil {
+				e.SetConfig(state, readHookConfig(identityConfig, e.PathKeys, e.HookName))
+			}
 		}
 	}
 
@@ -1990,6 +2370,11 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 		return
 	}
 
+	resp.Diagnostics.Append(r.checkKetoStrictModeWritable(ctx, projectID, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	patches := r.buildPatches(ctx, &plan)
 	patches = r.appendWriteOnlySMTPPatch(ctx, req.Config, patches, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -2034,6 +2419,11 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 		}
 	}
 
+	r.applyRevisionPatches(ctx, projectID, &plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	plan.ID = types.StringValue(projectID)
 	plan.ProjectID = types.StringValue(projectID)
 
@@ -2045,6 +2435,10 @@ func (r *ProjectConfigResource) Delete(ctx context.Context, req resource.DeleteR
 }
 
 func (r *ProjectConfigResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	if projectID, fields, selected := strings.Cut(req.ID, ":"); selected {
+		r.importSelectedFields(ctx, projectID, fields, resp)
+		return
+	}
 	projectID := req.ID
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), projectID)...)
@@ -2067,4 +2461,5 @@ func (r *ProjectConfigResource) ImportState(ctx context.Context, req resource.Im
 			"    # project_id inherits from provider\n"+
 			"  }\n\n"+
 			"If you see 'project_id forces replacement', the project_id in your config doesn't match the imported project.")
+	warnCORSDefault(&resp.Diagnostics)
 }

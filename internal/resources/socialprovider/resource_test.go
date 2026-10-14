@@ -3,16 +3,20 @@
 package socialprovider_test
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
+	"os"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	"github.com/stretchr/testify/require"
@@ -237,6 +241,86 @@ func TestAccSocialProviderResource_baseRedirectURI(t *testing.T) {
 			},
 		},
 	})
+}
+
+// TestAccSocialProviderResource_preservesProjectConfigBaseRedirectURI verifies
+// that creating and deleting a social provider does not wipe the global OIDC
+// base_redirect_uri managed by ory_project_config. Both the first-provider
+// create and the last-provider delete used to replace the whole OIDC method
+// node, discarding sibling config keys.
+func TestAccSocialProviderResource_preservesProjectConfigBaseRedirectURI(t *testing.T) {
+	const baseRedirectURI = "https://iam.example.com"
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Set base_redirect_uri via ory_project_config, then add a provider
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/preserve_project_config_base_redirect_uri.tf.tmpl", map[string]string{
+					"BaseRedirectURI": baseRedirectURI,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-google-preserve"),
+					checkServerBaseRedirectURI(baseRedirectURI),
+				),
+			},
+			// Remove the provider — base_redirect_uri must survive server-side
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/preserve_project_config_base_redirect_uri_removed.tf.tmpl", map[string]string{
+					"BaseRedirectURI": baseRedirectURI,
+				}),
+				Check: checkServerBaseRedirectURI(baseRedirectURI),
+			},
+		},
+	})
+}
+
+// checkServerBaseRedirectURI asserts the OIDC base_redirect_uri stored on the
+// project by reading the API directly, bypassing Terraform state.
+func checkServerBaseRedirectURI(want string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		c, err := acctest.GetOryClient()
+		if err != nil {
+			return fmt.Errorf("could not create client: %w", err)
+		}
+
+		var projectID string
+		for _, rs := range s.RootModule().Resources {
+			if pid := rs.Primary.Attributes["project_id"]; pid != "" {
+				projectID = pid
+				break
+			}
+		}
+		if projectID == "" {
+			return fmt.Errorf("no project_id found in state")
+		}
+
+		p, err := c.GetProject(context.Background(), projectID)
+		if err != nil {
+			return fmt.Errorf("could not get project: %w", err)
+		}
+
+		var current interface{} = p.Services.Identity.Config
+		for _, seg := range []string{"selfservice", "methods", "oidc", "config"} {
+			m, ok := current.(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("OIDC config missing at %q", seg)
+			}
+			current = m[seg]
+		}
+		oidcConfig, ok := current.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("OIDC config is not an object")
+		}
+		got, _ := oidcConfig["base_redirect_uri"].(string)
+		if got != want {
+			return fmt.Errorf("base_redirect_uri = %q, want %q", got, want)
+		}
+		return nil
+	}
 }
 
 func TestAccSocialProviderResource_autoLink(t *testing.T) {
@@ -547,6 +631,75 @@ func TestAccSocialProviderResource_fedcmConfigURL(t *testing.T) {
 	})
 }
 
+// TestAccSocialProviderResource_netIDTokenOriginHeader exercises
+// net_id_token_origin_header across create, update (changed origin), removal,
+// and import. Create and Update replace the whole provider object, so an
+// attribute missing from the schema is blanked server-side on every apply. The
+// PlanOnly step after each apply is the regression guard for that: it fails if
+// the API drops the value.
+// Regression test for https://github.com/ory/terraform-provider-ory/issues/329.
+func TestAccSocialProviderResource_netIDTokenOriginHeader(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Create with net_id_token_origin_header set
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_net_id_origin_header.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-netid-origin"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_type", "netid"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "fedcm_config_url", "https://broker.netid.de/fedcm.json"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "net_id_token_origin_header", "https://www.example.com"),
+				),
+			},
+			// Verify no perpetual diff — the API must echo the value back unchanged
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_net_id_origin_header.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Update the origin header
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_net_id_origin_header_updated.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "net_id_token_origin_header", "https://news.example.com"),
+				),
+			},
+			// Verify no perpetual diff after update
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_net_id_origin_header_updated.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Remove net_id_token_origin_header from config — should clear it server-side
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_net_id_origin_header_removed.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "net_id_token_origin_header"),
+					// The sibling FedCM attribute must survive the removal.
+					resource.TestCheckResourceAttr("ory_social_provider.test", "fedcm_config_url", "https://broker.netid.de/fedcm.json"),
+				),
+			},
+			// Verify no diff after removal
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_net_id_origin_header_removed.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// ImportState
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           "test-netid-origin",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+		},
+	})
+}
+
 // TestAccSocialProviderResource_aal2Values exercises aal2_acr_values and
 // aal2_amr_values across create, update (changed list contents), removal, and
 // import. Values are opaque strings stored on the provider config — the API
@@ -681,6 +834,70 @@ func TestAccSocialProviderResource_updateIdentityOnLogin(t *testing.T) {
 	})
 }
 
+// TestAccSocialProviderResource_frontChannelLogout drives front_channel_logout
+// through create, update, removal, and import. The API stores true and false
+// alike and returns the key on read, so both values must round-trip and an
+// omitted attribute must read back as absent.
+func TestAccSocialProviderResource_frontChannelLogout(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_front_channel_logout.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-google-fcl"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "front_channel_logout", "true"),
+				),
+			},
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_front_channel_logout.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// An explicit false must persist and not be collapsed to absence.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_front_channel_logout_disabled.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "front_channel_logout", "false"),
+				),
+			},
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_front_channel_logout_disabled.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Removing the attribute clears the key server-side.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_front_channel_logout_removed.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "front_channel_logout"),
+				),
+			},
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_front_channel_logout_removed.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Re-enable so import verifies the value round-trips.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_front_channel_logout.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "front_channel_logout", "true"),
+				),
+			},
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           "test-google-fcl",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+		},
+	})
+}
+
 // TestAccSocialProviderResource_mapperURLNoDrift verifies that a configured
 // base64:// mapper_url does not produce a perpetual diff even though Ory rewrites
 // it into an opaque GCS URL server-side. The provider preserves the configured
@@ -725,6 +942,182 @@ func TestAccSocialProviderResource_mapperURLNoDrift(t *testing.T) {
 				ImportStateId:           "test-google-mapper",
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"client_secret", "mapper_url"},
+			},
+		},
+	})
+}
+
+// oidcProvidersPath is the Console API JSON Patch path holding the OIDC
+// providers array, used to read the API back in organization assertions.
+const oidcProvidersPath = "/services/identity/config/selfservice/methods/oidc/config/providers"
+
+// checkAPIOrganizationID asserts what the API stores for the test provider's
+// organization_id. Terraform state only records what the provider believes it
+// wrote, and the whole point of issue #339 is a link that Terraform reports as
+// present while the API has dropped it, so the assertion has to read the API.
+//
+// Set wantLinked to false to assert the link is absent. When it is true, the
+// expected organization ID is read out of orgResourceName in Terraform state, so
+// the caller does not need to know the generated UUID before the apply.
+func checkAPIOrganizationID(t *testing.T, providerID, orgResourceName string, wantLinked bool) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		var wantOrgID string
+		if wantLinked {
+			rs, ok := s.RootModule().Resources[orgResourceName]
+			if !ok {
+				return fmt.Errorf("resource not found in state: %s", orgResourceName)
+			}
+			wantOrgID = rs.Primary.ID
+		}
+
+		return acctest.Eventually(func() error {
+			projectID := acctest.GetTestProject(t).ID
+			value, ok, err := acctest.ProjectConfigValue(t, projectID, oidcProvidersPath)
+			if err != nil {
+				return fmt.Errorf("could not read project %s: %w", projectID, err)
+			}
+			if !ok {
+				return fmt.Errorf("%s is absent from project %s", oidcProvidersPath, projectID)
+			}
+			providers, ok := value.([]interface{})
+			if !ok {
+				return fmt.Errorf("%s is %T, want an array", oidcProvidersPath, value)
+			}
+			for _, entry := range providers {
+				provider, ok := entry.(map[string]interface{})
+				if !ok || provider["id"] != providerID {
+					continue
+				}
+				gotOrgID, _ := provider["organization_id"].(string)
+				if gotOrgID != wantOrgID {
+					return fmt.Errorf("provider %q has organization_id %q in the API, want %q",
+						providerID, gotOrgID, wantOrgID)
+				}
+				return nil
+			}
+			return fmt.Errorf("provider %q is absent from %s", providerID, oidcProvidersPath)
+		})
+	}
+}
+
+// checkAPIProviderRemoved asserts the API no longer holds the provider this test
+// created. Destroy leaves Terraform state empty either way, so only a read of
+// the API catches a Delete that patched the wrong index or silently no-opped.
+func checkAPIProviderRemoved(t *testing.T, providerID string) resource.TestCheckFunc {
+	return func(*terraform.State) error {
+		return acctest.Eventually(func() error {
+			projectID := acctest.GetTestProject(t).ID
+			value, ok, err := acctest.ProjectConfigValue(t, projectID, oidcProvidersPath)
+			if err != nil {
+				// A failed read must be retried, not read as "already deleted".
+				return fmt.Errorf("could not read project %s after destroy: %w", projectID, err)
+			}
+			if !ok {
+				return nil
+			}
+			providers, ok := value.([]interface{})
+			if !ok {
+				return nil
+			}
+			for _, entry := range providers {
+				provider, ok := entry.(map[string]interface{})
+				if ok && provider["id"] == providerID {
+					return fmt.Errorf("provider %q survived destroy in %s", providerID, oidcProvidersPath)
+				}
+			}
+			return nil
+		})
+	}
+}
+
+// TestAccSocialProviderResource_organizationID covers B2B SSO: an OIDC provider
+// scoped to an organization. Issue #339 reported the link missing. Without
+// organization_id in the schema, importing a B2B provider and applying the
+// generated configuration silently dropped the organization, leaving the
+// organization with no SSO provider.
+//
+// Every step reads the API back rather than trusting state, because the failure
+// mode is exactly a state value that no longer matches the API.
+func TestAccSocialProviderResource_organizationID(t *testing.T) {
+	const providerID = "test-oidc-b2b-sso"
+	tmplData := map[string]string{"OrgLabel": "TF Provider B2B SSO Test"}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+			acctest.RequireB2BTests(t)
+			// Organizations need a prod or stage project, not a dev one.
+			if env := os.Getenv("ORY_PROJECT_ENVIRONMENT"); env == "dev" || env == "" {
+				t.Skip("B2B SSO tests require ORY_PROJECT_ENVIRONMENT to be 'prod' or 'stage' (not 'dev')")
+			}
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		CheckDestroy:             checkAPIProviderRemoved(t, providerID),
+		Steps: []resource.TestStep{
+			// Create the organization and an OIDC provider scoped to it
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_organization.tf.tmpl", tmplData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", providerID),
+					resource.TestCheckResourceAttrPair(
+						"ory_social_provider.test", "organization_id",
+						"ory_organization.test", "id"),
+					checkAPIOrganizationID(t, providerID, "ory_organization.test", true),
+				),
+			},
+			// Verify no perpetual diff, since the API must echo organization_id back
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_organization.tf.tmpl", tmplData),
+				PlanOnly: true,
+			},
+			// Change the label only. Update replaces the whole provider object,
+			// so this is what dropped the organization link before the fix.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_organization_updated.tf.tmpl", tmplData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "label", "B2B SSO Renamed"),
+					resource.TestCheckResourceAttrPair(
+						"ory_social_provider.test", "organization_id",
+						"ory_organization.test", "id"),
+					checkAPIOrganizationID(t, providerID, "ory_organization.test", true),
+				),
+			},
+			// Verify no perpetual diff after the update
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_organization_updated.tf.tmpl", tmplData),
+				PlanOnly: true,
+			},
+			// ImportState must round-trip organization_id, which is the path the
+			// import workflow in issue #339 takes
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           providerID,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+			// Remove organization_id from config — the link must be cleared
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_organization_removed.tf.tmpl", tmplData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "organization_id"),
+					checkAPIOrganizationID(t, providerID, "ory_organization.test", false),
+				),
+			},
+			// Verify no diff after removal
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_organization_removed.tf.tmpl", tmplData),
+				PlanOnly: true,
+			},
+			// Re-add the link so destroy has to unwind a linked provider, which
+			// is the ordering the organization foreign key constrains
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_organization.tf.tmpl", tmplData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					checkAPIOrganizationID(t, providerID, "ory_organization.test", true),
+				),
 			},
 		},
 	})

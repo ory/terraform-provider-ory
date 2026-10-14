@@ -1,0 +1,13 @@
+resource "ory_project_config" "test" {
+  selfservice_methods_oidc_config_base_redirect_uri = "[[ .BaseRedirectURI ]]"
+}
+
+resource "ory_social_provider" "test" {
+  provider_id   = "test-google-preserve"
+  provider_type = "google"
+  client_id     = "test-client-id.apps.googleusercontent.com"
+  client_secret = "test-client-secret"
+  scope         = ["email", "profile"]
+
+  depends_on = [ory_project_config.test]
+}

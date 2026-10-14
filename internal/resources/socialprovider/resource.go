@@ -81,6 +81,7 @@ type SocialProviderResourceModel struct {
 	ApplePrivateKeyWOVersion   types.String `tfsdk:"apple_private_key_wo_version"`
 	AutoLink                   types.Bool   `tfsdk:"auto_link"`
 	Label                      types.String `tfsdk:"label"`
+	OrganizationID             types.String `tfsdk:"organization_id"`
 	AccountLinkingMode         types.String `tfsdk:"account_linking_mode"`
 	BaseRedirectURI            types.String `tfsdk:"base_redirect_uri"`
 	AdditionalIDTokenAudiences types.List   `tfsdk:"additional_id_token_audiences"`
@@ -88,7 +89,9 @@ type SocialProviderResourceModel struct {
 	Aal2AmrValues              types.List   `tfsdk:"aal2_amr_values"`
 	Pkce                       types.String `tfsdk:"pkce"`
 	FedcmConfigURL             types.String `tfsdk:"fedcm_config_url"`
+	NetIDTokenOriginHeader     types.String `tfsdk:"net_id_token_origin_header"`
 	UpdateIdentityOnLogin      types.String `tfsdk:"update_identity_on_login"`
+	FrontChannelLogout         types.Bool   `tfsdk:"front_channel_logout"`
 }
 
 func (r *SocialProviderResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -243,6 +246,10 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				Description: "Human-readable label for the provider, displayed on the login button (e.g., \"Sign in with Corporate SSO\").",
 				Optional:    true,
 			},
+			"organization_id": schema.StringAttribute{
+				Description: "Organization ID to associate this OIDC provider with (for B2B SSO). Set it to the ID of an existing `ory_organization`. The provider is then only offered to users of that organization, and the callback URL gains an `/organization/<organization_id>` segment. Leave it unset for a normal social sign-in provider that every user can use. Requires a B2B plan.",
+				Optional:    true,
+			},
 			"account_linking_mode": schema.StringAttribute{
 				Description: "Controls how accounts are linked when a user signs in with this provider and a matching identity already exists. \"automatic\" links without user interaction; \"confirm_with_existing_credential\" requires the user to verify ownership of the existing account first.",
 				Optional:    true,
@@ -283,12 +290,20 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				Description: "URL of the provider's FedCM (Federated Credential Management) configuration file. When set, Ory can use the browser's FedCM API for sign-in with this provider instead of a full-page redirect. For example, Google's FedCM configuration is served at \"https://accounts.google.com/gsi/fedcm.json\". Leave unset to disable FedCM for this provider.",
 				Optional:    true,
 			},
+			"net_id_token_origin_header": schema.StringAttribute{
+				Description: "Origin header Ory sends when it exchanges a NetID FedCM token for an ID token. The value must be one of the `origin_uris` registered on the NetID client, for example \"https://www.example.com\". Set it together with fedcm_config_url on a NetID provider. Leave it unset for every other provider.",
+				Optional:    true,
+			},
 			"update_identity_on_login": schema.StringAttribute{
 				Description: "Controls whether the identity's traits and metadata are refreshed from the upstream OIDC claims on every login. \"never\" (the API default) keeps the identity as-is after the initial sign-up. \"automatic\" re-runs the Jsonnet claims mapper on each login and updates the identity accordingly. Leave unset to use the Ory default (\"never\").",
 				Optional:    true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("never", "automatic"),
 				},
+			},
+			"front_channel_logout": schema.BoolAttribute{
+				Description: "Enable OpenID Connect Front-Channel Logout for this provider. When true, a login issues a companion cookie that lets the provider end the resulting Ory session from its own sign-out page. Requires the provider to return the sid claim in the ID token. Leave unset to keep the Ory default (disabled).",
+				Optional:    true,
 			},
 		},
 	}
@@ -399,6 +414,12 @@ func (r *SocialProviderResource) ValidateConfig(ctx context.Context, req resourc
 	if !config.FedcmConfigURL.IsNull() && !config.FedcmConfigURL.IsUnknown() && config.FedcmConfigURL.ValueString() == "" {
 		resp.Diagnostics.AddAttributeError(path.Root("fedcm_config_url"), "Invalid Attribute Value", "fedcm_config_url must not be an empty string.")
 	}
+	if !config.NetIDTokenOriginHeader.IsNull() && !config.NetIDTokenOriginHeader.IsUnknown() && config.NetIDTokenOriginHeader.ValueString() == "" {
+		resp.Diagnostics.AddAttributeError(path.Root("net_id_token_origin_header"), "Invalid Attribute Value", "net_id_token_origin_header must not be an empty string.")
+	}
+	if !config.OrganizationID.IsNull() && !config.OrganizationID.IsUnknown() && config.OrganizationID.ValueString() == "" {
+		resp.Diagnostics.AddAttributeError(path.Root("organization_id"), "Invalid Attribute Value", "organization_id must not be an empty string.")
+	}
 
 	if providerType == "apple" {
 		// Apple: needs either client_secret OR all three Apple-specific fields
@@ -488,6 +509,18 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 	if !plan.Label.IsNull() && !plan.Label.IsUnknown() {
 		config["label"] = plan.Label.ValueString()
 	}
+
+	// organization_id links the provider to a B2B SSO organization. Send it only
+	// when set: Create and Update replace the whole provider object, so omitting
+	// the key clears the link server-side, which is what removing the attribute
+	// from configuration must do. The API rejects a non-UUID value with HTTP 400,
+	// and an organization that does not exist with HTTP 500 and a foreign key
+	// violation on project_revision_oidc_providers.
+	// See: https://github.com/ory/terraform-provider-ory/issues/339
+	if !plan.OrganizationID.IsNull() && !plan.OrganizationID.IsUnknown() && plan.OrganizationID.ValueString() != "" {
+		config["organization_id"] = plan.OrganizationID.ValueString()
+	}
+
 	if !plan.AccountLinkingMode.IsNull() && !plan.AccountLinkingMode.IsUnknown() {
 		config["account_linking_mode"] = plan.AccountLinkingMode.ValueString()
 	}
@@ -528,10 +561,25 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 		config["update_identity_on_login"] = plan.UpdateIdentityOnLogin.ValueString()
 	}
 
+	// front_channel_logout — only send when set. The API stores true and false
+	// alike and returns the key on read; omitting it on the full-object replace
+	// performed by Update clears it server-side, which Read collapses to null.
+	if !plan.FrontChannelLogout.IsNull() && !plan.FrontChannelLogout.IsUnknown() {
+		config["front_channel_logout"] = plan.FrontChannelLogout.ValueBool()
+	}
+
 	// fedcm_config_url — only send when set to a non-empty value. Omitting it on
 	// the full-object replace performed by Update clears it server-side.
 	if !plan.FedcmConfigURL.IsNull() && !plan.FedcmConfigURL.IsUnknown() && plan.FedcmConfigURL.ValueString() != "" {
 		config["fedcm_config_url"] = plan.FedcmConfigURL.ValueString()
+	}
+
+	// net_id_token_origin_header gets the same handling as fedcm_config_url.
+	// Create and Update replace the whole provider object, so a value missing
+	// here is wiped server-side on the next apply.
+	// See: https://github.com/ory/terraform-provider-ory/issues/329
+	if !plan.NetIDTokenOriginHeader.IsNull() && !plan.NetIDTokenOriginHeader.IsUnknown() && plan.NetIDTokenOriginHeader.ValueString() != "" {
+		config["net_id_token_origin_header"] = plan.NetIDTokenOriginHeader.ValueString()
 	}
 
 	// Apple-specific fields — skip empty strings to avoid sending blank credentials
@@ -628,7 +676,11 @@ func extractOIDCConfigFromProject(project *ory.Project) map[string]interface{} {
 }
 
 func extractProvidersFromProject(project *ory.Project) []map[string]interface{} {
-	oidcConfig := extractOIDCConfigFromProject(project)
+	return providersFromOIDCConfig(extractOIDCConfigFromProject(project))
+}
+
+// providersFromOIDCConfig extracts the providers array from an OIDC config map.
+func providersFromOIDCConfig(oidcConfig map[string]interface{}) []map[string]interface{} {
 	if oidcConfig == nil {
 		return []map[string]interface{}{}
 	}
@@ -645,36 +697,51 @@ func extractProvidersFromProject(project *ory.Project) []map[string]interface{} 
 	return result
 }
 
-// copyProviders returns a deep copy of the provider slice via a JSON
+// copyOIDCConfig returns a deep copy of the OIDC config map via a JSON
 // round-trip so callers cannot accidentally mutate the cached project state.
 // This data originates from JSON, so the round-trip is lossless and handles
 // all container types without a hand-rolled recursive copy.
-func copyProviders(providers []map[string]interface{}) []map[string]interface{} {
-	b, err := json.Marshal(providers)
+func copyOIDCConfig(oidcConfig map[string]interface{}) map[string]interface{} {
+	if oidcConfig == nil {
+		return nil
+	}
+	b, err := json.Marshal(oidcConfig)
 	if err != nil {
 		// Should never happen — the data was decoded from JSON.
-		return providers
+		return oidcConfig
 	}
-	var cp []map[string]interface{}
+	var cp map[string]interface{}
 	if err := json.Unmarshal(b, &cp); err != nil {
-		return providers
+		return oidcConfig
 	}
 	return cp
 }
 
-func (r *SocialProviderResource) getProviders(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
+// getOIDCConfig returns the project's OIDC method config map, or nil when the
+// project has no OIDC config yet.
+func (r *SocialProviderResource) getOIDCConfig(ctx context.Context, projectID string) (map[string]interface{}, error) {
 	// Prefer cached project state from a previous PatchProject call in this
 	// Terraform run. This avoids reading stale data from the eventually-consistent
 	// GetProject API, which is critical when the mutex serializes back-to-back
 	// mutations — the second operation must see the first operation's result.
 	if cached := r.client.GetCachedProject(projectID); cached != nil {
-		return copyProviders(extractProvidersFromProject(cached)), nil
+		return copyOIDCConfig(extractOIDCConfigFromProject(cached)), nil
 	}
 	project, err := r.client.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get project %s: %w", projectID, err)
 	}
-	return extractProvidersFromProject(project), nil
+	return extractOIDCConfigFromProject(project), nil
+}
+
+// getProviders returns just the provider list, for callers that do not need
+// the surrounding OIDC config.
+func (r *SocialProviderResource) getProviders(ctx context.Context, projectID string) ([]map[string]interface{}, error) {
+	oidcConfig, err := r.getOIDCConfig(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	return providersFromOIDCConfig(oidcConfig), nil
 }
 
 func (r *SocialProviderResource) findProviderIndex(providers []map[string]interface{}, providerID string) int {
@@ -709,12 +776,13 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 	mu.Lock()
 	defer mu.Unlock()
 
-	// Get current providers
-	providers, err := r.getProviders(ctx, projectID)
+	// Get current OIDC config and providers
+	oidcConfig, err := r.getOIDCConfig(ctx, projectID)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Getting Providers", err.Error())
 		return
 	}
+	providers := providersFromOIDCConfig(oidcConfig)
 
 	var patches []ory.JsonPatch
 
@@ -733,23 +801,40 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 				Value: plan.BaseRedirectURI.ValueString(),
 			})
 		}
+	} else if oidcConfig == nil {
+		// No OIDC config exists yet — initialize the entire OIDC config structure
+		newConfig := map[string]interface{}{
+			"providers": []interface{}{providerConfig},
+		}
+		if !plan.BaseRedirectURI.IsNull() && !plan.BaseRedirectURI.IsUnknown() && plan.BaseRedirectURI.ValueString() != "" {
+			newConfig["base_redirect_uri"] = plan.BaseRedirectURI.ValueString()
+		}
+		patches = append(patches, ory.JsonPatch{
+			Op:   "add",
+			Path: "/services/identity/config/selfservice/methods/oidc",
+			Value: map[string]interface{}{
+				"enabled": true,
+				"config":  newConfig,
+			},
+		})
 	} else {
-		// When adding the first provider, we need to initialize the entire OIDC config structure
+		// OIDC config already exists — patch only the providers key so sibling
+		// config keys (e.g. base_redirect_uri, possibly managed by
+		// ory_project_config) are preserved. A JSON Patch "add" on an existing
+		// object member replaces just that member (RFC 6902).
 		if len(providers) == 0 {
-			oidcConfig := map[string]interface{}{
-				"providers": []interface{}{providerConfig},
-			}
-			if !plan.BaseRedirectURI.IsNull() && !plan.BaseRedirectURI.IsUnknown() && plan.BaseRedirectURI.ValueString() != "" {
-				oidcConfig["base_redirect_uri"] = plan.BaseRedirectURI.ValueString()
-			}
-			patches = append(patches, ory.JsonPatch{
-				Op:   "add",
-				Path: "/services/identity/config/selfservice/methods/oidc",
-				Value: map[string]interface{}{
-					"enabled": true,
-					"config":  oidcConfig,
+			patches = append(patches,
+				ory.JsonPatch{
+					Op:    "add",
+					Path:  "/services/identity/config/selfservice/methods/oidc/config/providers",
+					Value: []interface{}{providerConfig},
 				},
-			})
+				ory.JsonPatch{
+					Op:    "add",
+					Path:  "/services/identity/config/selfservice/methods/oidc/enabled",
+					Value: true,
+				},
+			)
 		} else {
 			// Add new provider to existing list
 			patches = append(patches, ory.JsonPatch{
@@ -757,14 +842,13 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 				Path:  "/services/identity/config/selfservice/methods/oidc/config/providers/-",
 				Value: providerConfig,
 			})
-			// Set base_redirect_uri as a separate patch when OIDC config already exists
-			if !plan.BaseRedirectURI.IsNull() && !plan.BaseRedirectURI.IsUnknown() && plan.BaseRedirectURI.ValueString() != "" {
-				patches = append(patches, ory.JsonPatch{
-					Op:    "add",
-					Path:  "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
-					Value: plan.BaseRedirectURI.ValueString(),
-				})
-			}
+		}
+		if !plan.BaseRedirectURI.IsNull() && !plan.BaseRedirectURI.IsUnknown() && plan.BaseRedirectURI.ValueString() != "" {
+			patches = append(patches, ory.JsonPatch{
+				Op:    "add",
+				Path:  "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
+				Value: plan.BaseRedirectURI.ValueString(),
+			})
 		}
 	}
 
@@ -929,6 +1013,15 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		state.Label = types.StringNull()
 	}
 
+	// Read organization_id, which the API does return. It reports the key as JSON
+	// null once the link is cleared, so a failed string assertion also has to null
+	// the state value.
+	if orgID, ok := provider["organization_id"].(string); ok && orgID != "" {
+		state.OrganizationID = types.StringValue(orgID)
+	} else {
+		state.OrganizationID = types.StringNull()
+	}
+
 	// Read account_linking_mode from API (returned on read)
 	if mode, ok := provider["account_linking_mode"].(string); ok && mode != "" {
 		state.AccountLinkingMode = types.StringValue(mode)
@@ -958,12 +1051,29 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		state.UpdateIdentityOnLogin = types.StringNull()
 	}
 
+	// Read front_channel_logout from the API (returned on read for both true and
+	// false), clearing stale state when the API omits it, which it does only
+	// when the attribute was never set.
+	if fcl, ok := provider["front_channel_logout"].(bool); ok {
+		state.FrontChannelLogout = types.BoolValue(fcl)
+	} else {
+		state.FrontChannelLogout = types.BoolNull()
+	}
+
 	// Read fedcm_config_url from the API (returned on read), clearing stale state
 	// when the API omits it.
 	if fedcmURL, ok := provider["fedcm_config_url"].(string); ok && fedcmURL != "" {
 		state.FedcmConfigURL = types.StringValue(fedcmURL)
 	} else {
 		state.FedcmConfigURL = types.StringNull()
+	}
+
+	// Read net_id_token_origin_header from the API (returned on read), clearing
+	// stale state when the API omits it.
+	if originHeader, ok := provider["net_id_token_origin_header"].(string); ok && originHeader != "" {
+		state.NetIDTokenOriginHeader = types.StringValue(originHeader)
+	} else {
+		state.NetIDTokenOriginHeader = types.StringNull()
 	}
 
 	// Read Apple-specific fields, clearing stale state when not returned by the API
@@ -1033,11 +1143,12 @@ func (r *SocialProviderResource) Update(ctx context.Context, req resource.Update
 	mu.Lock()
 	defer mu.Unlock()
 
-	providers, err := r.getProviders(ctx, projectID)
+	oidcConfig, err := r.getOIDCConfig(ctx, projectID)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Getting Providers", err.Error())
 		return
 	}
+	providers := providersFromOIDCConfig(oidcConfig)
 
 	index := r.findProviderIndex(providers, plan.ProviderID.ValueString())
 	if index < 0 {
@@ -1071,11 +1182,17 @@ func (r *SocialProviderResource) Update(ctx context.Context, req resource.Update
 				})
 			}
 		} else if !state.BaseRedirectURI.IsNull() && stateURI != "" {
-			// User removed base_redirect_uri from config — remove it from the API too.
-			patches = append(patches, ory.JsonPatch{
-				Op:   "remove",
-				Path: "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
-			})
+			// User removed base_redirect_uri from config — remove it from the API
+			// too, but only when the key is actually there. A JSON Patch "remove"
+			// on an absent path is rejected with HTTP 400, and the key can already
+			// be gone: cleared out of band, cleared by ory_project_config, or
+			// dropped when another provider was deleted.
+			if _, ok := oidcConfig["base_redirect_uri"]; ok {
+				patches = append(patches, ory.JsonPatch{
+					Op:   "remove",
+					Path: "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
+				})
+			}
 		}
 	}
 
@@ -1108,11 +1225,12 @@ func (r *SocialProviderResource) Delete(ctx context.Context, req resource.Delete
 	mu.Lock()
 	defer mu.Unlock()
 
-	providers, err := r.getProviders(ctx, projectID)
+	oidcConfig, err := r.getOIDCConfig(ctx, projectID)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Getting Providers", err.Error())
 		return
 	}
+	providers := providersFromOIDCConfig(oidcConfig)
 
 	index := r.findProviderIndex(providers, state.ProviderID.ValueString())
 	if index < 0 {
@@ -1121,20 +1239,36 @@ func (r *SocialProviderResource) Delete(ctx context.Context, req resource.Delete
 
 	var patches []ory.JsonPatch
 
-	// If this is the last provider, we need to reset the entire OIDC config
-	// to avoid leaving an invalid state with an empty providers array
+	// If this is the last provider, disable the OIDC method and clear the
+	// providers array to avoid leaving an invalid state with an empty list
 	if len(providers) == 1 {
-		// Reset the entire OIDC method configuration
-		patches = append(patches, ory.JsonPatch{
-			Op:   "replace",
-			Path: "/services/identity/config/selfservice/methods/oidc",
-			Value: map[string]interface{}{
-				"enabled": false,
-				"config": map[string]interface{}{
-					"providers": []interface{}{},
-				},
+		// Patch enabled and providers individually instead of replacing the
+		// whole OIDC method node, which would wipe sibling config keys such as
+		// base_redirect_uri (possibly managed by ory_project_config). A JSON
+		// Patch "add" on an existing object member replaces just that member
+		// (RFC 6902).
+		patches = append(patches,
+			ory.JsonPatch{
+				Op:    "add",
+				Path:  "/services/identity/config/selfservice/methods/oidc/enabled",
+				Value: false,
 			},
-		})
+			ory.JsonPatch{
+				Op:    "add",
+				Path:  "/services/identity/config/selfservice/methods/oidc/config/providers",
+				Value: []interface{}{},
+			},
+		)
+		// This resource owned the global base_redirect_uri (deprecated
+		// attribute) — clean it up like the previous whole-node reset did.
+		if !state.BaseRedirectURI.IsNull() && state.BaseRedirectURI.ValueString() != "" {
+			if _, ok := oidcConfig["base_redirect_uri"]; ok {
+				patches = append(patches, ory.JsonPatch{
+					Op:   "remove",
+					Path: "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
+				})
+			}
+		}
 	} else {
 		// Remove the specific provider by index
 		patches = append(patches, ory.JsonPatch{
