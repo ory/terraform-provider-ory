@@ -100,7 +100,7 @@ clean: ## Remove build artifacts
 .bin/go-licenses: .deps/go-licenses.yaml .bin/ory
 	@VERSION=$$(.bin/ory dev ci deps url -o $(OS) -a $(ARCH) -c .deps/go-licenses.yaml); \
 	echo "Installing go-licenses $${VERSION}..."; \
-	GOBIN=$(PWD)/.bin go install github.com/google/go-licenses@$${VERSION}
+	GOBIN=$(PWD)/.bin go install github.com/google/go-licenses/v2@$${VERSION}
 
 # OpenAPI spec for the project_config codegen. The version is pinned in
 # .deps/ory-openapi-spec.yaml (Renovate bumps it) and downloaded from ory/sdk,
