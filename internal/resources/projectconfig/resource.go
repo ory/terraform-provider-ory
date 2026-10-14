@@ -419,6 +419,8 @@ type ProjectConfigResourceModel struct {
 	// preserving any other hooks already configured.
 	SelfserviceFlowsRegistrationAfterPasswordHookShowVerificationUI types.Bool `tfsdk:"selfservice_flows_registration_after_password_hook_show_verification_ui"`
 	SelfserviceFlowsRegistrationAfterOIDCHookShowVerificationUI     types.Bool `tfsdk:"selfservice_flows_registration_after_oidc_hook_show_verification_ui"`
+	SelfserviceFlowsRegistrationAfterPasskeyHookShowVerificationUI  types.Bool `tfsdk:"selfservice_flows_registration_after_passkey_hook_show_verification_ui"`
+	SelfserviceFlowsRegistrationAfterWebAuthnHookShowVerificationUI types.Bool `tfsdk:"selfservice_flows_registration_after_webauthn_hook_show_verification_ui"`
 	SelfserviceFlowsSettingsAfterProfileHookShowVerificationUI      types.Bool `tfsdk:"selfservice_flows_settings_after_profile_hook_show_verification_ui"`
 
 	// session hook on password registration (custom: not in OpenAPI spec).
@@ -430,6 +432,8 @@ type ProjectConfigResourceModel struct {
 	// three toggles on the Ory Console "Email verification" page.
 	SelfserviceFlowsLoginAfterPasswordHookRequireVerifiedAddress types.Bool `tfsdk:"selfservice_flows_login_after_password_hook_require_verified_address"`
 	SelfserviceFlowsLoginAfterOIDCHookRequireVerifiedAddress     types.Bool `tfsdk:"selfservice_flows_login_after_oidc_hook_require_verified_address"`
+	SelfserviceFlowsLoginAfterPasskeyHookRequireVerifiedAddress  types.Bool `tfsdk:"selfservice_flows_login_after_passkey_hook_require_verified_address"`
+	SelfserviceFlowsLoginAfterWebAuthnHookRequireVerifiedAddress types.Bool `tfsdk:"selfservice_flows_login_after_webauthn_hook_require_verified_address"`
 	SelfserviceFlowsSettingsAfterProfileHookVerifyNewAddress     types.Bool `tfsdk:"selfservice_flows_settings_after_profile_hook_verify_new_address"`
 
 	SelfserviceFlowsSettingsAfterProfileHookNotifyPreviousAddresses           types.Bool   `tfsdk:"selfservice_flows_settings_after_profile_hook_notify_previous_addresses"`
@@ -801,6 +805,19 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 			"Existing hooks at this path (e.g., `session`, `organization`) are preserved.",
 		Optional: true,
 	}
+	attrs["selfservice_flows_registration_after_passkey_hook_show_verification_ui"] = schema.BoolAttribute{
+		Description: "Enable the `show_verification_ui` hook after a successful passkey registration. " +
+			"When true, users are redirected to the verification UI after registering with a passkey. " +
+			"Ory always signs users in after a passkey registration, so the `session` hook at this path is preserved.",
+		Optional: true,
+	}
+	attrs["selfservice_flows_registration_after_webauthn_hook_show_verification_ui"] = schema.BoolAttribute{
+		Description: "Enable the `show_verification_ui` hook after a successful WebAuthn registration. " +
+			"When true, users are redirected to the verification UI after registering with a passwordless WebAuthn credential. " +
+			"Mirrors the Ory Console \"Show verification screen after WebAuthN registration\" toggle. " +
+			"Existing hooks at this path, such as `session`, are preserved.",
+		Optional: true,
+	}
 	attrs["selfservice_flows_settings_after_profile_hook_show_verification_ui"] = schema.BoolAttribute{
 		Description: "Enable the `show_verification_ui` hook after a successful profile settings update. " +
 			"When true, users are redirected to the verification UI after updating their profile (e.g., changing their email). " +
@@ -872,6 +889,26 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 			"\"Require verified address for login\" toggle only writes the password flow, so set this " +
 			"attribute as well to cover social logins. " +
 			"Existing hooks at this path (e.g., `organization`) are preserved.",
+		Optional: true,
+	}
+	attrs["selfservice_flows_login_after_passkey_hook_require_verified_address"] = schema.BoolAttribute{
+		Description: "Enable the `require_verified_address` hook after a passkey login, " +
+			"blocking sign-in until the identity has a verified address. The Ory Console " +
+			"\"Require verified address for login\" toggle only writes the password flow, so set this " +
+			"attribute as well to cover passkey logins. Keep " +
+			"`feature_flags_legacy_require_verified_login_error` at false, its default: while it is true, " +
+			"Ory runs the check for the password method only. " +
+			"Existing hooks at this path, such as `organization`, are preserved.",
+		Optional: true,
+	}
+	attrs["selfservice_flows_login_after_webauthn_hook_require_verified_address"] = schema.BoolAttribute{
+		Description: "Enable the `require_verified_address` hook after a WebAuthn login, " +
+			"blocking sign-in until the identity has a verified address. The Ory Console " +
+			"\"Require verified address for login\" toggle only writes the password flow, so set this " +
+			"attribute as well to cover passwordless WebAuthn logins. Keep " +
+			"`feature_flags_legacy_require_verified_login_error` at false, its default: while it is true, " +
+			"Ory runs the check for the password method only. " +
+			"Existing hooks at this path, such as `organization`, are preserved.",
 		Optional: true,
 	}
 	attrs["selfservice_flows_settings_after_profile_hook_verify_new_address"] = schema.BoolAttribute{
@@ -1430,6 +1467,22 @@ func hookEntries(plan *ProjectConfigResourceModel) []hookEntry {
 			},
 		},
 		{
+			Field:    plan.SelfserviceFlowsRegistrationAfterPasskeyHookShowVerificationUI,
+			PathKeys: []string{"selfservice", "flows", "registration", "after", "passkey"},
+			HookName: "show_verification_ui",
+			Set: func(s *ProjectConfigResourceModel, v types.Bool) {
+				s.SelfserviceFlowsRegistrationAfterPasskeyHookShowVerificationUI = v
+			},
+		},
+		{
+			Field:    plan.SelfserviceFlowsRegistrationAfterWebAuthnHookShowVerificationUI,
+			PathKeys: []string{"selfservice", "flows", "registration", "after", "webauthn"},
+			HookName: "show_verification_ui",
+			Set: func(s *ProjectConfigResourceModel, v types.Bool) {
+				s.SelfserviceFlowsRegistrationAfterWebAuthnHookShowVerificationUI = v
+			},
+		},
+		{
 			Field:    plan.SelfserviceFlowsSettingsAfterProfileHookShowVerificationUI,
 			PathKeys: []string{"selfservice", "flows", "settings", "after", "profile"},
 			HookName: "show_verification_ui",
@@ -1461,6 +1514,22 @@ func hookEntries(plan *ProjectConfigResourceModel) []hookEntry {
 			HookName: "require_verified_address",
 			Set: func(s *ProjectConfigResourceModel, v types.Bool) {
 				s.SelfserviceFlowsLoginAfterOIDCHookRequireVerifiedAddress = v
+			},
+		},
+		{
+			Field:    plan.SelfserviceFlowsLoginAfterPasskeyHookRequireVerifiedAddress,
+			PathKeys: []string{"selfservice", "flows", "login", "after", "passkey"},
+			HookName: "require_verified_address",
+			Set: func(s *ProjectConfigResourceModel, v types.Bool) {
+				s.SelfserviceFlowsLoginAfterPasskeyHookRequireVerifiedAddress = v
+			},
+		},
+		{
+			Field:    plan.SelfserviceFlowsLoginAfterWebAuthnHookRequireVerifiedAddress,
+			PathKeys: []string{"selfservice", "flows", "login", "after", "webauthn"},
+			HookName: "require_verified_address",
+			Set: func(s *ProjectConfigResourceModel, v types.Bool) {
+				s.SelfserviceFlowsLoginAfterWebAuthnHookRequireVerifiedAddress = v
 			},
 		},
 		{

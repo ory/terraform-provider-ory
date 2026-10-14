@@ -332,8 +332,8 @@ explicit `{project_id}/...` form in generated files.
   enabled. The provider warns about this on import; set the attribute to the
   project's current value before the first apply.
 - **`ory_action` and `ory_project_config` share two hook arrays.** The
-  `selfservice_flows_login_after_password_hook_require_verified_address`,
-  `..._login_after_oidc_...`, and the three
+  `selfservice_flows_login_after_<method>_hook_require_verified_address`
+  attributes for the password, oidc, passkey and webauthn methods, and the three
   `selfservice_flows_settings_after_profile_hook_*` attributes write into the
   same `login.after.<method>.hooks` and `settings.after.profile.hooks` arrays
   that `ory_action` read-modify-writes. The inventory script only reports

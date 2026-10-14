@@ -854,6 +854,58 @@ func TestBuildHookPatches_RequireVerifiedAddressAddedFirst(t *testing.T) {
 	assert.NotContains(t, hooks[0], "config", "require_verified_address carries no config")
 }
 
+// The passkey and WebAuthn flows each have their own hooks array. Ory Network
+// forces a session hook onto their registration lists, so adding
+// show_verification_ui must keep it, and clearing the last hook on a login
+// list must still emit a patch with an empty list.
+func TestBuildHookPatches_PasskeyAndWebAuthnFlows(t *testing.T) {
+	plan := &ProjectConfigResourceModel{
+		SelfserviceFlowsRegistrationAfterPasskeyHookShowVerificationUI:  types.BoolValue(true),
+		SelfserviceFlowsRegistrationAfterWebAuthnHookShowVerificationUI: types.BoolValue(false),
+		SelfserviceFlowsLoginAfterPasskeyHookRequireVerifiedAddress:     types.BoolValue(true),
+		SelfserviceFlowsLoginAfterWebAuthnHookRequireVerifiedAddress:    types.BoolValue(false),
+	}
+	hook := func(name string) map[string]interface{} { return map[string]interface{}{"hook": name} }
+	current := projectWithIdentityConfig(map[string]interface{}{
+		"selfservice": map[string]interface{}{
+			"flows": map[string]interface{}{
+				"registration": map[string]interface{}{
+					"after": map[string]interface{}{
+						"passkey":  map[string]interface{}{"hooks": []interface{}{hook("session")}},
+						"webauthn": map[string]interface{}{"hooks": []interface{}{hook("show_verification_ui"), hook("session")}},
+					},
+				},
+				"login": map[string]interface{}{
+					"after": map[string]interface{}{
+						"passkey":  map[string]interface{}{"hooks": []interface{}{}},
+						"webauthn": map[string]interface{}{"hooks": []interface{}{hook("require_verified_address")}},
+					},
+				},
+			},
+		},
+	})
+
+	patches := buildHookPatches(plan, current)
+	require.Len(t, patches, 4, "expected one patch per flow")
+
+	for path, want := range map[string][]string{
+		"/services/identity/config/selfservice/flows/registration/after/passkey/hooks":  {"show_verification_ui", "session"},
+		"/services/identity/config/selfservice/flows/registration/after/webauthn/hooks": {"session"},
+		"/services/identity/config/selfservice/flows/login/after/passkey/hooks":         {"require_verified_address"},
+		"/services/identity/config/selfservice/flows/login/after/webauthn/hooks":        {},
+	} {
+		p := findPatch(patches, path)
+		require.NotNil(t, p, path)
+		hooks, ok := p.Value.([]map[string]interface{})
+		require.True(t, ok, "%s: expected []map[string]interface{} value, got %T", path, p.Value)
+		got := make([]string, 0, len(hooks))
+		for _, h := range hooks {
+			got = append(got, h["hook"].(string))
+		}
+		assert.Equal(t, want, got, path)
+	}
+}
+
 // The password and OIDC login flows have separate hooks arrays, so the two
 // attributes must produce two independent patches.
 func TestBuildHookPatches_RequireVerifiedAddressPasswordAndOIDCAreSeparate(t *testing.T) {

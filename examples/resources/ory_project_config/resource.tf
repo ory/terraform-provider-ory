@@ -331,6 +331,10 @@ resource "ory_project_config" "show_verification_ui" {
   selfservice_flows_registration_after_password_hook_show_verification_ui = true
   # Same for social (OIDC) registration.
   selfservice_flows_registration_after_oidc_hook_show_verification_ui = true
+  # And for passkey and passwordless WebAuthn registration, which always sign
+  # the user in and would otherwise skip verification entirely.
+  selfservice_flows_registration_after_passkey_hook_show_verification_ui  = true
+  selfservice_flows_registration_after_webauthn_hook_show_verification_ui = true
   # After a profile settings update, redirect users to the verification UI.
   # This only controls the redirect. To gate the address change itself on
   # verification, see selfservice_flows_settings_after_profile_hook_verify_new_address
@@ -348,10 +352,15 @@ resource "ory_project_config" "email_verification_hooks" {
   # a verified address. feature_flags_legacy_require_verified_login_error only
   # changes how the failure is reported, it does not enable the check.
   #
-  # The Ory Console toggle writes the password flow only. Set the OIDC flow too
-  # to cover social logins.
+  # The Ory Console toggle writes the password flow only. Set the OIDC, passkey
+  # and WebAuthn flows too to cover every login path.
   selfservice_flows_login_after_password_hook_require_verified_address = true
   selfservice_flows_login_after_oidc_hook_require_verified_address     = true
+  selfservice_flows_login_after_passkey_hook_require_verified_address  = true
+  selfservice_flows_login_after_webauthn_hook_require_verified_address = true
+  # Ory runs the check for the password method only while this legacy flag is
+  # true, so keep it at its default of false.
+  feature_flags_legacy_require_verified_login_error = false
 
   # "Verify new addresses": require verification of an address the user just
   # added or changed in profile settings.

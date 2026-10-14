@@ -362,6 +362,10 @@ resource "ory_project_config" "show_verification_ui" {
   selfservice_flows_registration_after_password_hook_show_verification_ui = true
   # Same for social (OIDC) registration.
   selfservice_flows_registration_after_oidc_hook_show_verification_ui = true
+  # And for passkey and passwordless WebAuthn registration, which always sign
+  # the user in and would otherwise skip verification entirely.
+  selfservice_flows_registration_after_passkey_hook_show_verification_ui  = true
+  selfservice_flows_registration_after_webauthn_hook_show_verification_ui = true
   # After a profile settings update, redirect users to the verification UI.
   # This only controls the redirect. To gate the address change itself on
   # verification, see selfservice_flows_settings_after_profile_hook_verify_new_address
@@ -379,10 +383,15 @@ resource "ory_project_config" "email_verification_hooks" {
   # a verified address. feature_flags_legacy_require_verified_login_error only
   # changes how the failure is reported, it does not enable the check.
   #
-  # The Ory Console toggle writes the password flow only. Set the OIDC flow too
-  # to cover social logins.
+  # The Ory Console toggle writes the password flow only. Set the OIDC, passkey
+  # and WebAuthn flows too to cover every login path.
   selfservice_flows_login_after_password_hook_require_verified_address = true
   selfservice_flows_login_after_oidc_hook_require_verified_address     = true
+  selfservice_flows_login_after_passkey_hook_require_verified_address  = true
+  selfservice_flows_login_after_webauthn_hook_require_verified_address = true
+  # Ory runs the check for the password method only while this legacy flag is
+  # true, so keep it at its default of false.
+  feature_flags_legacy_require_verified_login_error = false
 
   # "Verify new addresses": require verification of an address the user just
   # added or changed in profile settings.
@@ -542,13 +551,15 @@ resource "ory_project_config" "main" {
 
 ## Verification After Registration / Settings
 
-Three boolean attributes toggle the [`show_verification_ui`](https://www.ory.com/docs/kratos/self-service/flows/user-registration) post-flow hook for each authentication method:
+Five boolean attributes toggle the [`show_verification_ui`](https://www.ory.com/docs/kratos/self-service/flows/user-registration) post-flow hook for each authentication method:
 
 - `selfservice_flows_registration_after_password_hook_show_verification_ui`
 - `selfservice_flows_registration_after_oidc_hook_show_verification_ui`
+- `selfservice_flows_registration_after_passkey_hook_show_verification_ui`
+- `selfservice_flows_registration_after_webauthn_hook_show_verification_ui`
 - `selfservice_flows_settings_after_profile_hook_show_verification_ui`
 
-When `true`, the provider adds the `show_verification_ui` hook to the corresponding flow; when `false`, it removes only that hook. Other hooks at the same path (for example `session` or `organization`) are preserved by reading the current hook list before each apply.
+When `true`, the provider adds the `show_verification_ui` hook to the corresponding flow; when `false`, it removes only that hook. Other hooks at the same path (for example `session` or `organization`) are preserved by reading the current hook list before each apply. Ory Network always signs users in after a passkey or WebAuthn registration and reports a `session` hook on those two flows, which the provider keeps.
 
 ## Email Verification Hooks
 
@@ -558,10 +569,12 @@ The three toggles on the Ory Console **Email verification** page are also post-f
 |---|---|---|
 | Require verified address for login | `selfservice_flows_login_after_password_hook_require_verified_address` | Password login |
 | (not in the Console) | `selfservice_flows_login_after_oidc_hook_require_verified_address` | Social login |
+| (not in the Console) | `selfservice_flows_login_after_passkey_hook_require_verified_address` | Passkey login |
+| (not in the Console) | `selfservice_flows_login_after_webauthn_hook_require_verified_address` | WebAuthn login |
 | Verify new addresses | `selfservice_flows_settings_after_profile_hook_verify_new_address` | Profile settings |
 | Notify previous addresses | `selfservice_flows_settings_after_profile_hook_notify_previous_addresses` | Profile settings |
 
-The Ory Console toggle writes the password login flow only. The Ory config schema also supports the hook on the social login flow, so the provider exposes it there too. Set both to require a verified address on every login path.
+The Ory Console toggle writes the password login flow only. The Ory config schema also supports the hook on the social, passkey and WebAuthn login flows, so the provider exposes it there too. Set all four to require a verified address on every login path. A user who registers with a passkey or a passwordless WebAuthn credential gets a session without verifying an address, so the password toggle alone leaves those logins open.
 
 ```hcl
 resource "ory_project_config" "main" {
@@ -570,6 +583,10 @@ resource "ory_project_config" "main" {
   # Block sign-in until the identity has a verified address.
   selfservice_flows_login_after_password_hook_require_verified_address = true
   selfservice_flows_login_after_oidc_hook_require_verified_address     = true
+  selfservice_flows_login_after_passkey_hook_require_verified_address  = true
+  selfservice_flows_login_after_webauthn_hook_require_verified_address = true
+  # Ory runs the check for the password method only while this flag is true.
+  feature_flags_legacy_require_verified_login_error = false
 
   # Require verification of an address the user just added or changed.
   selfservice_flows_settings_after_profile_hook_verify_new_address = true
@@ -590,7 +607,7 @@ Leave the attribute out and the provider writes no scope at all, so Ory applies 
 
 -> **`verify_new_address` is not `show_verification_ui`.** `selfservice_flows_settings_after_profile_hook_verify_new_address` gates the address change on verification. `selfservice_flows_settings_after_profile_hook_show_verification_ui` only controls the redirect to the verification UI after the flow. Set both if you want the address gated *and* the user sent to the verification screen.
 
--> **`feature_flags_legacy_require_verified_login_error` is not an enable switch.** It controls how a failed verified-address check is reported, a form error instead of a `continue_with` step. It has no effect unless `selfservice_flows_login_after_password_hook_require_verified_address` is `true`.
+-> **`feature_flags_legacy_require_verified_login_error` is not an enable switch.** It controls how a failed verified-address check is reported, a form error instead of a `continue_with` step. It has no effect unless a `require_verified_address` toggle is `true`. While the flag is `true`, Ory runs the check for password logins only and skips it for social, passkey and WebAuthn logins, so keep it at `false`, its default, when you enable the hook on those flows.
 
 The Ory Console additionally turns on `selfservice_flows_registration_after_password_hook_show_verification_ui` when you enable "Require verified address for login" on a project that signs users in after registration. The provider does not infer that for you. Set the attribute yourself if you want that behavior.
 
@@ -840,10 +857,12 @@ terraform plan  # verify no changes
 - `selfservice_flows_login_after_oidc_default_browser_return_url` (String) Return URL after login via OIDC.
 - `selfservice_flows_login_after_oidc_hook_require_verified_address` (Boolean) Enable the `require_verified_address` hook after an OIDC (social) login, blocking sign-in until the identity has a verified address. The Ory Console "Require verified address for login" toggle only writes the password flow, so set this attribute as well to cover social logins. Existing hooks at this path (e.g., `organization`) are preserved.
 - `selfservice_flows_login_after_passkey_default_browser_return_url` (String) Return URL after login via passkey.
+- `selfservice_flows_login_after_passkey_hook_require_verified_address` (Boolean) Enable the `require_verified_address` hook after a passkey login, blocking sign-in until the identity has a verified address. The Ory Console "Require verified address for login" toggle only writes the password flow, so set this attribute as well to cover passkey logins. Keep `feature_flags_legacy_require_verified_login_error` at false, its default: while it is true, Ory runs the check for the password method only. Existing hooks at this path, such as `organization`, are preserved.
 - `selfservice_flows_login_after_password_default_browser_return_url` (String) Return URL after login via password.
 - `selfservice_flows_login_after_password_hook_require_verified_address` (Boolean) Enable the `require_verified_address` hook after a password login, blocking sign-in until the identity has a verified address. Mirrors the Ory Console "Require verified address for login" toggle. Use `feature_flags_legacy_require_verified_login_error` to control how the failure is reported, not whether the check runs. Existing hooks at this path (e.g., `organization`) are preserved.
 - `selfservice_flows_login_after_totp_default_browser_return_url` (String) Return URL after login via TOTP.
 - `selfservice_flows_login_after_webauthn_default_browser_return_url` (String) Return URL after login via WebAuthn.
+- `selfservice_flows_login_after_webauthn_hook_require_verified_address` (Boolean) Enable the `require_verified_address` hook after a WebAuthn login, blocking sign-in until the identity has a verified address. The Ory Console "Require verified address for login" toggle only writes the password flow, so set this attribute as well to cover passwordless WebAuthn logins. Keep `feature_flags_legacy_require_verified_login_error` at false, its default: while it is true, Ory runs the check for the password method only. Existing hooks at this path, such as `organization`, are preserved.
 - `selfservice_flows_login_lifespan` (String) Lifespan of the login flow (e.g. '1h').
 - `selfservice_flows_login_style` (String) Login flow style: 'unified' (default) shows all auth methods on one screen, 'identifier_first' collects the identifier before showing auth methods.
 - `selfservice_flows_login_ui_url` (String) URL for the login UI.
@@ -859,10 +878,12 @@ terraform plan  # verify no changes
 - `selfservice_flows_registration_after_oidc_default_browser_return_url` (String) Return URL after registration via OIDC.
 - `selfservice_flows_registration_after_oidc_hook_show_verification_ui` (Boolean) Enable the `show_verification_ui` hook after a successful OIDC (social) registration. When true, users are redirected to the verification UI after registering via a social provider. Existing hooks at this path (e.g., `session`, `organization`) are preserved.
 - `selfservice_flows_registration_after_passkey_default_browser_return_url` (String) Return URL after registration via passkey.
+- `selfservice_flows_registration_after_passkey_hook_show_verification_ui` (Boolean) Enable the `show_verification_ui` hook after a successful passkey registration. When true, users are redirected to the verification UI after registering with a passkey. Ory always signs users in after a passkey registration, so the `session` hook at this path is preserved.
 - `selfservice_flows_registration_after_password_default_browser_return_url` (String) Return URL after registration via password.
 - `selfservice_flows_registration_after_password_hook_session` (Boolean) Enable the `session` hook after a successful password registration, automatically signing the user in. Mirrors the Ory Console "Enable sign in after registration" toggle. Existing hooks at this path (e.g., `organization`) are preserved.
 - `selfservice_flows_registration_after_password_hook_show_verification_ui` (Boolean) Enable the `show_verification_ui` hook after a successful password registration. When true, users are redirected to the verification UI after registering with email + password. Existing hooks at this path (e.g., `session`, `organization`) are preserved.
 - `selfservice_flows_registration_after_webauthn_default_browser_return_url` (String) Return URL after registration via WebAuthn.
+- `selfservice_flows_registration_after_webauthn_hook_show_verification_ui` (Boolean) Enable the `show_verification_ui` hook after a successful WebAuthn registration. When true, users are redirected to the verification UI after registering with a passwordless WebAuthn credential. Mirrors the Ory Console "Show verification screen after WebAuthN registration" toggle. Existing hooks at this path, such as `session`, are preserved.
 - `selfservice_flows_registration_enable_legacy_one_step` (Boolean) Revert to legacy one-step registration instead of the two-step flow.
 - `selfservice_flows_registration_enabled` (Boolean) Enable user registration.
 - `selfservice_flows_registration_lifespan` (String) Lifespan of the registration flow (e.g. '1h').
