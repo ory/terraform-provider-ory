@@ -1271,5 +1271,13 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 				),
 			},
 		},
+		"selfservice_methods_code_config_alphabet": schema.StringAttribute{
+			Description: "Characters that one-time codes sent by the code method are made of.",
+			Optional:    true,
+		},
+		"selfservice_methods_code_config_length": schema.Int64Attribute{
+			Description: "Number of characters in one-time codes sent by the code method.",
+			Optional:    true,
+		},
 	}
 }

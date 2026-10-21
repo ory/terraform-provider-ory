@@ -482,6 +482,10 @@ type ProjectConfigResourceModel struct {
 	SelfserviceMethodsPasskeyConfigAuthenticatorSelectionUserVerification types.String `tfsdk:"selfservice_methods_passkey_config_authenticator_selection_user_verification"`
 	SelfserviceMethodsPasskeyConfigTimeoutsLogin                          types.String `tfsdk:"selfservice_methods_passkey_config_timeouts_login"`
 	SelfserviceMethodsPasskeyConfigTimeoutsRegistration                   types.String `tfsdk:"selfservice_methods_passkey_config_timeouts_registration"`
+
+	// Auto-discovered (review naming before release)
+	SelfserviceMethodsCodeConfigAlphabet types.String `tfsdk:"selfservice_methods_code_config_alphabet"`
+	SelfserviceMethodsCodeConfigLength   types.Int64  `tfsdk:"selfservice_methods_code_config_length"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---

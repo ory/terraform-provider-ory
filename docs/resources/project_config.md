@@ -917,6 +917,8 @@ terraform plan  # verify no changes
 - `selfservice_methods_captcha_config_cf_turnstile_sitekey` (String) Cloudflare Turnstile site key for managed CAPTCHA.
 - `selfservice_methods_captcha_config_legacy_inject_node` (Boolean) Inject CAPTCHA as a legacy UI node.
 - `selfservice_methods_captcha_enabled` (Boolean) Enable CAPTCHA protection for self-service flows.
+- `selfservice_methods_code_config_alphabet` (String) Characters that one-time codes sent by the code method are made of.
+- `selfservice_methods_code_config_length` (Number) Number of characters in one-time codes sent by the code method.
 - `selfservice_methods_code_config_lifespan` (String) Lifespan of the code method's one-time codes (e.g., '15m0s'). Controls how long a code remains valid after being issued.
 - `selfservice_methods_code_config_max_submissions` (Number) Maximum number of code submission attempts before invalidation.
 - `selfservice_methods_code_config_missing_credential_fallback_enabled` (Boolean) Enable missing credential fallback for the code method. When enabled, allows the code method to be used as a fallback when the primary credential is missing.

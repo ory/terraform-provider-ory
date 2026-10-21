@@ -573,6 +573,7 @@ func identityStringReadEntries(state *ProjectConfigResourceModel) []StringReadEn
 		{&state.SelfserviceMethodsPasskeyConfigAuthenticatorSelectionUserVerification, nil, []string{"selfservice", "methods", "passkey", "config", "authenticator_selection", "user_verification"}, false, false, false},
 		{&state.SelfserviceMethodsPasskeyConfigTimeoutsLogin, nil, []string{"selfservice", "methods", "passkey", "config", "timeouts", "login"}, false, false, false},
 		{&state.SelfserviceMethodsPasskeyConfigTimeoutsRegistration, nil, []string{"selfservice", "methods", "passkey", "config", "timeouts", "registration"}, false, false, false},
+		{&state.SelfserviceMethodsCodeConfigAlphabet, nil, []string{"selfservice", "methods", "code", "config", "alphabet"}, false, false, false},
 	}
 }
 
@@ -636,6 +637,7 @@ func identityInt64ReadEntries(state *ProjectConfigResourceModel) []Int64ReadEntr
 		{&state.SelfserviceMethodsPasswordConfigMaxBreaches, &state.PasswordMaxBreaches, []string{"selfservice", "methods", "password", "config", "max_breaches"}, false},
 		{&state.SelfserviceMethodsCodeConfigMaxSubmissions, nil, []string{"selfservice", "methods", "code", "config", "max_submissions"}, false},
 		{&state.SelfserviceMethodsDeviceauthnConfigPinMaxAttempts, nil, []string{"selfservice", "methods", "deviceauthn", "config", "pin_max_attempts"}, false},
+		{&state.SelfserviceMethodsCodeConfigLength, nil, []string{"selfservice", "methods", "code", "config", "length"}, false},
 	}
 }
 
