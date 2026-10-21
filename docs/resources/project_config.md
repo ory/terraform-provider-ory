@@ -100,8 +100,10 @@ resource "ory_project_config" "secure" {
   selfservice_methods_passkey_config_timeouts_registration                     = "5m"        # Go duration
 
   # Code Method Configuration
-  selfservice_methods_code_config_lifespan                            = "15m0s" # How long a code remains valid
-  selfservice_methods_code_config_missing_credential_fallback_enabled = true    # Use code as fallback when primary credential is missing
+  selfservice_methods_code_config_lifespan                            = "15m0s"  # How long a code remains valid
+  selfservice_methods_code_config_missing_credential_fallback_enabled = true     # Use code as fallback when primary credential is missing
+  selfservice_methods_code_config_length                              = 8        # Characters per code, 6 to 20 (default 6)
+  selfservice_methods_code_config_alphabet                            = "digits" # digits (default) or alphanumeric
 
   # Flow Controls
   selfservice_flows_registration_enabled = true
@@ -917,8 +919,8 @@ terraform plan  # verify no changes
 - `selfservice_methods_captcha_config_cf_turnstile_sitekey` (String) Cloudflare Turnstile site key for managed CAPTCHA.
 - `selfservice_methods_captcha_config_legacy_inject_node` (Boolean) Inject CAPTCHA as a legacy UI node.
 - `selfservice_methods_captcha_enabled` (Boolean) Enable CAPTCHA protection for self-service flows.
-- `selfservice_methods_code_config_alphabet` (String) Characters that one-time codes sent by the code method are made of.
-- `selfservice_methods_code_config_length` (Number) Number of characters in one-time codes sent by the code method.
+- `selfservice_methods_code_config_alphabet` (String) Characters that one-time codes sent by the code method are made of. 'digits' (the default) uses 0-9. 'alphanumeric' uses lowercase letters and digits without visually ambiguous characters, and accepts codes in any letter case.
+- `selfservice_methods_code_config_length` (Number) Number of characters in one-time codes sent by the code method, from 6 to 20. When unset, codes have 6 characters. The API rejects values outside this range with an HTTP 400.
 - `selfservice_methods_code_config_lifespan` (String) Lifespan of the code method's one-time codes (e.g., '15m0s'). Controls how long a code remains valid after being issued.
 - `selfservice_methods_code_config_max_submissions` (Number) Maximum number of code submission attempts before invalidation.
 - `selfservice_methods_code_config_missing_credential_fallback_enabled` (Boolean) Enable missing credential fallback for the code method. When enabled, allows the code method to be used as a fallback when the primary credential is missing.

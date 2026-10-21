@@ -1272,11 +1272,14 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			},
 		},
 		"selfservice_methods_code_config_alphabet": schema.StringAttribute{
-			Description: "Characters that one-time codes sent by the code method are made of.",
+			Description: "Characters that one-time codes sent by the code method are made of. 'digits' (the default) uses 0-9. 'alphanumeric' uses lowercase letters and digits without visually ambiguous characters, and accepts codes in any letter case.",
 			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.OneOf("digits", "alphanumeric"),
+			},
 		},
 		"selfservice_methods_code_config_length": schema.Int64Attribute{
-			Description: "Number of characters in one-time codes sent by the code method.",
+			Description: "Number of characters in one-time codes sent by the code method, from 6 to 20. When unset, codes have 6 characters. The API rejects values outside this range with an HTTP 400.",
 			Optional:    true,
 		},
 	}

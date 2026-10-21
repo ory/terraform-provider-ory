@@ -370,8 +370,12 @@ func TestAccProjectConfigResource_codeMFA(t *testing.T) {
 	// selfservice.methods.code.config.max_submissions. The PlanOnly steps are
 	// what prove it, since a discarded value would refresh to null and show a
 	// diff forever.
-	createData := map[string]string{"CodeMFAEnabled": "true", "MaxSubmissions": "5"}
-	updateData := map[string]string{"CodeMFAEnabled": "false", "MaxSubmissions": "3"}
+	//
+	// The code length and alphabet are created with non-default values and
+	// updated to the Kratos defaults, 6 and "digits". Destroy leaves the config
+	// in place, so this keeps the default code format on the shared project.
+	createData := map[string]string{"CodeMFAEnabled": "true", "MaxSubmissions": "5", "CodeLength": "12", "CodeAlphabet": "alphanumeric"}
+	updateData := map[string]string{"CodeMFAEnabled": "false", "MaxSubmissions": "3", "CodeLength": "6", "CodeAlphabet": "digits"}
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
@@ -385,6 +389,8 @@ func TestAccProjectConfigResource_codeMFA(t *testing.T) {
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_enabled", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_mfa_enabled", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_config_max_submissions", "5"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_config_length", "12"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_config_alphabet", "alphanumeric"),
 				),
 			},
 			// Verify no perpetual diff on create
@@ -403,9 +409,20 @@ func TestAccProjectConfigResource_codeMFA(t *testing.T) {
 				ImportStateVerifyIgnore: []string{
 					"selfservice_methods_code_enabled", "selfservice_methods_code_mfa_enabled",
 					"selfservice_methods_code_config_max_submissions",
+					"selfservice_methods_code_config_length", "selfservice_methods_code_config_alphabet",
 					"cors_enabled", "selfservice_methods_password_config_min_password_length",
 					"smtp_connection_uri",
 				},
+			},
+			// The selected-field import must recover the values the API
+			// stores, including the code length and alphabet.
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: selectedImportID("selfservice_methods_code_enabled,selfservice_methods_code_mfa_enabled," +
+					"selfservice_methods_code_config_max_submissions,selfservice_methods_code_config_length,selfservice_methods_code_config_alphabet"),
+				ImportStateVerifyIgnore: []string{"cors_enabled", "selfservice_methods_password_config_min_password_length", "smtp_connection_uri"},
 			},
 			// Update to disabled
 			{
@@ -414,6 +431,8 @@ func TestAccProjectConfigResource_codeMFA(t *testing.T) {
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_enabled", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_mfa_enabled", "false"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_config_max_submissions", "3"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_config_length", "6"),
+					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_code_config_alphabet", "digits"),
 				),
 			},
 			// Verify no perpetual diff
