@@ -175,6 +175,7 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.SelfserviceMethodsPasskeyConfigAuthenticatorSelectionUserVerification, nil, "/services/identity/config/selfservice/methods/passkey/config/authenticator_selection/user_verification"},
 		{&plan.SelfserviceMethodsPasskeyConfigTimeoutsLogin, nil, "/services/identity/config/selfservice/methods/passkey/config/timeouts/login"},
 		{&plan.SelfserviceMethodsPasskeyConfigTimeoutsRegistration, nil, "/services/identity/config/selfservice/methods/passkey/config/timeouts/registration"},
+		{&plan.SelfserviceMethodsCodeConfigAlphabet, nil, "/services/identity/config/selfservice/methods/code/config/alphabet"},
 	}
 }
 
@@ -269,6 +270,7 @@ func simpleInt64PatchEntries(plan *ProjectConfigResourceModel) []Int64PatchEntry
 		{&plan.SelfserviceMethodsCodeConfigMaxSubmissions, nil, "/services/identity/config/selfservice/methods/code/max_submissions"},
 		{&plan.OAuth2GrantRefreshTokenRotationGraceReuseCount, nil, "/services/oauth2/config/oauth2/grant/refresh_token/rotation_grace_reuse_count"},
 		{&plan.SelfserviceMethodsDeviceauthnConfigPinMaxAttempts, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/pin_max_attempts"},
+		{&plan.SelfserviceMethodsCodeConfigLength, nil, "/services/identity/config/selfservice/methods/code/config/length"},
 	}
 }
 

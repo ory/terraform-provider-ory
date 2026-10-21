@@ -69,8 +69,10 @@ resource "ory_project_config" "secure" {
   selfservice_methods_passkey_config_timeouts_registration                     = "5m"        # Go duration
 
   # Code Method Configuration
-  selfservice_methods_code_config_lifespan                            = "15m0s" # How long a code remains valid
-  selfservice_methods_code_config_missing_credential_fallback_enabled = true    # Use code as fallback when primary credential is missing
+  selfservice_methods_code_config_lifespan                            = "15m0s"  # How long a code remains valid
+  selfservice_methods_code_config_missing_credential_fallback_enabled = true     # Use code as fallback when primary credential is missing
+  selfservice_methods_code_config_length                              = 8        # Characters per code, 6 to 20 (default 6)
+  selfservice_methods_code_config_alphabet                            = "digits" # digits (default) or alphanumeric
 
   # Flow Controls
   selfservice_flows_registration_enabled = true
