@@ -11,11 +11,14 @@
   "semanticCommitScope": "deps",
   "packageRules": [
     {
-      "description": "Group all Go module updates",
+      "description": "Group all Go module updates and run go mod tidy, so go.sum drops the old checksums that the Format check rejects",
       "matchManagers": [
         "gomod"
       ],
-      "groupName": "go modules"
+      "groupName": "go modules",
+      "postUpdateOptions": [
+        "gomodTidy"
+      ]
     },
     {
       "description": "Group all GitHub Actions updates",
