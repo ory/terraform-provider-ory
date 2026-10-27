@@ -1282,5 +1282,10 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Number of characters in one-time codes sent by the code method, from 6 to 20. When unset, codes have 6 characters. The API rejects values outside this range with an HTTP 400.",
 			Optional:    true,
 		},
+		"oidc_dynamic_client_registration_default_audience": schema.ListAttribute{
+			Description: "The audience allow list assigned during OpenID Connect Dynamic Client Registration when audience is omitted or null",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
 	}
 }

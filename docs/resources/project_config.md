@@ -835,6 +835,7 @@ terraform plan  # verify no changes
 - `oauth2_webfinger_oidc_discovery_supported_scope` (List of String) Supported scopes advertised in OIDC discovery.
 - `oauth2_webfinger_oidc_discovery_token_url` (String) Override the OAuth2 token URL in OIDC discovery.
 - `oauth2_webfinger_oidc_discovery_userinfo_url` (String) Override the userinfo endpoint URL in OIDC discovery.
+- `oidc_dynamic_client_registration_default_audience` (List of String) The audience allow list assigned during OpenID Connect Dynamic Client Registration when audience is omitted or null
 - `oidc_dynamic_client_registration_default_scope` (List of String) Default OAuth2 scopes granted to dynamically registered clients.
 - `oidc_dynamic_client_registration_enabled` (Boolean) Enable OpenID Connect dynamic client registration.
 - `oidc_subject_identifiers_pairwise_salt` (String, Sensitive) Salt for the OIDC pairwise subject identifier algorithm. Write-only: the Ory API treats the salt as a secret and redacts it from project revision responses, so the provider sends it on create and update but never reads it back, and out-of-band changes are not detected. Changing the salt changes every pairwise subject identifier the project has issued. An empty value keeps the stored salt.
