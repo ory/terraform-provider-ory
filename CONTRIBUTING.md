@@ -100,14 +100,16 @@ Some tests require specific Ory plan features. Enable them with environment vari
 | `ORY_SOCIAL_PROVIDER_TESTS_ENABLED=true` | Run social provider tests |
 | `ORY_SCHEMA_TESTS_ENABLED=true` | Run identity schema tests |
 | `ORY_PROJECT_TESTS_ENABLED=true` | Run project creation/deletion tests |
-| `ORY_EVENT_STREAM_TESTS_ENABLED=true` | Run event stream tests (requires Enterprise plan + AWS setup below) |
+| `ORY_EVENT_STREAM_TESTS_ENABLED=true` | Run event stream tests (requires Enterprise plan; the SNS test also needs the AWS setup below) |
 | `ORY_AUTO_LINK_TESTS_ENABLED=true` | Run OIDC auto-link policy tests (requires the enterprise `use_auto_link` entitlement, enabled per project by Ory support) |
 
 > **Note:** CI enables **all** feature flags, including `ORY_PROJECT_TESTS_ENABLED`, on pull requests. Locally, `make test-acc-all` enables all flags **except** `ORY_PROJECT_TESTS_ENABLED` by default (project creation/deletion tests are excluded because they are slow and potentially destructive). To run those locally, set `ORY_PROJECT_TESTS_ENABLED=true` explicitly.
 
 #### Event Stream Tests
 
-Event stream tests have additional requirements beyond a feature flag because they interact with real AWS infrastructure:
+The HTTPS event stream tests need only the feature flag. They create paused streams, and Ory does not test a paused stream against its endpoint, so the tests need no reachable endpoint.
+
+The SNS event stream test has additional requirements beyond a feature flag because it interacts with real AWS infrastructure:
 
 1. **AWS SNS topic** — a real SNS topic to receive events
 2. **AWS IAM role** — with `sns:Publish` permission on the topic and a trust policy allowing Ory's AWS account to assume it

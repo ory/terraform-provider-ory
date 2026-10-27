@@ -121,8 +121,8 @@ import block, note it, and hand-write that resource later.
   it is a configurable `enabled`/`disabled` switch that defaults to
   `enabled`, so dropping it re-enables a disabled client on the first apply.
 - **Re-supply secrets.** The API never returns SMTP connection URIs, social
-  provider client secrets, SCIM client secrets, or OAuth2 client secrets
-  (values come back masked or absent). Wire them to `variable` blocks marked `sensitive`, or use the
+  provider client secrets, SCIM client secrets, event stream HTTPS secrets, or
+  OAuth2 client secrets (values come back masked or absent). Wire them to `variable` blocks marked `sensitive`, or use the
   write-only variants (`client_secret_wo`, `smtp_connection_uri_wo`, ...) with
   `*_wo_version` to keep them out of state entirely.
   `courier_http_request_config_auth_basic_auth_password`,
@@ -263,10 +263,16 @@ explicit `{project_id}/...` form in generated files.
   `GET /identity-schemas` endpoint see workspace-scoped schemas the revision
   omits.
 - **Secrets never round-trip.** SMTP connection URI, pairwise subject
-  identifier salt, social/SAML client secrets, SCIM client secrets, OAuth2
-  client secrets, tokenizer template keys:
+  identifier salt, social/SAML client secrets, SCIM client secrets, event
+  stream HTTPS secrets, OAuth2 client secrets, tokenizer template keys:
   re-supply via variables or write-only `*_wo` arguments. Until you do, some of
   these show a perpetual diff or import as empty.
+- **An HTTPS `ory_event_stream` generates with `https_endpoint = null`.** The
+  endpoint is sensitive because it can carry Basic credentials, and config
+  generation writes every sensitive value as null. The plan then fails
+  validation until `https_endpoint` is set. Fill in the real endpoint. When
+  `https_auth_type` is `api_key` or `bearer`, also fill in `https_auth_secret`.
+  The first apply sends both, in place.
 - **`ory_scim_client` imports with an empty secret and a stored mapper URL.**
   The API redacts `authorization_header_secret` in every response, and it
   rewrites `mapper_url` into a content-addressed object-storage URL. Set both

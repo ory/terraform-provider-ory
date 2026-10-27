@@ -9,7 +9,7 @@ description: |-
 
 Manages an Ory Network event stream.
 
-Event streams allow you to publish Ory events (such as identity creation, session creation, etc.) to external messaging systems like AWS SNS. See [Live Event Streams](https://www.ory.com/docs/actions/live-events) for full setup instructions.
+Event streams publish Ory events, such as identity creation and session creation, to an AWS SNS topic or to an HTTPS endpoint. See [Live Event Streams](https://www.ory.com/docs/actions/live-events) for full setup instructions.
 
 -> **Plan:** Requires an Ory Network **Enterprise plan**.
 
@@ -45,6 +45,27 @@ To stream events to AWS SNS, you need:
 
 See the [Ory documentation](https://www.ory.com/docs/actions/live-events#stream-to-aws-sns) for complete setup instructions.
 
+## HTTPS Endpoint Setup
+
+To stream events to an HTTPS endpoint, set `type = "https"` and `https_endpoint`. The endpoint must:
+
+1. Use HTTPS. Ory does not send events to unencrypted HTTP endpoints.
+2. Accept a `POST` request with a JSON body, and answer with a 2xx status after it processes the event. Ory does not follow redirects.
+
+Ory recommends HTTP/2 for the endpoint, so that Ory can send several events over one connection. See the [Ory documentation](https://www.ory.com/docs/actions/live-events#stream-to-https-endpoint) for the event format.
+
+When Terraform creates or updates an active stream, Ory sends a test event to the endpoint. If the endpoint does not answer with a 2xx status, the apply fails. To create the stream before the endpoint is ready, set `status = "paused"`.
+
+Deliveries can authenticate in three ways:
+
+| Method | Configuration |
+|---|---|
+| Basic | Put the credentials in the userinfo of `https_endpoint`, for example `https://user:secret@events.example.com/ory`. |
+| API key | Set `https_auth_type = "api_key"`, `https_auth_header_name`, and `https_auth_secret`. |
+| Bearer token | Set `https_auth_type = "bearer"` and `https_auth_secret`. Ory sends `Authorization: Bearer <secret>`. |
+
+Credentials in the endpoint URL cannot be combined with a bearer token, or with an API key in the `Authorization` header, because both set the `Authorization` header. With Terraform 1.11 and later, use `https_auth_secret_wo` to keep the secret out of the Terraform state.
+
 ## Example Usage
 
 {{ tffile "examples/resources/ory_event_stream/resource.tf" }}
@@ -62,5 +83,7 @@ Or with an explicit project ID:
 ```shell
 terraform import ory_event_stream.example <project-id>/<event-stream-id>
 ```
+
+-> **Note:** The API never returns `https_auth_secret`, and it returns the userinfo and the query values of `https_endpoint` as `xxxxx`. After an import, set both values in the configuration. The first apply then sends them to Ory.
 
 {{ .SchemaMarkdown | trimspace }}
