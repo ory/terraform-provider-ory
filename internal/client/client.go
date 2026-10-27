@@ -2433,8 +2433,10 @@ func isPrivateAddr(addr netip.Addr) bool {
 // The Ory SDK does not generate API methods for custom domains,
 // so we use raw HTTP calls against the console API.
 
-// consoleHTTPDo executes a raw HTTP request against the console API.
-func (c *OryClient) consoleHTTPDo(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
+// consoleHTTPDo executes a raw HTTP request against the console API. It
+// escapes every path segment, so an ID cannot add path segments or step up
+// to another endpoint.
+func (c *OryClient) consoleHTTPDo(ctx context.Context, method string, body io.Reader, segments ...string) (*http.Response, error) {
 	if c.config.WorkspaceAPIKey == "" || c.config.ConsoleAPIURL == "" {
 		return nil, fmt.Errorf("workspace_api_key and console_api_url must be configured for custom domain operations")
 	}
@@ -2442,7 +2444,15 @@ func (c *OryClient) consoleHTTPDo(ctx context.Context, method, path string, body
 	if err != nil {
 		return nil, fmt.Errorf("invalid console_api_url %q: %w", c.config.ConsoleAPIURL, err)
 	}
-	requestURL := baseURL.JoinPath(path)
+	requestURL := baseURL
+	for _, segment := range segments {
+		// JoinPath drops empty segments and resolves "." and "..", even
+		// after escaping, so these would reach a different endpoint.
+		if segment == "" || segment == "." || segment == ".." {
+			return nil, fmt.Errorf("invalid console API path segment %q", segment)
+		}
+		requestURL = requestURL.JoinPath(url.PathEscape(segment))
+	}
 	req, err := http.NewRequestWithContext(ctx, method, requestURL.String(), body)
 	if err != nil {
 		return nil, err
@@ -2465,7 +2475,7 @@ func (c *OryClient) ListCustomDomains(ctx context.Context, projectID string) ([]
 	if err := c.checkProjectAllowed(projectID); err != nil {
 		return nil, err
 	}
-	httpResp, err := c.consoleHTTPDo(ctx, http.MethodGet, "/projects/"+projectID+"/cname", nil)
+	httpResp, err := c.consoleHTTPDo(ctx, http.MethodGet, nil, "projects", projectID, "cname")
 	if err != nil {
 		return nil, wrapAPIError(err, "listing custom domains")
 	}
@@ -2510,7 +2520,7 @@ func (c *OryClient) CreateCustomDomain(ctx context.Context, projectID string, bo
 		return nil, fmt.Errorf("creating custom domain: marshaling body: %w", err)
 	}
 
-	httpResp, err := c.consoleHTTPDo(ctx, http.MethodPost, "/projects/"+projectID+"/cname", bytes.NewReader(bodyBytes))
+	httpResp, err := c.consoleHTTPDo(ctx, http.MethodPost, bytes.NewReader(bodyBytes), "projects", projectID, "cname")
 	if err != nil {
 		return nil, wrapAPIError(err, "creating custom domain")
 	}
@@ -2541,7 +2551,7 @@ func (c *OryClient) UpdateCustomDomain(ctx context.Context, projectID, domainID 
 		return nil, fmt.Errorf("updating custom domain: marshaling body: %w", err)
 	}
 
-	httpResp, err := c.consoleHTTPDo(ctx, http.MethodPut, "/projects/"+projectID+"/cname/"+domainID, bytes.NewReader(bodyBytes))
+	httpResp, err := c.consoleHTTPDo(ctx, http.MethodPut, bytes.NewReader(bodyBytes), "projects", projectID, "cname", domainID)
 	if err != nil {
 		return nil, wrapAPIError(err, "updating custom domain")
 	}
@@ -2567,7 +2577,7 @@ func (c *OryClient) DeleteCustomDomain(ctx context.Context, projectID, domainID 
 	if err := c.checkProjectAllowed(projectID); err != nil {
 		return err
 	}
-	httpResp, err := c.consoleHTTPDo(ctx, http.MethodDelete, "/projects/"+projectID+"/cname/"+domainID, nil)
+	httpResp, err := c.consoleHTTPDo(ctx, http.MethodDelete, nil, "projects", projectID, "cname", domainID)
 	if err != nil {
 		return wrapAPIError(err, "deleting custom domain")
 	}

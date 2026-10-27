@@ -1217,3 +1217,36 @@ func TestPatchProjectRevisionWith_FallsBackToReadWithoutResponseRevision(t *test
 	assert.Equal(t, 2, gets, "the revision must be re-read when the PATCH response has none")
 	assert.Equal(t, "rev-2", revision["id"])
 }
+
+// TestCustomDomains_EscapePathSegments covers the raw console requests for
+// custom domains: an ID must stay one path segment, and an ID that the URL
+// join would drop or resolve must fail before any request is sent.
+func TestCustomDomains_EscapePathSegments(t *testing.T) {
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.EscapedPath())
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	client, err := NewOryClient(OryClientConfig{
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   srv.URL,
+	})
+	require.NoError(t, err)
+
+	_, err = client.ListCustomDomains(context.Background(), "proj-1")
+	require.NoError(t, err)
+	_, err = client.ListCustomDomains(context.Background(), "proj-1/../../workspaces/ws-1")
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"/projects/proj-1/cname",
+		"/projects/proj-1%2F..%2F..%2Fworkspaces%2Fws-1/cname",
+	}, paths)
+
+	for _, id := range []string{"", ".", ".."} {
+		require.Error(t, client.DeleteCustomDomain(context.Background(), "proj-1", id), "domain ID %q", id)
+	}
+	assert.Len(t, paths, 2, "an invalid segment must not reach the server")
+}
