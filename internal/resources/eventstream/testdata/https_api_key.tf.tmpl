@@ -1,0 +1,8 @@
+resource "ory_event_stream" "test" {
+  type                   = "https"
+  https_endpoint         = "[[ .Endpoint ]]"
+  https_auth_type        = "api_key"
+  https_auth_header_name = "X-Api-Key"
+  https_auth_secret      = "[[ .Secret ]]"
+  status                 = "paused"
+}
