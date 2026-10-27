@@ -1737,6 +1737,69 @@ func TestAccProjectConfigResource_oauth2Advanced(t *testing.T) {
 	})
 }
 
+// TestAccProjectConfigResource_dynamicClientRegistrationDefaultAudience
+// covers the default audience list added in spec v1.22.87: create, update,
+// and a selected-field import. Dynamic registration itself stays disabled, so
+// the shared project does not open its registration endpoint. The last step
+// writes an empty list, which the API prunes, so the shared project ends
+// without a default audience.
+func TestAccProjectConfigResource_dynamicClientRegistrationDefaultAudience(t *testing.T) {
+	const attr = "oidc_dynamic_client_registration_default_audience"
+	config := func(audience string) string {
+		return acctest.LoadTestConfig(t, "testdata/dynamic_client_registration.tf.tmpl", map[string]string{"DefaultAudience": audience})
+	}
+	one := `["https://api.example.com"]`
+	two := `["https://api.example.com", "https://billing.example.com"]`
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: config(one),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", attr+".#", "1"),
+					resource.TestCheckResourceAttr("ory_project_config.test", attr+".0", "https://api.example.com"),
+				),
+			},
+			{
+				Config:             config(one),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config: config(two),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", attr+".#", "2"),
+					resource.TestCheckResourceAttr("ory_project_config.test", attr+".1", "https://billing.example.com"),
+				),
+			},
+			{
+				Config:             config(two),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			// The selected-field import must recover the stored list.
+			{
+				ResourceName:            "ory_project_config.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateIdFunc:       selectedImportID(attr),
+				ImportStateVerifyIgnore: []string{"cors_enabled", "selfservice_methods_password_config_min_password_length", "smtp_connection_uri"},
+			},
+			{
+				Config: config("[]"),
+				Check:  resource.TestCheckResourceAttr("ory_project_config.test", attr+".#", "0"),
+			},
+			{
+				Config:             config("[]"),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_emptyValuesAndEnumFlags(t *testing.T) {
 	// Issue #321: the API accepts empty lists/maps/strings and integer zero
 	// with HTTP 200 and prunes them from the stored config, so the keys never

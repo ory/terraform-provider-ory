@@ -414,6 +414,16 @@ resource "ory_project_config" "email_verification_hooks" {
 resource "ory_project_config" "sign_in_after_registration" {
   selfservice_flows_registration_after_password_hook_session = true
 }
+
+# OpenID Connect Dynamic Client Registration lets OAuth2 clients register
+# themselves at /oauth2/register. A client registered without an audience gets
+# the default audience. An explicit audience, including an empty list, takes
+# precedence.
+resource "ory_project_config" "dynamic_client_registration" {
+  oidc_dynamic_client_registration_enabled          = true
+  oidc_dynamic_client_registration_default_scope    = ["openid", "offline_access"]
+  oidc_dynamic_client_registration_default_audience = ["https://api.example.com"]
+}
 ```
 
 ## OPL Namespace Configuration
@@ -835,6 +845,7 @@ terraform plan  # verify no changes
 - `oauth2_webfinger_oidc_discovery_supported_scope` (List of String) Supported scopes advertised in OIDC discovery.
 - `oauth2_webfinger_oidc_discovery_token_url` (String) Override the OAuth2 token URL in OIDC discovery.
 - `oauth2_webfinger_oidc_discovery_userinfo_url` (String) Override the userinfo endpoint URL in OIDC discovery.
+- `oidc_dynamic_client_registration_default_audience` (List of String) Audience allow list assigned to dynamically registered clients whose registration request omits the audience or sets it to null. An explicit audience, including an empty list, takes precedence. The default applies only at registration, so changing it does not update existing clients.
 - `oidc_dynamic_client_registration_default_scope` (List of String) Default OAuth2 scopes granted to dynamically registered clients.
 - `oidc_dynamic_client_registration_enabled` (Boolean) Enable OpenID Connect dynamic client registration.
 - `oidc_subject_identifiers_pairwise_salt` (String, Sensitive) Salt for the OIDC pairwise subject identifier algorithm. Write-only: the Ory API treats the salt as a secret and redacts it from project revision responses, so the provider sends it on create and update but never reads it back, and out-of-band changes are not detected. Changing the salt changes every pairwise subject identifier the project has issued. An empty value keeps the stored salt.

@@ -486,6 +486,9 @@ type ProjectConfigResourceModel struct {
 	// Added from spec v1.22.84
 	SelfserviceMethodsCodeConfigAlphabet types.String `tfsdk:"selfservice_methods_code_config_alphabet"`
 	SelfserviceMethodsCodeConfigLength   types.Int64  `tfsdk:"selfservice_methods_code_config_length"`
+
+	// Added from spec v1.22.87
+	OIDCDynamicClientRegistrationDefaultAudience types.List `tfsdk:"oidc_dynamic_client_registration_default_audience"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---

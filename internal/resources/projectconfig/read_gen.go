@@ -733,6 +733,7 @@ func oauth2ListStringReadEntries(state *ProjectConfigResourceModel) []ListString
 		{&state.OAuth2WebfingerOIDCDiscoverySupportedClaims, nil, []string{"webfinger", "oidc_discovery", "supported_claims"}, false},
 		{&state.OAuth2WebfingerOIDCDiscoverySupportedScope, nil, []string{"webfinger", "oidc_discovery", "supported_scope"}, false},
 		{&state.OAuth2AllowedTopLevelClaims, nil, []string{"oauth2", "allowed_top_level_claims"}, false},
+		{&state.OIDCDynamicClientRegistrationDefaultAudience, nil, []string{"oidc", "dynamic_client_registration", "default_audience"}, false},
 	}
 }
 

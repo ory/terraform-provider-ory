@@ -298,6 +298,7 @@ func simpleListStringPatchEntries(plan *ProjectConfigResourceModel) []ListString
 		{&plan.SelfserviceMethodsDeviceauthnConfigAndroidAppIds, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/android_app_ids"},
 		{&plan.SelfserviceMethodsDeviceauthnConfigIosAppIds, nil, "/services/identity/config/selfservice/methods/deviceauthn/config/ios_app_ids"},
 		{&plan.SecurityRestrictedOrigins, nil, "/services/identity/config/security/restricted_origins"},
+		{&plan.OIDCDynamicClientRegistrationDefaultAudience, nil, "/services/oauth2/config/oidc/dynamic_client_registration/default_audience"},
 	}
 }
 

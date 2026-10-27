@@ -383,3 +383,13 @@ resource "ory_project_config" "email_verification_hooks" {
 resource "ory_project_config" "sign_in_after_registration" {
   selfservice_flows_registration_after_password_hook_session = true
 }
+
+# OpenID Connect Dynamic Client Registration lets OAuth2 clients register
+# themselves at /oauth2/register. A client registered without an audience gets
+# the default audience. An explicit audience, including an empty list, takes
+# precedence.
+resource "ory_project_config" "dynamic_client_registration" {
+  oidc_dynamic_client_registration_enabled          = true
+  oidc_dynamic_client_registration_default_scope    = ["openid", "offline_access"]
+  oidc_dynamic_client_registration_default_audience = ["https://api.example.com"]
+}
