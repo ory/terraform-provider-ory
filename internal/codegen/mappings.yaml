@@ -1726,10 +1726,10 @@ attributes:
     openapi_property: kratos_selfservice_methods_code_config_length
     description: "Number of characters in one-time codes sent by the code method, from 6 to 20. When unset, codes have 6 characters. The API rejects values outside this range with an HTTP 400."
 
-  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  # --- Added from spec v1.22.87 (ory/sdk spec/client), 2026-10-27 ---
   - name: oidc_dynamic_client_registration_default_audience
     go_field: OIDCDynamicClientRegistrationDefaultAudience
     type: list_string
     openapi_property: hydra_oidc_dynamic_client_registration_default_audience
-    description: "The audience allow list assigned during OpenID Connect Dynamic Client Registration when audience is omitted or null"
+    description: "Audience allow list assigned to dynamically registered clients whose registration request omits the audience or sets it to null. An explicit audience, including an empty list, takes precedence. The default applies only at registration, so changing it does not update existing clients."
 

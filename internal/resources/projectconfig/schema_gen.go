@@ -1283,7 +1283,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 		},
 		"oidc_dynamic_client_registration_default_audience": schema.ListAttribute{
-			Description: "The audience allow list assigned during OpenID Connect Dynamic Client Registration when audience is omitted or null",
+			Description: "Audience allow list assigned to dynamically registered clients whose registration request omits the audience or sets it to null. An explicit audience, including an empty list, takes precedence. The default applies only at registration, so changing it does not update existing clients.",
 			Optional:    true,
 			ElementType: types.StringType,
 		},
