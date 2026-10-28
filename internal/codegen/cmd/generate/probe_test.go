@@ -113,7 +113,7 @@ func TestClassifyEmptyProbe(t *testing.T) {
 func TestProbeValues(t *testing.T) {
 	t.Run("one_of validator uses an allowed value", func(t *testing.T) {
 		nonEmpty, empty := probeValues(Attribute{
-			Name: "login_style", Type: typeString,
+			Name: "selfservice_flows_login_style", Type: typeString,
 			Validators: &Validator{OneOf: []string{"unified", "identifier_first"}},
 		})
 		if nonEmpty != "unified" {

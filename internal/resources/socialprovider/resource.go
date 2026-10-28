@@ -83,7 +83,6 @@ type SocialProviderResourceModel struct {
 	Label                      types.String `tfsdk:"label"`
 	OrganizationID             types.String `tfsdk:"organization_id"`
 	AccountLinkingMode         types.String `tfsdk:"account_linking_mode"`
-	BaseRedirectURI            types.String `tfsdk:"base_redirect_uri"`
 	AdditionalIDTokenAudiences types.List   `tfsdk:"additional_id_token_audiences"`
 	Aal2AcrValues              types.List   `tfsdk:"aal2_acr_values"`
 	Aal2AmrValues              types.List   `tfsdk:"aal2_amr_values"`
@@ -236,7 +235,7 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				},
 			},
 			"auto_link": schema.BoolAttribute{
-				Description: "Enable automatic account linking for this provider. When true, if an identity with the same identifier (e.g., email) already exists, the social sign-in will automatically link to that identity instead of failing. Requires enable_oidc_auto_link_policy to be true in the project config (ory_project_config). This attribute is write-only — the API accepts it on create/update but does not return it on read, so Terraform preserves the value from state. On import, the value will not be populated. Removing this attribute from your configuration will automatically disable auto-linking server-side.",
+				Description: "Enable automatic account linking for this provider. When true, if an identity with the same identifier (e.g., email) already exists, the social sign-in will automatically link to that identity instead of failing. Requires selfservice_methods_oidc_enable_auto_link_policy to be true in the project config (ory_project_config). This attribute is write-only — the API accepts it on create/update but does not return it on read, so Terraform preserves the value from state. On import, the value will not be populated. Removing this attribute from your configuration will automatically disable auto-linking server-side.",
 				Optional:    true,
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
@@ -256,13 +255,6 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				Validators: []validator.String{
 					stringvalidator.OneOf("automatic", "confirm_with_existing_credential"),
 				},
-			},
-			"base_redirect_uri": schema.StringAttribute{
-				Description: "Override the base redirect URI for OIDC callbacks (e.g., \"https://iam.example.com\"). When set, Ory constructs callback URLs using this base instead of the default project domain. This is a global OIDC config setting — if multiple social providers set different values, the last applied value wins.",
-				Optional:    true,
-				DeprecationMessage: "Use ory_project_config.selfservice_methods_oidc_config_base_redirect_uri instead. " +
-					"This attribute sets a global OIDC config value, not a per-provider setting, " +
-					"and is better managed at the project level.",
 			},
 			"additional_id_token_audiences": schema.ListAttribute{
 				Description: "Additional audiences allowed in the ID Token. Only relevant in OIDC flows that submit an ID Token directly instead of using the callback from the OIDC provider (e.g., native mobile apps signing in with Google or Apple where the app and the OIDC client are registered with different audiences).",
@@ -407,9 +399,6 @@ func (r *SocialProviderResource) ValidateConfig(ctx context.Context, req resourc
 	}
 	if !config.ApplePrivateKey.IsNull() && config.ApplePrivateKey.ValueString() == "" {
 		resp.Diagnostics.AddAttributeError(path.Root("apple_private_key"), "Invalid Attribute Value", "apple_private_key must not be an empty string.")
-	}
-	if !config.BaseRedirectURI.IsNull() && !config.BaseRedirectURI.IsUnknown() && config.BaseRedirectURI.ValueString() == "" {
-		resp.Diagnostics.AddAttributeError(path.Root("base_redirect_uri"), "Invalid Attribute Value", "base_redirect_uri must not be an empty string.")
 	}
 	if !config.FedcmConfigURL.IsNull() && !config.FedcmConfigURL.IsUnknown() && config.FedcmConfigURL.ValueString() == "" {
 		resp.Diagnostics.AddAttributeError(path.Root("fedcm_config_url"), "Invalid Attribute Value", "fedcm_config_url must not be an empty string.")
@@ -794,20 +783,10 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 			Path:  fmt.Sprintf("/services/identity/config/selfservice/methods/oidc/config/providers/%d", existingIndex),
 			Value: providerConfig,
 		})
-		if !plan.BaseRedirectURI.IsNull() && !plan.BaseRedirectURI.IsUnknown() && plan.BaseRedirectURI.ValueString() != "" {
-			patches = append(patches, ory.JsonPatch{
-				Op:    "add",
-				Path:  "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
-				Value: plan.BaseRedirectURI.ValueString(),
-			})
-		}
 	} else if oidcConfig == nil {
 		// No OIDC config exists yet — initialize the entire OIDC config structure
 		newConfig := map[string]interface{}{
 			"providers": []interface{}{providerConfig},
-		}
-		if !plan.BaseRedirectURI.IsNull() && !plan.BaseRedirectURI.IsUnknown() && plan.BaseRedirectURI.ValueString() != "" {
-			newConfig["base_redirect_uri"] = plan.BaseRedirectURI.ValueString()
 		}
 		patches = append(patches, ory.JsonPatch{
 			Op:   "add",
@@ -841,13 +820,6 @@ func (r *SocialProviderResource) Create(ctx context.Context, req resource.Create
 				Op:    "add",
 				Path:  "/services/identity/config/selfservice/methods/oidc/config/providers/-",
 				Value: providerConfig,
-			})
-		}
-		if !plan.BaseRedirectURI.IsNull() && !plan.BaseRedirectURI.IsUnknown() && plan.BaseRedirectURI.ValueString() != "" {
-			patches = append(patches, ory.JsonPatch{
-				Op:    "add",
-				Path:  "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
-				Value: plan.BaseRedirectURI.ValueString(),
 			})
 		}
 	}
@@ -904,10 +876,8 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 
 	var providers []map[string]interface{}
 	var index = -1
-	var lastProject *ory.Project // retained so base_redirect_uri can reuse it
 
 	if cached := r.client.GetCachedProject(projectID); cached != nil {
-		lastProject = cached
 		providers = extractProvidersFromProject(cached)
 		index = r.findProviderIndex(providers, providerID)
 	}
@@ -920,7 +890,6 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 					fmt.Sprintf("Failed to get providers for project %s: %v", projectID, err))
 				return
 			}
-			lastProject = project
 			providers = extractProvidersFromProject(project)
 
 			index = r.findProviderIndex(providers, providerID)
@@ -1089,22 +1058,6 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 	}
 	// Don't read back apple_private_key for security - it's sensitive
 
-	// Read base_redirect_uri — a global OIDC config field, not per-provider.
-	// Only track it when the user has configured it in state, to avoid cross-resource
-	// conflicts from this global setting being managed by multiple providers.
-	// Reuse lastProject (already fetched above) to avoid an extra API call.
-	if !state.BaseRedirectURI.IsNull() && !state.BaseRedirectURI.IsUnknown() {
-		if oidcConfig := extractOIDCConfigFromProject(lastProject); oidcConfig != nil {
-			if uri, ok := oidcConfig["base_redirect_uri"].(string); ok && uri != "" {
-				state.BaseRedirectURI = types.StringValue(uri)
-			} else {
-				state.BaseRedirectURI = types.StringNull()
-			}
-		} else {
-			state.BaseRedirectURI = types.StringNull()
-		}
-	}
-
 	// Always ensure ID and ProjectID are set in state
 	state.ID = types.StringValue(providerID)
 	state.ProjectID = types.StringValue(projectID)
@@ -1162,39 +1115,6 @@ func (r *SocialProviderResource) Update(ctx context.Context, req resource.Update
 		Path:  fmt.Sprintf("/services/identity/config/selfservice/methods/oidc/config/providers/%d", index),
 		Value: providerConfig,
 	}}
-
-	// Handle base_redirect_uri changes.
-	// Skip patching when the planned value is unknown — Terraform hasn't resolved it yet
-	// and acting on it could send a spurious remove op.
-	if !plan.BaseRedirectURI.IsUnknown() {
-		planURI := plan.BaseRedirectURI.ValueString()
-		stateURI := ""
-		if !state.BaseRedirectURI.IsUnknown() && !state.BaseRedirectURI.IsNull() {
-			stateURI = state.BaseRedirectURI.ValueString()
-		}
-		if !plan.BaseRedirectURI.IsNull() && planURI != "" {
-			// Only patch when value actually changed to avoid unnecessary global config churn.
-			if planURI != stateURI {
-				patches = append(patches, ory.JsonPatch{
-					Op:    "add",
-					Path:  "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
-					Value: planURI,
-				})
-			}
-		} else if !state.BaseRedirectURI.IsNull() && stateURI != "" {
-			// User removed base_redirect_uri from config — remove it from the API
-			// too, but only when the key is actually there. A JSON Patch "remove"
-			// on an absent path is rejected with HTTP 400, and the key can already
-			// be gone: cleared out of band, cleared by ory_project_config, or
-			// dropped when another provider was deleted.
-			if _, ok := oidcConfig["base_redirect_uri"]; ok {
-				patches = append(patches, ory.JsonPatch{
-					Op:   "remove",
-					Path: "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
-				})
-			}
-		}
-	}
 
 	_, err = r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
@@ -1259,16 +1179,6 @@ func (r *SocialProviderResource) Delete(ctx context.Context, req resource.Delete
 				Value: []interface{}{},
 			},
 		)
-		// This resource owned the global base_redirect_uri (deprecated
-		// attribute) — clean it up like the previous whole-node reset did.
-		if !state.BaseRedirectURI.IsNull() && state.BaseRedirectURI.ValueString() != "" {
-			if _, ok := oidcConfig["base_redirect_uri"]; ok {
-				patches = append(patches, ory.JsonPatch{
-					Op:   "remove",
-					Path: "/services/identity/config/selfservice/methods/oidc/config/base_redirect_uri",
-				})
-			}
-		}
 	} else {
 		// Remove the specific provider by index
 		patches = append(patches, ory.JsonPatch{

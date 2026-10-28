@@ -63,91 +63,24 @@ type ProjectConfigResourceModel struct {
 	SessionCookiePersistent       types.Bool   `tfsdk:"session_cookie_persistent"`
 
 	// OAuth2/Hydra
-	OAuth2AccessTokenLifespan             types.String `tfsdk:"oauth2_access_token_lifespan"`
-	OAuth2RefreshTokenLifespan            types.String `tfsdk:"oauth2_refresh_token_lifespan"`
-	OAuth2AuthCodeLifespan                types.String `tfsdk:"oauth2_auth_code_lifespan"`
-	OAuth2IDTokenLifespan                 types.String `tfsdk:"oauth2_id_token_lifespan"`
-	OAuth2LoginConsentRequestLifespan     types.String `tfsdk:"oauth2_login_consent_request_lifespan"`
-	OAuth2AllowedTopLevelClaims           types.List   `tfsdk:"oauth2_allowed_top_level_claims"`
-	OAuth2MirrorTopLevelClaims            types.Bool   `tfsdk:"oauth2_mirror_top_level_claims"`
-	OAuth2PKCEEnforced                    types.Bool   `tfsdk:"oauth2_pkce_enforced"`
-	OAuth2PKCEEnforcedForPublicClients    types.Bool   `tfsdk:"oauth2_pkce_enforced_for_public_clients"`
-	OAuth2AccessTokenStrategy             types.String `tfsdk:"oauth2_access_token_strategy"`
-	OAuth2JWTScopeClaim                   types.String `tfsdk:"oauth2_jwt_scope_claim"`
-	OAuth2ScopeStrategy                   types.String `tfsdk:"oauth2_scope_strategy"`
-	OAuth2ConsentURL                      types.String `tfsdk:"oauth2_consent_url"`
-	OAuth2LoginURL                        types.String `tfsdk:"oauth2_login_url"`
-	OAuth2LogoutURL                       types.String `tfsdk:"oauth2_logout_url"`
-	OAuth2ErrorURL                        types.String `tfsdk:"oauth2_error_url"`
-	OAuth2IssuerURL                       types.String `tfsdk:"oauth2_issuer_url"`
-	OAuth2CookiesSameSiteMode             types.String `tfsdk:"oauth2_cookies_same_site_mode"`
-	OAuth2CookiesSameSiteLegacyWorkaround types.Bool   `tfsdk:"oauth2_cookies_same_site_legacy_workaround"`
+	OAuth2AllowedTopLevelClaims        types.List `tfsdk:"oauth2_allowed_top_level_claims"`
+	OAuth2MirrorTopLevelClaims         types.Bool `tfsdk:"oauth2_mirror_top_level_claims"`
+	OAuth2PKCEEnforced                 types.Bool `tfsdk:"oauth2_pkce_enforced"`
+	OAuth2PKCEEnforcedForPublicClients types.Bool `tfsdk:"oauth2_pkce_enforced_for_public_clients"`
 
 	// URLs
 	DefaultReturnURL  types.String `tfsdk:"default_return_url"`
 	AllowedReturnURLs types.List   `tfsdk:"allowed_return_urls"`
-	LoginUIURL        types.String `tfsdk:"login_ui_url"`
-	RegistrationUIURL types.String `tfsdk:"registration_ui_url"`
-	RecoveryUIURL     types.String `tfsdk:"recovery_ui_url"`
-	VerificationUIURL types.String `tfsdk:"verification_ui_url"`
-	SettingsUIURL     types.String `tfsdk:"settings_ui_url"`
-	ErrorUIURL        types.String `tfsdk:"error_ui_url"`
-
-	// Auth methods
-	EnablePassword           types.Bool `tfsdk:"enable_password"`
-	EnableCode               types.Bool `tfsdk:"enable_code"`
-	CodeMFAEnabled           types.Bool `tfsdk:"code_mfa_enabled"`
-	EnableOIDC               types.Bool `tfsdk:"enable_oidc"`
-	EnableOIDCAutoLinkPolicy types.Bool `tfsdk:"enable_oidc_auto_link_policy"`
-	EnableTOTP               types.Bool `tfsdk:"enable_totp"`
-	EnableWebAuthn           types.Bool `tfsdk:"enable_webauthn"`
-	EnablePasskey            types.Bool `tfsdk:"enable_passkey"`
-	EnableLookupSecret       types.Bool `tfsdk:"enable_lookup_secret"`
-
-	// Password policy
-	PasswordMinLength            types.Int64 `tfsdk:"password_min_length"`
-	PasswordCheckHaveIBeenPwned  types.Bool  `tfsdk:"password_check_haveibeenpwned"`
-	PasswordMaxBreaches          types.Int64 `tfsdk:"password_max_breaches"`
-	PasswordIdentifierSimilarity types.Bool  `tfsdk:"password_identifier_similarity"`
-
-	// Profile method
-	EnableProfile types.Bool `tfsdk:"enable_profile"`
-
-	// Code method config
-	CodeLifespan                         types.String `tfsdk:"code_lifespan"`
-	CodeMissingCredentialFallbackEnabled types.Bool   `tfsdk:"code_missing_credential_fallback_enabled"`
-
-	// Flow settings
-	EnableRecovery     types.Bool   `tfsdk:"enable_recovery"`
-	EnableVerification types.Bool   `tfsdk:"enable_verification"`
-	EnableRegistration types.Bool   `tfsdk:"enable_registration"`
-	LoginStyle         types.String `tfsdk:"login_style"`
-
-	// Settings flow
-	SettingsLifespan                types.String `tfsdk:"settings_lifespan"`
-	SettingsPrivilegedSessionMaxAge types.String `tfsdk:"settings_privileged_session_max_age"`
-
-	// Verification flow
-	VerificationUse                     types.String `tfsdk:"verification_use"`
-	VerificationLifespan                types.String `tfsdk:"verification_lifespan"`
-	VerificationNotifyUnknownRecipients types.Bool   `tfsdk:"verification_notify_unknown_recipients"`
 
 	// SMTP Configuration
 	SMTPConnectionURI          types.String `tfsdk:"smtp_connection_uri"`
 	SMTPConnectionURIWO        types.String `tfsdk:"smtp_connection_uri_wo"`
 	SMTPConnectionURIWOVersion types.String `tfsdk:"smtp_connection_uri_wo_version"`
-	SMTPFromAddress            types.String `tfsdk:"smtp_from_address"`
-	SMTPFromName               types.String `tfsdk:"smtp_from_name"`
 	SMTPHeaders                types.Map    `tfsdk:"smtp_headers"`
 
 	// MFA Policy
 	MFAEnforcement           types.String `tfsdk:"mfa_enforcement"`
-	TOTPIssuer               types.String `tfsdk:"totp_issuer"`
-	WebAuthnRPDisplayName    types.String `tfsdk:"webauthn_rp_display_name"`
-	WebAuthnRPID             types.String `tfsdk:"webauthn_rp_id"`
 	WebAuthnRPOrigins        types.List   `tfsdk:"webauthn_rp_origins"`
-	WebAuthnPasswordless     types.Bool   `tfsdk:"webauthn_passwordless"`
-	RequiredAAL              types.String `tfsdk:"required_aal"`
 	SessionWhoamiRequiredAAL types.String `tfsdk:"session_whoami_required_aal"`
 
 	// Account Experience (Branding)
@@ -324,9 +257,6 @@ type ProjectConfigResourceModel struct {
 
 	// Feature flags
 	FeatureFlagsPasswordProfileRegistrationNodeGroup types.Bool `tfsdk:"feature_flags_password_profile_registration_node_group"`
-
-	// --- Spec-derived aliases for deprecated attribute names ---
-	// These are the preferred names. The old names above still work but show deprecation warnings.
 
 	// OAuth2 TTLs
 	OAuth2TTLAccessToken         types.String `tfsdk:"oauth2_ttl_access_token"`
@@ -582,10 +512,10 @@ password policies, session settings, CORS, and more.
 
 ` + "```hcl" + `
 resource "ory_project_config" "main" {
-  cors_enabled        = true
-  cors_origins        = ["https://app.example.com"]
-  password_min_length = 10
-  session_lifespan    = "720h"  # 30 days
+  cors_enabled                                            = true
+  cors_origins                                            = ["https://app.example.com"]
+  selfservice_methods_password_config_min_password_length = 10
+  session_lifespan                                        = "720h" # 30 days
 }
 ` + "```" + `
 
@@ -619,7 +549,7 @@ resource "ory_project_config" "main" {
 
 Only the listed fields enter state. Import uses reads only. An unset or unreadable selected value fails the whole import.
 
-Select readable, non-sensitive strings, booleans, integers, lists of strings, or maps of strings, including the hook toggles such as ` + "`" + `selfservice_flows_registration_after_password_hook_session` + "`" + `, which read as true when the hook is present and false when it is absent. Nested objects, secrets, allowed_return_urls, and the courier HTTP request body are not supported by this import form. The server appends its own entries to allowed_return_urls and the provider filters them against your configuration, so there is no live baseline to adopt. The courier body reader returns a storage URL without recovering the inline payload. For renamed fields, select either the current name or its deprecated alias, never both.
+Select readable, non-sensitive strings, booleans, integers, lists of strings, or maps of strings, including the hook toggles such as ` + "`" + `selfservice_flows_registration_after_password_hook_session` + "`" + `, which read as true when the hook is present and false when it is absent. Nested objects, secrets, allowed_return_urls, and the courier HTTP request body are not supported by this import form. The server appends its own entries to allowed_return_urls and the provider filters them against your configuration, so there is no live baseline to adopt. The courier body reader returns a storage URL without recovering the inline payload.
 
 Run a normal plan after import. It can still propose changes for configured fields omitted from the selection, provider defaults, or differences from the live values. Import does not improve the resource's existing drift coverage.
 
@@ -1090,9 +1020,6 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 	// --- Generated simple attribute patches ---
 	for _, e := range simpleStringPatchEntries(plan) {
 		field := e.Field
-		if (field.IsNull() || field.IsUnknown()) && e.Deprecated != nil {
-			field = e.Deprecated
-		}
 		if !field.IsNull() && !field.IsUnknown() {
 			patches = append(patches, ory.JsonPatch{
 				Op:    "replace",
@@ -1103,9 +1030,6 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 	}
 	for _, e := range simpleBoolPatchEntries(plan) {
 		field := e.Field
-		if (field.IsNull() || field.IsUnknown()) && e.Deprecated != nil {
-			field = e.Deprecated
-		}
 		if !field.IsNull() && !field.IsUnknown() {
 			var value interface{} = field.ValueBool()
 			if e.Enum != nil {
@@ -1126,9 +1050,6 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 	}
 	for _, e := range simpleInt64PatchEntries(plan) {
 		field := e.Field
-		if (field.IsNull() || field.IsUnknown()) && e.Deprecated != nil {
-			field = e.Deprecated
-		}
 		if !field.IsNull() && !field.IsUnknown() {
 			patches = append(patches, ory.JsonPatch{
 				Op:    "replace",
@@ -1139,9 +1060,6 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 	}
 	for _, e := range simpleListStringPatchEntries(plan) {
 		field := e.Field
-		if (field.IsNull() || field.IsUnknown()) && e.Deprecated != nil {
-			field = e.Deprecated
-		}
 		if !field.IsNull() && !field.IsUnknown() {
 			var vals []string
 			field.ElementsAs(ctx, &vals, false)
@@ -1154,9 +1072,6 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 	}
 	for _, e := range simpleMapStringPatchEntries(plan) {
 		field := e.Field
-		if (field.IsNull() || field.IsUnknown()) && e.Deprecated != nil {
-			field = e.Deprecated
-		}
 		if !field.IsNull() && !field.IsUnknown() {
 			var vals map[string]string
 			field.ElementsAs(ctx, &vals, false)

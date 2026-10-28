@@ -25,11 +25,6 @@
 #   2. Add the Go struct field to ProjectConfigResourceModel in resource.go
 #   3. Run: make generate
 #
-# For deprecated aliases (old terraform name -> new spec-derived name):
-#   Add deprecated_name and deprecated_go_field to the entry. Both names
-#   will work in terraform configs, but the old name shows a deprecation
-#   warning. See scripts/migrate-deprecated-attrs.sh for the migration tool.
-#
 # When the live API disagrees with the spec, two flags cover it. Verify with
 # curl first: PATCH the value, then GET the project and look for the key.
 #   preserve_on_missing: true
@@ -95,40 +90,30 @@ attributes:
     type: string
     openapi_property: hydra_ttl_access_token
     description: "OAuth2 access token lifespan (e.g., '1h', '30m'). Requires Hydra service."
-    deprecated_name: oauth2_access_token_lifespan
-    deprecated_go_field: OAuth2AccessTokenLifespan
 
   - name: oauth2_ttl_refresh_token
     go_field: OAuth2TTLRefreshToken
     type: string
     openapi_property: hydra_ttl_refresh_token
     description: "OAuth2 refresh token lifespan (e.g., '720h' for 30 days). Requires Hydra service."
-    deprecated_name: oauth2_refresh_token_lifespan
-    deprecated_go_field: OAuth2RefreshTokenLifespan
 
   - name: oauth2_ttl_auth_code
     go_field: OAuth2TTLAuthCode
     type: string
     openapi_property: hydra_ttl_auth_code
     description: "OAuth2 authorization code lifespan (e.g., '30m'). Requires Hydra service."
-    deprecated_name: oauth2_auth_code_lifespan
-    deprecated_go_field: OAuth2AuthCodeLifespan
 
   - name: oauth2_ttl_id_token
     go_field: OAuth2TTLIDToken
     type: string
     openapi_property: hydra_ttl_id_token
     description: "OAuth2 ID token lifespan (e.g., '1h'). Requires Hydra service."
-    deprecated_name: oauth2_id_token_lifespan
-    deprecated_go_field: OAuth2IDTokenLifespan
 
   - name: oauth2_ttl_login_consent_request
     go_field: OAuth2TTLLoginConsentRequest
     type: string
     openapi_property: hydra_ttl_login_consent_request
     description: "OAuth2 login/consent request lifespan (e.g., '30m'). Requires Hydra service."
-    deprecated_name: oauth2_login_consent_request_lifespan
-    deprecated_go_field: OAuth2LoginConsentRequestLifespan
 
   # ============================================================================
   # OAuth2/Hydra Boolean Settings
@@ -161,8 +146,6 @@ attributes:
       Enable the SameSite=None legacy workaround for OAuth2 cookies.
       When enabled, a fallback cookie without SameSite is set alongside the main cookie
       for clients that don't support SameSite=None.
-    deprecated_name: oauth2_cookies_same_site_legacy_workaround
-    deprecated_go_field: OAuth2CookiesSameSiteLegacyWorkaround
 
   # ============================================================================
   # OAuth2/Hydra Strategies and URLs
@@ -174,8 +157,6 @@ attributes:
     description: "OAuth2 access token strategy ('jwt' or 'opaque')."
     validators:
       one_of: ["jwt", "opaque"]
-    deprecated_name: oauth2_access_token_strategy
-    deprecated_go_field: OAuth2AccessTokenStrategy
 
   - name: oauth2_strategies_jwt_scope_claim
     go_field: OAuth2StrategiesJWTScopeClaim
@@ -184,8 +165,6 @@ attributes:
     description: "How scopes are represented in JWT access tokens ('list', 'string', or 'both')."
     validators:
       one_of: ["list", "string", "both"]
-    deprecated_name: oauth2_jwt_scope_claim
-    deprecated_go_field: OAuth2JWTScopeClaim
 
   - name: oauth2_strategies_scope
     go_field: OAuth2StrategiesScope
@@ -194,48 +173,36 @@ attributes:
     description: "OAuth2 scope matching strategy ('exact', 'wildcard')."
     validators:
       one_of: ["exact", "wildcard", "DEPRECATED_HIERARCHICAL_SCOPE_STRATEGY"]
-    deprecated_name: oauth2_scope_strategy
-    deprecated_go_field: OAuth2ScopeStrategy
 
   - name: oauth2_urls_consent
     go_field: OAuth2URLsConsent
     type: string
     openapi_property: hydra_urls_consent
     description: "OAuth2 consent endpoint URL."
-    deprecated_name: oauth2_consent_url
-    deprecated_go_field: OAuth2ConsentURL
 
   - name: oauth2_urls_login
     go_field: OAuth2URLsLogin
     type: string
     openapi_property: hydra_urls_login
     description: "OAuth2 login endpoint URL."
-    deprecated_name: oauth2_login_url
-    deprecated_go_field: OAuth2LoginURL
 
   - name: oauth2_urls_logout
     go_field: OAuth2URLsLogout
     type: string
     openapi_property: hydra_urls_logout
     description: "OAuth2 logout endpoint URL."
-    deprecated_name: oauth2_logout_url
-    deprecated_go_field: OAuth2LogoutURL
 
   - name: oauth2_urls_error
     go_field: OAuth2URLsError
     type: string
     openapi_property: hydra_urls_error
     description: "OAuth2 error endpoint URL."
-    deprecated_name: oauth2_error_url
-    deprecated_go_field: OAuth2ErrorURL
 
   - name: oauth2_urls_self_issuer
     go_field: OAuth2URLsSelfIssuer
     type: string
     openapi_property: hydra_urls_self_issuer
     description: "OAuth2 issuer URL. Overrides the default project URL used as the OAuth2/OIDC issuer."
-    deprecated_name: oauth2_issuer_url
-    deprecated_go_field: OAuth2IssuerURL
 
   - name: oauth2_serve_cookies_same_site_mode
     go_field: OAuth2ServeCookiesSameSiteMode
@@ -244,8 +211,6 @@ attributes:
     description: "SameSite attribute for OAuth2 cookies ('Lax', 'Strict', 'None')."
     validators:
       one_of: ["Lax", "Strict", "None"]
-    deprecated_name: oauth2_cookies_same_site_mode
-    deprecated_go_field: OAuth2CookiesSameSiteMode
 
   # ============================================================================
   # UI URLs (identity service)
@@ -255,48 +220,36 @@ attributes:
     type: string
     openapi_property: kratos_selfservice_flows_login_ui_url
     description: "URL for the login UI."
-    deprecated_name: login_ui_url
-    deprecated_go_field: LoginUIURL
 
   - name: selfservice_flows_registration_ui_url
     go_field: SelfserviceFlowsRegistrationUIURL
     type: string
     openapi_property: kratos_selfservice_flows_registration_ui_url
     description: "URL for the registration UI."
-    deprecated_name: registration_ui_url
-    deprecated_go_field: RegistrationUIURL
 
   - name: selfservice_flows_recovery_ui_url
     go_field: SelfserviceFlowsRecoveryUIURL
     type: string
     openapi_property: kratos_selfservice_flows_recovery_ui_url
     description: "URL for the password recovery UI."
-    deprecated_name: recovery_ui_url
-    deprecated_go_field: RecoveryUIURL
 
   - name: selfservice_flows_verification_ui_url
     go_field: SelfserviceFlowsVerificationUIURL
     type: string
     openapi_property: kratos_selfservice_flows_verification_ui_url
     description: "URL for the verification UI."
-    deprecated_name: verification_ui_url
-    deprecated_go_field: VerificationUIURL
 
   - name: selfservice_flows_settings_ui_url
     go_field: SelfserviceFlowsSettingsUIURL
     type: string
     openapi_property: kratos_selfservice_flows_settings_ui_url
     description: "URL for the account settings UI."
-    deprecated_name: settings_ui_url
-    deprecated_go_field: SettingsUIURL
 
   - name: selfservice_flows_error_ui_url
     go_field: SelfserviceFlowsErrorUIURL
     type: string
     openapi_property: kratos_selfservice_flows_error_ui_url
     description: "URL for the error UI."
-    deprecated_name: error_ui_url
-    deprecated_go_field: ErrorUIURL
 
   # ============================================================================
   # Authentication Methods (identity service)
@@ -306,16 +259,12 @@ attributes:
     type: bool
     openapi_property: kratos_selfservice_methods_password_enabled
     description: "Enable password authentication."
-    deprecated_name: enable_password
-    deprecated_go_field: EnablePassword
 
   - name: selfservice_methods_code_enabled
     go_field: SelfserviceMethodsCodeEnabled
     type: bool
     openapi_property: kratos_selfservice_methods_code_enabled
     description: "Enable code-based authentication."
-    deprecated_name: enable_code
-    deprecated_go_field: EnableCode
 
   - name: selfservice_methods_code_mfa_enabled
     go_field: SelfserviceMethodsCodeMFAEnabled
@@ -324,64 +273,48 @@ attributes:
     description: >-
       Enable the code method as a second factor for MFA.
       When enabled, users can use one-time codes as a second authentication factor.
-    deprecated_name: code_mfa_enabled
-    deprecated_go_field: CodeMFAEnabled
 
   - name: selfservice_methods_oidc_enabled
     go_field: SelfserviceMethodsOIDCEnabled
     type: bool
     openapi_property: kratos_selfservice_methods_oidc_enabled
     description: "Enable OIDC (OpenID Connect) social sign-in. Must be enabled for social providers (e.g. Google, GitHub) to work."
-    deprecated_name: enable_oidc
-    deprecated_go_field: EnableOIDC
 
   - name: selfservice_methods_oidc_enable_auto_link_policy
     go_field: SelfserviceMethodsOIDCEnableAutoLinkPolicy
     type: bool
     openapi_property: kratos_selfservice_methods_oidc_enable_auto_link_policy
     description: "Enable the OIDC auto-link policy. When true, social sign-in providers with auto_link enabled (on ory_social_provider) can automatically link to existing identities that share the same identifier (e.g., email). This is an enterprise-gated feature that Ory must enable for the project (the `use_auto_link` feature flag); without the entitlement, setting this to true is rejected by the API with an HTTP 403 (feature_not_available)."
-    deprecated_name: enable_oidc_auto_link_policy
-    deprecated_go_field: EnableOIDCAutoLinkPolicy
 
   - name: selfservice_methods_totp_enabled
     go_field: SelfserviceMethodsTOTPEnabled
     type: bool
     openapi_property: kratos_selfservice_methods_totp_enabled
     description: "Enable TOTP (Time-based One-Time Password)."
-    deprecated_name: enable_totp
-    deprecated_go_field: EnableTOTP
 
   - name: selfservice_methods_webauthn_enabled
     go_field: SelfserviceMethodsWebAuthnEnabled
     type: bool
     openapi_property: kratos_selfservice_methods_webauthn_enabled
     description: "Enable WebAuthn (hardware keys)."
-    deprecated_name: enable_webauthn
-    deprecated_go_field: EnableWebAuthn
 
   - name: selfservice_methods_passkey_enabled
     go_field: SelfserviceMethodsPasskeyEnabled
     type: bool
     openapi_property: kratos_selfservice_methods_passkey_enabled
     description: "Enable Passkey authentication."
-    deprecated_name: enable_passkey
-    deprecated_go_field: EnablePasskey
 
   - name: selfservice_methods_lookup_secret_enabled
     go_field: SelfserviceMethodsLookupSecretEnabled
     type: bool
     openapi_property: kratos_selfservice_methods_lookup_secret_enabled
     description: "Enable backup/recovery codes."
-    deprecated_name: enable_lookup_secret
-    deprecated_go_field: EnableLookupSecret
 
   - name: selfservice_methods_profile_enabled
     go_field: SelfserviceMethodsProfileEnabled
     type: bool
     openapi_property: kratos_selfservice_methods_profile_enabled
     description: "Enable the profile authentication method. When enabled, users can update their identity traits (e.g., name, address) via the settings flow."
-    deprecated_name: enable_profile
-    deprecated_go_field: EnableProfile
 
   # ============================================================================
   # Code Method Config (identity service)
@@ -391,16 +324,12 @@ attributes:
     type: string
     openapi_property: kratos_selfservice_methods_code_config_lifespan
     description: "Lifespan of the code method's one-time codes (e.g., '15m0s'). Controls how long a code remains valid after being issued."
-    deprecated_name: code_lifespan
-    deprecated_go_field: CodeLifespan
 
   - name: selfservice_methods_code_config_missing_credential_fallback_enabled
     go_field: SelfserviceMethodsCodeConfigMissingCredentialFallbackEnabled
     type: bool
     openapi_property: kratos_selfservice_methods_code_config_missing_credential_fallback_enabled
     description: "Enable missing credential fallback for the code method. When enabled, allows the code method to be used as a fallback when the primary credential is missing."
-    deprecated_name: code_missing_credential_fallback_enabled
-    deprecated_go_field: CodeMissingCredentialFallbackEnabled
 
   # ============================================================================
   # Password Policy (identity service)
@@ -410,34 +339,24 @@ attributes:
     type: int64
     openapi_property: kratos_selfservice_methods_password_config_min_password_length
     description: "Minimum password length."
-    computed: true
-    default_int64: 8
-    deprecated_name: password_min_length
-    deprecated_go_field: PasswordMinLength
 
   - name: selfservice_methods_password_config_haveibeenpwned_enabled
     go_field: SelfserviceMethodsPasswordConfigHaveIBeenPwnedEnabled
     type: bool
     openapi_property: kratos_selfservice_methods_password_config_haveibeenpwned_enabled
     description: "Check passwords against HaveIBeenPwned."
-    deprecated_name: password_check_haveibeenpwned
-    deprecated_go_field: PasswordCheckHaveIBeenPwned
 
   - name: selfservice_methods_password_config_max_breaches
     go_field: SelfserviceMethodsPasswordConfigMaxBreaches
     type: int64
     openapi_property: kratos_selfservice_methods_password_config_max_breaches
     description: "Maximum allowed breaches in HaveIBeenPwned."
-    deprecated_name: password_max_breaches
-    deprecated_go_field: PasswordMaxBreaches
 
   - name: selfservice_methods_password_config_identifier_similarity_check_enabled
     go_field: SelfserviceMethodsPasswordConfigIdentifierSimilarityCheckEnabled
     type: bool
     openapi_property: kratos_selfservice_methods_password_config_identifier_similarity_check_enabled
     description: "Check password similarity to identifier."
-    deprecated_name: password_identifier_similarity
-    deprecated_go_field: PasswordIdentifierSimilarity
 
   # ============================================================================
   # Flow Settings (identity service)
@@ -447,24 +366,18 @@ attributes:
     type: bool
     openapi_property: kratos_selfservice_flows_recovery_enabled
     description: "Enable password recovery flow."
-    deprecated_name: enable_recovery
-    deprecated_go_field: EnableRecovery
 
   - name: selfservice_flows_verification_enabled
     go_field: SelfserviceFlowsVerificationEnabled
     type: bool
     openapi_property: kratos_selfservice_flows_verification_enabled
     description: "Enable email verification flow."
-    deprecated_name: enable_verification
-    deprecated_go_field: EnableVerification
 
   - name: selfservice_flows_registration_enabled
     go_field: SelfserviceFlowsRegistrationEnabled
     type: bool
     openapi_property: kratos_selfservice_flows_registration_enabled
     description: "Enable user registration."
-    deprecated_name: enable_registration
-    deprecated_go_field: EnableRegistration
 
   - name: selfservice_flows_login_style
     go_field: SelfserviceFlowsLoginStyle
@@ -475,8 +388,6 @@ attributes:
       'identifier_first' collects the identifier before showing auth methods.
     validators:
       one_of: ["unified", "identifier_first"]
-    deprecated_name: login_style
-    deprecated_go_field: LoginStyle
 
   # ============================================================================
   # Settings Flow (identity service)
@@ -486,8 +397,6 @@ attributes:
     type: string
     openapi_property: kratos_selfservice_flows_settings_lifespan
     description: "Lifespan of the settings flow (e.g., '30m0s'). Controls how long a settings flow session remains valid."
-    deprecated_name: settings_lifespan
-    deprecated_go_field: SettingsLifespan
 
   - name: selfservice_flows_settings_privileged_session_max_age
     go_field: SelfserviceFlowsSettingsPrivilegedSessionMaxAge
@@ -496,8 +405,6 @@ attributes:
     description: >-
       Maximum age of a privileged session for the settings flow (e.g., '15m0s').
       After this duration, the user must re-authenticate to make privileged changes like password updates.
-    deprecated_name: settings_privileged_session_max_age
-    deprecated_go_field: SettingsPrivilegedSessionMaxAge
 
   - name: selfservice_flows_settings_required_aal
     go_field: SelfserviceFlowsSettingsRequiredAAL
@@ -506,8 +413,6 @@ attributes:
     description: "Required Authenticator Assurance Level for the settings flow: 'aal1' or 'highest_available'."
     validators:
       one_of: ["aal1", "highest_available"]
-    deprecated_name: required_aal
-    deprecated_go_field: RequiredAAL
 
   # ============================================================================
   # Verification Flow (identity service)
@@ -519,24 +424,18 @@ attributes:
     description: "Verification method to use: 'code' (one-time code) or 'link' (magic link)."
     validators:
       one_of: ["code", "link"]
-    deprecated_name: verification_use
-    deprecated_go_field: VerificationUse
 
   - name: selfservice_flows_verification_lifespan
     go_field: SelfserviceFlowsVerificationLifespan
     type: string
     openapi_property: kratos_selfservice_flows_verification_lifespan
     description: "Lifespan of the verification flow (e.g., '30m0s'). Controls how long a verification flow session remains valid."
-    deprecated_name: verification_lifespan
-    deprecated_go_field: VerificationLifespan
 
   - name: selfservice_flows_verification_notify_unknown_recipients
     go_field: SelfserviceFlowsVerificationNotifyUnknownRecipients
     type: bool
     openapi_property: kratos_selfservice_flows_verification_notify_unknown_recipients
     description: "When enabled, verification emails are sent even if the email address is not associated with any known identity."
-    deprecated_name: verification_notify_unknown_recipients
-    deprecated_go_field: VerificationNotifyUnknownRecipients
 
   # ============================================================================
   # SMTP Configuration (identity service)
@@ -549,16 +448,12 @@ attributes:
     validators:
       regex: '^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$'
       regex_message: "must be a valid email address"
-    deprecated_name: smtp_from_address
-    deprecated_go_field: SMTPFromAddress
 
   - name: courier_smtp_from_name
     go_field: CourierSMTPFromName
     type: string
     openapi_property: kratos_courier_smtp_from_name
     description: "Name to display as sender."
-    deprecated_name: smtp_from_name
-    deprecated_go_field: SMTPFromName
 
   # ============================================================================
   # MFA / WebAuthn / TOTP (identity service)
@@ -568,32 +463,24 @@ attributes:
     type: string
     openapi_property: kratos_selfservice_methods_totp_config_issuer
     description: "TOTP issuer name shown in authenticator apps. An empty string is replaced by the project name, which the next plan reports as a change; omit the attribute instead of setting it empty."
-    deprecated_name: totp_issuer
-    deprecated_go_field: TOTPIssuer
 
   - name: selfservice_methods_webauthn_config_rp_display_name
     go_field: SelfserviceMethodsWebAuthnConfigRPDisplayName
     type: string
     openapi_property: kratos_selfservice_methods_webauthn_config_rp_display_name
     description: "WebAuthn Relying Party display name."
-    deprecated_name: webauthn_rp_display_name
-    deprecated_go_field: WebAuthnRPDisplayName
 
   - name: selfservice_methods_webauthn_config_rp_id
     go_field: SelfserviceMethodsWebAuthnConfigRPID
     type: string
     openapi_property: kratos_selfservice_methods_webauthn_config_rp_id
     description: "WebAuthn Relying Party ID (typically your domain)."
-    deprecated_name: webauthn_rp_id
-    deprecated_go_field: WebAuthnRPID
 
   - name: selfservice_methods_webauthn_config_passwordless
     go_field: SelfserviceMethodsWebAuthnConfigPasswordless
     type: bool
     openapi_property: kratos_selfservice_methods_webauthn_config_passwordless
     description: "Enable passwordless WebAuthn authentication."
-    deprecated_name: webauthn_passwordless
-    deprecated_go_field: WebAuthnPasswordless
 
   # ============================================================================
   # Courier Delivery (identity service)

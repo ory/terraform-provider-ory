@@ -185,30 +185,22 @@ func TestImportProjectConfig_DefaultReturnURL(t *testing.T) {
 	assert.Equal(t, types.StringValue(""), state.DefaultReturnURL)
 }
 
-func TestImportProjectConfig_IntegerAndDeprecatedAlias(t *testing.T) {
-	for _, field := range []string{"selfservice_methods_password_config_min_password_length", "password_min_length"} {
-		for _, value := range []string{"12", "0"} {
-			t.Run(field+"="+value, func(t *testing.T) {
-				document := strings.Replace(importProjectDocument, `"password":{"enabled":true}`, `"password":{"enabled":true,"config":{"min_password_length":`+value+`}}`, 1)
-				srv := jsonServer(t, http.StatusOK, document)
-				resp := importConfig(t, projectConfigResourceForServer(t, srv.URL), "proj-1:"+field)
-				require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
-				var imported types.Int64
-				require.False(t, resp.State.GetAttribute(context.Background(), path.Root(field), &imported).HasError())
-				want := int64(12)
-				if value == "0" {
-					want = 0
-				}
-				assert.Equal(t, types.Int64Value(want), imported)
-				var state ProjectConfigResourceModel
-				require.False(t, resp.State.Get(context.Background(), &state).HasError())
-				if field == "password_min_length" {
-					assert.True(t, state.SelfserviceMethodsPasswordConfigMinPasswordLength.IsNull())
-				} else {
-					assert.True(t, state.PasswordMinLength.IsNull())
-				}
-			})
-		}
+func TestImportProjectConfig_Integer(t *testing.T) {
+	const field = "selfservice_methods_password_config_min_password_length"
+	for _, value := range []string{"12", "0"} {
+		t.Run(field+"="+value, func(t *testing.T) {
+			document := strings.Replace(importProjectDocument, `"password":{"enabled":true}`, `"password":{"enabled":true,"config":{"min_password_length":`+value+`}}`, 1)
+			srv := jsonServer(t, http.StatusOK, document)
+			resp := importConfig(t, projectConfigResourceForServer(t, srv.URL), "proj-1:"+field)
+			require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+			var imported types.Int64
+			require.False(t, resp.State.GetAttribute(context.Background(), path.Root(field), &imported).HasError())
+			want := int64(12)
+			if value == "0" {
+				want = 0
+			}
+			assert.Equal(t, types.Int64Value(want), imported)
+		})
 	}
 }
 
@@ -241,34 +233,18 @@ func TestImportProjectConfig_RejectsUnsafeSelectionBeforeReading(t *testing.T) {
 }
 
 func TestImportProjectConfig_DoesNotInventUnreadableValues(t *testing.T) {
-	for _, tc := range []struct {
-		field    string
-		document string
-		guidance string
-	}{
-		{field: "selfservice_methods_totp_config_issuer"},                  // Readable string, absent from the response.
-		{field: "selfservice_methods_password_config_min_password_length"}, // Readable integer, absent from the response.
-		{field: "selfservice_methods_captcha_config_allowed_domains"},      // Readable list, absent: must not become an empty list.
-		{field: "oauth2_provider_headers"},                                 // Readable map on a service the response omits.
-		{
-			field:    "selfservice_methods_password_config_min_password_length,password_min_length",
-			document: strings.Replace(importProjectDocument, `"password":{"enabled":true}`, `"password":{"enabled":true,"config":{"min_password_length":12}}`, 1),
-			guidance: "If you selected a setting and its deprecated alias, keep one of them.",
-		},
+	for _, field := range []string{
+		"selfservice_methods_totp_config_issuer",                  // Readable string, absent from the response.
+		"selfservice_methods_password_config_min_password_length", // Readable integer, absent from the response.
+		"selfservice_methods_captcha_config_allowed_domains",      // Readable list, absent: must not become an empty list.
+		"oauth2_provider_headers",                                 // Readable map on a service the response omits.
 	} {
-		t.Run(tc.field, func(t *testing.T) {
-			document := tc.document
-			if document == "" {
-				document = importProjectDocument
-			}
-			srv := jsonServer(t, http.StatusOK, document)
-			resp := importConfig(t, projectConfigResourceForServer(t, srv.URL), "proj-1:session_lifespan,"+tc.field)
+		t.Run(field, func(t *testing.T) {
+			srv := jsonServer(t, http.StatusOK, importProjectDocument)
+			resp := importConfig(t, projectConfigResourceForServer(t, srv.URL), "proj-1:session_lifespan,"+field)
 			require.True(t, resp.Diagnostics.HasError(), "one unavailable field must fail the import without inventing a default")
-			if tc.guidance != "" {
-				require.Len(t, resp.Diagnostics.Errors(), 1)
-				assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), `could not read a value for "password_min_length"`)
-				assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), tc.guidance)
-			}
+			require.Len(t, resp.Diagnostics.Errors(), 1)
+			assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), `could not read a value for "`+field+`"`)
 		})
 	}
 }

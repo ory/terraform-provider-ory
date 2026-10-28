@@ -108,7 +108,7 @@ func (r *ProjectConfigResource) importSelectedFields(ctx context.Context, projec
 	}
 	for _, name := range names {
 		if !values[name].IsKnown() || values[name].IsNull() {
-			resp.Diagnostics.AddError("Project Config Import Field Unavailable", fmt.Sprintf("The provider could not read a value for %q. The API may have omitted the value, the attribute may have no reader, or a read request may have failed. If you selected a setting and its deprecated alias, keep one of them. Check the provider logs and retry if a request failed. Otherwise, omit this field from the selection. No default has been substituted.", name))
+			resp.Diagnostics.AddError("Project Config Import Field Unavailable", fmt.Sprintf("The provider could not read a value for %q. The API may have omitted the value, the attribute may have no reader, or a read request may have failed. Check the provider logs and retry if a request failed. Otherwise, omit this field from the selection. No default has been substituted.", name))
 		}
 	}
 	if resp.Diagnostics.HasError() {

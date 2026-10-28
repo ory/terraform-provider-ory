@@ -311,7 +311,7 @@ func TestReadSimpleFields_NullsTrackedFieldsOfEveryType(t *testing.T) {
 		t.Errorf("password_enabled = %v, want null", state.SelfserviceMethodsPasswordEnabled.ValueBool())
 	}
 	if !state.SelfserviceMethodsTOTPConfigIssuer.IsNull() {
-		t.Errorf("totp_issuer = %q, want null", state.SelfserviceMethodsTOTPConfigIssuer.ValueString())
+		t.Errorf("selfservice_methods_totp_config_issuer = %q, want null", state.SelfserviceMethodsTOTPConfigIssuer.ValueString())
 	}
 	// Equal rather than IsNull: the map branch has to null with the right element
 	// type, or the framework rejects the state as type-inconsistent.
