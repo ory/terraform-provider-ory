@@ -341,8 +341,6 @@ That's it — the field appears in the Terraform schema, JSON Patch operations, 
 | `bool_enum` | No | `true_value: ...` + `false_value: ...`. For a bool attribute whose config key stores a string enum instead of a JSON bool. The patch sends the enum string and the read maps it back by comparing with `true_value`. Without it a raw bool write is accepted with HTTP 200 but normalized by string comparison, silently storing the false variant (see `feature_flags_password_profile_registration_node_group`) |
 | `revision_property` | No | If `true`, the attribute is a top-level normalized revision column with no key in any service config document — document patches (including `PATCH /projects/{id}/revision/{rev}`, which is document-shaped) accept writes to it and silently drop them. The write goes through `PATCH /normalized/projects/{id}/revision/{rev}` (`client.PatchProjectRevision`, compare-and-swap with conflict retry) with op path `/<openapi_property>`, and the read through `GET /normalized/projects/{id}` (`client.GetProjectNormalizedRevision`), so drift is detected. `bool` only (see `disable_account_experience_welcome_screen`) |
 | `validators` | No | `one_of: [...]` or `regex: "..."` + `regex_message: "..."` |
-| `deprecated_name` | No | Old terraform attribute name (shows deprecation warning in Terraform) |
-| `deprecated_go_field` | No | Old Go struct field name for the deprecated attribute |
 
 #### Makefile targets
 
@@ -385,45 +383,6 @@ A GitHub Actions workflow (`.github/workflows/regenerate-config.yml`) runs when 
 2. Regenerates code, auto-appends new pinned-spec properties, probes them against the live API, and creates a PR if the generated files changed
 3. Runs `--strict` mode against the latest spec to detect unmapped properties
 4. If the latest spec has properties the pinned one lacks, creates a GitHub issue with the `codegen-drift` label listing them
-
-#### Renaming attributes (deprecated aliases)
-
-When renaming an attribute, use `deprecated_name` / `deprecated_go_field` to keep the old name working with a deprecation warning:
-
-```yaml
-- name: selfservice_methods_password_enabled   # new spec-derived name
-  go_field: SelfserviceMethodsPasswordEnabled
-  type: bool
-  openapi_property: kratos_selfservice_methods_password_enabled
-  description: "Enable password authentication."
-  deprecated_name: enable_password              # old name (shows warning)
-  deprecated_go_field: EnablePassword
-```
-
-Both names work. When a user uses the old name, Terraform shows:
-```
-Warning: Argument is deprecated
-Use selfservice_methods_password_enabled instead. This attribute will be removed in a future major version.
-```
-
-The model struct needs BOTH fields (old and new). The codegen generates:
-- Both schema attributes (new is normal, old has `DeprecationMessage`)
-- Patch logic that checks the new field first, falls back to the deprecated
-- Read logic that writes to whichever field is set in state
-
-#### Migrating to spec-derived attribute names
-
-53 attributes have been renamed from short user-friendly names to spec-derived names for consistency. The old names still work but show deprecation warnings. A migration script is provided:
-
-```bash
-# Preview changes (creates .tf.bak backups)
-./scripts/migrate-deprecated-attrs.sh .
-
-# Verify no infrastructure changes
-terraform plan
-```
-
-The script renames all deprecated attributes in `.tf` files. After running, verify with `terraform plan` that no changes are detected.
 
 #### Complex types (not codegen'd)
 

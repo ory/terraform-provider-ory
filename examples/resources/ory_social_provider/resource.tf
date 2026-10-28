@@ -36,7 +36,7 @@ resource "ory_social_provider" "google_auto_link" {
   client_id     = var.google_client_id
   client_secret = var.google_client_secret
   scope         = ["email", "profile"]
-  auto_link     = true # Requires enable_oidc_auto_link_policy = true in ory_project_config
+  auto_link     = true # Requires selfservice_methods_oidc_enable_auto_link_policy = true in ory_project_config
 }
 
 # Google Sign-In with custom label and account linking
@@ -101,17 +101,6 @@ resource "ory_social_provider" "corporate_front_channel_logout" {
   # the sid claim in its ID tokens (Ory Hydra, Keycloak, Okta, Auth0). Google
   # does not issue sid, so the flag has no effect on a google provider.
   front_channel_logout = true
-}
-
-# Generic OIDC with a custom base redirect URI (e.g., when using a custom domain)
-resource "ory_social_provider" "corporate_sso_custom_domain" {
-  provider_id       = "corporate-sso-custom-domain"
-  provider_type     = "generic"
-  client_id         = var.sso_client_id
-  client_secret     = var.sso_client_secret
-  issuer_url        = "https://sso.example.com"
-  scope             = ["openid", "profile", "email"]
-  base_redirect_uri = "https://iam.example.com"
 }
 
 # GitHub

@@ -165,9 +165,7 @@ import block, note it, and hand-write that resource later.
   `.services.permission.config`, and `.services.account_experience.config`).
   The first plan shows those attributes as additions (`+`) even when the values
   match the server, and the first apply just records them in state because the
-  PATCH is idempotent. Prefer the spec-derived attribute names over deprecated
-  aliases (run `scripts/migrate-deprecated-attrs.sh` from the provider repo if
-  needed).
+  PATCH is idempotent.
 
   Five attributes do not sit where the dump suggests, so copying by name fails:
 

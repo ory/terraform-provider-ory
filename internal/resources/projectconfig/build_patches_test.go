@@ -132,40 +132,40 @@ func TestBuildPatches_NullAllowedReturnURLs(t *testing.T) {
 	assert.Nil(t, p, "expected no patch for null allowed_return_urls")
 }
 
-func TestBuildPatches_OAuth2IssuerURL(t *testing.T) {
+func TestBuildPatches_OAuth2URLsSelfIssuer(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		OAuth2IssuerURL: types.StringValue("https://auth.example.com"),
+		OAuth2URLsSelfIssuer: types.StringValue("https://auth.example.com"),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/oauth2/config/urls/self/issuer")
-	require.NotNil(t, p, "expected a patch for oauth2_issuer_url")
+	require.NotNil(t, p, "expected a patch for oauth2_urls_self_issuer")
 	assert.Equal(t, "replace", p.Op)
 	assert.Equal(t, "https://auth.example.com", p.Value)
 }
 
-func TestBuildPatches_OAuth2CookiesSameSiteMode(t *testing.T) {
+func TestBuildPatches_OAuth2ServeCookiesSameSiteMode(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		OAuth2CookiesSameSiteMode: types.StringValue("Strict"),
+		OAuth2ServeCookiesSameSiteMode: types.StringValue("Strict"),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/oauth2/config/serve/cookies/same_site_mode")
-	require.NotNil(t, p, "expected a patch for oauth2_cookies_same_site_mode")
+	require.NotNil(t, p, "expected a patch for oauth2_serve_cookies_same_site_mode")
 	assert.Equal(t, "Strict", p.Value)
 }
 
-func TestBuildPatches_OAuth2CookiesSameSiteLegacyWorkaround(t *testing.T) {
+func TestBuildPatches_OAuth2ServeCookiesSameSiteLegacyWorkaround(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		OAuth2CookiesSameSiteLegacyWorkaround: types.BoolValue(true),
+		OAuth2ServeCookiesSameSiteLegacyWorkaround: types.BoolValue(true),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/oauth2/config/serve/cookies/same_site_legacy_workaround")
-	require.NotNil(t, p, "expected a patch for oauth2_cookies_same_site_legacy_workaround")
+	require.NotNil(t, p, "expected a patch for oauth2_serve_cookies_same_site_legacy_workaround")
 	assert.Equal(t, true, p.Value)
 }
 
@@ -247,123 +247,123 @@ func TestBuildPatches_NullOAuth2TokenHookAuth(t *testing.T) {
 	assert.Nil(t, p, "expected no patch for null oauth2_token_hook_auth")
 }
 
-func TestBuildPatches_NullOAuth2IssuerURL(t *testing.T) {
+func TestBuildPatches_NullOAuth2URLsSelfIssuer(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		OAuth2IssuerURL: types.StringNull(),
+		OAuth2URLsSelfIssuer: types.StringNull(),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/oauth2/config/urls/self/issuer")
-	assert.Nil(t, p, "expected no patch for null oauth2_issuer_url")
+	assert.Nil(t, p, "expected no patch for null oauth2_urls_self_issuer")
 }
 
-func TestBuildPatches_LoginStyle(t *testing.T) {
+func TestBuildPatches_SelfserviceFlowsLoginStyle(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		LoginStyle: types.StringValue("identifier_first"),
+		SelfserviceFlowsLoginStyle: types.StringValue("identifier_first"),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/login/style")
-	require.NotNil(t, p, "expected a patch for login_style")
+	require.NotNil(t, p, "expected a patch for selfservice_flows_login_style")
 	assert.Equal(t, "replace", p.Op)
 	assert.Equal(t, "identifier_first", p.Value)
 }
 
-func TestBuildPatches_LoginStyleUnified(t *testing.T) {
+func TestBuildPatches_SelfserviceFlowsLoginStyleUnified(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		LoginStyle: types.StringValue("unified"),
+		SelfserviceFlowsLoginStyle: types.StringValue("unified"),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/login/style")
-	require.NotNil(t, p, "expected a patch for login_style")
+	require.NotNil(t, p, "expected a patch for selfservice_flows_login_style")
 	assert.Equal(t, "unified", p.Value)
 }
 
-func TestBuildPatches_NullLoginStyle(t *testing.T) {
+func TestBuildPatches_NullSelfserviceFlowsLoginStyle(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		LoginStyle: types.StringNull(),
+		SelfserviceFlowsLoginStyle: types.StringNull(),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/login/style")
-	assert.Nil(t, p, "expected no patch for null login_style")
+	assert.Nil(t, p, "expected no patch for null selfservice_flows_login_style")
 }
 
-func TestBuildPatches_EnableProfile(t *testing.T) {
+func TestBuildPatches_SelfserviceMethodsProfileEnabled(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		EnableProfile: types.BoolValue(true),
+		SelfserviceMethodsProfileEnabled: types.BoolValue(true),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/methods/profile/enabled")
-	require.NotNil(t, p, "expected a patch for enable_profile")
+	require.NotNil(t, p, "expected a patch for selfservice_methods_profile_enabled")
 	assert.Equal(t, "replace", p.Op)
 	assert.Equal(t, true, p.Value)
 }
 
-func TestBuildPatches_NullEnableProfile(t *testing.T) {
+func TestBuildPatches_NullSelfserviceMethodsProfileEnabled(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		EnableProfile: types.BoolNull(),
+		SelfserviceMethodsProfileEnabled: types.BoolNull(),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/methods/profile/enabled")
-	assert.Nil(t, p, "expected no patch for null enable_profile")
+	assert.Nil(t, p, "expected no patch for null selfservice_methods_profile_enabled")
 }
 
-func TestBuildPatches_CodeLifespan(t *testing.T) {
+func TestBuildPatches_SelfserviceMethodsCodeConfigLifespan(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		CodeLifespan: types.StringValue("15m0s"),
+		SelfserviceMethodsCodeConfigLifespan: types.StringValue("15m0s"),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/methods/code/config/lifespan")
-	require.NotNil(t, p, "expected a patch for code_lifespan")
+	require.NotNil(t, p, "expected a patch for selfservice_methods_code_config_lifespan")
 	assert.Equal(t, "replace", p.Op)
 	assert.Equal(t, "15m0s", p.Value)
 }
 
-func TestBuildPatches_NullCodeLifespan(t *testing.T) {
+func TestBuildPatches_NullSelfserviceMethodsCodeConfigLifespan(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		CodeLifespan: types.StringNull(),
+		SelfserviceMethodsCodeConfigLifespan: types.StringNull(),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/methods/code/config/lifespan")
-	assert.Nil(t, p, "expected no patch for null code_lifespan")
+	assert.Nil(t, p, "expected no patch for null selfservice_methods_code_config_lifespan")
 }
 
-func TestBuildPatches_CodeMissingCredentialFallbackEnabled(t *testing.T) {
+func TestBuildPatches_SelfserviceMethodsCodeConfigMissingCredentialFallbackEnabled(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		CodeMissingCredentialFallbackEnabled: types.BoolValue(true),
+		SelfserviceMethodsCodeConfigMissingCredentialFallbackEnabled: types.BoolValue(true),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/methods/code/config/missing_credential_fallback_enabled")
-	require.NotNil(t, p, "expected a patch for code_missing_credential_fallback_enabled")
+	require.NotNil(t, p, "expected a patch for selfservice_methods_code_config_missing_credential_fallback_enabled")
 	assert.Equal(t, "replace", p.Op)
 	assert.Equal(t, true, p.Value)
 }
 
-func TestBuildPatches_NullCodeMissingCredentialFallbackEnabled(t *testing.T) {
+func TestBuildPatches_NullSelfserviceMethodsCodeConfigMissingCredentialFallbackEnabled(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		CodeMissingCredentialFallbackEnabled: types.BoolNull(),
+		SelfserviceMethodsCodeConfigMissingCredentialFallbackEnabled: types.BoolNull(),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/methods/code/config/missing_credential_fallback_enabled")
-	assert.Nil(t, p, "expected no patch for null code_missing_credential_fallback_enabled")
+	assert.Nil(t, p, "expected no patch for null selfservice_methods_code_config_missing_credential_fallback_enabled")
 }
 
 func TestBuildPatches_SessionEarliestPossibleExtend(t *testing.T) {
@@ -390,124 +390,124 @@ func TestBuildPatches_NullSessionEarliestPossibleExtend(t *testing.T) {
 	assert.Nil(t, p, "expected no patch for null session_earliest_possible_extend")
 }
 
-func TestBuildPatches_SettingsLifespan(t *testing.T) {
+func TestBuildPatches_SelfserviceFlowsSettingsLifespan(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		SettingsLifespan: types.StringValue("30m0s"),
+		SelfserviceFlowsSettingsLifespan: types.StringValue("30m0s"),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/settings/lifespan")
-	require.NotNil(t, p, "expected a patch for settings_lifespan")
+	require.NotNil(t, p, "expected a patch for selfservice_flows_settings_lifespan")
 	assert.Equal(t, "replace", p.Op)
 	assert.Equal(t, "30m0s", p.Value)
 }
 
-func TestBuildPatches_NullSettingsLifespan(t *testing.T) {
+func TestBuildPatches_NullSelfserviceFlowsSettingsLifespan(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		SettingsLifespan: types.StringNull(),
+		SelfserviceFlowsSettingsLifespan: types.StringNull(),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/settings/lifespan")
-	assert.Nil(t, p, "expected no patch for null settings_lifespan")
+	assert.Nil(t, p, "expected no patch for null selfservice_flows_settings_lifespan")
 }
 
-func TestBuildPatches_SettingsPrivilegedSessionMaxAge(t *testing.T) {
+func TestBuildPatches_SelfserviceFlowsSettingsPrivilegedSessionMaxAge(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		SettingsPrivilegedSessionMaxAge: types.StringValue("15m0s"),
+		SelfserviceFlowsSettingsPrivilegedSessionMaxAge: types.StringValue("15m0s"),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/settings/privileged_session_max_age")
-	require.NotNil(t, p, "expected a patch for settings_privileged_session_max_age")
+	require.NotNil(t, p, "expected a patch for selfservice_flows_settings_privileged_session_max_age")
 	assert.Equal(t, "replace", p.Op)
 	assert.Equal(t, "15m0s", p.Value)
 }
 
-func TestBuildPatches_NullSettingsPrivilegedSessionMaxAge(t *testing.T) {
+func TestBuildPatches_NullSelfserviceFlowsSettingsPrivilegedSessionMaxAge(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		SettingsPrivilegedSessionMaxAge: types.StringNull(),
+		SelfserviceFlowsSettingsPrivilegedSessionMaxAge: types.StringNull(),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/settings/privileged_session_max_age")
-	assert.Nil(t, p, "expected no patch for null settings_privileged_session_max_age")
+	assert.Nil(t, p, "expected no patch for null selfservice_flows_settings_privileged_session_max_age")
 }
 
-func TestBuildPatches_VerificationUse(t *testing.T) {
+func TestBuildPatches_SelfserviceFlowsVerificationUse(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		VerificationUse: types.StringValue("code"),
+		SelfserviceFlowsVerificationUse: types.StringValue("code"),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/verification/use")
-	require.NotNil(t, p, "expected a patch for verification_use")
+	require.NotNil(t, p, "expected a patch for selfservice_flows_verification_use")
 	assert.Equal(t, "replace", p.Op)
 	assert.Equal(t, "code", p.Value)
 }
 
-func TestBuildPatches_NullVerificationUse(t *testing.T) {
+func TestBuildPatches_NullSelfserviceFlowsVerificationUse(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		VerificationUse: types.StringNull(),
+		SelfserviceFlowsVerificationUse: types.StringNull(),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/verification/use")
-	assert.Nil(t, p, "expected no patch for null verification_use")
+	assert.Nil(t, p, "expected no patch for null selfservice_flows_verification_use")
 }
 
-func TestBuildPatches_VerificationLifespan(t *testing.T) {
+func TestBuildPatches_SelfserviceFlowsVerificationLifespan(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		VerificationLifespan: types.StringValue("30m0s"),
+		SelfserviceFlowsVerificationLifespan: types.StringValue("30m0s"),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/verification/lifespan")
-	require.NotNil(t, p, "expected a patch for verification_lifespan")
+	require.NotNil(t, p, "expected a patch for selfservice_flows_verification_lifespan")
 	assert.Equal(t, "replace", p.Op)
 	assert.Equal(t, "30m0s", p.Value)
 }
 
-func TestBuildPatches_NullVerificationLifespan(t *testing.T) {
+func TestBuildPatches_NullSelfserviceFlowsVerificationLifespan(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		VerificationLifespan: types.StringNull(),
+		SelfserviceFlowsVerificationLifespan: types.StringNull(),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/verification/lifespan")
-	assert.Nil(t, p, "expected no patch for null verification_lifespan")
+	assert.Nil(t, p, "expected no patch for null selfservice_flows_verification_lifespan")
 }
 
-func TestBuildPatches_VerificationNotifyUnknownRecipients(t *testing.T) {
+func TestBuildPatches_SelfserviceFlowsVerificationNotifyUnknownRecipients(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		VerificationNotifyUnknownRecipients: types.BoolValue(true),
+		SelfserviceFlowsVerificationNotifyUnknownRecipients: types.BoolValue(true),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/verification/notify_unknown_recipients")
-	require.NotNil(t, p, "expected a patch for verification_notify_unknown_recipients")
+	require.NotNil(t, p, "expected a patch for selfservice_flows_verification_notify_unknown_recipients")
 	assert.Equal(t, "replace", p.Op)
 	assert.Equal(t, true, p.Value)
 }
 
-func TestBuildPatches_NullVerificationNotifyUnknownRecipients(t *testing.T) {
+func TestBuildPatches_NullSelfserviceFlowsVerificationNotifyUnknownRecipients(t *testing.T) {
 	r := &ProjectConfigResource{}
 	plan := &ProjectConfigResourceModel{
-		VerificationNotifyUnknownRecipients: types.BoolNull(),
+		SelfserviceFlowsVerificationNotifyUnknownRecipients: types.BoolNull(),
 	}
 
 	patches := r.buildPatches(context.Background(), plan)
 	p := findPatch(patches, "/services/identity/config/selfservice/flows/verification/notify_unknown_recipients")
-	assert.Nil(t, p, "expected no patch for null verification_notify_unknown_recipients")
+	assert.Nil(t, p, "expected no patch for null selfservice_flows_verification_notify_unknown_recipients")
 }
 
 // projectWithIdentityConfig wraps an identity config map in the *ory.Project

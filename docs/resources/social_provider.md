@@ -124,7 +124,7 @@ resource "ory_social_provider" "google_auto_link" {
   client_id     = var.google_client_id
   client_secret = var.google_client_secret
   scope         = ["email", "profile"]
-  auto_link     = true # Requires enable_oidc_auto_link_policy = true in ory_project_config
+  auto_link     = true # Requires selfservice_methods_oidc_enable_auto_link_policy = true in ory_project_config
 }
 
 # Google Sign-In with custom label and account linking
@@ -189,17 +189,6 @@ resource "ory_social_provider" "corporate_front_channel_logout" {
   # the sid claim in its ID tokens (Ory Hydra, Keycloak, Okta, Auth0). Google
   # does not issue sid, so the flag has no effect on a google provider.
   front_channel_logout = true
-}
-
-# Generic OIDC with a custom base redirect URI (e.g., when using a custom domain)
-resource "ory_social_provider" "corporate_sso_custom_domain" {
-  provider_id       = "corporate-sso-custom-domain"
-  provider_type     = "generic"
-  client_id         = var.sso_client_id
-  client_secret     = var.sso_client_secret
-  issuer_url        = "https://sso.example.com"
-  scope             = ["openid", "profile", "email"]
-  base_redirect_uri = "https://iam.example.com"
 }
 
 # GitHub
@@ -452,7 +441,7 @@ resource "ory_social_provider" "google" {
 }
 ```
 
-~> **Note:** `account_linking_mode = "automatic"` is different from `auto_link = true`. The `account_linking_mode` is returned by the API and can be used independently, while `auto_link` is write-only and requires `enable_oidc_auto_link_policy` to be enabled at the project level.
+~> **Note:** `account_linking_mode = "automatic"` is different from `auto_link = true`. The `account_linking_mode` is returned by the API and can be used independently, while `auto_link` is write-only and requires `selfservice_methods_oidc_enable_auto_link_policy` to be enabled at the project level.
 
 ## Auto-Link
 
@@ -460,12 +449,12 @@ The `auto_link` attribute enables automatic account linking for a specific socia
 
 ~> **Write-only attribute:** `auto_link` is accepted by the API on create/update but is **not returned** on read. Terraform preserves the value from state. This means drift cannot be detected from the API, and `terraform import` will not populate this field. Removing `auto_link` from your configuration will automatically disable auto-linking server-side.
 
-To use auto-linking, you must also enable the auto-link policy at the project level using `enable_oidc_auto_link_policy = true` in the `ory_project_config` resource:
+To use auto-linking, you must also enable the auto-link policy at the project level using `selfservice_methods_oidc_enable_auto_link_policy = true` in the `ory_project_config` resource:
 
 ```hcl
 resource "ory_project_config" "main" {
-  enable_oidc                  = true
-  enable_oidc_auto_link_policy = true
+  selfservice_methods_oidc_enabled                 = true
+  selfservice_methods_oidc_enable_auto_link_policy = true
 }
 
 resource "ory_social_provider" "google" {
@@ -602,22 +591,6 @@ resource "ory_social_provider" "corporate_sso" {
 
 The API stores `true` and `false` alike and returns the value on read. Leave the attribute unset to keep the Ory default, which is disabled; removing it from the configuration clears the setting.
 
-## Base Redirect URI
-
-The `base_redirect_uri` attribute overrides the base URL Ory uses when constructing OIDC callback URLs. Use this when your project is accessible under a custom domain and you want callbacks to go to that domain rather than the default Ory project URL.
-
-```hcl
-resource "ory_social_provider" "google" {
-  provider_id      = "google"
-  provider_type    = "google"
-  client_id        = var.google_client_id
-  client_secret    = var.google_client_secret
-  base_redirect_uri = "https://iam.example.com"
-}
-```
-
-~> **Note:** `base_redirect_uri` is a **global** OIDC configuration setting, not per-provider. If you have multiple `ory_social_provider` resources and set `base_redirect_uri` in more than one, the last applied value will take effect for all providers.
-
 ## Important Behaviors
 
 - **`provider_id` and `provider_type` cannot be changed** after creation. Changing either forces a new resource.
@@ -661,8 +634,7 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 - `apple_private_key_wo_version` (String) Version trigger for apple_private_key_wo. Change this value whenever the write-only apple_private_key_wo changes so Terraform sends the new key to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless apple_private_key_wo is set.
 - `apple_team_id` (String) Apple Developer Team ID (e.g., "KP76DQS54M"). Required when provider_type is "apple" and client_secret is not set.
 - `auth_url` (String) Custom authorization URL (for non-standard providers).
-- `auto_link` (Boolean) Enable automatic account linking for this provider. When true, if an identity with the same identifier (e.g., email) already exists, the social sign-in will automatically link to that identity instead of failing. Requires enable_oidc_auto_link_policy to be true in the project config (ory_project_config). This attribute is write-only — the API accepts it on create/update but does not return it on read, so Terraform preserves the value from state. On import, the value will not be populated. Removing this attribute from your configuration will automatically disable auto-linking server-side.
-- `base_redirect_uri` (String, Deprecated) Override the base redirect URI for OIDC callbacks (e.g., "https://iam.example.com"). When set, Ory constructs callback URLs using this base instead of the default project domain. This is a global OIDC config setting — if multiple social providers set different values, the last applied value wins.
+- `auto_link` (Boolean) Enable automatic account linking for this provider. When true, if an identity with the same identifier (e.g., email) already exists, the social sign-in will automatically link to that identity instead of failing. Requires selfservice_methods_oidc_enable_auto_link_policy to be true in the project config (ory_project_config). This attribute is write-only — the API accepts it on create/update but does not return it on read, so Terraform preserves the value from state. On import, the value will not be populated. Removing this attribute from your configuration will automatically disable auto-linking server-side.
 - `client_id` (String) OAuth2 client ID from the provider. Exactly one of client_id or client_id_wo must be set.
 - `client_id_wo` (String, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of client_id (Terraform 1.11+ write-only argument): the value is sent to Ory but never stored in Terraform state or plan. Use this to source the client ID from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change client_id_wo_version to force the new value to be sent. Mutually exclusive with client_id.
 - `client_id_wo_version` (String) Version trigger for client_id_wo. Change this value whenever the write-only client_id_wo changes so Terraform sends the new value to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless client_id_wo is set.

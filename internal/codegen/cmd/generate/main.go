@@ -76,11 +76,6 @@ type Attribute struct {
 	// (GET /normalized/projects/{id}) instead of the project document.
 	RevisionProperty bool       `yaml:"revision_property"`
 	Validators       *Validator `yaml:"validators"`
-
-	// Deprecated alias support: when set, generates a second schema attribute
-	// with the old name that shows a deprecation warning directing users to Name.
-	DeprecatedName    string `yaml:"deprecated_name"`     // old terraform attribute name
-	DeprecatedGoField string `yaml:"deprecated_go_field"` // old Go struct field name
 }
 
 // ReadPreservesOnMissing reports whether Read must keep the value already in
@@ -447,8 +442,8 @@ func main() {
 			if a.OpenAPIProperty == "" {
 				log.Fatalf("attribute %q: revision_property requires openapi_property (the revision patch op path is derived from it)", a.Name)
 			}
-			if a.BoolEnum != nil || a.WriteOnly || a.StorageURLContent || a.ReadPath != "" || a.PatchPathOverride != "" || a.DeprecatedName != "" {
-				log.Fatalf("attribute %q: revision_property cannot be combined with bool_enum, write_only, storage_url_content, read_path, patch_path_override, or deprecated aliases", a.Name)
+			if a.BoolEnum != nil || a.WriteOnly || a.StorageURLContent || a.ReadPath != "" || a.PatchPathOverride != "" {
+				log.Fatalf("attribute %q: revision_property cannot be combined with bool_enum, write_only, storage_url_content, read_path, or patch_path_override", a.Name)
 			}
 		}
 	}
@@ -540,8 +535,7 @@ func main() {
 			}
 			return strings.Join(quoted, ", ")
 		},
-		"schemaAttr":           buildSchemaAttr,
-		"deprecatedSchemaAttr": buildDeprecatedSchemaAttr,
+		"schemaAttr": buildSchemaAttr,
 	}
 
 	cleanOutDir := filepath.Clean(*outDir)
@@ -1156,20 +1150,16 @@ func buildSchemaAttr(a Attribute) string {
 		b.WriteString("\t\t\tElementType: types.StringType,\n")
 	}
 
-	// Skip Computed and Defaults on primary attributes that have deprecated aliases,
-	// otherwise Terraform applies the default to the primary even when only the
-	// deprecated alias is set, breaking the fallback logic.
-	hasAlias := a.DeprecatedName != ""
-	if a.Computed && !hasAlias {
+	if a.Computed {
 		b.WriteString("\t\t\tComputed:    true,\n")
 	}
 	if a.Sensitive {
 		b.WriteString("\t\t\tSensitive:   true,\n")
 	}
-	if a.DefaultBool != nil && !hasAlias {
+	if a.DefaultBool != nil {
 		fmt.Fprintf(&b, "\t\t\tDefault:     booldefault.StaticBool(%v),\n", *a.DefaultBool)
 	}
-	if a.DefaultInt64 != nil && !hasAlias {
+	if a.DefaultInt64 != nil {
 		fmt.Fprintf(&b, "\t\t\tDefault:     int64default.StaticInt64(%d),\n", *a.DefaultInt64)
 	}
 
@@ -1204,43 +1194,6 @@ func buildSchemaAttr(a Attribute) string {
 			fmt.Fprintf(&b, "\t\t\t},\n")
 		}
 	}
-
-	b.WriteString("\t\t}")
-	return b.String()
-}
-
-// buildDeprecatedSchemaAttr generates a schema attribute for a deprecated alias.
-// It has the same type and description but includes a DeprecationMessage and
-// omits validators, defaults, and computed; sensitive is preserved to avoid leaking secrets.
-func buildDeprecatedSchemaAttr(a Attribute) string {
-	var b strings.Builder
-
-	switch a.Type {
-	case typeString:
-		b.WriteString("schema.StringAttribute{\n")
-	case typeBool:
-		b.WriteString("schema.BoolAttribute{\n")
-	case typeInt64:
-		b.WriteString("schema.Int64Attribute{\n")
-	case typeListString:
-		b.WriteString("schema.ListAttribute{\n")
-	case typeMapString:
-		b.WriteString("schema.MapAttribute{\n")
-	}
-
-	fmt.Fprintf(&b, "\t\t\tDescription: %q,\n", a.Description)
-	b.WriteString("\t\t\tOptional:    true,\n")
-
-	if a.Type == typeListString || a.Type == typeMapString {
-		b.WriteString("\t\t\tElementType: types.StringType,\n")
-	}
-
-	if a.Sensitive {
-		b.WriteString("\t\t\tSensitive:   true,\n")
-	}
-
-	fmt.Fprintf(&b, "\t\t\tDeprecationMessage: %q,\n",
-		fmt.Sprintf("Use %s instead. This attribute will be removed in a future major version.", a.Name))
 
 	b.WriteString("\t\t}")
 	return b.String()
@@ -1284,9 +1237,6 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
 {{- range .Attributes }}
 		{{ printf "%q" .Name }}: {{ schemaAttr . }},
-{{- if .DeprecatedName }}
-		{{ printf "%q" .DeprecatedName }}: {{ deprecatedSchemaAttr . }},
-{{- end }}
 {{- end }}
 	}
 }
@@ -1305,7 +1255,6 @@ import (
 // StringPatchEntry maps a string field to its JSON Patch path.
 type StringPatchEntry struct {
 	Field      *types.String
-	Deprecated *types.String // fallback when Field is null (deprecated alias)
 	Path       string
 }
 
@@ -1320,7 +1269,6 @@ type BoolEnumValues struct {
 // BoolPatchEntry maps a bool field to its JSON Patch path.
 type BoolPatchEntry struct {
 	Field      *types.Bool
-	Deprecated *types.Bool // fallback when Field is null (deprecated alias)
 	Path       string
 	Enum       *BoolEnumValues // when set, patch the string enum instead of a raw bool
 }
@@ -1328,21 +1276,18 @@ type BoolPatchEntry struct {
 // Int64PatchEntry maps an int64 field to its JSON Patch path.
 type Int64PatchEntry struct {
 	Field      *types.Int64
-	Deprecated *types.Int64 // fallback when Field is null (deprecated alias)
 	Path       string
 }
 
 // ListStringPatchEntry maps a list(string) field to its JSON Patch path.
 type ListStringPatchEntry struct {
 	Field      *types.List
-	Deprecated *types.List // fallback when Field is null (deprecated alias)
 	Path       string
 }
 
 // MapStringPatchEntry maps a map(string) field to its JSON Patch path.
 type MapStringPatchEntry struct {
 	Field      *types.Map
-	Deprecated *types.Map // fallback when Field is null (deprecated alias)
 	Path       string
 }
 
@@ -1351,7 +1296,7 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 	return []StringPatchEntry{
 {{- range filterType .Attributes "string" }}
 {{- if not .CustomPatch }}
-		{&plan.{{ .GoField }}, {{ if .DeprecatedGoField }}&plan.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, {{ printf "%q" .PatchPath }}},
+		{&plan.{{ .GoField }}, {{ printf "%q" .PatchPath }}},
 {{- end }}
 {{- end }}
 	}
@@ -1362,7 +1307,7 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 	return []BoolPatchEntry{
 {{- range filterType .Attributes "bool" }}
 {{- if not .RevisionProperty }}
-		{&plan.{{ .GoField }}, {{ if .DeprecatedGoField }}&plan.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, {{ printf "%q" .PatchPath }}, {{ if .BoolEnum }}&BoolEnumValues{ {{ printf "%q" .BoolEnum.TrueValue }}, {{ printf "%q" .BoolEnum.FalseValue }} }{{ else }}nil{{ end }}},
+		{&plan.{{ .GoField }}, {{ printf "%q" .PatchPath }}, {{ if .BoolEnum }}&BoolEnumValues{ {{ printf "%q" .BoolEnum.TrueValue }}, {{ printf "%q" .BoolEnum.FalseValue }} }{{ else }}nil{{ end }}},
 {{- end }}
 {{- end }}
 	}
@@ -1379,7 +1324,7 @@ func revisionBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry
 	return []BoolPatchEntry{
 {{- range filterType .Attributes "bool" }}
 {{- if .RevisionProperty }}
-		{&plan.{{ .GoField }}, nil, {{ printf "%q" (printf "/%s" .OpenAPIProperty) }}, nil},
+		{&plan.{{ .GoField }}, {{ printf "%q" (printf "/%s" .OpenAPIProperty) }}, nil},
 {{- end }}
 {{- end }}
 	}
@@ -1389,7 +1334,7 @@ func revisionBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry
 func simpleInt64PatchEntries(plan *ProjectConfigResourceModel) []Int64PatchEntry {
 	return []Int64PatchEntry{
 {{- range filterType .Attributes "int64" }}
-		{&plan.{{ .GoField }}, {{ if .DeprecatedGoField }}&plan.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, {{ printf "%q" .PatchPath }}},
+		{&plan.{{ .GoField }}, {{ printf "%q" .PatchPath }}},
 {{- end }}
 	}
 }
@@ -1398,7 +1343,7 @@ func simpleInt64PatchEntries(plan *ProjectConfigResourceModel) []Int64PatchEntry
 func simpleListStringPatchEntries(plan *ProjectConfigResourceModel) []ListStringPatchEntry {
 	return []ListStringPatchEntry{
 {{- range filterType .Attributes "list_string" }}
-		{&plan.{{ .GoField }}, {{ if .DeprecatedGoField }}&plan.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, {{ printf "%q" .PatchPath }}},
+		{&plan.{{ .GoField }}, {{ printf "%q" .PatchPath }}},
 {{- end }}
 	}
 }
@@ -1407,7 +1352,7 @@ func simpleListStringPatchEntries(plan *ProjectConfigResourceModel) []ListString
 func simpleMapStringPatchEntries(plan *ProjectConfigResourceModel) []MapStringPatchEntry {
 	return []MapStringPatchEntry{
 {{- range filterType .Attributes "map_string" }}
-		{&plan.{{ .GoField }}, {{ if .DeprecatedGoField }}&plan.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, {{ printf "%q" .PatchPath }}},
+		{&plan.{{ .GoField }}, {{ printf "%q" .PatchPath }}},
 {{- end }}
 	}
 }
@@ -1438,7 +1383,6 @@ var (
 // StringReadEntry maps a string state field to its config read path.
 type StringReadEntry struct {
 	Field      *types.String
-	Deprecated *types.String // fallback: used only when the primary Field is null in state
 	Keys       []string
 	SkipEmpty  bool
 	// PreserveOnMissing keeps the state value when the API omits Keys, instead
@@ -1455,7 +1399,6 @@ type StringReadEntry struct {
 // BoolReadEntry maps a bool state field to its config read path.
 type BoolReadEntry struct {
 	Field             *types.Bool
-	Deprecated        *types.Bool // fallback: used only when the primary Field is null in state
 	Keys              []string
 	PreserveOnMissing bool
 	Enum              *BoolEnumValues // when set, the key stores a string enum; map it back by comparing to Enum.True
@@ -1464,7 +1407,6 @@ type BoolReadEntry struct {
 // Int64ReadEntry maps an int64 state field to its config read path.
 type Int64ReadEntry struct {
 	Field             *types.Int64
-	Deprecated        *types.Int64 // fallback: used only when the primary Field is null in state
 	Keys              []string
 	PreserveOnMissing bool
 }
@@ -1472,7 +1414,6 @@ type Int64ReadEntry struct {
 // ListStringReadEntry maps a list(string) state field to its config read path.
 type ListStringReadEntry struct {
 	Field             *types.List
-	Deprecated        *types.List // fallback: used only when the primary Field is null in state
 	Keys              []string
 	PreserveOnMissing bool
 }
@@ -1480,7 +1421,6 @@ type ListStringReadEntry struct {
 // MapStringReadEntry maps a map(string) state field to its config read path.
 type MapStringReadEntry struct {
 	Field             *types.Map
-	Deprecated        *types.Map // fallback: used only when the primary Field is null in state
 	Keys              []string
 	PreserveOnMissing bool
 }
@@ -1493,7 +1433,7 @@ func revisionBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry 
 	return []BoolReadEntry{
 {{- range filterType .Attributes "bool" }}
 {{- if .RevisionProperty }}
-		{&state.{{ .GoField }}, nil, []string{ {{ printf "%q" .OpenAPIProperty }} }, false, nil},
+		{&state.{{ .GoField }}, []string{ {{ printf "%q" .OpenAPIProperty }} }, false, nil},
 {{- end }}
 {{- end }}
 	}
@@ -1517,9 +1457,6 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 {{- if $strings }}
 		for _, e := range {{ $svc }}StringReadEntries(state) {
 			target := e.Field
-			if target.IsNull() && e.Deprecated != nil && !e.Deprecated.IsNull() {
-				target = e.Deprecated
-			}
 			if !target.IsNull() {
 				if v, ok := getNestedString({{ varName $svc }}Config, e.Keys...); ok {
 					if e.StorageURL {
@@ -1538,9 +1475,6 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 {{- if $bools }}
 		for _, e := range {{ $svc }}BoolReadEntries(state) {
 			target := e.Field
-			if target.IsNull() && e.Deprecated != nil && !e.Deprecated.IsNull() {
-				target = e.Deprecated
-			}
 			if !target.IsNull() {
 				if e.Enum != nil {
 					if v, ok := getNestedString({{ varName $svc }}Config, e.Keys...); ok {
@@ -1560,9 +1494,6 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 {{- if $ints }}
 		for _, e := range {{ $svc }}Int64ReadEntries(state) {
 			target := e.Field
-			if target.IsNull() && e.Deprecated != nil && !e.Deprecated.IsNull() {
-				target = e.Deprecated
-			}
 			if !target.IsNull() {
 				if v, ok := getNestedFloat({{ varName $svc }}Config, e.Keys...); ok {
 					if v == math.Trunc(v) {
@@ -1578,9 +1509,6 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 {{- if $listStrings }}
 		for _, e := range {{ $svc }}ListStringReadEntries(state) {
 			target := e.Field
-			if target.IsNull() && e.Deprecated != nil && !e.Deprecated.IsNull() {
-				target = e.Deprecated
-			}
 			if !target.IsNull() {
 				if v := getNestedValue({{ varName $svc }}Config, e.Keys...); v != nil {
 					if arr, ok := v.([]interface{}); ok {
@@ -1611,9 +1539,6 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 {{- if $mapStrings }}
 		for _, e := range {{ $svc }}MapStringReadEntries(state) {
 			target := e.Field
-			if target.IsNull() && e.Deprecated != nil && !e.Deprecated.IsNull() {
-				target = e.Deprecated
-			}
 			if !target.IsNull() {
 				if v := getNestedValue({{ varName $svc }}Config, e.Keys...); v != nil {
 					if m, ok := v.(map[string]interface{}); ok {
@@ -1653,7 +1578,7 @@ func {{ $svc }}StringReadEntries(state *ProjectConfigResourceModel) []StringRead
 	return []StringReadEntry{
 {{- range $strings }}
 {{- if not .WriteOnly }}
-		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .SkipEmptyRead }}, {{ .ReadPreservesOnMissing }}, {{ .StorageURLContent }}},
+		{&state.{{ .GoField }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .SkipEmptyRead }}, {{ .ReadPreservesOnMissing }}, {{ .StorageURLContent }}},
 {{- end }}
 {{- end }}
 	}
@@ -1667,7 +1592,7 @@ func {{ $svc }}BoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntr
 	return []BoolReadEntry{
 {{- range $bools }}
 {{- if not .WriteOnly }}
-		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .ReadPreservesOnMissing }}, {{ if .BoolEnum }}&BoolEnumValues{ {{ printf "%q" .BoolEnum.TrueValue }}, {{ printf "%q" .BoolEnum.FalseValue }} }{{ else }}nil{{ end }}},
+		{&state.{{ .GoField }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .ReadPreservesOnMissing }}, {{ if .BoolEnum }}&BoolEnumValues{ {{ printf "%q" .BoolEnum.TrueValue }}, {{ printf "%q" .BoolEnum.FalseValue }} }{{ else }}nil{{ end }}},
 {{- end }}
 {{- end }}
 	}
@@ -1681,7 +1606,7 @@ func {{ $svc }}Int64ReadEntries(state *ProjectConfigResourceModel) []Int64ReadEn
 	return []Int64ReadEntry{
 {{- range $ints }}
 {{- if not .WriteOnly }}
-		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .ReadPreservesOnMissing }}},
+		{&state.{{ .GoField }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .ReadPreservesOnMissing }}},
 {{- end }}
 {{- end }}
 	}
@@ -1695,7 +1620,7 @@ func {{ $svc }}ListStringReadEntries(state *ProjectConfigResourceModel) []ListSt
 	return []ListStringReadEntry{
 {{- range $listStrings }}
 {{- if not .WriteOnly }}
-		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .ReadPreservesOnMissing }}},
+		{&state.{{ .GoField }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .ReadPreservesOnMissing }}},
 {{- end }}
 {{- end }}
 	}
@@ -1709,7 +1634,7 @@ func {{ $svc }}MapStringReadEntries(state *ProjectConfigResourceModel) []MapStri
 	return []MapStringReadEntry{
 {{- range $mapStrings }}
 {{- if not .WriteOnly }}
-		{&state.{{ .GoField }}, {{ if .DeprecatedGoField }}&state.{{ .DeprecatedGoField }}{{ else }}nil{{ end }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .ReadPreservesOnMissing }}},
+		{&state.{{ .GoField }}, []string{ {{ readKeys .ReadKeysPath }} }, {{ .ReadPreservesOnMissing }}},
 {{- end }}
 {{- end }}
 	}
