@@ -40,6 +40,11 @@ func verifyTestProject() *ory.Project {
 					"ttl": map[string]interface{}{"access_token": "30m"},
 				},
 			},
+			AccountExperience: &ory.ProjectServiceAccountExperience{
+				Config: map[string]interface{}{
+					"translations": map[string]interface{}{"en": "https://storage.example.com/en.json"},
+				},
+			},
 		},
 	}
 }
@@ -60,6 +65,10 @@ func TestProjectConfigValue_ResolvesNestedPaths(t *testing.T) {
 	value, ok = projectConfigValue(project, "/services/oauth2/config/ttl/access_token")
 	require.True(t, ok)
 	assert.Equal(t, "30m", value)
+
+	value, ok = projectConfigValue(project, "/services/account_experience/config/translations/en")
+	require.True(t, ok)
+	assert.Equal(t, "https://storage.example.com/en.json", value)
 }
 
 // TestProjectConfigValue_MissingPathReportsFalse covers what a delete assertion

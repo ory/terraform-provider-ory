@@ -239,6 +239,7 @@ Project API = `https://{slug}.projects.oryapis.com` with the project API key.
 | `ory_scim_client` | `GET /normalized/projects/{id}` (console): `.current_revision.scim_clients[]` | `{project_id}/{client_id}`, secret unrecoverable |
 | `ory_action` | revision: `...selfservice.flows.<flow>.<timing>...hooks[]` where `hook == "web_hook"` | after: `{project_id}:{flow}:after:{auth_method}:{METHOD}:{url}`; before: `{project_id}:{flow}:before:{METHOD}:{url}` |
 | `ory_email_template` | revision: `...courier.templates.<base>.<valid\|invalid>.email` with non-empty `subject` or `body.html` / `body.plaintext` | `{base}_{valid\|invalid}` (e.g. `recovery_code_valid`) |
+| `ory_account_experience_translation` | revision: `.services.account_experience.config.translations`, one key per locale with custom text | `{project_id}/{locale}`; the import downloads the stored messages |
 | `ory_oauth2_client` | `GET /admin/clients` (project) | `{client_id}` |
 | `ory_oidc_dynamic_client` | same list; `GET /admin/clients` carries no field that distinguishes a DCR client, so pick them out yourself | `{client_id}` (identical to `ory_oauth2_client`, so switching resource type is a one-word edit) |
 | `ory_json_web_key_set` | `GET /admin/keys/{set}` (project); no list-all endpoint, set IDs must be known | `{project_id}/{set_id}` |

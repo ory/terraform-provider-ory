@@ -541,6 +541,20 @@ if [ "$(echo "$UNKNOWN_TEMPLATES" | jq 'length')" -gt 0 ]; then
 fi
 log "email templates with custom content: $(echo "$TEMPLATES" | jq 'length')"
 
+# --- Account Experience translations (from the project revision) ---------------
+# translations maps each locale that has custom text to the URL of its stored
+# document. The import downloads the document, so config generation emits the
+# full messages map.
+TRANSLATIONS=$(echo "$PROJECT_JSON" | jq -c '
+  (.services.account_experience.config.translations // {})
+  | if type == "object" then [to_entries[] | select((.value | type) == "string" and .value != "") | .key]
+    else [] end')
+echo "$TRANSLATIONS" | jq -r '.[]' | while read -r locale; do
+  [ -n "$locale" ] || continue
+  emit "ory_account_experience_translation.$(unique_label "$(sanitize "$locale")")" "$ORY_PROJECT_ID/$locale"
+done
+log "account experience translations: $(echo "$TRANSLATIONS" | jq 'length')"
+
 # --- Identity schemas: not importable, list them for reference -------------------
 # An entry without a string id would abort startswith(), and the project revision
 # lists only schemas explicitly added to the project. The workspace endpoint holds

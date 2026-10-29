@@ -1005,7 +1005,7 @@ func excludedProperties() map[string]bool {
 		"organizations":                          true,
 		"project_revision_hooks":                 true,
 		"scim_clients":                           true,
-		"account_experience_custom_translations": true,
+		"account_experience_custom_translations": true, // → ory_account_experience_translation
 		// Handled by custom code in resource.go under different terraform names
 		"serve_public_cors_enabled":                             true, // → cors_enabled
 		"serve_public_cors_allowed_origins":                     true, // → cors_origins

@@ -231,6 +231,8 @@ The Ory Console additionally turns on `selfservice_flows_registration_after_pass
 
 The hosted Account Experience pages (login, registration, recovery, ...) can be branded with a logo, favicon, and theme colors.
 
+To change the text of these pages for a locale, use the `ory_account_experience_translation` resource.
+
 **Logos and favicons** (`account_experience_logo_light`, `account_experience_logo_dark`, `account_experience_favicon_light`, `account_experience_favicon_dark`) must be provided as an inline data URI — the Ory API does not fetch remote URLs. Use [`filebase64`](https://developer.hashicorp.com/terraform/language/functions/filebase64) to embed a local image:
 
 ```hcl
