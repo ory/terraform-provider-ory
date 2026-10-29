@@ -164,7 +164,7 @@ export TF_VAR_ory_project_key="ory_pat_..."
 |----------|---------------------|
 | ` + "`ory_project`" + `, ` + "`ory_workspace`" + ` | ` + "`workspace_api_key`" + `, ` + "`workspace_id`" + ` |
 | ` + "`ory_organization`" + `, ` + "`ory_scim_client`" + ` | ` + "`workspace_api_key`" + `, ` + "`project_id`" + ` |
-| ` + "`ory_project_config`" + `, ` + "`ory_action`" + `, ` + "`ory_social_provider`" + `, ` + "`ory_saml_provider`" + `, ` + "`ory_email_template`" + ` | ` + "`workspace_api_key`" + `, ` + "`project_id`" + ` |
+| ` + "`ory_project_config`" + `, ` + "`ory_action`" + `, ` + "`ory_social_provider`" + `, ` + "`ory_saml_provider`" + `, ` + "`ory_email_template`" + `, ` + "`ory_account_experience_translation`" + ` | ` + "`workspace_api_key`" + `, ` + "`project_id`" + ` |
 | ` + "`ory_identity`" + `, ` + "`ory_oauth2_client`" + `, ` + "`ory_relationship`" + ` | ` + "`project_api_key`" + `, ` + "`project_slug`" + ` |
 
 ## Import Requirements
@@ -281,7 +281,7 @@ Or via environment variables:
   export ORY_PROJECT_API_KEY="ory_pat_..."
 
 Which API key do you need?
-  - Workspace API Key (ory_wak_...): For ory_project, ory_workspace, ory_organization, ory_scim_client, ory_project_config, ory_action, ory_social_provider, ory_saml_provider, ory_email_template
+  - Workspace API Key (ory_wak_...): For ory_project, ory_workspace, ory_organization, ory_scim_client, ory_project_config, ory_action, ory_social_provider, ory_saml_provider, ory_email_template, ory_account_experience_translation
   - Project API Key (ory_pat_...): For ory_identity, ory_oauth2_client, ory_relationship
 
 For more information: https://www.ory.sh/docs/guides/api-keys`,

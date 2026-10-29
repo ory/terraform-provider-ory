@@ -3,7 +3,9 @@ package accountexperiencetranslation
 import (
 	"bytes"
 	"context"
+	"crypto/sha512"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -36,6 +38,10 @@ var (
 // document. The API renders the map as {} when no locale has custom
 // translations, so an "add" of a single locale also works on a fresh project.
 const translationsPath = "/services/account_experience/config/translations"
+
+// projectStateDeleted is the state the API reports for a project deleted in
+// the Console.
+const projectStateDeleted = "deleted"
 
 // localeRegex is the pattern the API enforces on a locale. The API rejects any
 // other value with HTTP 400. The pattern also keeps "/" and "~" out of the JSON
@@ -89,7 +95,7 @@ func (r *AccountExperienceTranslationResource) Schema(ctx context.Context, req r
 				},
 			},
 			"locale": schema.StringAttribute{
-				Description: "Language tag of the locale the text is for, for example en or de. The hosted login shows the text only for a locale it serves: an entry in account_experience_enabled_locales, or account_experience_default_locale, on ory_project_config. The match is exact and case-sensitive, so text for pt-br never shows for pt-BR. Changing it forces a new resource.",
+				Description: "Language tag of the locale the text is for, for example en or de. The hosted login shows the text only for the locale that it renders, which account_experience_locale_behavior, account_experience_default_locale, and account_experience_enabled_locales on ory_project_config decide. The match is exact and case-sensitive, so text for pt-br never shows for pt-BR. Changing it forces a new resource.",
 				Required:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
@@ -104,6 +110,7 @@ func (r *AccountExperienceTranslationResource) Schema(ctx context.Context, req r
 				ElementType: types.StringType,
 				Validators: []validator.Map{
 					mapvalidator.SizeAtLeast(1),
+					mapvalidator.NoNullValues(),
 				},
 			},
 		},
@@ -192,18 +199,19 @@ func (r *AccountExperienceTranslationResource) Read(ctx context.Context, req res
 	}
 
 	projectID := helpers.ResolveProjectID(state.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
+	locale := state.Locale.ValueString()
+	// After an import, messages is null and current stays nil.
 	var current map[string]string
-	if !state.Messages.IsNull() {
-		resp.Diagnostics.Append(state.Messages.ElementsAs(ctx, &current, false)...)
-	}
+	resp.Diagnostics.Append(state.Messages.ElementsAs(ctx, &current, false)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	// Prefer the project the last PatchProject returned, as ory_email_template
 	// does: a GET straight after a write can still report the previous
-	// revision. The cache lives only as long as one Terraform command, so the
-	// next plan reads the project again and sees changes made in the Console.
+	// revision. The cache lives as long as the provider process. In normal use
+	// that is one Terraform command, so the next plan reads the project again
+	// and sees changes made in the Console.
 	project := r.client.GetCachedProject(projectID)
 	if project == nil {
 		var err error
@@ -213,17 +221,43 @@ func (r *AccountExperienceTranslationResource) Read(ctx context.Context, req res
 		}
 	}
 
-	storedURL := storedDocumentURL(project, state.Locale.ValueString())
+	// Deleting a project in the Console is a soft delete. The GET still answers
+	// 200, and only the state changes. The API rejects every patch to a deleted
+	// project, so a later destroy would fail. Drop the resource instead, as
+	// ory_project_config does.
+	if project.GetState() == projectStateDeleted {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	storedURL := storedDocumentURL(project, locale)
 	if storedURL == "" {
 		// Removed in the Console, or by another configuration.
 		resp.State.RemoveResource(ctx)
 		return
 	}
-	messages, err := resolveMessages(ctx, storedURL, current)
+
+	var seen storedDocument
+	if raw, diags := req.Private.GetKey(ctx, storedDocumentKey); len(raw) > 0 {
+		resp.Diagnostics.Append(diags...)
+		// A record that does not parse only costs a download.
+		_ = json.Unmarshal(raw, &seen)
+	}
+	messages, err := resolveMessages(ctx, storedURL, current, seen)
 	if err != nil {
-		resp.Diagnostics.AddError("Error Reading Account Experience Translation",
-			fmt.Sprintf("Failed to read the %q translations of project %s: %v", state.Locale.ValueString(), projectID, err))
-		return
+		if current == nil {
+			resp.Diagnostics.AddError("Error Reading Account Experience Translation",
+				fmt.Sprintf("Failed to read the %q translations of project %s: %v", locale, projectID, err))
+			return
+		}
+		// Keep state rather than fail every plan while the storage host is
+		// unreachable, as ory_email_template does, but say so.
+		resp.Diagnostics.AddWarning("Account Experience Translation Not Checked",
+			fmt.Sprintf("Could not download the %q translations of project %s, so this run does not detect changes made outside Terraform: %v", locale, projectID, err))
+		messages = current
+	} else if resp.Private != nil {
+		// resp.Private is nil only when a unit test calls Read directly.
+		record, _ := json.Marshal(newStoredDocument(storedURL, messages))
+		resp.Diagnostics.Append(resp.Private.SetKey(ctx, storedDocumentKey, record)...)
 	}
 
 	var diags diag.Diagnostics
@@ -246,13 +280,34 @@ func storedDocumentURL(project *ory.Project, locale string) string {
 	return storedURL
 }
 
+// storedDocument records that the document at URL holds the messages whose
+// encoding has the SHA-512 MessagesHash. Read keeps it in private state under
+// storedDocumentKey. A document that the Console wrote orders its keys
+// differently from encodeMessages, so its file name usually does not match
+// state. Without the record, Read would download that document on every
+// refresh.
+type storedDocument struct {
+	URL          string `json:"url"`
+	MessagesHash string `json:"messages_hash"`
+}
+
+const storedDocumentKey = "stored_document"
+
+func newStoredDocument(storedURL string, messages map[string]string) storedDocument {
+	sum := sha512.Sum512(encodeMessages(messages))
+	return storedDocument{URL: storedURL, MessagesHash: hex.EncodeToString(sum[:])}
+}
+
 // resolveMessages returns the messages of the document stored at storedURL.
-// The API names the stored file after the SHA-512 of the document, so when the
-// name matches the encoding of current, current is returned without a
-// download. Otherwise the document changed outside Terraform, or the resource
-// is new to state after an import, and the document is downloaded and parsed.
-func resolveMessages(ctx context.Context, storedURL string, current map[string]string) (map[string]string, error) {
-	if current != nil && helpers.URLHashMatchesContent(storedURL, encodeMessages(current)) {
+// It returns current without a download in two cases. The API names the
+// stored file after the SHA-512 of the document, so the name can match the
+// encoding of current. Or seen records that the same URL already held current,
+// which stays true because the URL is content-addressed. Otherwise the
+// document changed outside Terraform, or the resource is new to state after
+// an import, and the document is downloaded and parsed.
+func resolveMessages(ctx context.Context, storedURL string, current map[string]string, seen storedDocument) (map[string]string, error) {
+	if current != nil && (helpers.URLHashMatchesContent(storedURL, encodeMessages(current)) ||
+		seen == newStoredDocument(storedURL, current)) {
 		return current, nil
 	}
 	doc, err := fetchStoredDocument(ctx, storedURL)

@@ -3,15 +3,19 @@ package accountexperiencetranslation
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ory/terraform-provider-ory/internal/client"
 	"github.com/ory/terraform-provider-ory/internal/helpers"
 )
 
@@ -58,7 +62,7 @@ func TestResolveMessages(t *testing.T) {
 
 	t.Run("matching hash keeps state without a download", func(t *testing.T) {
 		fetched := stubFetch(t, "", errors.New("must not be called"))
-		got, err := resolveMessages(ctx, probeStoredURL, probeMessages)
+		got, err := resolveMessages(ctx, probeStoredURL, probeMessages, storedDocument{})
 		require.NoError(t, err)
 		assert.Equal(t, probeMessages, got)
 		assert.Empty(t, *fetched)
@@ -66,42 +70,143 @@ func TestResolveMessages(t *testing.T) {
 
 	t.Run("changed document is downloaded", func(t *testing.T) {
 		fetched := stubFetch(t, `{"login.title":"Changed in the Console"}`, nil)
-		got, err := resolveMessages(ctx, probeStoredURL, map[string]string{"login.title": "Sign in"})
+		got, err := resolveMessages(ctx, probeStoredURL, map[string]string{"login.title": "Sign in"}, storedDocument{})
 		require.NoError(t, err)
 		assert.Equal(t, map[string]string{"login.title": "Changed in the Console"}, got)
 		assert.Equal(t, []string{probeStoredURL}, *fetched)
 	})
 
+	t.Run("recorded URL keeps state without a download", func(t *testing.T) {
+		// A document the Console wrote: its file name is not the hash of the
+		// provider's encoding, but an earlier Read matched it with state.
+		current := map[string]string{"login.title": "Sign in"}
+		fetched := stubFetch(t, "", errors.New("must not be called"))
+		got, err := resolveMessages(ctx, probeStoredURL, current, newStoredDocument(probeStoredURL, current))
+		require.NoError(t, err)
+		assert.Equal(t, current, got)
+		assert.Empty(t, *fetched)
+	})
+
+	t.Run("record for other messages still downloads", func(t *testing.T) {
+		// State changed since the record, for example through an update, so
+		// the record proves nothing about the current messages.
+		fetched := stubFetch(t, `{"login.title":"Old"}`, nil)
+		recorded := newStoredDocument(probeStoredURL, map[string]string{"login.title": "Old"})
+		got, err := resolveMessages(ctx, probeStoredURL, map[string]string{"login.title": "New"}, recorded)
+		require.NoError(t, err)
+		assert.Equal(t, map[string]string{"login.title": "Old"}, got)
+		assert.Len(t, *fetched, 1)
+	})
+
 	t.Run("import downloads the document", func(t *testing.T) {
 		stubFetch(t, `{"recovery.title":"Forgot your password?","login.title":"Sign in to Example"}`, nil)
-		got, err := resolveMessages(ctx, probeStoredURL, nil)
+		got, err := resolveMessages(ctx, probeStoredURL, nil, storedDocument{})
 		require.NoError(t, err)
 		assert.Equal(t, probeMessages, got)
 	})
 
 	t.Run("download failure is an error", func(t *testing.T) {
 		stubFetch(t, "", errors.New("HTTP 503"))
-		_, err := resolveMessages(ctx, probeStoredURL, nil)
+		_, err := resolveMessages(ctx, probeStoredURL, nil, storedDocument{})
 		assert.ErrorContains(t, err, "HTTP 503")
 	})
 
 	t.Run("nested document is an error", func(t *testing.T) {
 		stubFetch(t, `{"login":{"title":"x"}}`, nil)
-		_, err := resolveMessages(ctx, probeStoredURL, nil)
+		_, err := resolveMessages(ctx, probeStoredURL, nil, storedDocument{})
 		assert.ErrorContains(t, err, "parsing the translations document")
 	})
 }
 
-func TestIsAlreadyRemoved(t *testing.T) {
-	// The body the staging API returned on 2026-10-29 for a remove of a locale
-	// that had no translations.
-	gone := errors.New(`patching project: HTTP 400: 400 Bad Request
-Response body: {"error":{"code":400,"status":"Bad Request","reason":"Unable to apply JSON Patch: error in remove for path: '/services/account_experience/config/translations/ja': unable to remove nonexistent key: ja: missing value"}}`)
-	assert.True(t, isAlreadyRemoved(gone))
+// newTestResource returns a resource whose client talks to a fake Console that
+// answers every request with handler.
+func newTestResource(t *testing.T, handler http.HandlerFunc) *AccountExperienceTranslationResource {
+	t.Helper()
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	c, err := client.NewOryClient(client.OryClientConfig{WorkspaceAPIKey: "ws-test-key", ConsoleAPIURL: srv.URL})
+	require.NoError(t, err)
+	return &AccountExperienceTranslationResource{client: c}
+}
 
-	invalid := errors.New(`patching project: HTTP 400: 400 Bad Request
-Response body: {"error":{"code":400,"status":"Bad Request","reason":"field \"account_experience_custom_translations\" contains an invalid locale \"en_US\""}}`)
-	assert.False(t, isAlreadyRemoved(invalid))
+// testState returns the state of the en locale of project proj-1.
+func testState(t *testing.T, r *AccountExperienceTranslationResource, messages map[string]string) tfsdk.State {
+	t.Helper()
+	ctx := context.Background()
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	m, diags := types.MapValueFrom(ctx, types.StringType, messages)
+	require.False(t, diags.HasError(), "%v", diags)
+	state := tfsdk.State{Schema: schemaResp.Schema}
+	require.False(t, state.Set(ctx, AccountExperienceTranslationResourceModel{
+		ID:        types.StringValue("en"),
+		ProjectID: types.StringValue("proj-1"),
+		Locale:    types.StringValue("en"),
+		Messages:  m,
+	}).HasError())
+	return state
+}
+
+// projectJSON is a GET /projects/{id} body in the given lifecycle state.
+func projectJSON(state, translations string) string {
+	return `{"id":"proj-1","name":"n","slug":"s","environment":"prod","home_region":"eu-central","revision_id":"r",` +
+		`"organizations":[],"state":"` + state + `","services":{"account_experience":{"config":{"translations":` + translations + `}}}}`
+}
+
+func TestRead(t *testing.T) {
+	ctx := context.Background()
+	stored := `{"en":"` + probeStoredURL + `"}`
+	for _, tc := range []struct {
+		name    string
+		project string
+		removed bool
+	}{
+		{name: "stored locale keeps state without a download", project: projectJSON("running", stored)},
+		{name: "missing locale is removed", project: projectJSON("running", `{}`), removed: true},
+		{name: "soft-deleted project is removed", project: projectJSON("deleted", stored), removed: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stubFetch(t, "", errors.New("must not be called"))
+			r := newTestResource(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tc.project))
+			})
+			state := testState(t, r, probeMessages)
+			resp := &resource.ReadResponse{State: state}
+			r.Read(ctx, resource.ReadRequest{State: state}, resp)
+			require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+			require.Equal(t, tc.removed, resp.State.Raw.IsNull())
+			if tc.removed {
+				return
+			}
+			var got AccountExperienceTranslationResourceModel
+			require.False(t, resp.State.Get(ctx, &got).HasError())
+			var messages map[string]string
+			require.False(t, got.Messages.ElementsAs(ctx, &messages, false).HasError())
+			assert.Equal(t, probeMessages, messages)
+		})
+	}
+}
+
+// TestDelete_AlreadyRemovedLocale sends the error bodies the staging API
+// returned on 2026-10-29 through the real client, so the check also covers the
+// error wrapping that puts the response body into the error.
+func TestDelete_AlreadyRemovedLocale(t *testing.T) {
+	ctx := context.Background()
+	for body, wantErr := range map[string]bool{
+		`{"error":{"code":400,"status":"Bad Request","reason":"Unable to apply JSON Patch: error in remove for path: '/services/account_experience/config/translations/en': unable to remove nonexistent key: en: missing value"}}`: false,
+		`{"error":{"code":400,"status":"Bad Request","reason":"field \"account_experience_custom_translations\" contains an invalid locale \"en_US\""}}`:                                                                            true,
+	} {
+		r := newTestResource(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(body))
+		})
+		state := testState(t, r, probeMessages)
+		resp := &resource.DeleteResponse{State: state}
+		r.Delete(ctx, resource.DeleteRequest{State: state}, resp)
+		assert.Equal(t, wantErr, resp.Diagnostics.HasError(), "%s: %v", body, resp.Diagnostics)
+	}
 }
 
 func TestImportState(t *testing.T) {

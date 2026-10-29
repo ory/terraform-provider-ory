@@ -249,8 +249,8 @@ Project API = `https://{slug}.projects.oryapis.com` with the project API key.
 | `ory_identity_schema` | revision: `...identity.schemas[]`, plus `GET /identity-schemas` (console) for workspace-scoped schemas the revision omits | **not importable** (immutable by design) |
 
 Single-segment forms (`{domain_id}`, `{org_id}`, `{key_id}`, `{stream_id}`,
-`{set_id}`) also work when the provider block sets `project_id`; prefer the
-explicit `{project_id}/...` form in generated files.
+`{set_id}`, `{locale}`) also work when the provider block sets `project_id`;
+prefer the explicit `{project_id}/...` form in generated files.
 
 ## Caveats
 
