@@ -5,6 +5,10 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -26,6 +30,13 @@ const probeStoredURL = "https://storage.googleapis.com/bac-gcs-staging/" +
 
 func TestEncodeMessages_MatchesStoredFileName(t *testing.T) {
 	assert.True(t, helpers.URLHashMatchesContent(probeStoredURL, encodeMessages(probeMessages)))
+}
+
+// TestEncodeMessages_KeepsHTMLCharacters pins the compact, unescaped form that
+// the Console also writes. json.Marshal would store "&" as &.
+func TestEncodeMessages_KeepsHTMLCharacters(t *testing.T) {
+	got := encodeMessages(map[string]string{"footer.terms_of_service.label": "Terms & <b>Conditions</b>"})
+	assert.Equal(t, `{"footer.terms_of_service.label":"Terms & <b>Conditions</b>"}`, string(got))
 }
 
 // stubFetch replaces the document download for one test and records the URLs
@@ -91,4 +102,39 @@ Response body: {"error":{"code":400,"status":"Bad Request","reason":"Unable to a
 	invalid := errors.New(`patching project: HTTP 400: 400 Bad Request
 Response body: {"error":{"code":400,"status":"Bad Request","reason":"field \"account_experience_custom_translations\" contains an invalid locale \"en_US\""}}`)
 	assert.False(t, isAlreadyRemoved(invalid))
+}
+
+func TestImportState(t *testing.T) {
+	ctx := context.Background()
+	r := &AccountExperienceTranslationResource{}
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+
+	imports := func(id string) (AccountExperienceTranslationResourceModel, diag.Diagnostics) {
+		resp := &resource.ImportStateResponse{State: tfsdk.State{
+			Schema: schemaResp.Schema,
+			Raw:    tftypes.NewValue(schemaResp.Schema.Type().TerraformType(ctx), nil),
+		}}
+		r.ImportState(ctx, resource.ImportStateRequest{ID: id}, resp)
+		var got AccountExperienceTranslationResourceModel
+		if !resp.Diagnostics.HasError() {
+			resp.Diagnostics.Append(resp.State.Get(ctx, &got)...)
+		}
+		return got, resp.Diagnostics
+	}
+
+	got, diags := imports("proj-1/en")
+	require.False(t, diags.HasError(), "%v", diags)
+	assert.Equal(t, "proj-1", got.ProjectID.ValueString())
+	assert.Equal(t, "en", got.ID.ValueString())
+	assert.Equal(t, "en", got.Locale.ValueString())
+
+	got, diags = imports("de")
+	require.False(t, diags.HasError(), "%v", diags)
+	assert.True(t, got.ProjectID.IsNull(), "a bare locale leaves project_id to the provider")
+
+	for _, id := range []string{"", "proj-1/", "proj-1/en/x", "proj-1/EN_us"} {
+		_, diags = imports(id)
+		assert.True(t, diags.HasError(), "import ID %q must be rejected", id)
+	}
 }

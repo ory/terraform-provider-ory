@@ -1,6 +1,7 @@
 package accountexperiencetranslation
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -88,7 +89,7 @@ func (r *AccountExperienceTranslationResource) Schema(ctx context.Context, req r
 				},
 			},
 			"locale": schema.StringAttribute{
-				Description: "Language tag of the locale the text is for, for example en or de. The hosted login uses the text only for a locale it serves: one in account_experience_enabled_locales, or account_experience_default_locale, on ory_project_config. Changing it forces a new resource.",
+				Description: "Language tag of the locale the text is for, for example en or de. The hosted login shows the text only for a locale it serves: an entry in account_experience_enabled_locales, or account_experience_default_locale, on ory_project_config. The match is exact and case-sensitive, so text for pt-br never shows for pt-BR. Changing it forces a new resource.",
 				Required:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
@@ -127,13 +128,20 @@ func localePath(locale string) string {
 	return translationsPath + "/" + locale
 }
 
-// encodeMessages renders messages as the document the API stores. json.Marshal
+// encodeMessages renders messages as the document the API stores. The encoder
 // sorts map keys, so equal maps always give the same bytes, and the API names
-// the stored file after the SHA-512 of exactly these bytes.
+// the stored file after the SHA-512 of exactly these bytes. HTML escaping is
+// off, so "&", "<", and ">" are stored as typed, as in a document that the
+// Console writes.
 func encodeMessages(messages map[string]string) []byte {
-	// Marshal cannot fail for a map of strings.
-	doc, _ := json.Marshal(messages)
-	return doc
+	var doc bytes.Buffer
+	enc := json.NewEncoder(&doc)
+	enc.SetEscapeHTML(false)
+	// Encode cannot fail for a map of strings.
+	_ = enc.Encode(messages)
+	// Encode adds a trailing newline. Trim it so the document matches the
+	// compact form that the Console writes.
+	return bytes.TrimSuffix(doc.Bytes(), []byte("\n"))
 }
 
 // write uploads the plan's messages as the translations document of its
@@ -303,9 +311,9 @@ func (r *AccountExperienceTranslationResource) ImportState(ctx context.Context, 
 	if !found {
 		projectID, locale = "", req.ID
 	}
-	if locale == "" {
+	if !localeRegex.MatchString(locale) {
 		resp.Diagnostics.AddError("Invalid Import ID",
-			fmt.Sprintf("Expected <project-id>/<locale> or <locale>, got %q.", req.ID))
+			fmt.Sprintf("Expected <project-id>/<locale> or <locale>, where <locale> is a language tag such as en or de, got %q.", req.ID))
 		return
 	}
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), locale)...)
