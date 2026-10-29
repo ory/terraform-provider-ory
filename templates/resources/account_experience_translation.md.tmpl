@@ -11,6 +11,8 @@ Manages the custom text of the Ory Account Experience, the hosted login UI, for 
 
 Each resource owns one locale and leaves the other locales unchanged. Separate configurations can therefore manage separate locales of one project.
 
+~> **Note:** Do not run two applies against the same project at the same time. Ory applies each change to the project configuration as it was when the request started, then saves the whole result. Two concurrent changes can therefore overwrite each other. The next plan shows the lost change, and the next apply writes it again. Within one apply, the provider sends the changes to a project one at a time.
+
 -> **Plan:** Available on all Ory Network plans.
 
 ## Example Usage

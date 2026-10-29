@@ -11,6 +11,8 @@ Manages the custom text of the Ory Account Experience, the hosted login UI, for 
 
 Each resource owns one locale and leaves the other locales unchanged. Separate configurations can therefore manage separate locales of one project.
 
+~> **Note:** Do not run two applies against the same project at the same time. Ory applies each change to the project configuration as it was when the request started, then saves the whole result. Two concurrent changes can therefore overwrite each other. The next plan shows the lost change, and the next apply writes it again. Within one apply, the provider sends the changes to a project one at a time.
+
 -> **Plan:** Available on all Ory Network plans.
 
 ## Example Usage
@@ -29,16 +31,12 @@ resource "ory_account_experience_translation" "en" {
 }
 
 # Custom text for the German hosted login, kept in a JSON file with the same
-# flat format as the Ory Elements locale files.
+# flat format as the Ory Elements locale files. The hosted login shows the text
+# only for a locale it serves, so "de" must be in
+# account_experience_enabled_locales on your ory_project_config resource.
 resource "ory_account_experience_translation" "de" {
   locale   = "de"
   messages = jsondecode(file("${path.module}/translations/de.json"))
-}
-
-# The hosted login only uses the text of a locale it serves.
-resource "ory_project_config" "main" {
-  account_experience_enabled_locales = ["en", "de"]
-  account_experience_default_locale  = "en"
 }
 ```
 

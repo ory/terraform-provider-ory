@@ -11,14 +11,10 @@ resource "ory_account_experience_translation" "en" {
 }
 
 # Custom text for the German hosted login, kept in a JSON file with the same
-# flat format as the Ory Elements locale files.
+# flat format as the Ory Elements locale files. The hosted login shows the text
+# only for a locale it serves, so "de" must be in
+# account_experience_enabled_locales on your ory_project_config resource.
 resource "ory_account_experience_translation" "de" {
   locale   = "de"
   messages = jsondecode(file("${path.module}/translations/de.json"))
-}
-
-# The hosted login only uses the text of a locale it serves.
-resource "ory_project_config" "main" {
-  account_experience_enabled_locales = ["en", "de"]
-  account_experience_default_locale  = "en"
 }
