@@ -1880,7 +1880,7 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 	var diags diag.Diagnostics
 	for _, block := range missingResponseBlocks(project, state) {
 		diags.AddError("Project Config Read Incomplete", fmt.Sprintf(
-			"The API response for project %s omits %s, but state holds values for attributes read from it. The provider cannot verify those values and will not report them as unchanged. Retry if the request was partial. Otherwise remove those attributes from the configuration and state.",
+			"The API response for project %s omits %s, but state holds values for attributes read from it. The provider cannot verify those values and will not report them as unchanged. Restore a complete API response before planning or applying. If this error affects cors_enabled, verify the intended CORS value and configure it explicitly. Removing cors_enabled can apply its default of false and disable public CORS.",
 			project.Id, block))
 	}
 	if diags.HasError() {
