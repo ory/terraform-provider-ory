@@ -1,0 +1,14 @@
+resource "ory_account_experience_translation" "en" {
+  locale = "en"
+  messages = {
+    "login.title"    = "Sign in to Example"
+    "recovery.title" = "Forgot your password?"
+  }
+}
+
+resource "ory_account_experience_translation" "de" {
+  locale = "de"
+  messages = {
+    "login.title" = "Anmelden"
+  }
+}

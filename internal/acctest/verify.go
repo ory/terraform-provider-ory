@@ -145,6 +145,11 @@ func projectConfigValue(project *ory.Project, patchPath string) (interface{}, bo
 			return nil, false
 		}
 		config = project.Services.Permission.Config
+	case "account_experience":
+		if project.Services.AccountExperience == nil {
+			return nil, false
+		}
+		config = project.Services.AccountExperience.Config
 	default:
 		return nil, false
 	}
