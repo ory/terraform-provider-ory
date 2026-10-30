@@ -2258,6 +2258,12 @@ func extractSchemasFromProjectConfig(ctx context.Context, project *ory.Project) 
 // override it. Returns (isPrivate, error) — error indicates DNS failure.
 var hostChecker = isPrivateHost
 
+// proxyForRequest returns the proxy that a download goes through, or nil for a
+// direct connection. Like the Console API client, it follows HTTPS_PROXY and
+// NO_PROXY. It is a variable so tests can point it at a test proxy, because
+// http.ProxyFromEnvironment reads the environment only once per process.
+var proxyForRequest = http.ProxyFromEnvironment
+
 // schemaFetchClient is a shared HTTP client for fetching schema content from
 // trusted URLs returned by the Ory API. It is thread-safe and reuses
 // connections. It uses req.Context() in CheckRedirect so per-request
@@ -2265,11 +2271,14 @@ var hostChecker = isPrivateHost
 // It is a variable so tests can override it.
 var schemaFetchClient = &http.Client{
 	Timeout: 10 * time.Second,
-	Transport: &http.Transport{
+	Transport: &fetchTransport{
 		// Validate the actual resolved IP at connection time to prevent
 		// DNS rebinding: a hostname may resolve to a public IP during the
 		// pre-flight check but to a private IP when the connection is made.
-		DialContext: safeDialContext,
+		direct: &http.Transport{DialContext: safeDialContext},
+		proxied: &http.Transport{Proxy: func(req *http.Request) (*url.URL, error) {
+			return proxyForRequest(req)
+		}},
 	},
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 2 {
@@ -2290,6 +2299,28 @@ var schemaFetchClient = &http.Client{
 		}
 		return nil
 	},
+}
+
+// fetchTransport sends a download through the proxy that proxyForRequest
+// names for its URL, or directly when it names none. Only a direct connection
+// goes through safeDialContext. Through a proxy, the dialed address is the
+// proxy's own, which is usually private, and the proxy resolves the host
+// itself. The pre-flight host check in FetchSafeHTTPS and the redirect check
+// still refuse private hosts on both paths.
+type fetchTransport struct {
+	direct  http.RoundTripper
+	proxied http.RoundTripper
+}
+
+func (t *fetchTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	proxyURL, err := proxyForRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	if proxyURL == nil {
+		return t.direct.RoundTrip(req)
+	}
+	return t.proxied.RoundTrip(req)
 }
 
 // safeDialContext wraps the default dialer and validates that the resolved IP
