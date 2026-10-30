@@ -26,16 +26,16 @@ func missingResponseBlocks(project *ory.Project, state *ProjectConfigResourceMod
 			break
 		}
 	}
-	if project.Services.AccountExperience == nil && services["account_experience"] {
+	if (project.Services.AccountExperience == nil || project.Services.AccountExperience.Config == nil) && services["account_experience"] {
 		blocks = append(blocks, "services.account_experience")
 	}
-	if project.Services.Identity == nil && (services["identity"] || identityCustomStateFields(state)) {
+	if (project.Services.Identity == nil || project.Services.Identity.Config == nil) && (services["identity"] || identityCustomStateFields(state)) {
 		blocks = append(blocks, "services.identity")
 	}
-	if project.Services.Oauth2 == nil && (services["oauth2"] || !state.OAuth2TokenHookAuth.IsNull()) {
+	if (project.Services.Oauth2 == nil || project.Services.Oauth2.Config == nil) && (services["oauth2"] || !state.OAuth2TokenHookAuth.IsNull()) {
 		blocks = append(blocks, "services.oauth2")
 	}
-	if project.Services.Permission == nil && (services["permission"] || !state.KetoNamespaces.IsNull()) {
+	if (project.Services.Permission == nil || project.Services.Permission.Config == nil) && (services["permission"] || !state.KetoNamespaces.IsNull()) {
 		blocks = append(blocks, "services.permission")
 	}
 	return blocks

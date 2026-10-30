@@ -2,17 +2,20 @@ package projectconfig
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/stretchr/testify/require"
-
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	ory "github.com/ory/client-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestServiceStateFields(t *testing.T) {
@@ -120,4 +123,54 @@ func TestRead_PresentCORSBlockRefreshes(t *testing.T) {
 	var got types.Bool
 	require.False(t, resp.State.GetAttribute(context.Background(), path.Root("cors_enabled"), &got).HasError())
 	assert.False(t, got.ValueBool(), "a present block must refresh state from the response")
+}
+
+func TestRead_ServiceConfigNull(t *testing.T) {
+	ctx := context.Background()
+	for _, service := range []struct {
+		name, attribute string
+		value           attr.Value
+	}{
+		{"account_experience", "account_experience_contact_url", types.StringValue("https://example.com/contact")},
+		{"identity", "session_lifespan", types.StringValue("20m0s")},
+		{"oauth2", "oauth2_ttl_access_token", types.StringValue("1h")},
+		{"permission", "keto_feature_flags_strict_mode", types.BoolValue(true)},
+	} {
+		for _, tc := range []struct {
+			name, config string
+			tracked      bool
+			wantError    bool
+		}{
+			{"null tracked config", "null", true, true},
+			{"null untracked config", "null", false, false},
+			{"empty tracked config", "{}", true, false},
+		} {
+			t.Run(service.name+"/"+tc.name, func(t *testing.T) {
+				body := strings.Replace(liveProjectNoCORS, `"services":{}`,
+					fmt.Sprintf(`"services":{"%s":{"config":%s}}`, service.name, tc.config), 1)
+				srv := jsonServer(t, http.StatusOK, body)
+				r := projectConfigResourceForServer(t, srv.URL)
+				schemaResp := &resource.SchemaResponse{}
+				r.Schema(ctx, resource.SchemaRequest{}, schemaResp)
+				require.False(t, schemaResp.Diagnostics.HasError())
+				state := projectConfigState(t, schemaResp.Schema)
+				if tc.tracked {
+					require.False(t, state.SetAttribute(ctx, path.Root(service.attribute), service.value).HasError())
+				}
+				resp := &resource.ReadResponse{State: state}
+				r.Read(ctx, resource.ReadRequest{State: state}, resp)
+				require.Equal(t, tc.wantError, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+				if tc.wantError {
+					require.Len(t, resp.Diagnostics.Errors(), 1)
+					assert.Equal(t, "Project Config Read Incomplete", resp.Diagnostics.Errors()[0].Summary())
+					assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), "services."+service.name)
+					assert.True(t, state.Raw.Equal(resp.State.Raw), "incomplete reads must preserve all prior state")
+				} else {
+					var values map[string]tftypes.Value
+					require.NoError(t, resp.State.Raw.As(&values))
+					assert.True(t, values[service.attribute].IsNull())
+				}
+			})
+		}
+	}
 }
