@@ -1569,6 +1569,55 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 {{- end }}
 }
 
+func serviceStateFields(state *ProjectConfigResourceModel) map[string]bool {
+	return map[string]bool{
+{{- range $svc := .ServiceNames }}
+		{{ printf "%q" $svc }}: {{ $svc }}HasStateFields(state),
+{{- end }}
+	}
+}
+{{ range $svc := .ServiceNames }}
+{{- $attrs := index $.ByService $svc }}
+func {{ $svc }}HasStateFields(state *ProjectConfigResourceModel) bool {
+{{- if filterType $attrs "string" }}
+	for _, e := range {{ $svc }}StringReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+{{- end }}
+{{- if filterType $attrs "bool" }}
+	for _, e := range {{ $svc }}BoolReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+{{- end }}
+{{- if filterType $attrs "int64" }}
+	for _, e := range {{ $svc }}Int64ReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+{{- end }}
+{{- if filterType $attrs "list_string" }}
+	for _, e := range {{ $svc }}ListStringReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+{{- end }}
+{{- if filterType $attrs "map_string" }}
+	for _, e := range {{ $svc }}MapStringReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+{{- end }}
+	return false
+}
+{{ end }}
+
 {{- range $svc := .ServiceNames }}
 {{- $attrs := index $.ByService $svc }}
 {{- $strings := filterType $attrs "string" }}
