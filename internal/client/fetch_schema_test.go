@@ -2,9 +2,14 @@ package client
 
 import (
 	"context"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"net/url"
+	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -269,4 +274,109 @@ func TestFetchSafeHTTPS(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, int(FetchSafeHTTPSMaxBytes), len(body))
 	})
+}
+
+// connectProxy is a test proxy that tunnels CONNECT requests and records the
+// target of each tunnel.
+type connectProxy struct {
+	*httptest.Server
+	mu      sync.Mutex
+	targets []string
+}
+
+func newConnectProxy(t *testing.T) *connectProxy {
+	t.Helper()
+	p := &connectProxy{}
+	p.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodConnect {
+			http.Error(w, "CONNECT only", http.StatusMethodNotAllowed)
+			return
+		}
+		p.mu.Lock()
+		p.targets = append(p.targets, r.Host)
+		p.mu.Unlock()
+		dst, err := (&net.Dialer{}).DialContext(r.Context(), "tcp", r.Host)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		src, _, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			_ = dst.Close()
+			return
+		}
+		_, _ = src.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
+		go func() { _, _ = io.Copy(dst, src); _ = dst.Close() }()
+		go func() { _, _ = io.Copy(src, dst); _ = src.Close() }()
+	}))
+	t.Cleanup(p.Close)
+	return p
+}
+
+func (p *connectProxy) recorded() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]string(nil), p.targets...)
+}
+
+// TestFetchSafeHTTPS_UsesProxyFromEnvironment covers issue #405. On a network
+// where outbound HTTPS only works through a proxy, every download failed,
+// because the download client never asked for a proxy. The test proxy listens
+// on a loopback address, so the test also proves that the connection to the
+// proxy skips the private-address check.
+func TestFetchSafeHTTPS_UsesProxyFromEnvironment(t *testing.T) {
+	target := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("stored content"))
+	}))
+	defer target.Close()
+	proxy := newConnectProxy(t)
+	proxyURL, err := url.Parse(proxy.URL)
+	require.NoError(t, err)
+
+	origProxy, origChecker, origClient := proxyForRequest, hostChecker, schemaFetchClient
+	t.Cleanup(func() { proxyForRequest, hostChecker, schemaFetchClient = origProxy, origChecker, origClient })
+	proxyForRequest = http.ProxyURL(proxyURL)
+	hostChecker = func(context.Context, string) (bool, error) { return false, nil }
+
+	// Trust the certificate of the test server on the proxied path. The rest
+	// of the client, including its Proxy function, stays as configured.
+	transport := schemaFetchClient.Transport.(*fetchTransport)
+	proxied := transport.proxied.(*http.Transport).Clone()
+	proxied.TLSClientConfig = target.Client().Transport.(*http.Transport).TLSClientConfig
+	c := *schemaFetchClient
+	c.Transport = &fetchTransport{direct: transport.direct, proxied: proxied}
+	schemaFetchClient = &c
+
+	body, err := FetchSafeHTTPS(context.Background(), "test content", target.URL)
+	require.NoError(t, err)
+	assert.Equal(t, "stored content", string(body))
+	assert.Equal(t, []string{target.Listener.Addr().String()}, proxy.recorded())
+}
+
+// TestFetchSafeHTTPS_DirectConnectionKeepsDialCheck pins the other path. With
+// no proxy, the download still connects through safeDialContext, which
+// refuses the loopback test server although the pre-flight check allowed it.
+func TestFetchSafeHTTPS_DirectConnectionKeepsDialCheck(t *testing.T) {
+	target := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("stored content"))
+	}))
+	defer target.Close()
+
+	origProxy, origChecker := proxyForRequest, hostChecker
+	t.Cleanup(func() { proxyForRequest, hostChecker = origProxy, origChecker })
+	proxyForRequest = func(*http.Request) (*url.URL, error) { return nil, nil }
+	hostChecker = func(context.Context, string) (bool, error) { return false, nil }
+
+	_, err := FetchSafeHTTPS(context.Background(), "test content", target.URL)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "private or unreachable")
+}
+
+// TestProxyForRequest_FollowsEnvironment pins the production binding. The proxy
+// tests above replace proxyForRequest. An environment-based test cannot take
+// their place, because http.ProxyFromEnvironment reads HTTPS_PROXY and
+// NO_PROXY once per process, usually before a test sets them. Without this
+// check, a default that stopped following the environment would still pass.
+func TestProxyForRequest_FollowsEnvironment(t *testing.T) {
+	assert.Equal(t, reflect.ValueOf(http.ProxyFromEnvironment).Pointer(), reflect.ValueOf(proxyForRequest).Pointer())
 }
