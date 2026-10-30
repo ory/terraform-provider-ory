@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
+	"reflect"
 	"sync"
 	"testing"
 
@@ -369,4 +370,13 @@ func TestFetchSafeHTTPS_DirectConnectionKeepsDialCheck(t *testing.T) {
 	_, err := FetchSafeHTTPS(context.Background(), "test content", target.URL)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "private or unreachable")
+}
+
+// TestProxyForRequest_FollowsEnvironment pins the production binding. The proxy
+// tests above replace proxyForRequest. An environment-based test cannot take
+// their place, because http.ProxyFromEnvironment reads HTTPS_PROXY and
+// NO_PROXY once per process, usually before a test sets them. Without this
+// check, a default that stopped following the environment would still pass.
+func TestProxyForRequest_FollowsEnvironment(t *testing.T) {
+	assert.Equal(t, reflect.ValueOf(http.ProxyFromEnvironment).Pointer(), reflect.ValueOf(proxyForRequest).Pointer())
 }

@@ -209,7 +209,7 @@ To see each wait, run Terraform with `TF_LOG=DEBUG` and look for `Ory API rate l
 
 ## Proxies
 
-The provider honors `HTTPS_PROXY` and `NO_PROXY` for every request it sends. That covers the Console API, the project API, and the downloads of stored content such as email templates and identity schemas.
+The provider takes its proxy from the environment for every request it sends. A request to an `https://` URL uses `HTTPS_PROXY`, and a request to an `http://` URL uses `HTTP_PROXY`. Hosts in `NO_PROXY` skip the proxy. That covers the Console API, the project API, and the downloads of stored content such as email templates and identity schemas. Downloads always use HTTPS. The Ory APIs use HTTPS unless `console_api_url` or `project_api_url` sets an `http://` URL.
 
 Before a download, the provider resolves the host and refuses a private or loopback address. Without a proxy, it checks the address again when it connects, which guards against DNS rebinding. Through a proxy, the proxy resolves the host and opens that connection, so the second check does not apply. The provider still resolves the host itself, so on a network without public DNS, downloads fail even through a proxy.
 
