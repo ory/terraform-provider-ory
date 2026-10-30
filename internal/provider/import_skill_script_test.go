@@ -200,6 +200,11 @@ func TestImportSkillInlineJQToleratesUnexpectedShapes(t *testing.T) {
 	methodProviders := func(method string, providers []any) obj {
 		return obj{"selfservice": obj{"methods": obj{method: obj{"config": obj{"providers": providers}}}}}
 	}
+	accountExperienceRevision := func(config obj) string {
+		b, err := json.Marshal(obj{"services": obj{"account_experience": obj{"config": config}}})
+		require.NoError(t, err)
+		return string(b)
+	}
 
 	tests := []struct {
 		name string
@@ -238,6 +243,12 @@ func TestImportSkillInlineJQToleratesUnexpectedShapes(t *testing.T) {
 			name:   "saml providers array holding a scalar",
 			needle: `.services.identity.config.selfservice.methods.saml.config.providers[]?`,
 			input:  identityRevision(t, methodProviders("saml", []any{"nope"})),
+		},
+		{
+			// to_entries aborts on anything but an object or an array.
+			name:   "account experience translations as a scalar",
+			needle: `(.services.account_experience.config.translations // {})`,
+			input:  accountExperienceRevision(obj{"translations": "nope"}),
 		},
 	}
 
