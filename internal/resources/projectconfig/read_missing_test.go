@@ -1,7 +1,14 @@
 package projectconfig
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/stretchr/testify/require"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	ory "github.com/ory/client-go"
@@ -67,4 +74,50 @@ func TestMissingResponseBlocks(t *testing.T) {
 			assert.Equal(t, tc.want, missingResponseBlocks(tc.project, tc.state))
 		})
 	}
+}
+
+func readProjectConfigWithCORS(t *testing.T, body string) *resource.ReadResponse {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+
+	ctx := context.Background()
+	r := projectConfigResourceForServer(t, srv.URL)
+	schemaResp := &resource.SchemaResponse{}
+	r.Schema(ctx, resource.SchemaRequest{}, schemaResp)
+	require.False(t, schemaResp.Diagnostics.HasError())
+
+	state := projectConfigState(t, schemaResp.Schema)
+	require.False(t, state.SetAttribute(ctx, path.Root("cors_enabled"), types.BoolValue(true)).HasError())
+	resp := &resource.ReadResponse{State: state}
+	r.Read(ctx, resource.ReadRequest{State: state}, resp)
+	return resp
+}
+
+const liveProjectNoCORS = `{"id":"proj-1","name":"n","slug":"s","environment":"prod","home_region":"eu-central","revision_id":"r","organizations":[],"state":"running","services":{}}`
+const liveProjectCORSDisabled = `{"id":"proj-1","name":"n","slug":"s","environment":"prod","home_region":"eu-central","revision_id":"r","organizations":[],"state":"running","services":{},"cors_public":{"enabled":false,"origins":[]}}`
+
+func TestRead_AbsentCORSBlockErrors(t *testing.T) {
+	resp := readProjectConfigWithCORS(t, liveProjectNoCORS)
+
+	require.True(t, resp.Diagnostics.HasError(), "an absent cors_public block must fail the read")
+	assert.Equal(t, "Project Config Read Incomplete", resp.Diagnostics.Errors()[0].Summary())
+	assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), "omits cors_public,")
+
+	var held types.Bool
+	require.False(t, resp.State.GetAttribute(context.Background(), path.Root("cors_enabled"), &held).HasError())
+	assert.True(t, held.ValueBool(), "the prior state value must stay as it was; the error is the signal")
+}
+
+func TestRead_PresentCORSBlockRefreshes(t *testing.T) {
+	resp := readProjectConfigWithCORS(t, liveProjectCORSDisabled)
+
+	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+	var got types.Bool
+	require.False(t, resp.State.GetAttribute(context.Background(), path.Root("cors_enabled"), &got).HasError())
+	assert.False(t, got.ValueBool(), "a present block must refresh state from the response")
 }

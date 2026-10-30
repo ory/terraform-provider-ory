@@ -1816,15 +1816,19 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 }
 
 func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	r.read(ctx, req, resp)
+}
+
+func (r *ProjectConfigResource) read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) *ory.Project {
 	var state ProjectConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
-		return
+		return nil
 	}
 
 	projectID := helpers.ResolveProjectID(state.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
-		return
+		return nil
 	}
 
 	var project *ory.Project
@@ -1839,11 +1843,11 @@ func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadReque
 				// project. A purged project takes its config with it, so drop the
 				// resource from state rather than failing every plan.
 				resp.State.RemoveResource(ctx)
-				return
+				return nil
 			}
 			resp.Diagnostics.AddError("Error Reading Project Config",
 				"Could not read project "+projectID+": "+err.Error())
-			return
+			return nil
 		}
 	}
 
@@ -1853,19 +1857,36 @@ func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadReque
 	// gone with it, so drop the resource rather than reporting no changes.
 	if project.GetState() == projectStateDeleted {
 		resp.State.RemoveResource(ctx)
-		return
+		return nil
 	}
 
-	r.readProjectConfig(ctx, project, &state)
+	resp.Diagnostics.Append(r.readProjectConfig(ctx, project, &state)...)
+	if resp.Diagnostics.HasError() {
+		return nil
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return nil
+	}
+	return project
 }
 
 // =============================================================================
 // readProjectConfig — uses generated tables + custom read logic
 // =============================================================================
 
-func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *ory.Project, state *ProjectConfigResourceModel) {
+func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *ory.Project, state *ProjectConfigResourceModel) diag.Diagnostics {
+	var diags diag.Diagnostics
+	for _, block := range missingResponseBlocks(project, state) {
+		diags.AddError("Project Config Read Incomplete", fmt.Sprintf(
+			"The API response for project %s omits %s, but state holds values for attributes read from it. The provider cannot verify those values and will not report them as unchanged. Retry if the request was partial. Otherwise remove those attributes from the configuration and state.",
+			project.Id, block))
+	}
+	if diags.HasError() {
+		return diags
+	}
+
 	// --- Generated simple attribute reads ---
 	readSimpleFields(ctx, project, state)
 
@@ -2120,6 +2141,7 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 			}
 		}
 	}
+	return diags
 }
 
 // =============================================================================
