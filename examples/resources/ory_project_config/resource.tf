@@ -393,3 +393,21 @@ resource "ory_project_config" "dynamic_client_registration" {
   oidc_dynamic_client_registration_default_scope    = ["openid", "offline_access"]
   oidc_dynamic_client_registration_default_audience = ["https://api.example.com"]
 }
+
+# Brute-force protection throttles failed sign-ins with exponential backoff,
+# per submitted identifier and per client IP. Set every attribute of a group,
+# because the API rejects an incomplete group. Turning the throttle on
+# requires an Enterprise plan.
+resource "ory_project_config" "brute_force_protection" {
+  selfservice_flows_login_brute_force_protection_enabled = true
+
+  selfservice_flows_login_brute_force_protection_identifier_max_failures                = 5
+  selfservice_flows_login_brute_force_protection_identifier_window                      = "5m"
+  selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_initial = "1s"
+  selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_max     = "15m"
+
+  selfservice_flows_login_brute_force_protection_ip_max_failures                = 20
+  selfservice_flows_login_brute_force_protection_ip_window                      = "1m"
+  selfservice_flows_login_brute_force_protection_ip_exponential_backoff_initial = "1s"
+  selfservice_flows_login_brute_force_protection_ip_exponential_backoff_max     = "1h"
+}

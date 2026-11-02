@@ -420,7 +420,7 @@ type ProjectConfigResourceModel struct {
 	// Added from spec v1.22.87
 	OIDCDynamicClientRegistrationDefaultAudience types.List `tfsdk:"oidc_dynamic_client_registration_default_audience"`
 
-	// Auto-discovered (review naming before release)
+	// Added from spec v1.22.89
 	SelfserviceFlowsLoginBruteForceProtectionEnabled                             types.Bool   `tfsdk:"selfservice_flows_login_brute_force_protection_enabled"`
 	SelfserviceFlowsLoginBruteForceProtectionIdentifierExponentialBackoffInitial types.String `tfsdk:"selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_initial"`
 	SelfserviceFlowsLoginBruteForceProtectionIdentifierExponentialBackoffMax     types.String `tfsdk:"selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_max"`

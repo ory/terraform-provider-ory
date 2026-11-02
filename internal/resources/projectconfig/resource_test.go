@@ -1800,6 +1800,73 @@ func TestAccProjectConfigResource_dynamicClientRegistrationDefaultAudience(t *te
 	})
 }
 
+// TestAccProjectConfigResource_loginBruteForceProtection covers the login
+// brute force protection attributes added in spec v1.22.89: create with the
+// throttle on, a selected-field import, and an update that turns it off with
+// new thresholds. Kratos only accepts the block with enabled and complete
+// groups, so the template always sets every attribute. Turning the throttle
+// on needs the Enterprise kratos_brute_force_protection feature, which the
+// staging test workspace has. Destroy leaves the config in place, so the test
+// ends with the throttle off; no acceptance test signs in.
+func TestAccProjectConfigResource_loginBruteForceProtection(t *testing.T) {
+	const prefix = "selfservice_flows_login_brute_force_protection_"
+	config := func(enabled, identifierMaxFailures, identifierWindow string) string {
+		return acctest.LoadTestConfig(t, "testdata/login_brute_force_protection.tf.tmpl", map[string]string{
+			"Enabled":               enabled,
+			"IdentifierMaxFailures": identifierMaxFailures,
+			"IdentifierWindow":      identifierWindow,
+		})
+	}
+	var fields []string
+	for _, suffix := range []string{"enabled",
+		"identifier_max_failures", "identifier_window", "identifier_exponential_backoff_initial", "identifier_exponential_backoff_max",
+		"ip_max_failures", "ip_window", "ip_exponential_backoff_initial", "ip_exponential_backoff_max"} {
+		fields = append(fields, prefix+suffix)
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: config("true", "50", "5m"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", prefix+"enabled", "true"),
+					resource.TestCheckResourceAttr("ory_project_config.test", prefix+"identifier_max_failures", "50"),
+					resource.TestCheckResourceAttr("ory_project_config.test", prefix+"identifier_window", "5m"),
+					resource.TestCheckResourceAttr("ory_project_config.test", prefix+"ip_exponential_backoff_max", "1h"),
+				),
+			},
+			{
+				Config:             config("true", "50", "5m"),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			// The selected-field import must recover every attribute as stored.
+			{
+				ResourceName:            "ory_project_config.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateIdFunc:       selectedImportID(strings.Join(fields, ",")),
+				ImportStateVerifyIgnore: []string{"cors_enabled", "selfservice_methods_password_config_min_password_length", "smtp_connection_uri"},
+			},
+			{
+				Config: config("false", "10", "1h30m"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", prefix+"enabled", "false"),
+					resource.TestCheckResourceAttr("ory_project_config.test", prefix+"identifier_max_failures", "10"),
+					resource.TestCheckResourceAttr("ory_project_config.test", prefix+"identifier_window", "1h30m"),
+				),
+			},
+			{
+				Config:             config("false", "10", "1h30m"),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
 func TestAccProjectConfigResource_emptyValuesAndEnumFlags(t *testing.T) {
 	// Issue #321: the API accepts empty lists/maps/strings and integer zero
 	// with HTTP 200 and prunes them from the stored config, so the keys never
