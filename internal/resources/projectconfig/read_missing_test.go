@@ -4,39 +4,18 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
-	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	ory "github.com/ory/client-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestServiceStateFields(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		state *ProjectConfigResourceModel
-		want  map[string]bool
-	}{
-		{"empty", &ProjectConfigResourceModel{}, map[string]bool{"account_experience": false, "identity": false, "oauth2": false, "permission": false}},
-		{"identity string", &ProjectConfigResourceModel{SessionLifespan: types.StringValue("20m0s")}, map[string]bool{"account_experience": false, "identity": true, "oauth2": false, "permission": false}},
-		{"identity unknown counts", &ProjectConfigResourceModel{SessionLifespan: types.StringUnknown()}, map[string]bool{"account_experience": false, "identity": true, "oauth2": false, "permission": false}},
-		{"identity int64", &ProjectConfigResourceModel{SelfserviceMethodsPasswordConfigMinPasswordLength: types.Int64Value(8)}, map[string]bool{"account_experience": false, "identity": true, "oauth2": false, "permission": false}},
-		{"oauth2", &ProjectConfigResourceModel{OAuth2TTLAccessToken: types.StringValue("1h")}, map[string]bool{"account_experience": false, "identity": false, "oauth2": true, "permission": false}},
-		{"account experience", &ProjectConfigResourceModel{AccountExperienceLocale: types.StringValue("en")}, map[string]bool{"account_experience": true, "identity": false, "oauth2": false, "permission": false}},
-		{"permission bool", &ProjectConfigResourceModel{KetoFeatureFlagsStrictMode: types.BoolValue(true)}, map[string]bool{"account_experience": false, "identity": false, "oauth2": false, "permission": true}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, serviceStateFields(tc.state))
-		})
-	}
-}
 
 func identityOnlyProject() *ory.Project {
 	return &ory.Project{Services: ory.ProjectServices{Identity: &ory.ProjectServiceIdentity{Config: map[string]interface{}{}}}}
@@ -50,6 +29,9 @@ func TestMissingResponseBlocks(t *testing.T) {
 		state   *ProjectConfigResourceModel
 		want    []string
 	}{
+		{"identity absent, int64 field", &ory.Project{}, &ProjectConfigResourceModel{SelfserviceMethodsPasswordConfigMinPasswordLength: types.Int64Value(8)}, []string{"services.identity"}},
+		{"oauth2 absent, string field", &ory.Project{}, &ProjectConfigResourceModel{OAuth2TTLAccessToken: types.StringValue("1h")}, []string{"services.oauth2"}},
+		{"permission absent, bool field", &ory.Project{}, &ProjectConfigResourceModel{KetoFeatureFlagsStrictMode: types.BoolValue(true)}, []string{"services.permission"}},
 		{"identity absent, list field", &ory.Project{}, &ProjectConfigResourceModel{WebAuthnRPOrigins: types.ListValueMust(types.StringType, nil)}, []string{"services.identity"}},
 		{"identity absent, map field", &ory.Project{}, &ProjectConfigResourceModel{SMTPHeaders: types.MapValueMust(types.StringType, nil)}, []string{"services.identity"}},
 		{"identity absent, allowed return URLs", &ory.Project{}, &ProjectConfigResourceModel{AllowedReturnURLs: types.ListValueMust(types.StringType, nil)}, []string{"services.identity"}},
@@ -88,33 +70,11 @@ func TestMissingResponseBlocks(t *testing.T) {
 	}
 }
 
-func readProjectConfigWithCORS(t *testing.T, body string) *resource.ReadResponse {
-	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(body))
-	}))
-	t.Cleanup(srv.Close)
-
-	ctx := context.Background()
-	r := projectConfigResourceForServer(t, srv.URL)
-	schemaResp := &resource.SchemaResponse{}
-	r.Schema(ctx, resource.SchemaRequest{}, schemaResp)
-	require.False(t, schemaResp.Diagnostics.HasError())
-
-	state := projectConfigState(t, schemaResp.Schema)
-	require.False(t, state.SetAttribute(ctx, path.Root("cors_enabled"), types.BoolValue(true)).HasError())
-	resp := &resource.ReadResponse{State: state}
-	r.Read(ctx, resource.ReadRequest{State: state}, resp)
-	return resp
-}
-
 const liveProjectNoCORS = `{"id":"proj-1","name":"n","slug":"s","environment":"prod","home_region":"eu-central","revision_id":"r","organizations":[],"state":"running","services":{}}`
 const liveProjectCORSDisabled = `{"id":"proj-1","name":"n","slug":"s","environment":"prod","home_region":"eu-central","revision_id":"r","organizations":[],"state":"running","services":{},"cors_public":{"enabled":false,"origins":[]}}`
 
 func TestRead_AbsentCORSBlockErrors(t *testing.T) {
-	resp := readProjectConfigWithCORS(t, liveProjectNoCORS)
+	resp := readProjectConfig(t, jsonServer(t, http.StatusOK, liveProjectNoCORS), map[string]attr.Value{"cors_enabled": types.BoolValue(true)})
 
 	require.True(t, resp.Diagnostics.HasError(), "an absent cors_public block must fail the read")
 	assert.Equal(t, "Project Config Read Incomplete", resp.Diagnostics.Errors()[0].Summary())
@@ -126,7 +86,7 @@ func TestRead_AbsentCORSBlockErrors(t *testing.T) {
 }
 
 func TestRead_PresentCORSBlockRefreshes(t *testing.T) {
-	resp := readProjectConfigWithCORS(t, liveProjectCORSDisabled)
+	resp := readProjectConfig(t, jsonServer(t, http.StatusOK, liveProjectCORSDisabled), map[string]attr.Value{"cors_enabled": types.BoolValue(true)})
 
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 	var got types.Bool
@@ -158,23 +118,20 @@ func TestRead_ServiceConfigNull(t *testing.T) {
 				body := strings.Replace(liveProjectNoCORS, `"services":{}`,
 					fmt.Sprintf(`"services":{"%s":{"config":%s}}`, service.name, tc.config), 1)
 				srv := jsonServer(t, http.StatusOK, body)
-				r := projectConfigResourceForServer(t, srv.URL)
-				schemaResp := &resource.SchemaResponse{}
-				r.Schema(ctx, resource.SchemaRequest{}, schemaResp)
-				require.False(t, schemaResp.Diagnostics.HasError())
-				state := projectConfigState(t, schemaResp.Schema)
+				held := map[string]attr.Value{}
 				if tc.tracked {
-					require.False(t, state.SetAttribute(ctx, path.Root(service.attribute), service.value).HasError())
+					held[service.attribute] = service.value
 				}
-				resp := &resource.ReadResponse{State: state}
-				r.Read(ctx, resource.ReadRequest{State: state}, resp)
+				resp := readProjectConfig(t, srv, held)
 				require.Equal(t, tc.wantError, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 				if tc.wantError {
 					require.Len(t, resp.Diagnostics.Errors(), 1)
 					assert.Equal(t, "Project Config Read Incomplete", resp.Diagnostics.Errors()[0].Summary())
 					assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), "services."+service.name)
-					assert.True(t, state.Raw.Equal(resp.State.Raw), "incomplete reads must preserve all prior state")
-				} else {
+					prior := projectConfigState(t, resp.State.Schema.(schema.Schema))
+					require.False(t, prior.SetAttribute(ctx, path.Root(service.attribute), service.value).HasError())
+					assert.True(t, prior.Raw.Equal(resp.State.Raw), "incomplete reads must preserve all prior state")
+				} else if tc.tracked {
 					var values map[string]tftypes.Value
 					require.NoError(t, resp.State.Raw.As(&values))
 					assert.True(t, values[service.attribute].IsNull())
@@ -201,18 +158,13 @@ func TestRead_IncompleteResponseGuidance(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			body := strings.TrimSuffix(liveProjectNoCORS, "}") + tc.cors + "}"
 			srv := jsonServer(t, http.StatusOK, body)
-			r := projectConfigResourceForServer(t, srv.URL)
-			schemaResp := &resource.SchemaResponse{}
-			r.Schema(ctx, resource.SchemaRequest{}, schemaResp)
-			require.False(t, schemaResp.Diagnostics.HasError())
-			state := projectConfigState(t, schemaResp.Schema)
-			for name, value := range tc.held {
-				require.False(t, state.SetAttribute(ctx, path.Root(name), value).HasError())
-			}
-			resp := &resource.ReadResponse{State: state}
-			r.Read(ctx, resource.ReadRequest{State: state}, resp)
+			resp := readProjectConfig(t, srv, tc.held)
 			require.Len(t, resp.Diagnostics.Errors(), len(tc.blocks))
-			assert.True(t, state.Raw.Equal(resp.State.Raw))
+			prior := projectConfigState(t, resp.State.Schema.(schema.Schema))
+			for name, value := range tc.held {
+				require.False(t, prior.SetAttribute(ctx, path.Root(name), value).HasError())
+			}
+			assert.True(t, prior.Raw.Equal(resp.State.Raw))
 			for i, block := range tc.blocks {
 				diagnostic := resp.Diagnostics.Errors()[i]
 				assert.Equal(t, "Project Config Read Incomplete", diagnostic.Summary())

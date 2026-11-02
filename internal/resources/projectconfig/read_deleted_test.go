@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -52,7 +53,7 @@ func projectConfigState(t *testing.T, s schema.Schema) tfsdk.State {
 	return state
 }
 
-func readProjectConfig(t *testing.T, srv *httptest.Server) *resource.ReadResponse {
+func readProjectConfig(t *testing.T, srv *httptest.Server, held map[string]attr.Value) *resource.ReadResponse {
 	t.Helper()
 	ctx := context.Background()
 
@@ -62,6 +63,9 @@ func readProjectConfig(t *testing.T, srv *httptest.Server) *resource.ReadRespons
 	require.False(t, schemaResp.Diagnostics.HasError())
 
 	state := projectConfigState(t, schemaResp.Schema)
+	for name, value := range held {
+		require.False(t, state.SetAttribute(ctx, path.Root(name), value).HasError())
+	}
 	resp := &resource.ReadResponse{State: state}
 	r.Read(ctx, resource.ReadRequest{State: state}, resp)
 	return resp
@@ -78,7 +82,7 @@ func TestRead_ProjectConfigProjectPurged(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resp := readProjectConfig(t, srv)
+	resp := readProjectConfig(t, srv, nil)
 
 	assert.False(t, resp.Diagnostics.HasError(), "a purged project must not surface as an error: %v", resp.Diagnostics)
 	assert.True(t, resp.State.Raw.IsNull(), "a purged project must take its config out of state")
@@ -94,7 +98,7 @@ func TestRead_ProjectConfigProjectAlive(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resp := readProjectConfig(t, srv)
+	resp := readProjectConfig(t, srv, nil)
 
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 	assert.False(t, resp.State.Raw.IsNull(), "a live project must keep its config in state")
@@ -110,7 +114,7 @@ func TestRead_ProjectConfigServerErrorKeepsResource(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resp := readProjectConfig(t, srv)
+	resp := readProjectConfig(t, srv, nil)
 
 	assert.True(t, resp.Diagnostics.HasError(), "a 500 must surface as an error")
 	assert.False(t, resp.State.Raw.IsNull(), "a 500 must not remove the resource from state")
@@ -128,7 +132,7 @@ func TestRead_ProjectConfigProjectSoftDeleted(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resp := readProjectConfig(t, srv)
+	resp := readProjectConfig(t, srv, nil)
 
 	assert.False(t, resp.Diagnostics.HasError(), "a deleted project must not surface as an error: %v", resp.Diagnostics)
 	assert.True(t, resp.State.Raw.IsNull(), "a deleted project must take its config out of state")

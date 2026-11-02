@@ -1860,10 +1860,18 @@ func (r *ProjectConfigResource) read(ctx context.Context, req resource.ReadReque
 		return nil
 	}
 
-	resp.Diagnostics.Append(r.readProjectConfig(ctx, project, &state)...)
+	for _, block := range missingResponseBlocks(project, &state) {
+		detail := fmt.Sprintf("The API response for project %s omits %s, but state holds values read from it. The provider cannot verify those values. Retry the command. If the error persists, report the project ID to Ory support. To plan against prior state in the meantime, run terraform plan -refresh=false. This skips checking remote changes.", project.Id, block)
+		if block == "cors_public" || block == "cors_public.enabled" {
+			detail += " Keep cors_enabled in the configuration. Removing it can apply the default of false and disable public CORS on the next apply."
+		}
+		resp.Diagnostics.AddError("Project Config Read Incomplete", detail)
+	}
 	if resp.Diagnostics.HasError() {
 		return nil
 	}
+
+	r.readProjectConfig(ctx, project, &state)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -1876,18 +1884,7 @@ func (r *ProjectConfigResource) read(ctx context.Context, req resource.ReadReque
 // readProjectConfig — uses generated tables + custom read logic
 // =============================================================================
 
-func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *ory.Project, state *ProjectConfigResourceModel) diag.Diagnostics {
-	var diags diag.Diagnostics
-	for _, block := range missingResponseBlocks(project, state) {
-		detail := fmt.Sprintf("The API response for project %s omits %s, but state holds values read from it. The provider cannot verify those values. Retry the command. If the error persists, report the project ID to Ory support. To plan against prior state in the meantime, run terraform plan -refresh=false. This skips checking remote changes.", project.Id, block)
-		if block == "cors_public" || block == "cors_public.enabled" {
-			detail += " Keep cors_enabled in the configuration. Removing it can apply the default of false and disable public CORS on the next apply."
-		}
-		diags.AddError("Project Config Read Incomplete", detail)
-	}
-	if diags.HasError() {
-		return diags
-	}
+func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *ory.Project, state *ProjectConfigResourceModel) {
 
 	// --- Generated simple attribute reads ---
 	readSimpleFields(ctx, project, state)
@@ -2143,7 +2140,6 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 			}
 		}
 	}
-	return diags
 }
 
 // =============================================================================
