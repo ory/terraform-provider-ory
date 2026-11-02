@@ -1827,15 +1827,19 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 }
 
 func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	r.read(ctx, req, resp)
+}
+
+func (r *ProjectConfigResource) read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) *ory.Project {
 	var state ProjectConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
-		return
+		return nil
 	}
 
 	projectID := helpers.ResolveProjectID(state.ProjectID, r.client.ProjectID(), &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
-		return
+		return nil
 	}
 
 	var project *ory.Project
@@ -1850,11 +1854,11 @@ func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadReque
 				// project. A purged project takes its config with it, so drop the
 				// resource from state rather than failing every plan.
 				resp.State.RemoveResource(ctx)
-				return
+				return nil
 			}
 			resp.Diagnostics.AddError("Error Reading Project Config",
 				"Could not read project "+projectID+": "+err.Error())
-			return
+			return nil
 		}
 	}
 
@@ -1864,12 +1868,27 @@ func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadReque
 	// gone with it, so drop the resource rather than reporting no changes.
 	if project.GetState() == projectStateDeleted {
 		resp.State.RemoveResource(ctx)
-		return
+		return nil
+	}
+
+	for _, block := range missingResponseBlocks(project, &state) {
+		detail := fmt.Sprintf("The API response for project %s omits %s, but state holds values read from it. The provider cannot verify those values. Retry the command. If the error persists, report the project ID to Ory support. To plan against prior state in the meantime, run terraform plan -refresh=false. This skips checking remote changes.", project.Id, block)
+		if block == "cors_public" || block == "cors_public.enabled" {
+			detail += " Keep cors_enabled in the configuration. Removing it can apply the default of false and disable public CORS on the next apply."
+		}
+		resp.Diagnostics.AddError("Project Config Read Incomplete", detail)
+	}
+	if resp.Diagnostics.HasError() {
+		return nil
 	}
 
 	r.readProjectConfig(ctx, project, &state)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return nil
+	}
+	return project
 }
 
 // =============================================================================

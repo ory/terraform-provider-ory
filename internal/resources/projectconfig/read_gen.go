@@ -408,6 +408,111 @@ func readSimpleFields(ctx context.Context, project *ory.Project, state *ProjectC
 	}
 }
 
+func serviceStateFields(state *ProjectConfigResourceModel) map[string]bool {
+	return map[string]bool{
+		"account_experience": account_experienceHasStateFields(state),
+		"identity":           identityHasStateFields(state),
+		"oauth2":             oauth2HasStateFields(state),
+		"permission":         permissionHasStateFields(state),
+	}
+}
+
+func account_experienceHasStateFields(state *ProjectConfigResourceModel) bool {
+	for _, e := range account_experienceStringReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+	for _, e := range account_experienceBoolReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+	for _, e := range account_experienceListStringReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+	for _, e := range account_experienceMapStringReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+	return false
+}
+
+func identityHasStateFields(state *ProjectConfigResourceModel) bool {
+	for _, e := range identityStringReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+	for _, e := range identityBoolReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+	for _, e := range identityInt64ReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+	for _, e := range identityListStringReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+	for _, e := range identityMapStringReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+	return false
+}
+
+func oauth2HasStateFields(state *ProjectConfigResourceModel) bool {
+	for _, e := range oauth2StringReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+	for _, e := range oauth2BoolReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+	for _, e := range oauth2Int64ReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+	for _, e := range oauth2ListStringReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+	return false
+}
+
+func permissionHasStateFields(state *ProjectConfigResourceModel) bool {
+	for _, e := range permissionStringReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+	for _, e := range permissionBoolReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+	for _, e := range permissionListStringReadEntries(state) {
+		if !e.Field.IsNull() {
+			return true
+		}
+	}
+	return false
+}
+
 func account_experienceStringReadEntries(state *ProjectConfigResourceModel) []StringReadEntry {
 	return []StringReadEntry{
 		{&state.AccountExperienceLocale, []string{"default_locale"}, true, true, false},

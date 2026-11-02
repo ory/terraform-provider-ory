@@ -72,13 +72,7 @@ func (r *ProjectConfigResource) importSelectedFields(ctx context.Context, projec
 		}
 	}
 
-	// cors_enabled is read even when it was not selected, so the warning
-	// below can be limited to projects where its default would change
-	// something. It is returned to null afterwards.
 	_, selectedCORS := selected["cors_enabled"]
-	if !selectedCORS {
-		selected["cors_enabled"] = types.BoolUnknown()
-	}
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), projectID)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), projectID)...)
@@ -92,7 +86,7 @@ func (r *ProjectConfigResource) importSelectedFields(ctx context.Context, projec
 	// Unknown values request a read without inventing defaults. Resolve them
 	// before returning: import state must never contain unknown values.
 	read := resource.ReadResponse{State: resp.State}
-	r.Read(ctx, resource.ReadRequest{State: resp.State}, &read)
+	project := r.read(ctx, resource.ReadRequest{State: resp.State}, &read)
 	resp.Diagnostics.Append(read.Diagnostics...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -114,13 +108,8 @@ func (r *ProjectConfigResource) importSelectedFields(ctx context.Context, projec
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if !selectedCORS {
-		var live types.Bool
-		resp.Diagnostics.Append(read.State.GetAttribute(ctx, path.Root("cors_enabled"), &live)...)
-		if live.IsUnknown() || live.IsNull() || live.ValueBool() {
-			warnCORSDefault(&resp.Diagnostics)
-		}
-		resp.Diagnostics.Append(read.State.SetAttribute(ctx, path.Root("cors_enabled"), types.BoolNull())...)
+	if !selectedCORS && (project.CorsPublic == nil || project.CorsPublic.Enabled == nil || *project.CorsPublic.Enabled) {
+		warnCORSDefault(&resp.Diagnostics)
 	}
 	resp.State = read.State
 }

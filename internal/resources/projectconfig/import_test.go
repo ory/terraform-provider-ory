@@ -2,7 +2,6 @@ package projectconfig
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -76,6 +75,7 @@ func TestImportProjectConfig_SelectedFields(t *testing.T) {
 
 	r := projectConfigResourceForServer(t, srv.URL)
 	resp := importConfig(t, r, "proj-1:session_lifespan,cors_enabled,selfservice_methods_password_enabled,selfservice_methods_totp_enabled,selfservice_flows_login_ui_url,selfservice_default_browser_return_url,cors_origins,webauthn_rp_origins,smtp_headers")
+	assert.Equal(t, 1, reads)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 	var state ProjectConfigResourceModel
 	require.False(t, resp.State.Get(context.Background(), &state).HasError())
@@ -135,31 +135,32 @@ func corsWarning(diags diag.Diagnostics) string {
 
 func TestImportProjectConfig_WarnsForUnselectedCORS(t *testing.T) {
 	for _, tc := range []struct {
-		selection   string
-		liveEnabled bool
-		wantWarning bool
+		name, selection, cors string
+		wantWarning           bool
 	}{
-		{selection: "session_lifespan", liveEnabled: true, wantWarning: true},
-		{selection: "session_lifespan", liveEnabled: false, wantWarning: false}, // the default matches the project
-		{selection: "session_lifespan,cors_enabled", liveEnabled: true, wantWarning: false},
+		{"enabled, unselected", "session_lifespan", `"cors_public":{"enabled":true},`, true},
+		{"disabled, unselected", "session_lifespan", `"cors_public":{"enabled":false},`, false},
+		{"enabled, selected", "session_lifespan,cors_enabled", `"cors_public":{"enabled":true},`, false},
+		{"block absent, unselected", "session_lifespan", "", true},
+		{"enabled absent, unselected", "session_lifespan", `"cors_public":{},`, true},
 	} {
-		t.Run(fmt.Sprintf("%s/live=%t", tc.selection, tc.liveEnabled), func(t *testing.T) {
-			document := importProjectDocument
-			if tc.liveEnabled {
-				document = strings.Replace(document, `"enabled":false`, `"enabled":true`, 1)
-			}
+		t.Run(tc.name, func(t *testing.T) {
+			document := strings.Replace(importProjectDocument, `"cors_public":{"enabled":false,"origins":["https://app.example.com"]},`, tc.cors, 1)
 			srv := jsonServer(t, http.StatusOK, document)
 			resp := importConfig(t, projectConfigResourceForServer(t, srv.URL), "proj-1:"+tc.selection)
 			require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 			if tc.wantWarning {
-				assert.Contains(t, corsWarning(resp.Diagnostics), "cors_enabled", "omitting CORS on a project that has it enabled needs guidance about the default")
+				assert.Contains(t, corsWarning(resp.Diagnostics), "cors_enabled")
 			} else {
 				assert.Empty(t, corsWarning(resp.Diagnostics))
 			}
+			var state ProjectConfigResourceModel
+			require.False(t, resp.State.Get(context.Background(), &state).HasError())
+			assert.Equal(t, types.StringValue("20m0s"), state.SessionLifespan)
 			if !strings.Contains(tc.selection, "cors_enabled") {
-				var state ProjectConfigResourceModel
-				require.False(t, resp.State.Get(context.Background(), &state).HasError())
 				assert.True(t, state.CorsEnabled.IsNull(), "the value read for the check must not enter state")
+			} else {
+				assert.Equal(t, types.BoolValue(true), state.CorsEnabled)
 			}
 		})
 	}
@@ -341,6 +342,33 @@ func TestImportProjectConfig_ReportsReadFailure(t *testing.T) {
 			srv := jsonServer(t, status, `{"error":{"message":"cannot read project"}}`)
 			resp := importConfig(t, projectConfigResourceForServer(t, srv.URL), "proj-1:session_lifespan")
 			assert.True(t, resp.Diagnostics.HasError(), "failed reads must not import an empty baseline")
+		})
+	}
+}
+
+func TestImportSelectedFields_MissingSelectedBlocks(t *testing.T) {
+	withoutCORS := strings.Replace(importProjectDocument,
+		`"cors_public":{"enabled":false,"origins":["https://app.example.com"]},`, "", 1)
+	withoutEnabled := strings.Replace(importProjectDocument,
+		`"cors_public":{"enabled":false,`, `"cors_public":{`, 1)
+	for _, tc := range []struct {
+		name, fields, document string
+		blocks                 []string
+	}{
+		{"identity absent, CORS unselected", "session_lifespan", liveProjectNoCORS, []string{"services.identity"}},
+		{"selected CORS absent", "session_lifespan,cors_enabled", withoutCORS, []string{"cors_public"}},
+		{"selected CORS enabled absent", "session_lifespan,cors_enabled", withoutEnabled, []string{"cors_public.enabled"}},
+		{"both selected blocks absent", "session_lifespan,cors_enabled", liveProjectNoCORS, []string{"cors_public", "services.identity"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := jsonServer(t, http.StatusOK, tc.document)
+			resp := importConfig(t, projectConfigResourceForServer(t, srv.URL), "proj-1:"+tc.fields)
+			errors := resp.Diagnostics.Errors()
+			require.Len(t, errors, len(tc.blocks))
+			for i, block := range tc.blocks {
+				assert.Equal(t, "Project Config Read Incomplete", errors[i].Summary())
+				assert.Contains(t, errors[i].Detail(), "omits "+block+",")
+			}
 		})
 	}
 }
