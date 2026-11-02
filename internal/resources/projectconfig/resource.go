@@ -1885,7 +1885,6 @@ func (r *ProjectConfigResource) read(ctx context.Context, req resource.ReadReque
 // =============================================================================
 
 func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *ory.Project, state *ProjectConfigResourceModel) {
-
 	// --- Generated simple attribute reads ---
 	readSimpleFields(ctx, project, state)
 
