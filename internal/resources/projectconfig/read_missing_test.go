@@ -174,3 +174,47 @@ func TestRead_ServiceConfigNull(t *testing.T) {
 		}
 	}
 }
+
+func TestRead_IncompleteResponseGuidance(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name, cors string
+		held       map[string]attr.Value
+		blocks     []string
+	}{
+		{"public absent", "", map[string]attr.Value{"cors_enabled": types.BoolValue(true)}, []string{"cors_public"}},
+		{"public enabled absent", `,"cors_public":{}`, map[string]attr.Value{"cors_enabled": types.BoolValue(true)}, []string{"cors_public.enabled"}},
+		{"admin absent", "", map[string]attr.Value{"cors_admin_enabled": types.BoolValue(true)}, []string{"cors_admin"}},
+		{"admin enabled absent", `,"cors_admin":{}`, map[string]attr.Value{"cors_admin_enabled": types.BoolValue(true)}, []string{"cors_admin.enabled"}},
+		{"permission absent", "", map[string]attr.Value{"keto_feature_flags_strict_mode": types.BoolValue(true)}, []string{"services.permission"}},
+		{"multiple blocks", "", map[string]attr.Value{"cors_enabled": types.BoolValue(true), "cors_admin_enabled": types.BoolValue(true), "keto_feature_flags_strict_mode": types.BoolValue(true)}, []string{"cors_public", "cors_admin", "services.permission"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := strings.TrimSuffix(liveProjectNoCORS, "}") + tc.cors + "}"
+			srv := jsonServer(t, http.StatusOK, body)
+			r := projectConfigResourceForServer(t, srv.URL)
+			schemaResp := &resource.SchemaResponse{}
+			r.Schema(ctx, resource.SchemaRequest{}, schemaResp)
+			require.False(t, schemaResp.Diagnostics.HasError())
+			state := projectConfigState(t, schemaResp.Schema)
+			for name, value := range tc.held {
+				require.False(t, state.SetAttribute(ctx, path.Root(name), value).HasError())
+			}
+			resp := &resource.ReadResponse{State: state}
+			r.Read(ctx, resource.ReadRequest{State: state}, resp)
+			require.Len(t, resp.Diagnostics.Errors(), len(tc.blocks))
+			assert.True(t, state.Raw.Equal(resp.State.Raw))
+			for i, block := range tc.blocks {
+				diagnostic := resp.Diagnostics.Errors()[i]
+				assert.Equal(t, "Project Config Read Incomplete", diagnostic.Summary())
+				detail := diagnostic.Detail()
+				assert.Contains(t, detail, "project proj-1 omits "+block+",")
+				assert.Contains(t, detail, "Retry the command.")
+				assert.Contains(t, detail, "report the project ID to Ory support")
+				assert.Contains(t, detail, "terraform plan -refresh=false")
+				assert.Contains(t, detail, "This skips checking remote changes.")
+				assert.Equal(t, block == "cors_public" || block == "cors_public.enabled", strings.Contains(detail, "cors_enabled"))
+			}
+		})
+	}
+}
