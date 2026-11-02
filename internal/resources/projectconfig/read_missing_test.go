@@ -50,6 +50,15 @@ func TestMissingResponseBlocks(t *testing.T) {
 		state   *ProjectConfigResourceModel
 		want    []string
 	}{
+		{"identity absent, list field", &ory.Project{}, &ProjectConfigResourceModel{WebAuthnRPOrigins: types.ListValueMust(types.StringType, nil)}, []string{"services.identity"}},
+		{"identity absent, map field", &ory.Project{}, &ProjectConfigResourceModel{SMTPHeaders: types.MapValueMust(types.StringType, nil)}, []string{"services.identity"}},
+		{"identity absent, allowed return URLs", &ory.Project{}, &ProjectConfigResourceModel{AllowedReturnURLs: types.ListValueMust(types.StringType, nil)}, []string{"services.identity"}},
+		{"identity absent, tokenizer templates", &ory.Project{}, &ProjectConfigResourceModel{SessionTokenizerTemplates: types.MapUnknown(types.ObjectType{AttrTypes: tokenizerTemplateAttrTypes})}, []string{"services.identity"}},
+		{"identity absent, courier HTTP config", &ory.Project{}, &ProjectConfigResourceModel{CourierHTTPRequestConfig: types.ObjectUnknown(courierHTTPRequestConfigAttrTypes)}, []string{"services.identity"}},
+		{"identity absent, courier channels", &ory.Project{}, &ProjectConfigResourceModel{CourierChannels: types.ListUnknown(types.ObjectType{AttrTypes: courierChannelAttrTypes})}, []string{"services.identity"}},
+		{"cors_admin absent, origins held", &ory.Project{}, &ProjectConfigResourceModel{CorsAdminOrigins: types.ListValueMust(types.StringType, nil)}, []string{"cors_admin"}},
+		{"cors_admin.enabled absent, nothing held", &ory.Project{CorsAdmin: &ory.ProjectCors{}}, &ProjectConfigResourceModel{}, []string{}},
+		{"cors_public.enabled absent, nothing held", &ory.Project{CorsPublic: &ory.ProjectCors{}}, &ProjectConfigResourceModel{}, []string{}},
 		{"nothing in state, nothing missing", &ory.Project{}, &ProjectConfigResourceModel{}, []string{}},
 		{"cors_public absent", &ory.Project{}, &ProjectConfigResourceModel{CorsEnabled: types.BoolValue(false)}, []string{"cors_public"}},
 		{"cors_public absent, origins held", &ory.Project{}, &ProjectConfigResourceModel{CorsOrigins: types.ListValueMust(types.StringType, nil)}, []string{"cors_public"}},
