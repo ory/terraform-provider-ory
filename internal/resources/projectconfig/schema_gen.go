@@ -1022,5 +1022,41 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 			ElementType: types.StringType,
 		},
+		"selfservice_flows_login_brute_force_protection_enabled": schema.BoolAttribute{
+			Description: "Failed sign-ins are throttled with exponential backoff. Turning it off keeps the thresholds, so it can be turned back on without entering them again. Requires an Enterprise plan.",
+			Optional:    true,
+		},
+		"selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_initial": schema.StringAttribute{
+			Description: "First delay for an identifier once its threshold is exceeded, for example \"1s\". The delay doubles with every further failure.",
+			Optional:    true,
+		},
+		"selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_max": schema.StringAttribute{
+			Description: "Longest delay for an identifier, for example \"15m\", at most \"8760h\".",
+			Optional:    true,
+		},
+		"selfservice_flows_login_brute_force_protection_identifier_max_failures": schema.Int64Attribute{
+			Description: "How many failed sign-ins per identifier the window tolerates before delays start.",
+			Optional:    true,
+		},
+		"selfservice_flows_login_brute_force_protection_identifier_window": schema.StringAttribute{
+			Description: "How long the failure count of an identifier lives after its first failure, for example \"5m\".",
+			Optional:    true,
+		},
+		"selfservice_flows_login_brute_force_protection_ip_exponential_backoff_initial": schema.StringAttribute{
+			Description: "First delay for a client IP once its threshold is exceeded, for example \"1s\". The delay doubles with every further failure.",
+			Optional:    true,
+		},
+		"selfservice_flows_login_brute_force_protection_ip_exponential_backoff_max": schema.StringAttribute{
+			Description: "Longest delay for a client IP, for example \"15m\", at most \"8760h\".",
+			Optional:    true,
+		},
+		"selfservice_flows_login_brute_force_protection_ip_max_failures": schema.Int64Attribute{
+			Description: "How many failed sign-ins per client IP the window tolerates before delays start.",
+			Optional:    true,
+		},
+		"selfservice_flows_login_brute_force_protection_ip_window": schema.StringAttribute{
+			Description: "How long the failure count of a client IP lives after its first failure, for example \"1m\".",
+			Optional:    true,
+		},
 	}
 }

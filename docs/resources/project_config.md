@@ -827,6 +827,15 @@ This resource covers most simple (scalar and list) project configuration propert
 - `selfservice_flows_login_after_totp_default_browser_return_url` (String) Return URL after login via TOTP.
 - `selfservice_flows_login_after_webauthn_default_browser_return_url` (String) Return URL after login via WebAuthn.
 - `selfservice_flows_login_after_webauthn_hook_require_verified_address` (Boolean) Enable the `require_verified_address` hook after a WebAuthn login, blocking sign-in until the identity has a verified address. The Ory Console "Require verified address for login" toggle only writes the password flow, so set this attribute as well to cover passwordless WebAuthn logins. Keep `feature_flags_legacy_require_verified_login_error` at false, its default: while it is true, Ory runs the check for the password method only. Existing hooks at this path, such as `organization`, are preserved.
+- `selfservice_flows_login_brute_force_protection_enabled` (Boolean) Failed sign-ins are throttled with exponential backoff. Turning it off keeps the thresholds, so it can be turned back on without entering them again. Requires an Enterprise plan.
+- `selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_initial` (String) First delay for an identifier once its threshold is exceeded, for example "1s". The delay doubles with every further failure.
+- `selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_max` (String) Longest delay for an identifier, for example "15m", at most "8760h".
+- `selfservice_flows_login_brute_force_protection_identifier_max_failures` (Number) How many failed sign-ins per identifier the window tolerates before delays start.
+- `selfservice_flows_login_brute_force_protection_identifier_window` (String) How long the failure count of an identifier lives after its first failure, for example "5m".
+- `selfservice_flows_login_brute_force_protection_ip_exponential_backoff_initial` (String) First delay for a client IP once its threshold is exceeded, for example "1s". The delay doubles with every further failure.
+- `selfservice_flows_login_brute_force_protection_ip_exponential_backoff_max` (String) Longest delay for a client IP, for example "15m", at most "8760h".
+- `selfservice_flows_login_brute_force_protection_ip_max_failures` (Number) How many failed sign-ins per client IP the window tolerates before delays start.
+- `selfservice_flows_login_brute_force_protection_ip_window` (String) How long the failure count of a client IP lives after its first failure, for example "1m".
 - `selfservice_flows_login_lifespan` (String) Lifespan of the login flow (e.g. '1h').
 - `selfservice_flows_login_style` (String) Login flow style: 'unified' (default) shows all auth methods on one screen, 'identifier_first' collects the identifier before showing auth methods.
 - `selfservice_flows_login_ui_url` (String) URL for the login UI.

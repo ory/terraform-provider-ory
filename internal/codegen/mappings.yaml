@@ -1620,3 +1620,58 @@ attributes:
     openapi_property: hydra_oidc_dynamic_client_registration_default_audience
     description: "Audience allow list assigned to dynamically registered clients whose registration request omits the audience or sets it to null. An explicit audience, including an empty list, takes precedence. The default applies only at registration, so changing it does not update existing clients."
 
+  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  - name: selfservice_flows_login_brute_force_protection_enabled
+    go_field: SelfserviceFlowsLoginBruteForceProtectionEnabled
+    type: bool
+    openapi_property: kratos_selfservice_flows_login_brute_force_protection_enabled
+    description: "Failed sign-ins are throttled with exponential backoff. Turning it off keeps the thresholds, so it can be turned back on without entering them again. Requires an Enterprise plan."
+
+  - name: selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_initial
+    go_field: SelfserviceFlowsLoginBruteForceProtectionIdentifierExponentialBackoffInitial
+    type: string
+    openapi_property: kratos_selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_initial
+    description: "First delay for an identifier once its threshold is exceeded, for example \"1s\". The delay doubles with every further failure."
+
+  - name: selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_max
+    go_field: SelfserviceFlowsLoginBruteForceProtectionIdentifierExponentialBackoffMax
+    type: string
+    openapi_property: kratos_selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_max
+    description: "Longest delay for an identifier, for example \"15m\", at most \"8760h\"."
+
+  - name: selfservice_flows_login_brute_force_protection_identifier_max_failures
+    go_field: SelfserviceFlowsLoginBruteForceProtectionIdentifierMaxFailures
+    type: int64
+    openapi_property: kratos_selfservice_flows_login_brute_force_protection_identifier_max_failures
+    description: "How many failed sign-ins per identifier the window tolerates before delays start."
+
+  - name: selfservice_flows_login_brute_force_protection_identifier_window
+    go_field: SelfserviceFlowsLoginBruteForceProtectionIdentifierWindow
+    type: string
+    openapi_property: kratos_selfservice_flows_login_brute_force_protection_identifier_window
+    description: "How long the failure count of an identifier lives after its first failure, for example \"5m\"."
+
+  - name: selfservice_flows_login_brute_force_protection_ip_exponential_backoff_initial
+    go_field: SelfserviceFlowsLoginBruteForceProtectionIPExponentialBackoffInitial
+    type: string
+    openapi_property: kratos_selfservice_flows_login_brute_force_protection_ip_exponential_backoff_initial
+    description: "First delay for a client IP once its threshold is exceeded, for example \"1s\". The delay doubles with every further failure."
+
+  - name: selfservice_flows_login_brute_force_protection_ip_exponential_backoff_max
+    go_field: SelfserviceFlowsLoginBruteForceProtectionIPExponentialBackoffMax
+    type: string
+    openapi_property: kratos_selfservice_flows_login_brute_force_protection_ip_exponential_backoff_max
+    description: "Longest delay for a client IP, for example \"15m\", at most \"8760h\"."
+
+  - name: selfservice_flows_login_brute_force_protection_ip_max_failures
+    go_field: SelfserviceFlowsLoginBruteForceProtectionIPMaxFailures
+    type: int64
+    openapi_property: kratos_selfservice_flows_login_brute_force_protection_ip_max_failures
+    description: "How many failed sign-ins per client IP the window tolerates before delays start."
+
+  - name: selfservice_flows_login_brute_force_protection_ip_window
+    go_field: SelfserviceFlowsLoginBruteForceProtectionIPWindow
+    type: string
+    openapi_property: kratos_selfservice_flows_login_brute_force_protection_ip_window
+    description: "How long the failure count of a client IP lives after its first failure, for example \"1m\"."
+
