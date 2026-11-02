@@ -419,6 +419,17 @@ type ProjectConfigResourceModel struct {
 
 	// Added from spec v1.22.87
 	OIDCDynamicClientRegistrationDefaultAudience types.List `tfsdk:"oidc_dynamic_client_registration_default_audience"`
+
+	// Added from spec v1.22.89
+	SelfserviceFlowsLoginBruteForceProtectionEnabled                             types.Bool   `tfsdk:"selfservice_flows_login_brute_force_protection_enabled"`
+	SelfserviceFlowsLoginBruteForceProtectionIdentifierExponentialBackoffInitial types.String `tfsdk:"selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_initial"`
+	SelfserviceFlowsLoginBruteForceProtectionIdentifierExponentialBackoffMax     types.String `tfsdk:"selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_max"`
+	SelfserviceFlowsLoginBruteForceProtectionIdentifierMaxFailures               types.Int64  `tfsdk:"selfservice_flows_login_brute_force_protection_identifier_max_failures"`
+	SelfserviceFlowsLoginBruteForceProtectionIdentifierWindow                    types.String `tfsdk:"selfservice_flows_login_brute_force_protection_identifier_window"`
+	SelfserviceFlowsLoginBruteForceProtectionIPExponentialBackoffInitial         types.String `tfsdk:"selfservice_flows_login_brute_force_protection_ip_exponential_backoff_initial"`
+	SelfserviceFlowsLoginBruteForceProtectionIPExponentialBackoffMax             types.String `tfsdk:"selfservice_flows_login_brute_force_protection_ip_exponential_backoff_max"`
+	SelfserviceFlowsLoginBruteForceProtectionIPMaxFailures                       types.Int64  `tfsdk:"selfservice_flows_login_brute_force_protection_ip_max_failures"`
+	SelfserviceFlowsLoginBruteForceProtectionIPWindow                            types.String `tfsdk:"selfservice_flows_login_brute_force_protection_ip_window"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---

@@ -521,6 +521,12 @@ func identityStringReadEntries(state *ProjectConfigResourceModel) []StringReadEn
 		{&state.SelfserviceMethodsPasskeyConfigTimeoutsLogin, []string{"selfservice", "methods", "passkey", "config", "timeouts", "login"}, false, false, false},
 		{&state.SelfserviceMethodsPasskeyConfigTimeoutsRegistration, []string{"selfservice", "methods", "passkey", "config", "timeouts", "registration"}, false, false, false},
 		{&state.SelfserviceMethodsCodeConfigAlphabet, []string{"selfservice", "methods", "code", "config", "alphabet"}, false, false, false},
+		{&state.SelfserviceFlowsLoginBruteForceProtectionIdentifierExponentialBackoffInitial, []string{"selfservice", "flows", "login", "brute_force_protection", "identifier", "exponential_backoff", "initial"}, false, false, false},
+		{&state.SelfserviceFlowsLoginBruteForceProtectionIdentifierExponentialBackoffMax, []string{"selfservice", "flows", "login", "brute_force_protection", "identifier", "exponential_backoff", "max"}, false, false, false},
+		{&state.SelfserviceFlowsLoginBruteForceProtectionIdentifierWindow, []string{"selfservice", "flows", "login", "brute_force_protection", "identifier", "window"}, false, false, false},
+		{&state.SelfserviceFlowsLoginBruteForceProtectionIPExponentialBackoffInitial, []string{"selfservice", "flows", "login", "brute_force_protection", "ip", "exponential_backoff", "initial"}, false, false, false},
+		{&state.SelfserviceFlowsLoginBruteForceProtectionIPExponentialBackoffMax, []string{"selfservice", "flows", "login", "brute_force_protection", "ip", "exponential_backoff", "max"}, false, false, false},
+		{&state.SelfserviceFlowsLoginBruteForceProtectionIPWindow, []string{"selfservice", "flows", "login", "brute_force_protection", "ip", "window"}, false, false, false},
 	}
 }
 
@@ -575,6 +581,7 @@ func identityBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry 
 		{&state.SelfserviceMethodsDeviceauthnConfigAndroidAllowExpiredFactoryCertificates, []string{"selfservice", "methods", "deviceauthn", "config", "android_allow_expired_factory_certificates"}, false, nil},
 		{&state.FeatureFlagsEnforceIdentitySchemaGuards, []string{"feature_flags", "enforce_identity_schema_guards"}, false, nil},
 		{&state.PreviewEnableNativeSAMLEngine, []string{"preview", "enable_native_saml_engine"}, false, nil},
+		{&state.SelfserviceFlowsLoginBruteForceProtectionEnabled, []string{"selfservice", "flows", "login", "brute_force_protection", "enabled"}, false, nil},
 	}
 }
 
@@ -585,6 +592,8 @@ func identityInt64ReadEntries(state *ProjectConfigResourceModel) []Int64ReadEntr
 		{&state.SelfserviceMethodsCodeConfigMaxSubmissions, []string{"selfservice", "methods", "code", "config", "max_submissions"}, false},
 		{&state.SelfserviceMethodsDeviceauthnConfigPinMaxAttempts, []string{"selfservice", "methods", "deviceauthn", "config", "pin_max_attempts"}, false},
 		{&state.SelfserviceMethodsCodeConfigLength, []string{"selfservice", "methods", "code", "config", "length"}, false},
+		{&state.SelfserviceFlowsLoginBruteForceProtectionIdentifierMaxFailures, []string{"selfservice", "flows", "login", "brute_force_protection", "identifier", "max_failures"}, false},
+		{&state.SelfserviceFlowsLoginBruteForceProtectionIPMaxFailures, []string{"selfservice", "flows", "login", "brute_force_protection", "ip", "max_failures"}, false},
 	}
 }
 

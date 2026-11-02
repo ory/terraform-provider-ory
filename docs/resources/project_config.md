@@ -424,6 +424,24 @@ resource "ory_project_config" "dynamic_client_registration" {
   oidc_dynamic_client_registration_default_scope    = ["openid", "offline_access"]
   oidc_dynamic_client_registration_default_audience = ["https://api.example.com"]
 }
+
+# Brute-force protection throttles failed sign-ins with exponential backoff,
+# per submitted identifier and per client IP. Set every attribute of a group,
+# because the API rejects an incomplete group. Turning the throttle on
+# requires an Enterprise plan.
+resource "ory_project_config" "brute_force_protection" {
+  selfservice_flows_login_brute_force_protection_enabled = true
+
+  selfservice_flows_login_brute_force_protection_identifier_max_failures                = 5
+  selfservice_flows_login_brute_force_protection_identifier_window                      = "5m"
+  selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_initial = "1s"
+  selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_max     = "15m"
+
+  selfservice_flows_login_brute_force_protection_ip_max_failures                = 20
+  selfservice_flows_login_brute_force_protection_ip_window                      = "1m"
+  selfservice_flows_login_brute_force_protection_ip_exponential_backoff_initial = "1s"
+  selfservice_flows_login_brute_force_protection_ip_exponential_backoff_max     = "1h"
+}
 ```
 
 ## OPL Namespace Configuration
@@ -827,6 +845,15 @@ This resource covers most simple (scalar and list) project configuration propert
 - `selfservice_flows_login_after_totp_default_browser_return_url` (String) Return URL after login via TOTP.
 - `selfservice_flows_login_after_webauthn_default_browser_return_url` (String) Return URL after login via WebAuthn.
 - `selfservice_flows_login_after_webauthn_hook_require_verified_address` (Boolean) Enable the `require_verified_address` hook after a WebAuthn login, blocking sign-in until the identity has a verified address. The Ory Console "Require verified address for login" toggle only writes the password flow, so set this attribute as well to cover passwordless WebAuthn logins. Keep `feature_flags_legacy_require_verified_login_error` at false, its default: while it is true, Ory runs the check for the password method only. Existing hooks at this path, such as `organization`, are preserved.
+- `selfservice_flows_login_brute_force_protection_enabled` (Boolean) Throttle failed sign-ins with exponential backoff, per submitted identifier and per client IP. There is no lockout. Set every attribute of the identifier group, the ip group, or both. The API rejects an incomplete group with an HTTP 400. Turning the throttle off keeps the thresholds. Turning it on requires an Enterprise plan, and without one the API rejects the write with an HTTP 403.
+- `selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_initial` (String) First delay for an identifier once it exceeds max_failures, as a Go duration such as '1s'. The delay doubles with every further failure. Requires the other three identifier attributes.
+- `selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_max` (String) Longest delay for an identifier, as a Go duration such as '15m'. At most '8760h'. Requires the other three identifier attributes.
+- `selfservice_flows_login_brute_force_protection_identifier_max_failures` (Number) Failed sign-ins per identifier that the window tolerates before delays start. At least 1. Requires the other three identifier attributes.
+- `selfservice_flows_login_brute_force_protection_identifier_window` (String) How long the failure count of an identifier lives after its first failure, as a Go duration such as '5m'. Requires the other three identifier attributes.
+- `selfservice_flows_login_brute_force_protection_ip_exponential_backoff_initial` (String) First delay for a client IP once it exceeds max_failures, as a Go duration such as '1s'. The delay doubles with every further failure. Requires the other three ip attributes.
+- `selfservice_flows_login_brute_force_protection_ip_exponential_backoff_max` (String) Longest delay for a client IP, as a Go duration such as '15m'. At most '8760h'. Requires the other three ip attributes.
+- `selfservice_flows_login_brute_force_protection_ip_max_failures` (Number) Failed sign-ins per client IP that the window tolerates before delays start. At least 1. Requires the other three ip attributes.
+- `selfservice_flows_login_brute_force_protection_ip_window` (String) How long the failure count of a client IP lives after its first failure, as a Go duration such as '5m'. Requires the other three ip attributes.
 - `selfservice_flows_login_lifespan` (String) Lifespan of the login flow (e.g. '1h').
 - `selfservice_flows_login_style` (String) Login flow style: 'unified' (default) shows all auth methods on one screen, 'identifier_first' collects the identifier before showing auth methods.
 - `selfservice_flows_login_ui_url` (String) URL for the login UI.

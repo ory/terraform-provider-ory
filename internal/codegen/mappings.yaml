@@ -1620,3 +1620,79 @@ attributes:
     openapi_property: hydra_oidc_dynamic_client_registration_default_audience
     description: "Audience allow list assigned to dynamically registered clients whose registration request omits the audience or sets it to null. An explicit audience, including an empty list, takes precedence. The default applies only at registration, so changing it does not update existing clients."
 
+  # --- Added from spec v1.22.89 (ory/sdk spec/client), 2026-11-02 ---
+  # Kratos validates the brute_force_protection block as a whole: it needs
+  # enabled plus at least one complete group, and a group needs all four of
+  # its attributes. One PATCH carries every configured attribute, so a full
+  # configuration validates. Verified 2026-11-02 on a throwaway prod project.
+  - name: selfservice_flows_login_brute_force_protection_enabled
+    go_field: SelfserviceFlowsLoginBruteForceProtectionEnabled
+    type: bool
+    openapi_property: kratos_selfservice_flows_login_brute_force_protection_enabled
+    description: "Throttle failed sign-ins with exponential backoff, per submitted identifier and per client IP. There is no lockout. Set every attribute of the identifier group, the ip group, or both. The API rejects an incomplete group with an HTTP 400. Turning the throttle off keeps the thresholds. Turning it on requires an Enterprise plan, and without one the API rejects the write with an HTTP 403."
+
+  - name: selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_initial
+    go_field: SelfserviceFlowsLoginBruteForceProtectionIdentifierExponentialBackoffInitial
+    type: string
+    openapi_property: kratos_selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_initial
+    description: "First delay for an identifier once it exceeds max_failures, as a Go duration such as '1s'. The delay doubles with every further failure. Requires the other three identifier attributes."
+    validators:
+      regex: "^([0-9]+(ns|us|ms|s|m|h))+$"
+      regex_message: "must be a Go duration such as '1s', '5m', or '1h30m'"
+
+  - name: selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_max
+    go_field: SelfserviceFlowsLoginBruteForceProtectionIdentifierExponentialBackoffMax
+    type: string
+    openapi_property: kratos_selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_max
+    description: "Longest delay for an identifier, as a Go duration such as '15m'. At most '8760h'. Requires the other three identifier attributes."
+    validators:
+      regex: "^([0-9]+(ns|us|ms|s|m|h))+$"
+      regex_message: "must be a Go duration such as '1s', '5m', or '1h30m'"
+
+  - name: selfservice_flows_login_brute_force_protection_identifier_max_failures
+    go_field: SelfserviceFlowsLoginBruteForceProtectionIdentifierMaxFailures
+    type: int64
+    openapi_property: kratos_selfservice_flows_login_brute_force_protection_identifier_max_failures
+    description: "Failed sign-ins per identifier that the window tolerates before delays start. At least 1. Requires the other three identifier attributes."
+
+  - name: selfservice_flows_login_brute_force_protection_identifier_window
+    go_field: SelfserviceFlowsLoginBruteForceProtectionIdentifierWindow
+    type: string
+    openapi_property: kratos_selfservice_flows_login_brute_force_protection_identifier_window
+    description: "How long the failure count of an identifier lives after its first failure, as a Go duration such as '5m'. Requires the other three identifier attributes."
+    validators:
+      regex: "^([0-9]+(ns|us|ms|s|m|h))+$"
+      regex_message: "must be a Go duration such as '1s', '5m', or '1h30m'"
+
+  - name: selfservice_flows_login_brute_force_protection_ip_exponential_backoff_initial
+    go_field: SelfserviceFlowsLoginBruteForceProtectionIPExponentialBackoffInitial
+    type: string
+    openapi_property: kratos_selfservice_flows_login_brute_force_protection_ip_exponential_backoff_initial
+    description: "First delay for a client IP once it exceeds max_failures, as a Go duration such as '1s'. The delay doubles with every further failure. Requires the other three ip attributes."
+    validators:
+      regex: "^([0-9]+(ns|us|ms|s|m|h))+$"
+      regex_message: "must be a Go duration such as '1s', '5m', or '1h30m'"
+
+  - name: selfservice_flows_login_brute_force_protection_ip_exponential_backoff_max
+    go_field: SelfserviceFlowsLoginBruteForceProtectionIPExponentialBackoffMax
+    type: string
+    openapi_property: kratos_selfservice_flows_login_brute_force_protection_ip_exponential_backoff_max
+    description: "Longest delay for a client IP, as a Go duration such as '15m'. At most '8760h'. Requires the other three ip attributes."
+    validators:
+      regex: "^([0-9]+(ns|us|ms|s|m|h))+$"
+      regex_message: "must be a Go duration such as '1s', '5m', or '1h30m'"
+
+  - name: selfservice_flows_login_brute_force_protection_ip_max_failures
+    go_field: SelfserviceFlowsLoginBruteForceProtectionIPMaxFailures
+    type: int64
+    openapi_property: kratos_selfservice_flows_login_brute_force_protection_ip_max_failures
+    description: "Failed sign-ins per client IP that the window tolerates before delays start. At least 1. Requires the other three ip attributes."
+
+  - name: selfservice_flows_login_brute_force_protection_ip_window
+    go_field: SelfserviceFlowsLoginBruteForceProtectionIPWindow
+    type: string
+    openapi_property: kratos_selfservice_flows_login_brute_force_protection_ip_window
+    description: "How long the failure count of a client IP lives after its first failure, as a Go duration such as '5m'. Requires the other three ip attributes."
+    validators:
+      regex: "^([0-9]+(ns|us|ms|s|m|h))+$"
+      regex_message: "must be a Go duration such as '1s', '5m', or '1h30m'"

@@ -171,6 +171,12 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.SelfserviceMethodsPasskeyConfigTimeoutsLogin, "/services/identity/config/selfservice/methods/passkey/config/timeouts/login"},
 		{&plan.SelfserviceMethodsPasskeyConfigTimeoutsRegistration, "/services/identity/config/selfservice/methods/passkey/config/timeouts/registration"},
 		{&plan.SelfserviceMethodsCodeConfigAlphabet, "/services/identity/config/selfservice/methods/code/config/alphabet"},
+		{&plan.SelfserviceFlowsLoginBruteForceProtectionIdentifierExponentialBackoffInitial, "/services/identity/config/selfservice/flows/login/brute_force_protection/identifier/exponential_backoff/initial"},
+		{&plan.SelfserviceFlowsLoginBruteForceProtectionIdentifierExponentialBackoffMax, "/services/identity/config/selfservice/flows/login/brute_force_protection/identifier/exponential_backoff/max"},
+		{&plan.SelfserviceFlowsLoginBruteForceProtectionIdentifierWindow, "/services/identity/config/selfservice/flows/login/brute_force_protection/identifier/window"},
+		{&plan.SelfserviceFlowsLoginBruteForceProtectionIPExponentialBackoffInitial, "/services/identity/config/selfservice/flows/login/brute_force_protection/ip/exponential_backoff/initial"},
+		{&plan.SelfserviceFlowsLoginBruteForceProtectionIPExponentialBackoffMax, "/services/identity/config/selfservice/flows/login/brute_force_protection/ip/exponential_backoff/max"},
+		{&plan.SelfserviceFlowsLoginBruteForceProtectionIPWindow, "/services/identity/config/selfservice/flows/login/brute_force_protection/ip/window"},
 	}
 }
 
@@ -241,6 +247,7 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 		{&plan.SelfserviceMethodsDeviceauthnConfigAndroidAllowExpiredFactoryCertificates, "/services/identity/config/selfservice/methods/deviceauthn/config/android_allow_expired_factory_certificates", nil},
 		{&plan.FeatureFlagsEnforceIdentitySchemaGuards, "/services/identity/config/feature_flags/enforce_identity_schema_guards", nil},
 		{&plan.PreviewEnableNativeSAMLEngine, "/services/identity/config/preview/enable_native_saml_engine", nil},
+		{&plan.SelfserviceFlowsLoginBruteForceProtectionEnabled, "/services/identity/config/selfservice/flows/login/brute_force_protection/enabled", nil},
 	}
 }
 
@@ -266,6 +273,8 @@ func simpleInt64PatchEntries(plan *ProjectConfigResourceModel) []Int64PatchEntry
 		{&plan.OAuth2GrantRefreshTokenRotationGraceReuseCount, "/services/oauth2/config/oauth2/grant/refresh_token/rotation_grace_reuse_count"},
 		{&plan.SelfserviceMethodsDeviceauthnConfigPinMaxAttempts, "/services/identity/config/selfservice/methods/deviceauthn/config/pin_max_attempts"},
 		{&plan.SelfserviceMethodsCodeConfigLength, "/services/identity/config/selfservice/methods/code/config/length"},
+		{&plan.SelfserviceFlowsLoginBruteForceProtectionIdentifierMaxFailures, "/services/identity/config/selfservice/flows/login/brute_force_protection/identifier/max_failures"},
+		{&plan.SelfserviceFlowsLoginBruteForceProtectionIPMaxFailures, "/services/identity/config/selfservice/flows/login/brute_force_protection/ip/max_failures"},
 	}
 }
 

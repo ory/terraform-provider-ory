@@ -1022,5 +1022,77 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 			ElementType: types.StringType,
 		},
+		"selfservice_flows_login_brute_force_protection_enabled": schema.BoolAttribute{
+			Description: "Throttle failed sign-ins with exponential backoff, per submitted identifier and per client IP. There is no lockout. Set every attribute of the identifier group, the ip group, or both. The API rejects an incomplete group with an HTTP 400. Turning the throttle off keeps the thresholds. Turning it on requires an Enterprise plan, and without one the API rejects the write with an HTTP 403.",
+			Optional:    true,
+		},
+		"selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_initial": schema.StringAttribute{
+			Description: "First delay for an identifier once it exceeds max_failures, as a Go duration such as '1s'. The delay doubles with every further failure. Requires the other three identifier attributes.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.RegexMatches(
+					regexp.MustCompile("^([0-9]+(ns|us|ms|s|m|h))+$"),
+					"must be a Go duration such as '1s', '5m', or '1h30m'",
+				),
+			},
+		},
+		"selfservice_flows_login_brute_force_protection_identifier_exponential_backoff_max": schema.StringAttribute{
+			Description: "Longest delay for an identifier, as a Go duration such as '15m'. At most '8760h'. Requires the other three identifier attributes.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.RegexMatches(
+					regexp.MustCompile("^([0-9]+(ns|us|ms|s|m|h))+$"),
+					"must be a Go duration such as '1s', '5m', or '1h30m'",
+				),
+			},
+		},
+		"selfservice_flows_login_brute_force_protection_identifier_max_failures": schema.Int64Attribute{
+			Description: "Failed sign-ins per identifier that the window tolerates before delays start. At least 1. Requires the other three identifier attributes.",
+			Optional:    true,
+		},
+		"selfservice_flows_login_brute_force_protection_identifier_window": schema.StringAttribute{
+			Description: "How long the failure count of an identifier lives after its first failure, as a Go duration such as '5m'. Requires the other three identifier attributes.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.RegexMatches(
+					regexp.MustCompile("^([0-9]+(ns|us|ms|s|m|h))+$"),
+					"must be a Go duration such as '1s', '5m', or '1h30m'",
+				),
+			},
+		},
+		"selfservice_flows_login_brute_force_protection_ip_exponential_backoff_initial": schema.StringAttribute{
+			Description: "First delay for a client IP once it exceeds max_failures, as a Go duration such as '1s'. The delay doubles with every further failure. Requires the other three ip attributes.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.RegexMatches(
+					regexp.MustCompile("^([0-9]+(ns|us|ms|s|m|h))+$"),
+					"must be a Go duration such as '1s', '5m', or '1h30m'",
+				),
+			},
+		},
+		"selfservice_flows_login_brute_force_protection_ip_exponential_backoff_max": schema.StringAttribute{
+			Description: "Longest delay for a client IP, as a Go duration such as '15m'. At most '8760h'. Requires the other three ip attributes.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.RegexMatches(
+					regexp.MustCompile("^([0-9]+(ns|us|ms|s|m|h))+$"),
+					"must be a Go duration such as '1s', '5m', or '1h30m'",
+				),
+			},
+		},
+		"selfservice_flows_login_brute_force_protection_ip_max_failures": schema.Int64Attribute{
+			Description: "Failed sign-ins per client IP that the window tolerates before delays start. At least 1. Requires the other three ip attributes.",
+			Optional:    true,
+		},
+		"selfservice_flows_login_brute_force_protection_ip_window": schema.StringAttribute{
+			Description: "How long the failure count of a client IP lives after its first failure, as a Go duration such as '5m'. Requires the other three ip attributes.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.RegexMatches(
+					regexp.MustCompile("^([0-9]+(ns|us|ms|s|m|h))+$"),
+					"must be a Go duration such as '1s', '5m', or '1h30m'",
+				),
+			},
+		},
 	}
 }
