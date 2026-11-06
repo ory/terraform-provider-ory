@@ -2,8 +2,11 @@ package eventstream
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -40,10 +43,11 @@ func TestReadStream(t *testing.T) {
 	t.Run("sns", func(t *testing.T) {
 		m := EventStreamResourceModel{HTTPSAuthSecret: types.StringValue("stale")}
 		readStream(&ory.EventStream{
-			Type:     ory.PtrString("sns"),
-			TopicArn: ory.PtrString("arn:aws:sns:us-east-1:123456789012:ory-events"),
-			RoleArn:  ory.PtrString("arn:aws:iam::123456789012:role/ory-events"),
-			Status:   ory.PtrString("active"),
+			Type:       ory.PtrString("sns"),
+			TopicArn:   ory.PtrString("arn:aws:sns:us-east-1:123456789012:ory-events"),
+			RoleArn:    ory.PtrString("arn:aws:iam::123456789012:role/ory-events"),
+			Status:     ory.PtrString("active"),
+			EventTypes: []string{"*Failed", "IdentityCreated"},
 		}, &m)
 
 		assert.Equal(t, "arn:aws:sns:us-east-1:123456789012:ory-events", m.TopicArn.ValueString())
@@ -52,6 +56,9 @@ func TestReadStream(t *testing.T) {
 		assert.True(t, m.HTTPSAuthHeaderName.IsNull())
 		assert.True(t, m.HTTPSAuthSecret.IsNull(), "a stream without a stored secret clears the state secret")
 		assert.Equal(t, "active", m.Status.ValueString())
+		assert.True(t, types.SetValueMust(types.StringType, []attr.Value{
+			types.StringValue("IdentityCreated"), types.StringValue("*Failed"),
+		}).Equal(m.EventTypes), "the filter is compared as a set, whatever order the API reports")
 	})
 
 	t.Run("https", func(t *testing.T) {
@@ -75,7 +82,30 @@ func TestReadStream(t *testing.T) {
 		assert.Equal(t, "X-Api-Key", m.HTTPSAuthHeaderName.ValueString())
 		assert.Equal(t, "s3cret", m.HTTPSAuthSecret.ValueString(), "the masked secret never replaces the configured one")
 		assert.Equal(t, "paused", m.Status.ValueString())
+		assert.Equal(t, types.SetValueMust(types.StringType, []attr.Value{}), m.EventTypes,
+			"a stream without a filter matches the empty default, not null")
 	})
+}
+
+// An update that omits event_types keeps the stored filter, so an empty set
+// must reach the API as [] to clear it.
+func TestEventTypesBody(t *testing.T) {
+	tests := map[string]struct {
+		set  types.Set
+		want string
+	}{
+		"empty set": {types.SetValueMust(types.StringType, []attr.Value{}), `"event_types":[]`},
+		"filter":    {types.SetValueMust(types.StringType, []attr.Value{types.StringValue("Login*")}), `"event_types":["Login*"]`},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			var diags diag.Diagnostics
+			body, err := json.Marshal(ory.SetEventStreamBody{EventTypes: eventTypesBody(context.Background(), tc.set, &diags)})
+			require.False(t, diags.HasError())
+			require.NoError(t, err)
+			assert.Contains(t, string(body), tc.want)
+		})
+	}
 }
 
 func validateConfig(t *testing.T, model EventStreamResourceModel) resource.ValidateConfigResponse {
@@ -175,7 +205,8 @@ func TestValidateConfig(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			var m EventStreamResourceModel
+			// A zero types.Set has no element type and cannot be encoded.
+			m := EventStreamResourceModel{EventTypes: types.SetNull(types.StringType)}
 			tc.build(&m)
 			errs := validateConfig(t, m).Diagnostics.Errors()
 			if tc.wantErr == "" {
