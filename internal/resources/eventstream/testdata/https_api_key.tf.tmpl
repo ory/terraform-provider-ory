@@ -5,4 +5,5 @@ resource "ory_event_stream" "test" {
   https_auth_header_name = "X-Api-Key"
   https_auth_secret      = "[[ .Secret ]]"
   status                 = "paused"
+  event_types            = ["SessionIssued", "IdentityCreated", "Login*"]
 }

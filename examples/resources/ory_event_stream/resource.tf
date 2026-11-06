@@ -5,7 +5,8 @@ resource "ory_event_stream" "events" {
   role_arn  = "arn:aws:iam::123456789012:role/ory-event-publisher"
 }
 
-# Send Ory events to an HTTPS endpoint, authenticated with a bearer token
+# Send identity creation and login events to an HTTPS endpoint, authenticated
+# with a bearer token
 variable "event_stream_token" {
   type      = string
   sensitive = true
@@ -16,6 +17,7 @@ resource "ory_event_stream" "webhook" {
   https_endpoint    = "https://events.example.com/ory"
   https_auth_type   = "bearer"
   https_auth_secret = var.event_stream_token
+  event_types       = ["IdentityCreated", "Login*"]
 }
 
 # Send Ory events with an API key header, and keep the stream paused

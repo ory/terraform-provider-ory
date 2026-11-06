@@ -8,11 +8,13 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -106,6 +108,7 @@ type EventStreamResourceModel struct {
 	HTTPSAuthSecretWO        types.String `tfsdk:"https_auth_secret_wo"`
 	HTTPSAuthSecretWOVersion types.String `tfsdk:"https_auth_secret_wo_version"`
 	Status                   types.String `tfsdk:"status"`
+	EventTypes               types.Set    `tfsdk:"event_types"`
 	CreatedAt                types.String `tfsdk:"created_at"`
 	UpdatedAt                types.String `tfsdk:"updated_at"`
 }
@@ -202,6 +205,13 @@ func (r *EventStreamResource) Schema(ctx context.Context, req resource.SchemaReq
 				Validators: []validator.String{
 					stringvalidator.OneOf(statusActive, statusPaused),
 				},
+			},
+			"event_types": schema.SetAttribute{
+				Description: "The events the stream delivers. Each entry is an exact event name, such as \"IdentityCreated\", or a pattern in which * matches any characters, such as \"Session*\" or \"*Failed\". No other wildcard is supported. Ory rejects an unknown event name and a pattern that matches no event. An empty set delivers every event. Defaults to an empty set, so removing the attribute clears the filter, including a filter set in the Ory Console.",
+				ElementType: types.StringType,
+				Optional:    true,
+				Computed:    true,
+				Default:     setdefault.StaticValue(types.SetValueMust(types.StringType, []attr.Value{})),
 			},
 			"created_at": schema.StringAttribute{
 				Description: "Timestamp when the event stream was created.",
@@ -313,6 +323,15 @@ func resolveSecret(ctx context.Context, config tfsdk.Config, plan *EventStreamRe
 	return plan.HTTPSAuthSecret.ValueStringPointer()
 }
 
+// eventTypesBody returns the filter to send. The slice is never nil, so an
+// empty set reaches the API as [] and clears the stored filter. An update
+// that omits event_types keeps the stored filter.
+func eventTypesBody(ctx context.Context, set types.Set, diags *diag.Diagnostics) []string {
+	eventTypes := []string{}
+	diags.Append(set.ElementsAs(ctx, &eventTypes, false)...)
+	return eventTypes
+}
+
 func (r *EventStreamResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan EventStreamResourceModel
 
@@ -331,6 +350,7 @@ func (r *EventStreamResource) Create(ctx context.Context, req resource.CreateReq
 	}
 
 	secret := resolveSecret(ctx, req.Config, &plan, &resp.Diagnostics)
+	eventTypes := eventTypesBody(ctx, plan.EventTypes, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -344,6 +364,7 @@ func (r *EventStreamResource) Create(ctx context.Context, req resource.CreateReq
 		HttpsAuthHeaderName: plan.HTTPSAuthHeaderName.ValueStringPointer(),
 		HttpsAuthSecret:     secret,
 		Status:              plan.Status.ValueStringPointer(),
+		EventTypes:          eventTypes,
 	}
 
 	stream, err := r.client.CreateEventStream(ctx, projectID, body)
@@ -413,6 +434,7 @@ func (r *EventStreamResource) Update(ctx context.Context, req resource.UpdateReq
 	}
 
 	secret := resolveSecret(ctx, req.Config, &plan, &resp.Diagnostics)
+	eventTypes := eventTypesBody(ctx, plan.EventTypes, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -428,6 +450,7 @@ func (r *EventStreamResource) Update(ctx context.Context, req resource.UpdateReq
 		HttpsAuthHeaderName: plan.HTTPSAuthHeaderName.ValueStringPointer(),
 		HttpsAuthSecret:     secret,
 		Status:              plan.Status.ValueStringPointer(),
+		EventTypes:          eventTypes,
 	}
 
 	stream, err := r.client.SetEventStream(ctx, projectID, state.ID.ValueString(), body)
@@ -512,6 +535,13 @@ func readStream(stream *ory.EventStream, m *EventStreamResourceModel) {
 		m.HTTPSAuthSecret = types.StringNull()
 	}
 	m.Status = types.StringValue(stream.GetStatus())
+	// The API reports [] for a stream without a filter, which matches the
+	// default of the attribute.
+	eventTypes := make([]attr.Value, 0, len(stream.EventTypes))
+	for _, eventType := range stream.EventTypes {
+		eventTypes = append(eventTypes, types.StringValue(eventType))
+	}
+	m.EventTypes = types.SetValueMust(types.StringType, eventTypes)
 	m.CreatedAt = types.StringValue(stream.GetCreatedAt().String())
 	m.UpdatedAt = types.StringValue(stream.GetUpdatedAt().String())
 }

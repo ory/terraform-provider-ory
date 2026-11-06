@@ -66,6 +66,12 @@ Deliveries can authenticate in three ways:
 
 Credentials in the endpoint URL cannot be combined with a bearer token, or with an API key in the `Authorization` header, because both set the `Authorization` header. With Terraform 1.11 and later, use `https_auth_secret_wo` to keep the secret out of the Terraform state.
 
+## Event Filter
+
+A stream delivers every event of the project by default. To deliver only some events, set `event_types`. Each entry is an exact event name, such as `IdentityCreated`, or a pattern in which `*` matches any characters, such as `Session*` or `*Failed`. Terraform compares the entries as a set, so their order does not matter. See [Filter events](https://www.ory.com/docs/actions/live-events#filter-events) for the event names.
+
+~> **Console filters:** Add a filter that was set in the Ory Console to `event_types`. Otherwise the next apply removes the filter, and the stream delivers every event again.
+
 ## Example Usage
 
 ```terraform
@@ -76,7 +82,8 @@ resource "ory_event_stream" "events" {
   role_arn  = "arn:aws:iam::123456789012:role/ory-event-publisher"
 }
 
-# Send Ory events to an HTTPS endpoint, authenticated with a bearer token
+# Send identity creation and login events to an HTTPS endpoint, authenticated
+# with a bearer token
 variable "event_stream_token" {
   type      = string
   sensitive = true
@@ -87,6 +94,7 @@ resource "ory_event_stream" "webhook" {
   https_endpoint    = "https://events.example.com/ory"
   https_auth_type   = "bearer"
   https_auth_secret = var.event_stream_token
+  event_types       = ["IdentityCreated", "Login*"]
 }
 
 # Send Ory events with an API key header, and keep the stream paused
@@ -131,6 +139,7 @@ terraform import ory_event_stream.example <project-id>/<event-stream-id>
 
 > **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
 
+- `event_types` (Set of String) The events the stream delivers. Each entry is an exact event name, such as "IdentityCreated", or a pattern in which * matches any characters, such as "Session*" or "*Failed". No other wildcard is supported. Ory rejects an unknown event name and a pattern that matches no event. An empty set delivers every event. Defaults to an empty set, so removing the attribute clears the filter, including a filter set in the Ory Console.
 - `https_auth_header_name` (String) The header that carries the API key. Required when https_auth_type is "api_key", and not valid with any other scheme. Ory rejects a header it sets itself, such as Content-Type or User-Agent, and a name that starts with Ory- or X-Ory-.
 - `https_auth_secret` (String, Sensitive) The API key or bearer token, at most 4096 bytes. Stored in Terraform state. The API never returns it, so a change made outside Terraform is not detected. Changing the value rotates the secret. When https_auth_type is "api_key" or "bearer", exactly one of https_auth_secret and https_auth_secret_wo must be set.
 - `https_auth_secret_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of https_auth_secret for Terraform 1.11 and later: the value is sent to Ory but never stored in Terraform state or plan. Use it to source the secret from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own. Change https_auth_secret_wo_version to rotate it. Mutually exclusive with https_auth_secret.

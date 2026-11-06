@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -152,11 +153,25 @@ func TestAccEventStreamResource_basic(t *testing.T) {
 	})
 }
 
+// checkStoredEventTypes checks the filter that Ory stored for the stream.
+// The API sorts the entries, so want must be sorted.
+func checkStoredEventTypes(t *testing.T, resourceName string, want ...string) resource.TestCheckFunc {
+	t.Helper()
+	return checkStoredStream(t, resourceName, func(stream *ory.EventStream) error {
+		if got := stream.GetEventTypes(); !slices.Equal(got, want) {
+			return fmt.Errorf("stored event_types %q, want %q", got, want)
+		}
+		return nil
+	})
+}
+
 // TestAccEventStreamResource_https covers an HTTPS stream through create,
 // a scheme and endpoint change, an in-place switch to SNS, import, and
 // delete. The first endpoint carries Basic credentials and a query token,
 // which the API masks on read, so the empty plan after each step proves that
-// the masked endpoint does not show as a diff.
+// the masked endpoint does not show as a diff. The same empty plans prove
+// that the API's sorting of event_types does not show as a diff, and the SNS
+// step proves that removing event_types clears the stored filter.
 func TestAccEventStreamResource_https(t *testing.T) {
 	const (
 		endpoint       = "https://tf-acc:basic-auth-value@example.com/ory-events?token=query-value"
@@ -184,8 +199,10 @@ func TestAccEventStreamResource_https(t *testing.T) {
 					resource.TestCheckResourceAttr("ory_event_stream.test", "https_auth_header_name", "X-Api-Key"),
 					resource.TestCheckResourceAttr("ory_event_stream.test", "https_auth_secret", "tf-acc-api-key"),
 					resource.TestCheckResourceAttr("ory_event_stream.test", "status", "paused"),
+					resource.TestCheckResourceAttr("ory_event_stream.test", "event_types.#", "3"),
 					resource.TestCheckNoResourceAttr("ory_event_stream.test", "topic_arn"),
 					resource.TestCheckNoResourceAttr("ory_event_stream.test", "role_arn"),
+					checkStoredEventTypes(t, "ory_event_stream.test", "IdentityCreated", "Login*", "SessionIssued"),
 					checkStoredStream(t, "ory_event_stream.test", func(stream *ory.EventStream) error {
 						if got := stream.HttpsEndpoint.Get(); got == nil || *got != maskedEndpoint {
 							return fmt.Errorf("stored endpoint reported as %v, want %s", got, maskedEndpoint)
@@ -213,6 +230,8 @@ func TestAccEventStreamResource_https(t *testing.T) {
 					resource.TestCheckResourceAttr("ory_event_stream.test", "https_auth_type", "bearer"),
 					resource.TestCheckNoResourceAttr("ory_event_stream.test", "https_auth_header_name"),
 					resource.TestCheckResourceAttr("ory_event_stream.test", "https_auth_secret", "tf-acc-bearer-token"),
+					resource.TestCheckTypeSetElemAttr("ory_event_stream.test", "event_types.*", "*Failed"),
+					checkStoredEventTypes(t, "ory_event_stream.test", "*Failed"),
 					checkStoredStream(t, "ory_event_stream.test", func(stream *ory.EventStream) error {
 						if stream.GetHttpsAuthType() != "bearer" || stream.GetHttpsAuthSecret() == "" {
 							return fmt.Errorf("stored scheme %q with secret %q, want bearer with a secret",
@@ -241,6 +260,8 @@ func TestAccEventStreamResource_https(t *testing.T) {
 					resource.TestCheckResourceAttr("ory_event_stream.test", "https_auth_type", "none"),
 					resource.TestCheckNoResourceAttr("ory_event_stream.test", "https_endpoint"),
 					resource.TestCheckNoResourceAttr("ory_event_stream.test", "https_auth_secret"),
+					resource.TestCheckResourceAttr("ory_event_stream.test", "event_types.#", "0"),
+					checkStoredEventTypes(t, "ory_event_stream.test"),
 				),
 			},
 			{

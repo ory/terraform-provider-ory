@@ -66,6 +66,12 @@ Deliveries can authenticate in three ways:
 
 Credentials in the endpoint URL cannot be combined with a bearer token, or with an API key in the `Authorization` header, because both set the `Authorization` header. With Terraform 1.11 and later, use `https_auth_secret_wo` to keep the secret out of the Terraform state.
 
+## Event Filter
+
+A stream delivers every event of the project by default. To deliver only some events, set `event_types`. Each entry is an exact event name, such as `IdentityCreated`, or a pattern in which `*` matches any characters, such as `Session*` or `*Failed`. Terraform compares the entries as a set, so their order does not matter. See [Filter events](https://www.ory.com/docs/actions/live-events#filter-events) for the event names.
+
+~> **Console filters:** Add a filter that was set in the Ory Console to `event_types`. Otherwise the next apply removes the filter, and the stream delivers every event again.
+
 ## Example Usage
 
 {{ tffile "examples/resources/ory_event_stream/resource.tf" }}
