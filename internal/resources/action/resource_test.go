@@ -12,6 +12,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
@@ -464,23 +465,24 @@ func TestAccActionResource_beforeTiming(t *testing.T) {
 			{
 				ResourceName:      "ory_action.test",
 				ImportState:       true,
-				ImportStateIdFunc: beforeActionImportStateIDFunc(true),
+				ImportStateIdFunc: noAuthMethodImportStateIDFunc(true),
 				ImportStateVerify: true,
 			},
 			// Import using the legacy format without method: project_id:flow:before:url
 			{
 				ResourceName:      "ory_action.test",
 				ImportState:       true,
-				ImportStateIdFunc: beforeActionImportStateIDFunc(false),
+				ImportStateIdFunc: noAuthMethodImportStateIDFunc(false),
 				ImportStateVerify: true,
 			},
 		},
 	})
 }
 
-// beforeActionImportStateIDFunc builds a before-timing import ID from state,
-// with or without the optional method segment.
-func beforeActionImportStateIDFunc(includeMethod bool) resource.ImportStateIdFunc {
+// noAuthMethodImportStateIDFunc builds an import ID without the auth_method
+// segment, the layout used by before-timing and failure-timing hooks, with or
+// without the optional method segment.
+func noAuthMethodImportStateIDFunc(includeMethod bool) resource.ImportStateIdFunc {
 	return func(s *terraform.State) (string, error) {
 		rs, ok := s.RootModule().Resources["ory_action.test"]
 		if !ok {
@@ -488,12 +490,84 @@ func beforeActionImportStateIDFunc(includeMethod bool) resource.ImportStateIdFun
 		}
 		projectID := rs.Primary.Attributes["project_id"]
 		flow := rs.Primary.Attributes["flow"]
+		timing := rs.Primary.Attributes["timing"]
 		url := rs.Primary.Attributes["url"]
 		if includeMethod {
-			return fmt.Sprintf("%s:%s:before:%s:%s", projectID, flow, rs.Primary.Attributes["method"], url), nil
+			return fmt.Sprintf("%s:%s:%s:%s:%s", projectID, flow, timing, rs.Primary.Attributes["method"], url), nil
 		}
-		return fmt.Sprintf("%s:%s:before:%s", projectID, flow, url), nil
+		return fmt.Sprintf("%s:%s:%s:%s", projectID, flow, timing, url), nil
 	}
+}
+
+// TestAccActionResource_loginFailure exercises create, read, update, import, and
+// delete of a login failure hook (timing = "failure"). Ory stores these in the
+// flat selfservice.flows.login.failure.hooks array with no auth-method level,
+// and leaves the failure key out of the config until it holds a hook. Ory runs
+// failure hooks in the background, so the hook keeps response_parse and
+// can_interrupt at false. project_id is set explicitly so the update step is an
+// in-place Update rather than a replace.
+func TestAccActionResource_loginFailure(t *testing.T) {
+	projectID := os.Getenv("ORY_PROJECT_ID")
+	if projectID == "" {
+		t.Skip("ORY_PROJECT_ID must be set to exercise the in-place update step")
+	}
+
+	webhookURL := testutil.ExampleWebhookURL + "/login-failure"
+	hookPath := "/services/identity/config/selfservice/flows/login/failure/hooks"
+	configData := map[string]string{
+		"ProjectID":  projectID,
+		"WebhookURL": testutil.ExampleWebhookURL,
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			cleanupDanglingWebhook(t, hookPath, webhookURL)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		CheckDestroy:             checkWebhookDestroyed(t, hookPath, webhookURL, nil),
+		Steps: []resource.TestStep{
+			// Create and Read
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/login_failure.tf.tmpl", configData),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_action.test", "id"),
+					resource.TestCheckResourceAttr("ory_action.test", "flow", "login"),
+					resource.TestCheckResourceAttr("ory_action.test", "timing", "failure"),
+					resource.TestCheckResourceAttr("ory_action.test", "method", "POST"),
+					resource.TestCheckResourceAttr("ory_action.test", "url", webhookURL),
+					resource.TestCheckResourceAttr("ory_action.test", "response_ignore", "false"),
+					resource.TestCheckResourceAttr("ory_action.test", "response_parse", "false"),
+					resource.TestCheckResourceAttr("ory_action.test", "can_interrupt", "false"),
+					// Pin the storage location: the hook must land in the flat
+					// failure array, not under an auth method.
+					allParallelHooksExist(hookPath, []string{webhookURL}),
+				),
+			},
+			// Update: the url is unchanged, so the hook is patched in place at
+			// its existing index in the failure array.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/login_failure_updated.tf.tmpl", configData),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction("ory_action.test", plancheck.ResourceActionUpdate),
+					},
+				},
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_action.test", "method", "PUT"),
+					resource.TestCheckResourceAttr("ory_action.test", "response_ignore", "true"),
+					allParallelHooksExist(hookPath, []string{webhookURL}),
+				),
+			},
+			// Import using the documented format: project_id:login:failure:method:url
+			{
+				ResourceName:      "ory_action.test",
+				ImportState:       true,
+				ImportStateIdFunc: noAuthMethodImportStateIDFunc(true),
+				ImportStateVerify: true,
+			},
+		},
+	})
 }
 
 // TestAccActionResource_verificationFlow is the regression test for issue #241:

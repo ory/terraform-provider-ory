@@ -72,6 +72,18 @@ func TestParseActionImportID_valid(t *testing.T) {
 			id:   testProjectID + ":login:before:PUT:https://api.example.com/cb?redirect=https://other.example.com",
 			want: actionImportID{projectID: testProjectID, flow: "login", timing: "before", authMethod: "password", httpMethod: "PUT", url: "https://api.example.com/cb?redirect=https://other.example.com"},
 		},
+		{
+			// Login failure hooks have no auth-method level, so their import ID
+			// uses the before layout.
+			name: "failure with explicit method",
+			id:   testProjectID + ":login:failure:PUT:https://api.example.com/failed-login",
+			want: actionImportID{projectID: testProjectID, flow: "login", timing: "failure", authMethod: "password", httpMethod: "PUT", url: "https://api.example.com/failed-login"},
+		},
+		{
+			name: "failure without method defaults to POST",
+			id:   testProjectID + ":login:failure:https://api.example.com/failed-login",
+			want: actionImportID{projectID: testProjectID, flow: "login", timing: "failure", authMethod: "password", httpMethod: "POST", url: "https://api.example.com/failed-login"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -99,7 +111,7 @@ func TestParseActionImportID_invalid(t *testing.T) {
 		{
 			name:       "invalid timing",
 			id:         testProjectID + ":login:sideways:https://api.example.com/hook",
-			wantDetail: "Invalid timing 'sideways'",
+			wantDetail: "Invalid timing 'sideways'. Must be 'before', 'after', or 'failure'.",
 		},
 		{
 			name:       "after missing url after auth_method",

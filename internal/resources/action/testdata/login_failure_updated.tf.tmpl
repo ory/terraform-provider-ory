@@ -1,0 +1,9 @@
+resource "ory_action" "test" {
+  project_id = "[[ .ProjectID ]]"
+  flow       = "login"
+  timing     = "failure"
+  url        = "[[ .WebhookURL ]]/login-failure"
+  method     = "PUT"
+
+  response_ignore = true
+}

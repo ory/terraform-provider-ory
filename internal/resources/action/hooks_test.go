@@ -57,30 +57,36 @@ var allAuthMethods = []string{
 	"password", "oidc", "code", "profile", "webauthn", "passkey", "totp", "lookup_secret", "saml",
 }
 
-// authMethodValidate runs the auth_method schema validators against a value and
-// returns the diagnostics they produce.
-func authMethodValidate(t *testing.T, value string) diag.Diagnostics {
+// stringAttrValidate runs a string attribute's schema validators against a value
+// and returns the diagnostics they produce.
+func stringAttrValidate(t *testing.T, name, value string) diag.Diagnostics {
 	t.Helper()
 	ctx := context.Background()
 	r := &ActionResource{}
 	var schemaResp resource.SchemaResponse
 	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
 
-	attr, ok := schemaResp.Schema.Attributes["auth_method"].(schema.StringAttribute)
-	require.True(t, ok, "auth_method must be a StringAttribute")
+	attr, ok := schemaResp.Schema.Attributes[name].(schema.StringAttribute)
+	require.True(t, ok, "%s must be a StringAttribute", name)
 	validators := attr.StringValidators()
-	require.NotEmpty(t, validators, "auth_method must have validators")
+	require.NotEmpty(t, validators, "%s must have validators", name)
 
 	var diags diag.Diagnostics
 	for _, v := range validators {
 		resp := &validator.StringResponse{}
 		v.ValidateString(ctx, validator.StringRequest{
-			Path:        path.Root("auth_method"),
+			Path:        path.Root(name),
 			ConfigValue: types.StringValue(value),
 		}, resp)
 		diags.Append(resp.Diagnostics...)
 	}
 	return diags
+}
+
+// authMethodValidate runs the auth_method schema validators against a value.
+func authMethodValidate(t *testing.T, value string) diag.Diagnostics {
+	t.Helper()
+	return stringAttrValidate(t, "auth_method", value)
 }
 
 // TestAuthMethodValidatorAcceptsDocumentedMethods is the schema-level regression
@@ -96,6 +102,16 @@ func TestAuthMethodValidatorAcceptsDocumentedMethods(t *testing.T) {
 	}
 
 	assert.True(t, authMethodValidate(t, "magic").HasError(), "an unknown auth_method must be rejected")
+}
+
+// TestTimingValidatorAcceptsFailure verifies the timing enum accepts "failure"
+// for login failure hooks next to "before" and "after", and still rejects an
+// unknown value.
+func TestTimingValidatorAcceptsFailure(t *testing.T) {
+	for _, timing := range []string{"before", "after", "failure"} {
+		assert.Falsef(t, stringAttrValidate(t, "timing", timing).HasError(), "timing %q must be accepted", timing)
+	}
+	assert.True(t, stringAttrValidate(t, "timing", "sideways").HasError(), "an unknown timing must be rejected")
 }
 
 func TestFlowSupportsAuthMethod(t *testing.T) {
@@ -240,6 +256,11 @@ func TestHookPath(t *testing.T) {
 			name: "verification before is flat", flow: "verification", timing: "before", authMethod: "password",
 			want: "/services/identity/config/selfservice/flows/verification/before/hooks",
 		},
+		{
+			// Login failure hooks have no auth-method level, so auth_method is ignored.
+			name: "login failure is flat", flow: "login", timing: "failure", authMethod: "password",
+			want: "/services/identity/config/selfservice/flows/login/failure/hooks",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -337,6 +358,42 @@ func TestGetHooksFromProject_BeforeTiming(t *testing.T) {
 	require.Len(t, hooks, 1)
 	config, _ := hooks[0]["config"].(map[string]interface{})
 	assert.Equal(t, "https://example.com/pre-login", config["url"])
+}
+
+// TestGetHooksFromProject_FailureTiming verifies login failure hooks are read
+// from the flat selfservice.flows.login.failure.hooks array. Ory leaves the
+// failure key out of the config until it holds a hook, so a missing key must
+// read as no hooks rather than an error.
+func TestGetHooksFromProject_FailureTiming(t *testing.T) {
+	r := &ActionResource{}
+	cfg := map[string]interface{}{
+		"selfservice": map[string]interface{}{
+			"flows": map[string]interface{}{
+				"login": map[string]interface{}{
+					"after": map[string]interface{}{
+						"password": map[string]interface{}{
+							"hooks": []interface{}{actionTestWebhook("https://example.com/post-login")},
+						},
+					},
+					"failure": map[string]interface{}{
+						"hooks": []interface{}{actionTestWebhook("https://example.com/failed-login")},
+					},
+				},
+			},
+		},
+	}
+	hooks := r.getHooksFromProject(actionTestProject(cfg), "login", "failure", "password")
+	require.Len(t, hooks, 1)
+	config, _ := hooks[0]["config"].(map[string]interface{})
+	assert.Equal(t, "https://example.com/failed-login", config["url"])
+
+	noFailureKey := afterConfig("login", map[string]interface{}{
+		"password": map[string]interface{}{
+			"hooks": []interface{}{actionTestWebhook("https://example.com/post-login")},
+		},
+	})
+	assert.Empty(t, r.getHooksFromProject(actionTestProject(noFailureKey), "login", "failure", "password"),
+		"a login flow without a failure key has no failure hooks")
 }
 
 // TestGetHooksFromProject_DeletedProject verifies a soft-deleted project (which

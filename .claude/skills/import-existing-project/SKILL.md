@@ -237,7 +237,7 @@ Project API = `https://{slug}.projects.oryapis.com` with the project API key.
 | `ory_social_provider` | revision: `.services.identity.config.selfservice.methods.oidc.config.providers[]` | `{provider_id}` (e.g. `google`) |
 | `ory_saml_provider` | revision: `...methods.saml.config.providers[]` | `{provider_id}` |
 | `ory_scim_client` | `GET /normalized/projects/{id}` (console): `.current_revision.scim_clients[]` | `{project_id}/{client_id}`, secret unrecoverable |
-| `ory_action` | revision: `...selfservice.flows.<flow>.<timing>...hooks[]` where `hook == "web_hook"` | after: `{project_id}:{flow}:after:{auth_method}:{METHOD}:{url}`; before: `{project_id}:{flow}:before:{METHOD}:{url}` |
+| `ory_action` | revision: `...selfservice.flows.<flow>.<timing>...hooks[]` where `hook == "web_hook"` | after: `{project_id}:{flow}:after:{auth_method}:{METHOD}:{url}`; before: `{project_id}:{flow}:before:{METHOD}:{url}`; failure, login only: `{project_id}:login:failure:{METHOD}:{url}` |
 | `ory_email_template` | revision: `...courier.templates.<base>.<valid\|invalid>.email` with non-empty `subject` or `body.html` / `body.plaintext` | `{base}_{valid\|invalid}` (e.g. `recovery_code_valid`) |
 | `ory_account_experience_translation` | revision: `.services.account_experience.config.translations`, one key per locale with custom text | `{project_id}/{locale}`; the import downloads the stored messages |
 | `ory_oauth2_client` | `GET /admin/clients` (project) | `{client_id}` |
@@ -397,6 +397,10 @@ prefer the explicit `{project_id}/...` form in generated files.
   `settings` has no `code`. Upgrade the provider. Writing an unsupported
   flow-and-method pair returns HTTP 200 and is silently discarded, so the
   provider warns at plan time instead of failing.
+- **`value must be one of` on an `ory_action` timing of `failure`**: login
+  failure hooks live at `selfservice.flows.login.failure.hooks`, and only
+  provider releases that support `timing = "failure"` can import them. Upgrade
+  the provider.
 - **Generated attribute rejected on plan** — delete it; it is computed-only.
   `-generate-config-out` emits every attribute it saw in state, including ones
   that are not valid to configure.
