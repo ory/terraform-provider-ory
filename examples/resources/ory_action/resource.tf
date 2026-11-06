@@ -32,6 +32,22 @@ resource "ory_action" "after_login_saml" {
   method      = "POST"
 }
 
+# Login failure webhook: runs in the background each time Ory rejects a login
+# attempt, for example a wrong password. Failure hooks exist only on the login
+# flow, run for every authentication method, and cannot parse the response or
+# interrupt the flow.
+resource "ory_action" "failed_login" {
+  flow   = "login"
+  timing = "failure"
+  url    = "https://api.example.com/webhooks/failed-login"
+  method = "POST"
+  body   = <<-JSONNET
+    function(ctx) {
+      failure: ctx.failure
+    }
+  JSONNET
+}
+
 # Post-settings webhook for profile/trait updates. The profile method exists only
 # on the settings flow.
 resource "ory_action" "after_profile_update" {

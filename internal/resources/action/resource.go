@@ -34,6 +34,7 @@ const (
 	defaultAuthMethod    = "password"
 	timingBefore         = "before"
 	timingAfter          = "after"
+	timingFailure        = "failure"
 	webhookAuthBasicAuth = "basic_auth"
 	webhookAuthAPIKey    = "api_key"
 	// projectStateDeleted is the state Ory reports for a project that has been
@@ -138,7 +139,7 @@ The ` + "`auth_method`" + ` attribute specifies which authentication method trig
 | ` + "`lookup_secret`" + ` | Recovery/backup codes | "Backup Codes" |
 | ` + "`saml`" + ` | SAML single sign-on (SSO) | "SAML" |
 
-**Note:** ` + "`auth_method`" + ` only applies to ` + "`timing = \"after\"`" + ` webhooks on the ` + "`login`" + `, ` + "`registration`" + `, and ` + "`settings`" + ` flows. The ` + "`recovery`" + ` and ` + "`verification`" + ` flows are not scoped by authentication method, so ` + "`auth_method`" + ` is ignored for them and should be omitted. For ` + "`timing = \"before\"`" + ` hooks, the webhook runs before any authentication method.
+**Note:** ` + "`auth_method`" + ` only applies to ` + "`timing = \"after\"`" + ` webhooks on the ` + "`login`" + `, ` + "`registration`" + `, and ` + "`settings`" + ` flows. The ` + "`recovery`" + ` and ` + "`verification`" + ` flows are not scoped by authentication method, so ` + "`auth_method`" + ` is ignored for them and should be omitted. For ` + "`timing = \"before\"`" + ` hooks, the webhook runs before any authentication method. ` + "`timing = \"failure\"`" + ` hooks run for every authentication method, so ` + "`auth_method`" + ` is ignored for them too.
 
 ### Method Availability by Flow
 
@@ -166,6 +167,19 @@ resource "ory_action" "profile_updated" {
   auth_method = "profile"
   url         = "https://api.example.com/webhooks/profile-updated"
   method      = "POST"
+}
+` + "```" + `
+
+## Login Failure Hooks
+
+Set ` + "`timing = \"failure\"`" + ` to call a webhook each time Ory rejects a login attempt, for example a wrong password or a rejected social sign-in. The Jsonnet body gets ` + "`ctx.failure`" + ` with the authentication method, the submitted identifier, and the matched identity ID. Failure hooks exist only on the ` + "`login`" + ` flow. Ory always runs them in the background, so ` + "`response_parse`" + ` and ` + "`can_interrupt`" + ` must stay ` + "`false`" + `.
+
+` + "```hcl" + `
+resource "ory_action" "failed_login" {
+  flow   = "login"
+  timing = "failure"
+  url    = "https://api.example.com/webhooks/failed-login"
+  method = "POST"
 }
 ` + "```" + `
 
@@ -217,17 +231,18 @@ resource "ory_action" "api_key_webhook" {
 
 ## Import
 
-Actions use a composite ID format: ` + "`project_id:flow:timing:auth_method:method:url`" + `
+Actions use a composite ID format: ` + "`project_id:flow:timing:auth_method:method:url`" + `. For ` + "`before`" + ` and ` + "`failure`" + ` hooks, leave out the ` + "`auth_method`" + ` segment: ` + "`project_id:flow:timing:method:url`" + `.
 
 ` + "```shell" + `
 terraform import ory_action.welcome_email "550e8400-e29b-41d4-a716-446655440000:registration:after:password:POST:https://api.example.com/webhooks/welcome"
+terraform import ory_action.failed_login "550e8400-e29b-41d4-a716-446655440000:login:failure:POST:https://api.example.com/webhooks/failed-login"
 ` + "```" + `
 
 ### Finding Import Values from Ory Console
 
 1. **project_id**: Settings → General → Project ID
 2. **flow**: The flow type shown in Actions page (login, registration, recovery, settings, verification)
-3. **timing**: "Before" or "After" as shown in the action configuration
+3. **timing**: "before", "after", or "failure" for the Pre-Hook, Post-Hook, or Failure-Hook execution timing
 4. **auth_method**: The authentication method selected (defaults to "password" if not explicitly set)
 5. **url**: The exact webhook URL - must match exactly including trailing slashes
 
@@ -273,10 +288,11 @@ func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				},
 			},
 			"timing": schema.StringAttribute{
-				Description: "When to trigger: 'before' (pre-hook) or 'after' (post-hook).",
-				Required:    true,
+				Description:         "When to trigger: 'before' (pre-hook), 'after' (post-hook), or 'failure' (login flow only: runs in the background when Ory rejects a login attempt).",
+				MarkdownDescription: "When to trigger the webhook. `before` runs before the flow starts (pre-hook). `after` runs after the user submits the flow (post-hook). `failure` runs in the background each time Ory rejects a login attempt, for example a wrong password or a rejected social sign-in. `failure` is only available on the `login` flow, and the webhook cannot parse the response or interrupt the flow.",
+				Required:            true,
 				Validators: []validator.String{
-					stringvalidator.OneOf("before", "after"),
+					stringvalidator.OneOf(timingBefore, timingAfter, timingFailure),
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
@@ -465,9 +481,41 @@ func (r *ActionResource) ValidateConfig(ctx context.Context, req resource.Valida
 		return
 	}
 
+	// Ory has failure hooks only on the login flow, at
+	// selfservice.flows.login.failure.hooks. The API accepts a failure hook
+	// written to any other flow with HTTP 200 and discards it. The Kratos config
+	// schema also pins can_interrupt and response.parse to false there, because
+	// failure hooks always run in the background, so the API rejects true with
+	// HTTP 400. Catch both at plan time.
+	if config.Timing.ValueString() == timingFailure {
+		if !config.Flow.IsNull() && !config.Flow.IsUnknown() && config.Flow.ValueString() != "login" {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("timing"),
+				"Failure hooks are only available on the login flow",
+				fmt.Sprintf("timing = %q is only available on the \"login\" flow, but flow is %q. "+
+					"Ory accepts a failure hook written to another flow with HTTP 200 but discards it.",
+					timingFailure, config.Flow.ValueString()),
+			)
+		}
+		if config.ResponseParse.ValueBool() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("response_parse"),
+				"response_parse is not supported for failure hooks",
+				"Ory runs failure hooks in the background, so it cannot parse their response. Remove response_parse or set it to false.",
+			)
+		}
+		if config.CanInterrupt.ValueBool() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("can_interrupt"),
+				"can_interrupt is not supported for failure hooks",
+				"Ory runs failure hooks in the background, so they cannot interrupt the login flow. Remove can_interrupt or set it to false.",
+			)
+		}
+	}
+
 	// auth_method only takes effect for "after" hooks on the login, registration,
-	// and settings flows. It is ignored for "before" hooks (all flows) and for the
-	// recovery and verification flows, which store their after-hooks in a single
+	// and settings flows. It is ignored for "before" and "failure" hooks and for
+	// the recovery and verification flows, which store their hooks in a single
 	// flat array. Warn when it is set explicitly but will have no effect, so users
 	// aren't surprised. Timing is only considered when known, to avoid false
 	// positives for auth-scoped flows whose timing is resolved at apply time.
@@ -481,8 +529,8 @@ func (r *ActionResource) ValidateConfig(ctx context.Context, req resource.Valida
 			detail := fmt.Sprintf("The %q flow does not scope its hooks by authentication method, so "+
 				"auth_method is ignored. You can safely remove auth_method from this resource.", flow)
 			if !ignoredByFlow {
-				detail = "auth_method only applies to \"after\" hooks, so it is ignored for \"before\" hooks. " +
-					"You can safely remove auth_method from this resource."
+				detail = fmt.Sprintf("auth_method only applies to \"after\" hooks, so it is ignored for %q hooks. "+
+					"You can safely remove auth_method from this resource.", config.Timing.ValueString())
 			}
 			resp.Diagnostics.AddAttributeWarning(
 				path.Root("auth_method"),
@@ -1270,8 +1318,9 @@ type actionImportID struct {
 // "Invalid Import ID" diagnostic).
 //
 // Import ID layouts (colon-separated, the url is always the tail):
-//   - For "after" timing:  project_id:flow:after:auth_method:method:url
-//   - For "before" timing: project_id:flow:before:method:url
+//   - For "after" timing:   project_id:flow:after:auth_method:method:url
+//   - For "before" timing:  project_id:flow:before:method:url
+//   - For "failure" timing: project_id:login:failure:method:url
 //
 // The method segment is optional and defaults to POST (legacy formats).
 //
@@ -1283,10 +1332,12 @@ func parseActionImportID(id string) (actionImportID, string) {
 	const importFormatHelp = "Import ID must be in one of these formats:\n" +
 		"  - For 'after' timing: project_id:flow:after:auth_method:method:url\n" +
 		"  - For 'before' timing: project_id:flow:before:method:url\n" +
+		"  - For 'failure' timing: project_id:login:failure:method:url\n" +
 		"The method segment is optional and defaults to POST.\n\n" +
 		"Examples:\n" +
 		"  550e8400-...:registration:after:password:POST:https://api.example.com/webhook\n" +
-		"  550e8400-...:login:before:PATCH:https://api.example.com/validate"
+		"  550e8400-...:login:before:PATCH:https://api.example.com/validate\n" +
+		"  550e8400-...:login:failure:POST:https://api.example.com/failed-login"
 
 	parts := strings.SplitN(id, ":", 4)
 	if len(parts) != 4 {
@@ -1301,8 +1352,8 @@ func parseActionImportID(id string) (actionImportID, string) {
 	}
 	rest := parts[3]
 
-	if parsed.timing != timingBefore && parsed.timing != timingAfter {
-		return actionImportID{}, fmt.Sprintf("Invalid timing '%s'. Must be 'before' or 'after'.\n\n%s", parsed.timing, importFormatHelp)
+	if parsed.timing != timingBefore && parsed.timing != timingAfter && parsed.timing != timingFailure {
+		return actionImportID{}, fmt.Sprintf("Invalid timing '%s'. Must be 'before', 'after', or 'failure'.\n\n%s", parsed.timing, importFormatHelp)
 	}
 
 	if parsed.timing == timingAfter {

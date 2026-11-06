@@ -33,7 +33,7 @@ The `auth_method` attribute specifies which authentication method triggers the w
 | `lookup_secret` | Recovery/backup codes |
 | `saml` | SAML single sign-on (SSO) |
 
-~> **Note:** `auth_method` only applies to `timing = "after"` webhooks on the `login`, `registration`, and `settings` flows. The `recovery` and `verification` flows are **not** scoped by authentication method — their after-hooks always run — so `auth_method` is ignored for them and should be omitted. For `timing = "before"` hooks, the webhook runs before any authentication method is invoked.
+~> **Note:** `auth_method` only applies to `timing = "after"` webhooks on the `login`, `registration`, and `settings` flows. The `recovery` and `verification` flows are **not** scoped by authentication method — their after-hooks always run — so `auth_method` is ignored for them and should be omitted. For `timing = "before"` hooks, the webhook runs before any authentication method is invoked. `timing = "failure"` hooks run for every authentication method, so `auth_method` is ignored for them too.
 
 ### Method Availability by Flow
 
@@ -65,6 +65,55 @@ resource "ory_action" "profile_updated" {
   method      = "POST"
 }
 ```
+
+## Login Failure Hooks
+
+Set `timing = "failure"` to call a webhook each time Ory rejects a login
+attempt, for example a wrong password or a rejected social sign-in. This is the
+"Failure-Hook (On failure)" execution timing in the Ory Console. Ory stores
+these hooks at `selfservice.flows.login.failure.hooks`. Use them to report
+failed logins to a fraud detection or audit service.
+
+```hcl
+resource "ory_action" "failed_login" {
+  flow   = "login"
+  timing = "failure"
+  url    = "https://api.example.com/webhooks/failed-login"
+  method = "POST"
+  body   = <<-JSONNET
+    function(ctx) {
+      failure: ctx.failure
+    }
+  JSONNET
+}
+```
+
+The Jsonnet body gets `ctx.failure`, together with the request's
+`transient_payload`. `ctx.failure` has these fields:
+
+- `method`: the authentication method, for example `password`.
+- `identifier`: the submitted identifier. Ory leaves it out when the attempt
+  submitted none.
+- `identity_id`: the matched identity ID, or `null` when no identity matched.
+- `provider`: the social sign-in provider that rejected the login. Ory leaves
+  it out unless a provider rejected the login.
+
+Jsonnet fails on a missing field, so read an optional field with
+`std.get(ctx.failure, "identifier", null)` instead of `ctx.failure.identifier`.
+
+Failure hooks have these constraints:
+
+- They exist only on the `login` flow. Ory accepts a failure hook written to
+  another flow with HTTP 200 but discards it, so the provider rejects any other
+  `flow` during `terraform plan`.
+- They run for every authentication method, so `auth_method` is ignored.
+- Ory always runs them in the background and makes one delivery attempt with a
+  10-second timeout. They cannot change the login response, so `response_parse`
+  and `can_interrupt` must stay `false`. The Ory API rejects `true` with HTTP
+  400, and the provider reports the error during `terraform plan`.
+- `response_ignore` has no effect at runtime. The Ory Console stores
+  `response_ignore = true` for a failure hook it creates, so set
+  `response_ignore = true` when you import one to avoid a plan diff.
 
 ## Webhook Authentication
 
@@ -139,6 +188,11 @@ terraform import ory_action.example "project_id:flow:after:auth_method:method:ur
 terraform import ory_action.example "project_id:flow:before:method:url"
 ```
 
+**For "failure" timing (login failure hooks):**
+```shell
+terraform import ory_action.example "project_id:login:failure:method:url"
+```
+
 ### Examples
 
 ```shell
@@ -153,13 +207,17 @@ terraform import ory_action.social_login \
 # Import a POST pre-login validation webhook
 terraform import ory_action.validate \
   "550e8400-e29b-41d4-a716-446655440000:login:before:POST:https://api.example.com/webhooks/validate"
+
+# Import a POST login failure webhook
+terraform import ory_action.failed_login \
+  "550e8400-e29b-41d4-a716-446655440000:login:failure:POST:https://api.example.com/webhooks/failed-login"
 ```
 
 ### Finding Import Values from Ory Console
 
 1. **project_id**: Settings → General → Project ID
 2. **flow**: The flow type (login, registration, recovery, settings, verification)
-3. **timing**: "before" or "after"
+3. **timing**: "before", "after", or "failure". These match the Console's Pre-Hook, Post-Hook, and Failure-Hook execution timings.
 4. **auth_method**: for `login`/`registration`/`settings` "after" hooks, one of password, oidc, code, profile, webauthn, passkey, totp, lookup_secret, saml (see the availability table above — `profile` is settings-only). For `recovery`/`verification` "after" hooks the value is ignored, but the import ID format still requires this segment — use `password` to match the provider default and avoid a post-import diff (keep `auth_method` omitted from the resource configuration itself).
 5. **method**: The HTTP method (POST, GET, PUT, PATCH, DELETE)
 6. **url**: The exact webhook URL - must match exactly including protocol and trailing slashes
@@ -172,6 +230,6 @@ Common issues:
 - **URL mismatch**: URLs must match exactly, including `https://` and any trailing `/`
 - **Wrong method**: Check the HTTP method configured for the webhook (POST, PATCH, etc.)
 - **Wrong auth_method**: Check which authentication method the webhook is configured for
-- **Wrong timing**: Check if the webhook is a pre-hook (before) or post-hook (after)
+- **Wrong timing**: Check if the webhook is a pre-hook (before), post-hook (after), or login failure hook (failure)
 
 {{ .SchemaMarkdown | trimspace }}

@@ -31,9 +31,9 @@ func buildActionTestConfig(t *testing.T, model ActionResourceModel) resource.Val
 		"url":                                 tfActionStringValue(model.URL),
 		"method":                              tfActionStringValue(model.HTTPMethod),
 		"body":                                tftypes.NewValue(tftypes.String, nil),
-		"response_ignore":                     tftypes.NewValue(tftypes.Bool, nil),
-		"response_parse":                      tftypes.NewValue(tftypes.Bool, nil),
-		"can_interrupt":                       tftypes.NewValue(tftypes.Bool, nil),
+		"response_ignore":                     tfActionBoolValue(model.ResponseIgnore),
+		"response_parse":                      tfActionBoolValue(model.ResponseParse),
+		"can_interrupt":                       tfActionBoolValue(model.CanInterrupt),
 		"webhook_auth_type":                   tfActionStringValue(model.WebhookAuthType),
 		"webhook_auth_basic_auth_user":        tfActionStringValue(model.WebhookAuthBasicAuthUser),
 		"webhook_auth_basic_auth_password":    tfActionStringValue(model.WebhookAuthBasicAuthPassword),
@@ -90,6 +90,17 @@ func tfActionStringValue(v types.String) tftypes.Value {
 		return tftypes.NewValue(tftypes.String, tftypes.UnknownValue)
 	}
 	return tftypes.NewValue(tftypes.String, v.ValueString())
+}
+
+// tfActionBoolValue converts a types.Bool to a tftypes.Value, preserving null/unknown state.
+func tfActionBoolValue(v types.Bool) tftypes.Value {
+	if v.IsNull() {
+		return tftypes.NewValue(tftypes.Bool, nil)
+	}
+	if v.IsUnknown() {
+		return tftypes.NewValue(tftypes.Bool, tftypes.UnknownValue)
+	}
+	return tftypes.NewValue(tftypes.Bool, v.ValueBool())
 }
 
 // TestValidateConfig_AuthMethodOnUnsupportedFlow_Warns verifies that explicitly
@@ -230,6 +241,118 @@ func TestValidateConfig_AuthMethodOnBeforeTiming_Warns(t *testing.T) {
 
 	assert.False(t, resp.Diagnostics.HasError(), "auth_method on a before hook must not be an error: %v", resp.Diagnostics.Errors())
 	assert.NotEmpty(t, resp.Diagnostics.Warnings(), "expected a warning for auth_method on a before hook")
+}
+
+// TestValidateConfig_AuthMethodOnFailureTiming_Warns verifies that auth_method
+// set on a login failure hook warns, since failure hooks run for every
+// authentication method.
+func TestValidateConfig_AuthMethodOnFailureTiming_Warns(t *testing.T) {
+	r := &ActionResource{}
+	ctx := context.Background()
+
+	req := buildActionTestConfig(t, ActionResourceModel{
+		Flow:       types.StringValue("login"),
+		Timing:     types.StringValue("failure"),
+		AuthMethod: types.StringValue("password"),
+		URL:        types.StringValue("https://example.com/webhook"),
+	})
+	var resp resource.ValidateConfigResponse
+	r.ValidateConfig(ctx, req, &resp)
+
+	assert.False(t, resp.Diagnostics.HasError(), "auth_method on a failure hook must not be an error: %v", resp.Diagnostics.Errors())
+	require.NotEmpty(t, resp.Diagnostics.Warnings(), "expected a warning for auth_method on a failure hook")
+	assert.Contains(t, resp.Diagnostics.Warnings()[0].Detail(), `ignored for "failure" hooks`)
+}
+
+// TestValidateConfig_FailureTimingOnLogin_Passes verifies the supported login
+// failure hook configuration produces no diagnostics, including when the
+// response settings are explicitly false and when flow is not yet known.
+func TestValidateConfig_FailureTimingOnLogin_Passes(t *testing.T) {
+	for name, flow := range map[string]types.String{
+		"login":   types.StringValue("login"),
+		"unknown": types.StringUnknown(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := &ActionResource{}
+			ctx := context.Background()
+
+			req := buildActionTestConfig(t, ActionResourceModel{
+				Flow:           flow,
+				Timing:         types.StringValue("failure"),
+				URL:            types.StringValue("https://example.com/webhook"),
+				ResponseIgnore: types.BoolValue(true),
+				ResponseParse:  types.BoolValue(false),
+				CanInterrupt:   types.BoolValue(false),
+			})
+			var resp resource.ValidateConfigResponse
+			r.ValidateConfig(ctx, req, &resp)
+
+			assert.Empty(t, resp.Diagnostics, "a login failure hook must not produce diagnostics: %v", resp.Diagnostics)
+		})
+	}
+}
+
+// TestValidateConfig_FailureTimingOnOtherFlows_Errors verifies failure hooks
+// are rejected at plan time on every flow except login. Ory accepts such a
+// write with HTTP 200 and discards it, so without the error the first signal
+// is an opaque verification failure during apply.
+func TestValidateConfig_FailureTimingOnOtherFlows_Errors(t *testing.T) {
+	for _, flow := range []string{"registration", "settings", "recovery", "verification"} {
+		t.Run(flow, func(t *testing.T) {
+			r := &ActionResource{}
+			ctx := context.Background()
+
+			req := buildActionTestConfig(t, ActionResourceModel{
+				Flow:   types.StringValue(flow),
+				Timing: types.StringValue("failure"),
+				URL:    types.StringValue("https://example.com/webhook"),
+			})
+			var resp resource.ValidateConfigResponse
+			r.ValidateConfig(ctx, req, &resp)
+
+			require.True(t, resp.Diagnostics.HasError(), "expected an error for a failure hook on the %q flow", flow)
+			assert.Equal(t, "Failure hooks are only available on the login flow", resp.Diagnostics.Errors()[0].Summary())
+		})
+	}
+}
+
+// TestValidateConfig_FailureTimingResponseHandling_Errors verifies that
+// response_parse and can_interrupt are rejected at plan time for a failure
+// hook. The Kratos config schema pins both to false at that position, so the
+// API answers true with HTTP 400.
+func TestValidateConfig_FailureTimingResponseHandling_Errors(t *testing.T) {
+	tests := []struct {
+		name    string
+		model   ActionResourceModel
+		summary string
+	}{
+		{
+			name:    "response_parse",
+			model:   ActionResourceModel{ResponseParse: types.BoolValue(true)},
+			summary: "response_parse is not supported for failure hooks",
+		},
+		{
+			name:    "can_interrupt",
+			model:   ActionResourceModel{CanInterrupt: types.BoolValue(true)},
+			summary: "can_interrupt is not supported for failure hooks",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &ActionResource{}
+			ctx := context.Background()
+
+			tt.model.Flow = types.StringValue("login")
+			tt.model.Timing = types.StringValue("failure")
+			tt.model.URL = types.StringValue("https://example.com/webhook")
+			req := buildActionTestConfig(t, tt.model)
+			var resp resource.ValidateConfigResponse
+			r.ValidateConfig(ctx, req, &resp)
+
+			require.Len(t, resp.Diagnostics.Errors(), 1, "expected exactly one error: %v", resp.Diagnostics)
+			assert.Equal(t, tt.summary, resp.Diagnostics.Errors()[0].Summary())
+		})
+	}
 }
 
 // TestValidateConfig_NoAuthMethodOnVerification_NoWarn verifies that the common
