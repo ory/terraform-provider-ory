@@ -15,7 +15,7 @@ import (
 	ory "github.com/ory/client-go"
 
 	"github.com/ory/terraform-provider-ory/internal/client"
-	"github.com/ory/terraform-provider-ory/internal/provider"
+	"github.com/ory/terraform-provider-ory/provider"
 )
 
 // TestProjectPrefix is used to name ephemeral test projects so that stale

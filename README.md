@@ -115,6 +115,28 @@ terraform plan -generate-config-out=generated.tf
 
 The full runbook — per-resource discovery endpoints, import ID formats, what cannot be imported (identity schemas, API key values, secrets), and how to refine the generated config — lives in [`.claude/skills/import-existing-project/SKILL.md`](.claude/skills/import-existing-project/SKILL.md). It is packaged as an agent skill, so coding agents pick it up automatically from `.claude/skills/`, and it doubles as a step-by-step guide for humans.
 
+## Embedding the Provider in Go
+
+In-process bridges, such as Crossplane [upjet](https://github.com/crossplane/upjet) in no-fork mode and the [Pulumi Terraform bridge](https://github.com/pulumi/pulumi-terraform-bridge), import the provider constructor from the `provider` package:
+
+```go
+import (
+	"github.com/hashicorp/terraform-plugin-framework/providerserver"
+
+	"github.com/ory/terraform-provider-ory/provider"
+)
+
+server, err := providerserver.NewProtocol6WithError(provider.New(version)())()
+```
+
+`provider.New` is the only exported Go API. Packages under `internal/` stay private to this module.
+
+The module path has no major version suffix, so `go get` rejects release tags such as `v26.4.1`. Pin a release by the commit hash of its tag. Go records that commit as a `v0.0.0-` pseudo-version:
+
+```bash
+go get github.com/ory/terraform-provider-ory@<commit-sha>
+```
+
 ## Documentation
 
 Documentation is auto-generated from templates in `templates/` using [tfplugindocs](https://github.com/hashicorp/terraform-plugin-docs). Do NOT edit files in `docs/` directly — they are overwritten by `make format`.
