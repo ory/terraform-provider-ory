@@ -4,4 +4,5 @@ resource "ory_event_stream" "test" {
   https_auth_type   = "bearer"
   https_auth_secret = "[[ .Secret ]]"
   status            = "paused"
+  event_types       = ["*Failed"]
 }
