@@ -428,6 +428,7 @@ log "scim clients: $(echo "$SCIM" | jq 'length')"
 # and then reads .../after/password/hooks, so a flat hook there is unreachable.
 # Mirrors authMethodsForFlow in internal/resources/action/resource.go.
 # before-timing hooks: flow:before:METHOD:url
+# failure-timing hooks (login only, flat array): flow:failure:METHOD:url
 #
 # Every level is type-checked. The "after" node holds scalar siblings of the
 # auth-method objects, such as default_browser_return_url and required_aal, and
@@ -451,6 +452,7 @@ ACTIONS_JQ='
       | (if (.value | type) == "object" then .value else {} end) as $cfg
       | (
           (if ($cfg.before | type) == "object" then ($cfg.before.hooks | hooks_of($flow; "before"; "")) else [] end)
+          + (if ($cfg.failure | type) == "object" then ($cfg.failure.hooks | hooks_of($flow; "failure"; "")) else [] end)
           + (
             (if ($cfg.after | type) == "object" then $cfg.after else {} end)
             | to_entries

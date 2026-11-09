@@ -137,6 +137,20 @@ func TestImportSkillActionsJQToleratesUnexpectedShapes(t *testing.T) {
 			want: `[{"label":"login_before","id":"login:before:POST:https://a.test"}]`,
 		},
 		{
+			// Login failure hooks sit in a flat array with no auth-method level,
+			// so the import ID has no auth-method segment, like before hooks.
+			name: "failure hooks on login",
+			config: flowsConfig(obj{"login": obj{"failure": obj{
+				"hooks": []any{webHook()},
+			}}}),
+			want: `[{"label":"login_failure","id":"login:failure:POST:https://a.test"}]`,
+		},
+		{
+			name:   "failure is not an object",
+			config: flowsConfig(obj{"login": obj{"failure": "nope"}}),
+			want:   `[]`,
+		},
+		{
 			name:   "flows missing entirely",
 			config: obj{},
 			want:   `[]`,
