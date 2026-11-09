@@ -43,11 +43,12 @@ func TestReadStream(t *testing.T) {
 	t.Run("sns", func(t *testing.T) {
 		m := EventStreamResourceModel{HTTPSAuthSecret: types.StringValue("stale")}
 		readStream(&ory.EventStream{
-			Type:       ory.PtrString("sns"),
-			TopicArn:   ory.PtrString("arn:aws:sns:us-east-1:123456789012:ory-events"),
-			RoleArn:    ory.PtrString("arn:aws:iam::123456789012:role/ory-events"),
-			Status:     ory.PtrString("active"),
-			EventTypes: []string{"*Failed", "IdentityCreated"},
+			Type:                   ory.PtrString("sns"),
+			TopicArn:               ory.PtrString("arn:aws:sns:us-east-1:123456789012:ory-events"),
+			RoleArn:                ory.PtrString("arn:aws:iam::123456789012:role/ory-events"),
+			Status:                 ory.PtrString("active"),
+			EventTypes:             []string{"*Failed", "IdentityCreated"},
+			IncludeSecurityContext: ory.PtrBool(true),
 		}, &m)
 
 		assert.Equal(t, "arn:aws:sns:us-east-1:123456789012:ory-events", m.TopicArn.ValueString())
@@ -59,6 +60,7 @@ func TestReadStream(t *testing.T) {
 		assert.True(t, types.SetValueMust(types.StringType, []attr.Value{
 			types.StringValue("IdentityCreated"), types.StringValue("*Failed"),
 		}).Equal(m.EventTypes), "the filter is compared as a set, whatever order the API reports")
+		assert.True(t, m.IncludeSecurityContext.ValueBool())
 	})
 
 	t.Run("https", func(t *testing.T) {
@@ -84,6 +86,8 @@ func TestReadStream(t *testing.T) {
 		assert.Equal(t, "paused", m.Status.ValueString())
 		assert.Equal(t, types.SetValueMust(types.StringType, []attr.Value{}), m.EventTypes,
 			"a stream without a filter matches the empty default, not null")
+		assert.Equal(t, types.BoolValue(false), m.IncludeSecurityContext,
+			"a response without the option matches the false default, not null")
 	})
 }
 

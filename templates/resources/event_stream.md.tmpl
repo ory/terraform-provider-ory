@@ -72,6 +72,12 @@ A stream delivers every event of the project by default. To deliver only some ev
 
 ~> **Console filters:** Add a filter that was set in the Ory Console to `event_types`. Otherwise the next apply removes the filter, and the stream delivers every event again.
 
+## Security Context
+
+Set `include_security_context = true` to add the security context of the request behind each event, for example for a SIEM system. Ory then adds `ClientIP`, `UserAgent`, `RequestMethod`, `RequestHost`, and `RequestPath` to the event attributes. These values include personal data such as IP addresses. An event without a request behind it carries none of these keys. Ory applies a change within a few seconds, so an event from a request made right after the apply can still follow the previous setting. See [Security context](https://www.ory.com/docs/actions/live-events#security-context).
+
+If the option was turned on in the Ory Console, set `include_security_context = true` in the configuration. Otherwise the next apply turns the option off.
+
 ## Example Usage
 
 {{ tffile "examples/resources/ory_event_stream/resource.tf" }}
