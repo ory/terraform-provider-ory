@@ -1,8 +1,10 @@
-# Publish Ory events to an AWS SNS topic
+# Publish Ory events to an AWS SNS topic, with the security context of each
+# request for a SIEM system
 resource "ory_event_stream" "events" {
-  type      = "sns"
-  topic_arn = "arn:aws:sns:us-east-1:123456789012:ory-events"
-  role_arn  = "arn:aws:iam::123456789012:role/ory-event-publisher"
+  type                     = "sns"
+  topic_arn                = "arn:aws:sns:us-east-1:123456789012:ory-events"
+  role_arn                 = "arn:aws:iam::123456789012:role/ory-event-publisher"
+  include_security_context = true
 }
 
 # Send identity creation and login events to an HTTPS endpoint, authenticated

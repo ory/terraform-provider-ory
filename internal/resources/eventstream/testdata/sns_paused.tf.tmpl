@@ -1,6 +1,7 @@
 resource "ory_event_stream" "test" {
-  type      = "sns"
-  topic_arn = "[[ .TopicArn ]]"
-  role_arn  = "[[ .RoleArn ]]"
-  status    = "paused"
+  type                     = "sns"
+  topic_arn                = "[[ .TopicArn ]]"
+  role_arn                 = "[[ .RoleArn ]]"
+  status                   = "paused"
+  include_security_context = true
 }

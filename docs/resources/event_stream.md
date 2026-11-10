@@ -72,14 +72,22 @@ A stream delivers every event of the project by default. To deliver only some ev
 
 ~> **Console filters:** Add a filter that was set in the Ory Console to `event_types`. Otherwise the next apply removes the filter, and the stream delivers every event again.
 
+## Security Context
+
+Set `include_security_context = true` to add the security context of the request behind each event, for example for a SIEM system. Ory then adds `ClientIP`, `UserAgent`, `RequestMethod`, `RequestHost`, and `RequestPath` to the event attributes. These values include personal data such as IP addresses. An event without a request behind it carries none of these keys. Ory applies a change within a few seconds, so an event from a request made right after the apply can still follow the previous setting. See [Security context](https://www.ory.com/docs/actions/live-events#security-context).
+
+If the option was turned on in the Ory Console, set `include_security_context = true` in the configuration. Otherwise the next apply turns the option off.
+
 ## Example Usage
 
 ```terraform
-# Publish Ory events to an AWS SNS topic
+# Publish Ory events to an AWS SNS topic, with the security context of each
+# request for a SIEM system
 resource "ory_event_stream" "events" {
-  type      = "sns"
-  topic_arn = "arn:aws:sns:us-east-1:123456789012:ory-events"
-  role_arn  = "arn:aws:iam::123456789012:role/ory-event-publisher"
+  type                     = "sns"
+  topic_arn                = "arn:aws:sns:us-east-1:123456789012:ory-events"
+  role_arn                 = "arn:aws:iam::123456789012:role/ory-event-publisher"
+  include_security_context = true
 }
 
 # Send identity creation and login events to an HTTPS endpoint, authenticated
@@ -146,6 +154,7 @@ terraform import ory_event_stream.example <project-id>/<event-stream-id>
 - `https_auth_secret_wo_version` (String) Version trigger for https_auth_secret_wo. Change this value whenever the write-only secret changes so Terraform sends the new value to Ory. Has no effect unless https_auth_secret_wo is set.
 - `https_auth_type` (String) How deliveries to the HTTPS endpoint authenticate: "none", "api_key" to send the secret in the header named by https_auth_header_name, or "bearer" to send it in the Authorization header as a bearer token. Only "none" is valid when type is "sns". Defaults to "none".
 - `https_endpoint` (String, Sensitive) The HTTPS URL that receives the events. Required when type is "https". Ory sends the credentials in the userinfo of the URL as Basic authentication. The API masks the userinfo and every query value on read, so Terraform keeps the configured URL and compares the masked forms to detect a change made outside Terraform.
+- `include_security_context` (Boolean) When true, each event carries the security context of the request that caused it, for example for a SIEM system. Ory adds the keys ClientIP, UserAgent, RequestMethod, RequestHost, and RequestPath to the event attributes. These values include personal data such as IP addresses. An event without a request behind it carries none of these keys. Defaults to false, so removing the attribute turns the option off, including an option turned on in the Ory Console.
 - `project_id` (String) The project ID. If not set, uses the provider's project_id.
 - `role_arn` (String) The AWS IAM role ARN to assume when publishing to the SNS topic. Required when type is "sns".
 - `status` (String) The status of the event stream: "active" or "paused". A paused stream does not forward events, and Ory holds them for up to seven days until the stream is active again. Ory tests the destination on every create and update of an active stream, and skips the test for a paused stream. Defaults to "active".

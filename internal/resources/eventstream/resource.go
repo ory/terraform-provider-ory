@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
@@ -109,6 +110,7 @@ type EventStreamResourceModel struct {
 	HTTPSAuthSecretWOVersion types.String `tfsdk:"https_auth_secret_wo_version"`
 	Status                   types.String `tfsdk:"status"`
 	EventTypes               types.Set    `tfsdk:"event_types"`
+	IncludeSecurityContext   types.Bool   `tfsdk:"include_security_context"`
 	CreatedAt                types.String `tfsdk:"created_at"`
 	UpdatedAt                types.String `tfsdk:"updated_at"`
 }
@@ -212,6 +214,12 @@ func (r *EventStreamResource) Schema(ctx context.Context, req resource.SchemaReq
 				Optional:    true,
 				Computed:    true,
 				Default:     setdefault.StaticValue(types.SetValueMust(types.StringType, []attr.Value{})),
+			},
+			"include_security_context": schema.BoolAttribute{
+				Description: "When true, each event carries the security context of the request that caused it, for example for a SIEM system. Ory adds the keys ClientIP, UserAgent, RequestMethod, RequestHost, and RequestPath to the event attributes. These values include personal data such as IP addresses. An event without a request behind it carries none of these keys. Defaults to false, so removing the attribute turns the option off, including an option turned on in the Ory Console.",
+				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 			},
 			"created_at": schema.StringAttribute{
 				Description: "Timestamp when the event stream was created.",
@@ -356,15 +364,16 @@ func (r *EventStreamResource) Create(ctx context.Context, req resource.CreateReq
 	}
 
 	body := ory.CreateEventStreamBody{
-		Type:                plan.Type.ValueString(),
-		TopicArn:            plan.TopicArn.ValueStringPointer(),
-		RoleArn:             plan.RoleArn.ValueStringPointer(),
-		HttpsEndpoint:       plan.HTTPSEndpoint.ValueStringPointer(),
-		HttpsAuthType:       plan.HTTPSAuthType.ValueStringPointer(),
-		HttpsAuthHeaderName: plan.HTTPSAuthHeaderName.ValueStringPointer(),
-		HttpsAuthSecret:     secret,
-		Status:              plan.Status.ValueStringPointer(),
-		EventTypes:          eventTypes,
+		Type:                   plan.Type.ValueString(),
+		TopicArn:               plan.TopicArn.ValueStringPointer(),
+		RoleArn:                plan.RoleArn.ValueStringPointer(),
+		HttpsEndpoint:          plan.HTTPSEndpoint.ValueStringPointer(),
+		HttpsAuthType:          plan.HTTPSAuthType.ValueStringPointer(),
+		HttpsAuthHeaderName:    plan.HTTPSAuthHeaderName.ValueStringPointer(),
+		HttpsAuthSecret:        secret,
+		Status:                 plan.Status.ValueStringPointer(),
+		EventTypes:             eventTypes,
+		IncludeSecurityContext: plan.IncludeSecurityContext.ValueBoolPointer(),
 	}
 
 	stream, err := r.client.CreateEventStream(ctx, projectID, body)
@@ -442,15 +451,16 @@ func (r *EventStreamResource) Update(ctx context.Context, req resource.UpdateReq
 	// Every configured value is sent, the secret included: the API keeps a
 	// stored secret only while the scheme and the endpoint stay the same.
 	body := ory.SetEventStreamBody{
-		Type:                plan.Type.ValueStringPointer(),
-		TopicArn:            plan.TopicArn.ValueStringPointer(),
-		RoleArn:             plan.RoleArn.ValueStringPointer(),
-		HttpsEndpoint:       plan.HTTPSEndpoint.ValueStringPointer(),
-		HttpsAuthType:       plan.HTTPSAuthType.ValueStringPointer(),
-		HttpsAuthHeaderName: plan.HTTPSAuthHeaderName.ValueStringPointer(),
-		HttpsAuthSecret:     secret,
-		Status:              plan.Status.ValueStringPointer(),
-		EventTypes:          eventTypes,
+		Type:                   plan.Type.ValueStringPointer(),
+		TopicArn:               plan.TopicArn.ValueStringPointer(),
+		RoleArn:                plan.RoleArn.ValueStringPointer(),
+		HttpsEndpoint:          plan.HTTPSEndpoint.ValueStringPointer(),
+		HttpsAuthType:          plan.HTTPSAuthType.ValueStringPointer(),
+		HttpsAuthHeaderName:    plan.HTTPSAuthHeaderName.ValueStringPointer(),
+		HttpsAuthSecret:        secret,
+		Status:                 plan.Status.ValueStringPointer(),
+		EventTypes:             eventTypes,
+		IncludeSecurityContext: plan.IncludeSecurityContext.ValueBoolPointer(),
 	}
 
 	stream, err := r.client.SetEventStream(ctx, projectID, state.ID.ValueString(), body)
@@ -542,6 +552,7 @@ func readStream(stream *ory.EventStream, m *EventStreamResourceModel) {
 		eventTypes = append(eventTypes, types.StringValue(eventType))
 	}
 	m.EventTypes = types.SetValueMust(types.StringType, eventTypes)
+	m.IncludeSecurityContext = types.BoolValue(stream.GetIncludeSecurityContext())
 	m.CreatedAt = types.StringValue(stream.GetCreatedAt().String())
 	m.UpdatedAt = types.StringValue(stream.GetUpdatedAt().String())
 }
