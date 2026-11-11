@@ -373,6 +373,27 @@ variable "custom_client_secret" {
   type      = string
   sensitive = true
 }
+
+resource "ory_social_provider" "microsoft_graph_subject" {
+  provider_id   = "microsoft-graph"
+  provider_type = "microsoft"
+  client_id     = var.microsoft_client_id
+  client_secret = var.microsoft_client_secret
+  tenant        = "common"
+  scope         = ["openid", "email", "profile", "https://graph.microsoft.com/User.Read"]
+
+  # Take the subject from the Microsoft Graph /me endpoint.
+  subject_source = "me"
+}
+
+variable "microsoft_client_id" {
+  type = string
+}
+
+variable "microsoft_client_secret" {
+  type      = string
+  sensitive = true
+}
 ```
 
 ## Mapper URL
@@ -591,6 +612,31 @@ resource "ory_social_provider" "corporate_sso" {
 
 The API stores `true` and `false` alike and returns the value on read. Leave the attribute unset to keep the Ory default, which is disabled; removing it from the configuration clears the setting.
 
+## Subject Source
+
+A Microsoft provider can take the subject identifier from three places. Set `subject_source` to choose one:
+
+- `userinfo` (the API default): the `sub` claim of the ID token or the userinfo endpoint.
+- `me`: the `id` field of `https://graph.microsoft.com/v1.0/me`.
+- `oid`: the Object ID (`oid`), which identifies the user across services.
+
+```hcl
+resource "ory_social_provider" "microsoft" {
+  provider_id   = "microsoft"
+  provider_type = "microsoft"
+  client_id     = var.microsoft_client_id
+  client_secret = var.microsoft_client_secret
+  tenant        = "common"
+  scope         = ["openid", "email", "profile", "https://graph.microsoft.com/User.Read"]
+
+  subject_source = "me"
+}
+```
+
+Ory links an identity to the provider by the subject. If you change `subject_source` on a provider that already has identities, those users no longer match their identity.
+
+~> **Existing providers:** Create and Update replace the whole provider object. If a provider has `subject_source` set in Ory, declare it with the same value before the first apply. Without it, the apply resets the provider to `userinfo`.
+
 ## Important Behaviors
 
 - **`provider_id` and `provider_type` cannot be changed** after creation. Changing either forces a new resource.
@@ -651,6 +697,7 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 - `pkce` (String) PKCE (Proof Key for Code Exchange) behavior for the OAuth2 authorization code flow. "auto" (default) enables PKCE when the upstream provider advertises support via OIDC discovery; "force" always sends PKCE (use only with providers known to support it); "never" disables PKCE.
 - `project_id` (String) Project ID. If not set, uses provider's project_id.
 - `scope` (List of String) OAuth2 scopes to request.
+- `subject_source` (String) Source of the subject identifier for a Microsoft provider. "userinfo" (the API default) takes the subject from the "sub" claim of the ID token or the userinfo endpoint. "me" takes it from the "id" field of https://graph.microsoft.com/v1.0/me. "oid" takes the Object ID. Changing this value on a provider that already has identities changes the subject of those identities. Leave unset to use the Ory default ("userinfo").
 - `tenant` (String) Tenant ID (for Microsoft/Azure providers).
 - `token_url` (String) Custom token URL (for non-standard providers).
 - `update_identity_on_login` (String) Controls whether the identity's traits and metadata are refreshed from the upstream OIDC claims on every login. "never" (the API default) keeps the identity as-is after the initial sign-up. "automatic" re-runs the Jsonnet claims mapper on each login and updates the identity accordingly. Leave unset to use the Ory default ("never").

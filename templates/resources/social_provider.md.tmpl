@@ -303,6 +303,31 @@ resource "ory_social_provider" "corporate_sso" {
 
 The API stores `true` and `false` alike and returns the value on read. Leave the attribute unset to keep the Ory default, which is disabled; removing it from the configuration clears the setting.
 
+## Subject Source
+
+A Microsoft provider can take the subject identifier from three places. Set `subject_source` to choose one:
+
+- `userinfo` (the API default): the `sub` claim of the ID token or the userinfo endpoint.
+- `me`: the `id` field of `https://graph.microsoft.com/v1.0/me`.
+- `oid`: the Object ID (`oid`), which identifies the user across services.
+
+```hcl
+resource "ory_social_provider" "microsoft" {
+  provider_id   = "microsoft"
+  provider_type = "microsoft"
+  client_id     = var.microsoft_client_id
+  client_secret = var.microsoft_client_secret
+  tenant        = "common"
+  scope         = ["openid", "email", "profile", "https://graph.microsoft.com/User.Read"]
+
+  subject_source = "me"
+}
+```
+
+Ory links an identity to the provider by the subject. If you change `subject_source` on a provider that already has identities, those users no longer match their identity.
+
+~> **Existing providers:** Create and Update replace the whole provider object. If a provider has `subject_source` set in Ory, declare it with the same value before the first apply. Without it, the apply resets the provider to `userinfo`.
+
 ## Important Behaviors
 
 - **`provider_id` and `provider_type` cannot be changed** after creation. Changing either forces a new resource.
