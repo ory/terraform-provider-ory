@@ -289,20 +289,11 @@ variable "custom_client_secret" {
 resource "ory_social_provider" "microsoft_graph_subject" {
   provider_id   = "microsoft-graph"
   provider_type = "microsoft"
-  client_id     = var.microsoft_client_id
-  client_secret = var.microsoft_client_secret
+  client_id     = var.azure_client_id
+  client_secret = var.azure_client_secret
   tenant        = "common"
   scope         = ["openid", "email", "profile", "https://graph.microsoft.com/User.Read"]
 
   # Take the subject from the Microsoft Graph /me endpoint.
   subject_source = "me"
-}
-
-variable "microsoft_client_id" {
-  type = string
-}
-
-variable "microsoft_client_secret" {
-  type      = string
-  sensitive = true
 }

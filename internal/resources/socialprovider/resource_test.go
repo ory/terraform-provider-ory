@@ -1129,7 +1129,6 @@ func TestAccSocialProviderResource_subjectSource(t *testing.T) {
 		},
 		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
 		Steps: []resource.TestStep{
-
 			{
 				Config: acctest.LoadTestConfig(t, "testdata/with_subject_source.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -1138,36 +1137,30 @@ func TestAccSocialProviderResource_subjectSource(t *testing.T) {
 					resource.TestCheckResourceAttr("ory_social_provider.test", "subject_source", "me"),
 				),
 			},
-
 			{
 				Config:   acctest.LoadTestConfig(t, "testdata/with_subject_source.tf.tmpl", nil),
 				PlanOnly: true,
 			},
-
 			{
 				Config: acctest.LoadTestConfig(t, "testdata/with_subject_source_userinfo.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("ory_social_provider.test", "subject_source", "userinfo"),
 				),
 			},
-
 			{
 				Config:   acctest.LoadTestConfig(t, "testdata/with_subject_source_userinfo.tf.tmpl", nil),
 				PlanOnly: true,
 			},
-
 			{
 				Config: acctest.LoadTestConfig(t, "testdata/with_subject_source_removed.tf.tmpl", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckNoResourceAttr("ory_social_provider.test", "subject_source"),
 				),
 			},
-
 			{
 				Config:   acctest.LoadTestConfig(t, "testdata/with_subject_source_removed.tf.tmpl", nil),
 				PlanOnly: true,
 			},
-
 			{
 				Config: acctest.LoadTestConfig(t, "testdata/with_subject_source.tf.tmpl", nil),
 				Check:  resource.TestCheckResourceAttr("ory_social_provider.test", "subject_source", "me"),
