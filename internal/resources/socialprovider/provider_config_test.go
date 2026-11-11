@@ -185,3 +185,38 @@ func TestBuildProviderConfig_FrontChannelLogout(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildProviderConfig_SubjectSource(t *testing.T) {
+	tests := []struct {
+		name        string
+		value       types.String
+		wantPresent bool
+	}{
+		{name: "me", value: types.StringValue("me"), wantPresent: true},
+		{name: "userinfo", value: types.StringValue("userinfo"), wantPresent: true},
+		{name: "oid", value: types.StringValue("oid"), wantPresent: true},
+		{name: "null", value: types.StringNull(), wantPresent: false},
+		{name: "unknown", value: types.StringUnknown(), wantPresent: false},
+	}
+
+	r := &SocialProviderResource{}
+	ctx := context.Background()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plan := baseProviderPlan()
+			plan.SubjectSource = tt.value
+
+			config := r.buildProviderConfig(ctx, plan,
+				plan.ClientID, types.StringValue("test-client-secret"), types.StringNull())
+
+			got, ok := config["subject_source"]
+			if !tt.wantPresent {
+				assert.False(t, ok, "subject_source must be absent from the payload")
+				return
+			}
+			require.True(t, ok, "subject_source must be sent to the API")
+			assert.Equal(t, tt.value.ValueString(), got)
+		})
+	}
+}
