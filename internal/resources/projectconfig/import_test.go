@@ -212,6 +212,7 @@ func TestImportProjectConfig_RejectsUnsafeSelectionBeforeReading(t *testing.T) {
 		"proj-1:id", "proj-1:project_id", "proj-1:smtp_connection_uri",
 		"proj-1:smtp_connection_uri_wo", "proj-1:allowed_return_urls",
 		"proj-1:session_tokenizer_templates", "proj-1:courier_channels",
+		"proj-1:session_whoami_rules",
 		"proj-1:courier_http_request_config_body",
 		"proj-1:mfa_enforcement",
 		"proj-1:smtp_connection_uri_wo_version",

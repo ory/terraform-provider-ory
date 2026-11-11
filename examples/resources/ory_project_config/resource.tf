@@ -411,3 +411,20 @@ resource "ory_project_config" "brute_force_protection" {
   selfservice_flows_login_brute_force_protection_ip_exponential_backoff_initial = "1s"
   selfservice_flows_login_brute_force_protection_ip_exponential_backoff_max     = "1h"
 }
+
+# Session risk rules run on every session check. When several rules match,
+# the strongest action wins. Session risk rules require an Enterprise plan.
+resource "ory_project_config" "session_risk_rules" {
+  session_whoami_rules = [
+    {
+      id        = "vpn-step-up"
+      condition = "'ory:vpn' in request.ip_labels"
+      action    = "require_aal2"
+    },
+    {
+      id        = "botnet"
+      condition = "'ory:botnet_cc' in request.ip_labels"
+      action    = "revoke"
+    },
+  ]
+}

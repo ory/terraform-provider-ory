@@ -150,8 +150,9 @@ import block, note it, and hand-write that resource later.
     their default, so drop that attribute from the list and set it by hand if
     you want to own it.
   - Secrets, nested objects (`courier_channels`,
-    `session_tokenizer_templates`, `courier_http_request_config`,
-    `oauth2_token_hook_auth`), `allowed_return_urls` (the server appends its
+    `session_tokenizer_templates`, `session_whoami_rules`,
+    `courier_http_request_config`, `oauth2_token_hook_auth`),
+    `allowed_return_urls` (the server appends its
     own entries) and `courier_http_request_config_body` are rejected. Copy
     those from the revision dump as described below.
   - Keep `cors_enabled` in the list. It is the one attribute with a schema
