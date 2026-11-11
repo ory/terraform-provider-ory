@@ -229,6 +229,33 @@ Leave the attribute out and the provider writes no scope at all, so Ory applies 
 
 The Ory Console additionally turns on `selfservice_flows_registration_after_password_hook_show_verification_ui` when you enable "Require verified address for login" on a project that signs users in after registration. The provider does not infer that for you. Set the attribute yourself if you want that behavior.
 
+## Session Risk Rules
+
+`session_whoami_rules` holds up to 5 session risk rules. Ory evaluates every rule when it checks a session, for example on `/sessions/whoami`. Each rule has a CEL `condition` over `session` and `request`. If the condition matches, Ory takes the rule's `action`:
+
+- `require_aal2`: the user must sign in with a second factor to keep using the session.
+- `revoke`: Ory signs the user out, and the session check fails as for an expired session.
+
+When several rules match, the strongest action wins.
+
+```hcl
+resource "ory_project_config" "main" {
+  session_whoami_rules = [
+    {
+      id        = "vpn-step-up"
+      condition = "'ory:vpn' in request.ip_labels"
+      action    = "require_aal2"
+    },
+  ]
+}
+```
+
+Ory compiles each new or changed condition on apply. If a condition is invalid, the apply fails with the rule ID and the compiler error. The provider keeps the rules in the configured order and reports rules changed outside Terraform as drift.
+
+To remove all rules, set `session_whoami_rules = []`. If you remove the attribute from the configuration, the provider stops managing the rules and leaves them in place.
+
+Session risk rules need the `kratos_session_risk_rules` feature of the Enterprise plan. A project without the feature can still remove its rules.
+
 ## Account Experience Branding
 
 The hosted Account Experience pages (login, registration, recovery, ...) can be branded with a logo, favicon, and theme colors.

@@ -7,6 +7,7 @@ import (
 
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -88,6 +89,9 @@ type ProjectConfigResourceModel struct {
 
 	// Session Tokenizer Templates
 	SessionTokenizerTemplates types.Map `tfsdk:"session_tokenizer_templates"`
+
+	// Session risk rules
+	SessionWhoamiRules types.List `tfsdk:"session_whoami_rules"`
 
 	// Courier HTTP Delivery
 	CourierDeliveryStrategy          types.String `tfsdk:"courier_delivery_strategy"`
@@ -441,6 +445,12 @@ type SessionTokenizerTemplateModel struct {
 	SubjectSource   types.String `tfsdk:"subject_source"`
 }
 
+type SessionWhoamiRuleModel struct {
+	ID        types.String `tfsdk:"id"`
+	Condition types.String `tfsdk:"condition"`
+	Action    types.String `tfsdk:"action"`
+}
+
 type CourierHTTPAuthModel struct {
 	Type     types.String `tfsdk:"type"`
 	User     types.String `tfsdk:"user"`
@@ -477,6 +487,12 @@ var (
 		"jwks_url":          types.StringType,
 		"claims_mapper_url": types.StringType,
 		"subject_source":    types.StringType,
+	}
+
+	sessionWhoamiRuleAttrTypes = map[string]attr.Type{
+		"id":        types.StringType,
+		"condition": types.StringType,
+		"action":    types.StringType,
 	}
 
 	courierHTTPAuthAttrTypes = map[string]attr.Type{
@@ -645,6 +661,7 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 	//   allowed_return_urls:        remove-on-empty (empty list sends "remove" patch)
 	//   mfa_enforcement:            maps string to AAL enum
 	//   session_tokenizer_templates: nested object schema
+	//   session_whoami_rules:       ordered list of nested objects
 	//   courier_channels:           nested objects with sub-config
 	//   courier_http_request_config: nested object (url/method/headers/body/auth)
 	//   account_experience images (4): data URI upload + storage-URL drift detection
@@ -731,6 +748,49 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 					Optional:    true,
 					Validators: []validator.String{
 						stringvalidator.OneOf("id", "external_id"),
+					},
+				},
+			},
+		},
+	}
+
+	// Session risk rules: session.whoami.rules, kratos_session_whoami_rules in
+	// the normalized API. The validators mirror the Kratos config schema.
+	attrs["session_whoami_rules"] = schema.ListNestedAttribute{
+		Description: "Session risk rules. Ory evaluates every rule when it checks a session, for example on `/sessions/whoami`. " +
+			"When several rules match, the strongest action wins. Takes up to 5 rules. " +
+			"Requires the `kratos_session_risk_rules` feature of the Enterprise plan. " +
+			"Set to `[]` to remove all rules. Removing the attribute stops managing the rules and leaves them in place.",
+		Optional: true,
+		Validators: []validator.List{
+			listvalidator.SizeAtMost(5),
+		},
+		NestedObject: schema.NestedAttributeObject{
+			Attributes: map[string]schema.Attribute{
+				"id": schema.StringAttribute{
+					Description: "The rule ID. Ory uses it in logs, events, and error messages. " +
+						"Use 1 to 64 lowercase letters, digits, hyphens, and underscores, and start with a letter or digit. Each rule needs a unique ID.",
+					Required: true,
+					Validators: []validator.String{
+						stringvalidator.RegexMatches(
+							regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`),
+							"must be 1 to 64 lowercase letters, digits, hyphens, or underscores, starting with a letter or digit",
+						),
+					},
+				},
+				"condition": schema.StringAttribute{
+					Description: "A CEL expression over `session` and `request` that evaluates to a bool, for example `'ory:vpn' in request.ip_labels`. " +
+						"Use 1 to 512 characters. Ory compiles the expression on apply and rejects an invalid one.",
+					Required: true,
+					Validators: []validator.String{
+						stringvalidator.UTF8LengthBetween(1, 512),
+					},
+				},
+				"action": schema.StringAttribute{
+					Description: "The action when the condition matches. `require_aal2` requires a second factor for the rest of the session. `revoke` revokes the session.",
+					Required:    true,
+					Validators: []validator.String{
+						stringvalidator.OneOf("require_aal2", "revoke"),
 					},
 				},
 			},
@@ -1230,6 +1290,27 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 			Op:    "add",
 			Path:  "/services/identity/config/session/whoami/tokenizer/templates",
 			Value: templatesMap,
+		})
+	}
+
+	// Session risk rules: the configured list replaces the stored one in order.
+	// "add" works whether or not the key exists, and the API drops an empty
+	// list, which removes every rule.
+	if !plan.SessionWhoamiRules.IsNull() && !plan.SessionWhoamiRules.IsUnknown() {
+		var rules []SessionWhoamiRuleModel
+		plan.SessionWhoamiRules.ElementsAs(ctx, &rules, false)
+		value := make([]map[string]interface{}, 0, len(rules))
+		for _, rule := range rules {
+			value = append(value, map[string]interface{}{
+				"id":        rule.ID.ValueString(),
+				"condition": rule.Condition.ValueString(),
+				"action":    rule.Action.ValueString(),
+			})
+		}
+		patches = append(patches, ory.JsonPatch{
+			Op:    "add",
+			Path:  "/services/identity/config/session/whoami/rules",
+			Value: value,
 		})
 	}
 
@@ -2043,6 +2124,29 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 					state.SessionTokenizerTemplates = mapVal
 				}
 			}
+		}
+
+		// Session risk rules, refreshed in API order. The API drops an empty
+		// list, so a missing key reads as no rules.
+		if !state.SessionWhoamiRules.IsNull() {
+			rulesRaw, _ := getNestedValue(identityConfig, "session", "whoami", "rules").([]interface{})
+			rules := make([]attr.Value, 0, len(rulesRaw))
+			for _, raw := range rulesRaw {
+				rule, ok := raw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				attrs := make(map[string]attr.Value, len(sessionWhoamiRuleAttrTypes))
+				for key := range sessionWhoamiRuleAttrTypes {
+					if s, ok := rule[key].(string); ok {
+						attrs[key] = types.StringValue(s)
+					} else {
+						attrs[key] = types.StringNull()
+					}
+				}
+				rules = append(rules, types.ObjectValueMust(sessionWhoamiRuleAttrTypes, attrs))
+			}
+			state.SessionWhoamiRules = types.ListValueMust(types.ObjectType{AttrTypes: sessionWhoamiRuleAttrTypes}, rules)
 		}
 
 		// Courier HTTP Request Config

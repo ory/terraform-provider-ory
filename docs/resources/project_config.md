@@ -444,6 +444,23 @@ resource "ory_project_config" "brute_force_protection" {
   selfservice_flows_login_brute_force_protection_ip_exponential_backoff_initial = "1s"
   selfservice_flows_login_brute_force_protection_ip_exponential_backoff_max     = "1h"
 }
+
+# Session risk rules run on every session check. When several rules match,
+# the strongest action wins. Session risk rules require an Enterprise plan.
+resource "ory_project_config" "session_risk_rules" {
+  session_whoami_rules = [
+    {
+      id        = "vpn-step-up"
+      condition = "'ory:vpn' in request.ip_labels"
+      action    = "require_aal2"
+    },
+    {
+      id        = "botnet"
+      condition = "'ory:botnet_cc' in request.ip_labels"
+      action    = "revoke"
+    },
+  ]
+}
 ```
 
 ## OPL Namespace Configuration
@@ -642,6 +659,33 @@ Leave the attribute out and the provider writes no scope at all, so Ory applies 
 -> **`feature_flags_legacy_require_verified_login_error` is not an enable switch.** It controls how a failed verified-address check is reported, a form error instead of a `continue_with` step. It has no effect unless a `require_verified_address` toggle is `true`. While the flag is `true`, Ory runs the check for password logins only and skips it for social, passkey and WebAuthn logins, so keep it at `false`, its default, when you enable the hook on those flows.
 
 The Ory Console additionally turns on `selfservice_flows_registration_after_password_hook_show_verification_ui` when you enable "Require verified address for login" on a project that signs users in after registration. The provider does not infer that for you. Set the attribute yourself if you want that behavior.
+
+## Session Risk Rules
+
+`session_whoami_rules` holds up to 5 session risk rules. Ory evaluates every rule when it checks a session, for example on `/sessions/whoami`. Each rule has a CEL `condition` over `session` and `request`. If the condition matches, Ory takes the rule's `action`:
+
+- `require_aal2`: the user must sign in with a second factor to keep using the session.
+- `revoke`: Ory signs the user out, and the session check fails as for an expired session.
+
+When several rules match, the strongest action wins.
+
+```hcl
+resource "ory_project_config" "main" {
+  session_whoami_rules = [
+    {
+      id        = "vpn-step-up"
+      condition = "'ory:vpn' in request.ip_labels"
+      action    = "require_aal2"
+    },
+  ]
+}
+```
+
+Ory compiles each new or changed condition on apply. If a condition is invalid, the apply fails with the rule ID and the compiler error. The provider keeps the rules in the configured order and reports rules changed outside Terraform as drift.
+
+To remove all rules, set `session_whoami_rules = []`. If you remove the attribute from the configuration, the provider stops managing the rules and leaves them in place.
+
+Session risk rules need the `kratos_session_risk_rules` feature of the Enterprise plan. A project without the feature can still remove its rules.
 
 ## Account Experience Branding
 
@@ -965,6 +1009,7 @@ This resource covers most simple (scalar and list) project configuration propert
 - `session_lifespan` (String) Session duration (e.g., '24h0m0s').
 - `session_tokenizer_templates` (Attributes Map) JWT tokenizer templates for the /sessions/whoami endpoint. Each key is a template name, and the value configures how JWTs are generated. (see [below for nested schema](#nestedatt--session_tokenizer_templates))
 - `session_whoami_required_aal` (String) Required AAL for session whoami endpoint: 'aal1', 'aal2', or 'highest_available'.
+- `session_whoami_rules` (Attributes List) Session risk rules. Ory evaluates every rule when it checks a session, for example on `/sessions/whoami`. When several rules match, the strongest action wins. Takes up to 5 rules. Requires the `kratos_session_risk_rules` feature of the Enterprise plan. Set to `[]` to remove all rules. Removing the attribute stops managing the rules and leaves them in place. (see [below for nested schema](#nestedatt--session_whoami_rules))
 - `smtp_connection_uri` (String, Sensitive) SMTP connection URI for sending emails. The URI scheme selects the security mode: `smtp://` uses STARTTLS (recommended for port 587), `smtps://` uses implicit TLS (recommended for port 465). Append `?disable_starttls=true` for cleartext or `?skip_ssl_verify=true` to skip certificate verification (development only). See the SMTP Security Modes section in the resource documentation for the full list.
 - `smtp_connection_uri_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of smtp_connection_uri (Terraform 1.11+ write-only argument): the SMTP connection URI is sent to Ory but never stored in Terraform state or plan. Use this to source the value from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change smtp_connection_uri_wo_version to rotate it. Mutually exclusive with smtp_connection_uri.
 - `smtp_connection_uri_wo_version` (String) Version trigger for smtp_connection_uri_wo. Change this value whenever the write-only smtp_connection_uri_wo changes so Terraform sends the new value to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless smtp_connection_uri_wo is set.
@@ -1072,3 +1117,13 @@ Optional:
 - `claims_mapper_url` (String) Jsonnet claims mapper URL. Supports base64:// and https:// schemes.
 - `subject_source` (String) Subject source for the JWT: 'id' (default) or 'external_id'.
 - `ttl` (String) Token time-to-live duration (e.g., '1h', '30m'). Default: '1m'.
+
+
+<a id="nestedatt--session_whoami_rules"></a>
+### Nested Schema for `session_whoami_rules`
+
+Required:
+
+- `action` (String) The action when the condition matches. `require_aal2` requires a second factor for the rest of the session. `revoke` revokes the session.
+- `condition` (String) A CEL expression over `session` and `request` that evaluates to a bool, for example `'ory:vpn' in request.ip_labels`. Use 1 to 512 characters. Ory compiles the expression on apply and rejects an invalid one.
+- `id` (String) The rule ID. Ory uses it in logs, events, and error messages. Use 1 to 64 lowercase letters, digits, hyphens, and underscores, and start with a letter or digit. Each rule needs a unique ID.

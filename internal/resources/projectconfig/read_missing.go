@@ -43,7 +43,7 @@ func missingResponseBlocks(project *ory.Project, state *ProjectConfigResourceMod
 
 func identityCustomStateFields(state *ProjectConfigResourceModel) bool {
 	if !state.DefaultReturnURL.IsNull() || !state.AllowedReturnURLs.IsNull() ||
-		!state.SessionTokenizerTemplates.IsNull() || !state.CourierHTTPRequestConfig.IsNull() ||
+		!state.SessionTokenizerTemplates.IsNull() || !state.SessionWhoamiRules.IsNull() || !state.CourierHTTPRequestConfig.IsNull() ||
 		!state.CourierChannels.IsNull() {
 		return true
 	}

@@ -5,6 +5,7 @@ package projectconfig_test
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -2007,4 +2008,109 @@ func TestAccProjectConfigResource_welcomeScreenFlag(t *testing.T) {
 			},
 		},
 	})
+}
+
+// TestAccProjectConfigResource_sessionWhoamiRules covers the session risk
+// rules added in spec v1.22.93: create two rules, import, reorder and change
+// them, see Ory reject an invalid CEL condition, and clear the list. Every
+// apply is checked against the rules the API stores, in order. The rules need
+// the Enterprise kratos_session_risk_rules feature, which the staging test
+// workspace has. The conditions match only VPN, anonymizer, and botnet IP
+// labels, so they cannot end a CI session. Destroy leaves the config in place,
+// so the test ends with an empty list.
+func TestAccProjectConfigResource_sessionWhoamiRules(t *testing.T) {
+	const attr = "session_whoami_rules"
+	config := func(rules ...string) string {
+		return acctest.LoadTestConfig(t, "testdata/session_whoami_rules.tf.tmpl", map[string]string{"Rules": "[" + strings.Join(rules, ", ") + "]"})
+	}
+	vpn := `{ id = "vpn-step-up", condition = "'ory:vpn' in request.ip_labels", action = "require_aal2" }`
+	botnet := `{ id = "botnet", condition = "'ory:botnet_cc' in request.ip_labels", action = "revoke" }`
+	anonymous := `{ id = "vpn-step-up", condition = "'ory:vpn' in request.ip_labels || 'ory:anonymizer' in request.ip_labels", action = "revoke" }`
+	invalid := `{ id = "typo", condition = "request.ipp == ''", action = "revoke" }`
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: config(vpn, botnet),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", attr+".#", "2"),
+					resource.TestCheckResourceAttr("ory_project_config.test", attr+".0.id", "vpn-step-up"),
+					resource.TestCheckResourceAttr("ory_project_config.test", attr+".1.action", "revoke"),
+					checkStoredSessionWhoamiRules(t, `[{"action":"require_aal2","condition":"'ory:vpn' in request.ip_labels","id":"vpn-step-up"},{"action":"revoke","condition":"'ory:botnet_cc' in request.ip_labels","id":"botnet"}]`),
+				),
+			},
+			{
+				Config:             config(vpn, botnet),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			// A project-ID import does not read nested attributes, and the
+			// field-selected form rejects them, so the rules are not verified.
+			{
+				ResourceName:            "ory_project_config.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{attr, "cors_enabled", "selfservice_methods_password_config_min_password_length", "smtp_connection_uri"},
+			},
+			{
+				Config: config(botnet, anonymous),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", attr+".#", "2"),
+					resource.TestCheckResourceAttr("ory_project_config.test", attr+".0.id", "botnet"),
+					resource.TestCheckResourceAttr("ory_project_config.test", attr+".1.action", "revoke"),
+					checkStoredSessionWhoamiRules(t, `[{"action":"revoke","condition":"'ory:botnet_cc' in request.ip_labels","id":"botnet"},{"action":"revoke","condition":"'ory:vpn' in request.ip_labels || 'ory:anonymizer' in request.ip_labels","id":"vpn-step-up"}]`),
+				),
+			},
+			{
+				Config:             config(botnet, anonymous),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			// Ory compiles each new or changed condition on save.
+			{
+				Config:      config(invalid),
+				ExpectError: regexp.MustCompile(`undefined field 'ipp'`),
+			},
+			{
+				Config: config(),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", attr+".#", "0"),
+					checkStoredSessionWhoamiRules(t, ""),
+				),
+			},
+			{
+				Config:             config(),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+// checkStoredSessionWhoamiRules compares the rules the API stores with want,
+// a JSON array with sorted keys. An empty want means the API stores no rules:
+// it drops the key when the list is empty.
+func checkStoredSessionWhoamiRules(t *testing.T, want string) resource.TestCheckFunc {
+	return func(*terraform.State) error {
+		return acctest.Eventually(func() error {
+			value, ok, err := acctest.ProjectConfigValue(t, acctest.GetTestProjectID(t), "/services/identity/config/session/whoami/rules")
+			if err != nil {
+				return err
+			}
+			got := ""
+			if ok {
+				raw, err := json.Marshal(value)
+				if err != nil {
+					return err
+				}
+				got = string(raw)
+			}
+			if got != want {
+				return fmt.Errorf("API stores session risk rules %s, want %s", got, want)
+			}
+			return nil
+		})
+	}
 }

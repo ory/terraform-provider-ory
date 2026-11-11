@@ -36,6 +36,7 @@ func TestMissingResponseBlocks(t *testing.T) {
 		{"identity absent, map field", &ory.Project{}, &ProjectConfigResourceModel{SMTPHeaders: types.MapValueMust(types.StringType, nil)}, []string{"services.identity"}},
 		{"identity absent, allowed return URLs", &ory.Project{}, &ProjectConfigResourceModel{AllowedReturnURLs: types.ListValueMust(types.StringType, nil)}, []string{"services.identity"}},
 		{"identity absent, tokenizer templates", &ory.Project{}, &ProjectConfigResourceModel{SessionTokenizerTemplates: types.MapUnknown(types.ObjectType{AttrTypes: tokenizerTemplateAttrTypes})}, []string{"services.identity"}},
+		{"identity absent, session whoami rules", &ory.Project{}, &ProjectConfigResourceModel{SessionWhoamiRules: types.ListUnknown(types.ObjectType{AttrTypes: sessionWhoamiRuleAttrTypes})}, []string{"services.identity"}},
 		{"identity absent, courier HTTP config", &ory.Project{}, &ProjectConfigResourceModel{CourierHTTPRequestConfig: types.ObjectUnknown(courierHTTPRequestConfigAttrTypes)}, []string{"services.identity"}},
 		{"identity absent, courier channels", &ory.Project{}, &ProjectConfigResourceModel{CourierChannels: types.ListUnknown(types.ObjectType{AttrTypes: courierChannelAttrTypes})}, []string{"services.identity"}},
 		{"cors_admin absent, origins held", &ory.Project{}, &ProjectConfigResourceModel{CorsAdminOrigins: types.ListValueMust(types.StringType, nil)}, []string{"cors_admin"}},
