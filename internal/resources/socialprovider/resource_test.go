@@ -1121,6 +1121,7 @@ func TestAccSocialProviderResource_apple(t *testing.T) {
 	})
 }
 
+// TestAccSocialProviderResource_subjectSource covers subject_source through create, explicit userinfo, removal, and import.
 func TestAccSocialProviderResource_subjectSource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -1161,6 +1162,7 @@ func TestAccSocialProviderResource_subjectSource(t *testing.T) {
 				Config:   acctest.LoadTestConfig(t, "testdata/with_subject_source_removed.tf.tmpl", nil),
 				PlanOnly: true,
 			},
+			// Re-apply "me" so the import step verifies a value that Read must return.
 			{
 				Config: acctest.LoadTestConfig(t, "testdata/with_subject_source.tf.tmpl", nil),
 				Check:  resource.TestCheckResourceAttr("ory_social_provider.test", "subject_source", "me"),

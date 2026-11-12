@@ -32,18 +32,22 @@ func TestSchema_SubjectSourceRejectsUnknownValue(t *testing.T) {
 	require.True(t, ok)
 	assert.True(t, attr.Optional)
 	assert.False(t, attr.Computed)
-	for _, value := range []string{"id_token", "me", "userinfo", "oid"} {
+	for _, value := range []string{"userinfo", "me", "oid"} {
 		t.Run(value, func(t *testing.T) {
 			var validation validator.StringResponse
 			for _, v := range attr.Validators {
 				v.ValidateString(ctx, validator.StringRequest{ConfigValue: types.StringValue(value)}, &validation)
 			}
-			if value == "id_token" {
-				require.True(t, validation.Diagnostics.HasError())
-				assert.Contains(t, validation.Diagnostics.Errors()[0].Detail(), "value must be one of")
-			} else {
-				assert.False(t, validation.Diagnostics.HasError(), "%v", validation.Diagnostics)
+			assert.False(t, validation.Diagnostics.HasError(), "%v", validation.Diagnostics)
+		})
+	}
+	for name, value := range map[string]string{"id_token": "id_token", "upper_case": "ME", "empty": ""} {
+		t.Run(name, func(t *testing.T) {
+			var validation validator.StringResponse
+			for _, v := range attr.Validators {
+				v.ValidateString(ctx, validator.StringRequest{ConfigValue: types.StringValue(value)}, &validation)
 			}
+			require.True(t, validation.Diagnostics.HasError())
 		})
 	}
 }
