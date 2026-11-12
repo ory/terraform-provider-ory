@@ -607,16 +607,20 @@ The API stores `true` and `false` alike and returns the value on read. Leave the
 
 A Microsoft provider can take the subject identifier from three places. Set `subject_source` to choose one:
 
-- `userinfo` (the API default): the `sub` claim of the ID token or the userinfo endpoint.
+- `userinfo` (the API default): the `sub` claim of the ID token.
 - `me`: the `id` field of `https://graph.microsoft.com/v1.0/me`.
 - `oid`: the Object ID (`oid`), which identifies the user across services.
+
+Only the Microsoft provider reads `subject_source`. Ory stores the value on other provider types but ignores it at login, so leave it unset there.
+
+The `me` source calls Microsoft Graph, so add the `https://graph.microsoft.com/User.Read` scope.
 
 ```hcl
 resource "ory_social_provider" "microsoft" {
   provider_id   = "microsoft"
   provider_type = "microsoft"
-  client_id     = var.microsoft_client_id
-  client_secret = var.microsoft_client_secret
+  client_id     = var.azure_client_id
+  client_secret = var.azure_client_secret
   tenant        = "common"
   scope         = ["openid", "email", "profile", "https://graph.microsoft.com/User.Read"]
 
@@ -626,7 +630,7 @@ resource "ory_social_provider" "microsoft" {
 
 Ory links an identity to the provider by the subject. If you change `subject_source` on a provider that already has identities, those users no longer match their identity.
 
-~> **Existing providers:** Create and Update replace the whole provider object. If a provider has `subject_source` set in Ory, declare it with the same value before the first apply. Without it, the apply resets the provider to `userinfo`.
+~> **Upgrading and importing:** If Ory holds a `subject_source` that your configuration does not declare, the first plan after an upgrade or an import shows `subject_source = "<value>" -> null`. Declare the value shown to keep the provider unchanged. A Microsoft provider saved in the Ory Console always holds a value, `userinfo` by default, and applying `"userinfo" -> null` changes nothing at login. Applying `"me" -> null` or `"oid" -> null` stops existing users from matching their identities. A create for a `provider_id` that already exists in Ory shows no such line and still clears the value, so import the provider first or declare its value.
 
 ## Important Behaviors
 
@@ -688,7 +692,7 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 - `pkce` (String) PKCE (Proof Key for Code Exchange) behavior for the OAuth2 authorization code flow. "auto" (default) enables PKCE when the upstream provider advertises support via OIDC discovery; "force" always sends PKCE (use only with providers known to support it); "never" disables PKCE.
 - `project_id` (String) Project ID. If not set, uses provider's project_id.
 - `scope` (List of String) OAuth2 scopes to request.
-- `subject_source` (String) Source of the subject identifier for a Microsoft provider. "userinfo" (the API default) takes the subject from the "sub" claim of the ID token or the userinfo endpoint. "me" takes it from the "id" field of https://graph.microsoft.com/v1.0/me. "oid" takes the Object ID. Changing this value on a provider that already has identities changes the subject of those identities. Leave unset to use the Ory default ("userinfo").
+- `subject_source` (String) Source of the subject identifier for a Microsoft provider. "userinfo" (the API default) takes the subject from the "sub" claim of the ID token. "me" takes it from the "id" field of https://graph.microsoft.com/v1.0/me. "oid" takes the Object ID. Changing this value on a provider that already has identities stops those users from matching their existing identity. Leave unset to use the Ory default ("userinfo").
 - `tenant` (String) Tenant ID (for Microsoft/Azure providers).
 - `token_url` (String) Custom token URL (for non-standard providers).
 - `update_identity_on_login` (String) Controls whether the identity's traits and metadata are refreshed from the upstream OIDC claims on every login. "never" (the API default) keeps the identity as-is after the initial sign-up. "automatic" re-runs the Jsonnet claims mapper on each login and updates the identity accordingly. Leave unset to use the Ory default ("never").

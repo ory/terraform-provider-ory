@@ -299,7 +299,7 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				Optional:    true,
 			},
 			"subject_source": schema.StringAttribute{
-				Description: "Source of the subject identifier for a Microsoft provider. \"userinfo\" (the API default) takes the subject from the \"sub\" claim of the ID token or the userinfo endpoint. \"me\" takes it from the \"id\" field of https://graph.microsoft.com/v1.0/me. \"oid\" takes the Object ID. Changing this value on a provider that already has identities changes the subject of those identities. Leave unset to use the Ory default (\"userinfo\").",
+				Description: "Source of the subject identifier for a Microsoft provider. \"userinfo\" (the API default) takes the subject from the \"sub\" claim of the ID token. \"me\" takes it from the \"id\" field of https://graph.microsoft.com/v1.0/me. \"oid\" takes the Object ID. Changing this value on a provider that already has identities stops those users from matching their existing identity. Leave unset to use the Ory default (\"userinfo\").",
 				Optional:    true,
 				Validators:  []validator.String{stringvalidator.OneOf("userinfo", "me", "oid")},
 			},
