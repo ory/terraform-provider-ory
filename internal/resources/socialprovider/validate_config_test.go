@@ -56,6 +56,7 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 		"update_identity_on_login":      tfStringValue(model.UpdateIdentityOnLogin),
 		"front_channel_logout":          tfBoolValue(model.FrontChannelLogout),
 		"subject_source":                tfStringValue(model.SubjectSource),
+		"claims_source":                 tfStringValue(model.ClaimsSource),
 	}
 
 	objType := tftypes.Object{
@@ -94,6 +95,7 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 			"update_identity_on_login":      tftypes.String,
 			"front_channel_logout":          tftypes.Bool,
 			"subject_source":                tftypes.String,
+			"claims_source":                 tftypes.String,
 		},
 	}
 

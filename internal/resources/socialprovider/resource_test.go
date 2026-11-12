@@ -1177,3 +1177,60 @@ func TestAccSocialProviderResource_subjectSource(t *testing.T) {
 		},
 	})
 }
+
+// TestAccSocialProviderResource_claimsSource covers claims_source through create, explicit id_token, removal, and import.
+func TestAccSocialProviderResource_claimsSource(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_claims_source.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-google-claims-source"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "claims_source", "userinfo"),
+				),
+			},
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_claims_source.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_claims_source_id_token.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "claims_source", "id_token"),
+				),
+			},
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_claims_source_id_token.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_claims_source_removed.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "claims_source"),
+				),
+			},
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_claims_source_removed.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Re-apply "userinfo" so the import step verifies a value that Read must return.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_claims_source.tf.tmpl", nil),
+				Check:  resource.TestCheckResourceAttr("ory_social_provider.test", "claims_source", "userinfo"),
+			},
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           "test-google-claims-source",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+		},
+	})
+}
