@@ -91,6 +91,7 @@ type SocialProviderResourceModel struct {
 	NetIDTokenOriginHeader     types.String `tfsdk:"net_id_token_origin_header"`
 	UpdateIdentityOnLogin      types.String `tfsdk:"update_identity_on_login"`
 	FrontChannelLogout         types.Bool   `tfsdk:"front_channel_logout"`
+	SubjectSource              types.String `tfsdk:"subject_source"`
 }
 
 func (r *SocialProviderResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -296,6 +297,11 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 			"front_channel_logout": schema.BoolAttribute{
 				Description: "Enable OpenID Connect Front-Channel Logout for this provider. When true, a login issues a companion cookie that lets the provider end the resulting Ory session from its own sign-out page. Requires the provider to return the sid claim in the ID token. Leave unset to keep the Ory default (disabled).",
 				Optional:    true,
+			},
+			"subject_source": schema.StringAttribute{
+				Description: "Source of the subject identifier for a Microsoft provider. \"userinfo\" (the API default) takes the subject from the \"sub\" claim of the ID token. \"me\" takes it from the \"id\" field of https://graph.microsoft.com/v1.0/me. \"oid\" takes the Object ID. Changing this value on a provider that already has identities stops those users from matching their existing identity. Leave unset to use the Ory default (\"userinfo\").",
+				Optional:    true,
+				Validators:  []validator.String{stringvalidator.OneOf("userinfo", "me", "oid")},
 			},
 		},
 	}
@@ -556,6 +562,9 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 	if !plan.FrontChannelLogout.IsNull() && !plan.FrontChannelLogout.IsUnknown() {
 		config["front_channel_logout"] = plan.FrontChannelLogout.ValueBool()
 	}
+	if !plan.SubjectSource.IsNull() && !plan.SubjectSource.IsUnknown() {
+		config["subject_source"] = plan.SubjectSource.ValueString()
+	}
 
 	// fedcm_config_url — only send when set to a non-empty value. Omitting it on
 	// the full-object replace performed by Update clears it server-side.
@@ -611,6 +620,13 @@ func (r *SocialProviderResource) resolveCredentials(ctx context.Context, config 
 		applePrivateKey = applePrivateKeyWO
 	}
 	return clientID, clientSecret, applePrivateKey
+}
+
+func readOptionalString(provider map[string]interface{}, key string) types.String {
+	if v, ok := provider[key].(string); ok && v != "" {
+		return types.StringValue(v)
+	}
+	return types.StringNull()
 }
 
 // readStringList converts a JSON-decoded string array from the API into a
@@ -1028,6 +1044,7 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 	} else {
 		state.FrontChannelLogout = types.BoolNull()
 	}
+	state.SubjectSource = readOptionalString(provider, "subject_source")
 
 	// Read fedcm_config_url from the API (returned on read), clearing stale state
 	// when the API omits it.

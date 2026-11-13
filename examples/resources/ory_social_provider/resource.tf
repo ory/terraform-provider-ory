@@ -122,6 +122,18 @@ resource "ory_social_provider" "microsoft" {
   scope         = ["openid", "profile", "email"]
 }
 
+# Microsoft with the subject taken from the Microsoft Graph /me endpoint
+resource "ory_social_provider" "microsoft_graph_subject" {
+  provider_id   = "microsoft-graph"
+  provider_type = "microsoft"
+  client_id     = var.azure_client_id
+  client_secret = var.azure_client_secret
+  tenant        = "common"
+  scope         = ["openid", "email", "profile", "https://graph.microsoft.com/User.Read"]
+
+  subject_source = "me"
+}
+
 # Apple Sign-In (using Apple-specific credentials)
 resource "ory_social_provider" "apple" {
   provider_id          = "apple"

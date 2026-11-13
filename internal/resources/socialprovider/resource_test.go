@@ -1120,3 +1120,60 @@ func TestAccSocialProviderResource_apple(t *testing.T) {
 		},
 	})
 }
+
+// TestAccSocialProviderResource_subjectSource covers subject_source through create, explicit userinfo, removal, and import.
+func TestAccSocialProviderResource_subjectSource(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_subject_source.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "id"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "provider_id", "test-microsoft-subject"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "subject_source", "me"),
+				),
+			},
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_subject_source.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_subject_source_userinfo.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "subject_source", "userinfo"),
+				),
+			},
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_subject_source_userinfo.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_subject_source_removed.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "subject_source"),
+				),
+			},
+			{
+				Config:   acctest.LoadTestConfig(t, "testdata/with_subject_source_removed.tf.tmpl", nil),
+				PlanOnly: true,
+			},
+			// Re-apply "me" so the import step verifies a value that Read must return.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_subject_source.tf.tmpl", nil),
+				Check:  resource.TestCheckResourceAttr("ory_social_provider.test", "subject_source", "me"),
+			},
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           "test-microsoft-subject",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+		},
+	})
+}

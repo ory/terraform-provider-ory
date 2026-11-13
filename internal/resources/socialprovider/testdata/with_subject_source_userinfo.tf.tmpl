@@ -1,0 +1,9 @@
+resource "ory_social_provider" "test" {
+  provider_id    = "test-microsoft-subject"
+  provider_type  = "microsoft"
+  client_id      = "test-client-id"
+  client_secret  = "test-client-secret"
+  tenant         = "common"
+  scope          = ["openid", "email", "profile"]
+  subject_source = "userinfo"
+}
