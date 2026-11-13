@@ -2,6 +2,7 @@ package socialprovider
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -217,6 +218,42 @@ func TestBuildProviderConfig_SubjectSource(t *testing.T) {
 			}
 			require.True(t, ok, "subject_source must be sent to the API")
 			assert.Equal(t, tt.value.ValueString(), got)
+		})
+	}
+}
+
+// Update replaces the whole provider object, so claims_source and
+// requested_claims must be in the payload whenever they are configured.
+// Regression test for https://github.com/ory/terraform-provider-ory/issues/430
+func TestBuildProviderConfig_Claims(t *testing.T) {
+	r := &SocialProviderResource{}
+	ctx := context.Background()
+
+	t.Run("set", func(t *testing.T) {
+		plan := baseProviderPlan()
+		plan.ClaimsSource = types.StringValue("userinfo")
+		plan.RequestedClaims = types.StringValue(`{"id_token": {"email": null}}`)
+
+		config := r.buildProviderConfig(ctx, plan,
+			plan.ClientID, types.StringValue("test-client-secret"), types.StringNull())
+
+		assert.Equal(t, "userinfo", config["claims_source"])
+		payload, err := json.Marshal(config["requested_claims"])
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"id_token":{"email":null}}`, string(payload), "requested_claims must be sent as an object")
+	})
+
+	for name, value := range map[string]types.String{"null": types.StringNull(), "unknown": types.StringUnknown()} {
+		t.Run(name, func(t *testing.T) {
+			plan := baseProviderPlan()
+			plan.ClaimsSource = value
+			plan.RequestedClaims = value
+
+			config := r.buildProviderConfig(ctx, plan,
+				plan.ClientID, types.StringValue("test-client-secret"), types.StringNull())
+
+			assert.NotContains(t, config, "claims_source")
+			assert.NotContains(t, config, "requested_claims")
 		})
 	}
 }

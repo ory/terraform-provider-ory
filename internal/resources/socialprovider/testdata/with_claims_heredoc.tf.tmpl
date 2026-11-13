@@ -1,0 +1,22 @@
+# The API reports requested_claims with sorted keys and normalized numbers.
+# This heredoc uses another key order, whitespace, and 1.50, so a plan diff
+# after the apply means Read stopped keeping a semantically equal value.
+resource "ory_social_provider" "test" {
+  provider_id   = "test-generic-claims"
+  provider_type = "generic"
+  client_id     = "test-client-id"
+  client_secret = "test-client-secret"
+  issuer_url    = "https://accounts.google.com"
+  scope         = ["openid", "email", "profile"]
+
+  claims_source    = "id_token"
+  requested_claims = <<-EOT
+    {
+      "userinfo": {"email": {"essential": true}},
+      "id_token": {
+        "acr": {"values": ["urn:mace:incommon:iap:silver"]},
+        "level": {"value": 1.50}
+      }
+    }
+  EOT
+}
