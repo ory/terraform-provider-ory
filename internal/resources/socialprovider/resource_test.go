@@ -1177,3 +1177,58 @@ func TestAccSocialProviderResource_subjectSource(t *testing.T) {
 		},
 	})
 }
+
+// TestAccSocialProviderResource_claims covers claims_source and requested_claims
+// through create, update to the explicit claims_source default and to a heredoc
+// requested_claims, removal, and import. Update replaces the whole provider
+// object, so before these attributes existed every update cleared both values.
+// terraform-plugin-testing runs a refresh and a plan after every apply step and
+// fails on a non-empty plan, which catches a value the API drops or reports
+// differently.
+// Regression test for https://github.com/ory/terraform-provider-ory/issues/430.
+func TestAccSocialProviderResource_claims(t *testing.T) {
+	const canonical = `{"id_token":{"auth_time":{"essential":true}},"userinfo":{"email":{"essential":true},"email_verified":null}}`
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			acctest.RequireSocialProviderTests(t)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_claims.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "claims_source", "userinfo"),
+					resource.TestCheckResourceAttr("ory_social_provider.test", "requested_claims", canonical),
+				),
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_claims_heredoc.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_social_provider.test", "claims_source", "id_token"),
+					resource.TestCheckResourceAttrSet("ory_social_provider.test", "requested_claims"),
+				),
+			},
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_claims_removed.tf.tmpl", nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "claims_source"),
+					resource.TestCheckNoResourceAttr("ory_social_provider.test", "requested_claims"),
+				),
+			},
+			// Re-apply both values so the import step verifies what Read returns.
+			{
+				Config: acctest.LoadTestConfig(t, "testdata/with_claims.tf.tmpl", nil),
+				Check:  resource.TestCheckResourceAttr("ory_social_provider.test", "requested_claims", canonical),
+			},
+			{
+				ResourceName:            "ory_social_provider.test",
+				ImportState:             true,
+				ImportStateId:           "test-generic-claims",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+		},
+	})
+}

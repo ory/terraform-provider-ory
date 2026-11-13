@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -92,6 +93,8 @@ type SocialProviderResourceModel struct {
 	UpdateIdentityOnLogin      types.String `tfsdk:"update_identity_on_login"`
 	FrontChannelLogout         types.Bool   `tfsdk:"front_channel_logout"`
 	SubjectSource              types.String `tfsdk:"subject_source"`
+	ClaimsSource               types.String `tfsdk:"claims_source"`
+	RequestedClaims            types.String `tfsdk:"requested_claims"`
 }
 
 func (r *SocialProviderResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -303,6 +306,15 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				Optional:    true,
 				Validators:  []validator.String{stringvalidator.OneOf("userinfo", "me", "oid")},
 			},
+			"claims_source": schema.StringAttribute{
+				Description: "Where Ory reads the user's claims. \"id_token\" (the API default) reads them from the ID token. \"userinfo\" calls the provider's userinfo endpoint. Ory reads this setting for the \"generic\" provider type and for built-in types that use the generic OpenID Connect flow, such as \"google\". Leave unset to use the Ory default (\"id_token\").",
+				Optional:    true,
+				Validators:  []validator.String{stringvalidator.OneOf("id_token", "userinfo")},
+			},
+			"requested_claims": schema.StringAttribute{
+				Description: "JSON object that Ory sends to the provider as the OpenID Connect \"claims\" request parameter, for example jsonencode({ id_token = { email = null } }). It requests individual claims for the ID token or the userinfo response. Leave unset to send no claims parameter.",
+				Optional:    true,
+			},
 		},
 	}
 }
@@ -325,6 +337,21 @@ func (r *SocialProviderResource) ValidateConfig(ctx context.Context, req resourc
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	// requested_claims must be a JSON object. The API accepts a string or an
+	// array with HTTP 200 and silently drops it, which would show as drift on
+	// every plan. JSON null decodes to a nil map, so it fails this check too.
+	// See: https://github.com/ory/terraform-provider-ory/issues/430
+	if !config.RequestedClaims.IsNull() && !config.RequestedClaims.IsUnknown() {
+		var claims map[string]interface{}
+		if err := json.Unmarshal([]byte(config.RequestedClaims.ValueString()), &claims); err != nil || claims == nil {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("requested_claims"),
+				"Invalid Attribute Value",
+				"requested_claims must be a JSON object, for example jsonencode({ id_token = { email = null } }).",
+			)
+		}
 	}
 
 	// Ensure provider_type is specified and known, since it is required to build the API payload.
@@ -566,6 +593,19 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 		config["subject_source"] = plan.SubjectSource.ValueString()
 	}
 
+	// claims_source and requested_claims are sent only when set. Update replaces
+	// the whole provider object, so before these attributes existed every update
+	// dropped values set outside Terraform.
+	// See: https://github.com/ory/terraform-provider-ory/issues/430
+	if !plan.ClaimsSource.IsNull() && !plan.ClaimsSource.IsUnknown() {
+		config["claims_source"] = plan.ClaimsSource.ValueString()
+	}
+	// ValidateConfig guarantees a JSON object, so the raw configured text is sent
+	// as-is and the API stores the decoded object.
+	if !plan.RequestedClaims.IsNull() && !plan.RequestedClaims.IsUnknown() {
+		config["requested_claims"] = json.RawMessage(plan.RequestedClaims.ValueString())
+	}
+
 	// fedcm_config_url — only send when set to a non-empty value. Omitting it on
 	// the full-object replace performed by Update clears it server-side.
 	if !plan.FedcmConfigURL.IsNull() && !plan.FedcmConfigURL.IsUnknown() && plan.FedcmConfigURL.ValueString() != "" {
@@ -627,6 +667,30 @@ func readOptionalString(provider map[string]interface{}, key string) types.Strin
 		return types.StringValue(v)
 	}
 	return types.StringNull()
+}
+
+// readJSONObject returns the JSON object the API reports for a key, or null
+// when the key is absent or not an object. The API reports the object with
+// sorted keys and normalized numbers, so the prior state text is kept when it
+// encodes the same object; otherwise heredoc formatting in the configuration
+// would show as drift on every plan. Without a matching prior value the object
+// is encoded the way jsonencode() encodes it: compact, with sorted keys.
+func readJSONObject(provider map[string]interface{}, key string, prior types.String) types.String {
+	obj, ok := provider[key].(map[string]interface{})
+	if !ok {
+		return types.StringNull()
+	}
+	if !prior.IsNull() && !prior.IsUnknown() {
+		var priorObj map[string]interface{}
+		if json.Unmarshal([]byte(prior.ValueString()), &priorObj) == nil && reflect.DeepEqual(priorObj, obj) {
+			return prior
+		}
+	}
+	encoded, err := json.Marshal(obj)
+	if err != nil {
+		return types.StringNull()
+	}
+	return types.StringValue(string(encoded))
 }
 
 // readStringList converts a JSON-decoded string array from the API into a
@@ -1045,6 +1109,8 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		state.FrontChannelLogout = types.BoolNull()
 	}
 	state.SubjectSource = readOptionalString(provider, "subject_source")
+	state.ClaimsSource = readOptionalString(provider, "claims_source")
+	state.RequestedClaims = readJSONObject(provider, "requested_claims", state.RequestedClaims)
 
 	// Read fedcm_config_url from the API (returned on read), clearing stale state
 	// when the API omits it.

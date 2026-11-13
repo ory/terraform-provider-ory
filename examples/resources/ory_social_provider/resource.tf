@@ -103,6 +103,25 @@ resource "ory_social_provider" "corporate_front_channel_logout" {
   front_channel_logout = true
 }
 
+# Generic OIDC provider that reads claims from the userinfo endpoint and
+# requests individual claims with the OpenID Connect claims parameter
+resource "ory_social_provider" "corporate_userinfo_claims" {
+  provider_id   = "corporate-claims"
+  provider_type = "generic"
+  client_id     = var.sso_client_id
+  client_secret = var.sso_client_secret
+  issuer_url    = "https://sso.example.com"
+  scope         = ["openid", "email", "profile"]
+
+  claims_source = "userinfo"
+  requested_claims = jsonencode({
+    userinfo = {
+      email          = { essential = true }
+      email_verified = { essential = true }
+    }
+  })
+}
+
 # GitHub
 resource "ory_social_provider" "github" {
   provider_id   = "github"

@@ -56,6 +56,8 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 		"update_identity_on_login":      tfStringValue(model.UpdateIdentityOnLogin),
 		"front_channel_logout":          tfBoolValue(model.FrontChannelLogout),
 		"subject_source":                tfStringValue(model.SubjectSource),
+		"claims_source":                 tfStringValue(model.ClaimsSource),
+		"requested_claims":              tfStringValue(model.RequestedClaims),
 	}
 
 	objType := tftypes.Object{
@@ -94,6 +96,8 @@ func buildTestConfig(t *testing.T, model SocialProviderResourceModel) resource.V
 			"update_identity_on_login":      tftypes.String,
 			"front_channel_logout":          tftypes.Bool,
 			"subject_source":                tftypes.String,
+			"claims_source":                 tftypes.String,
+			"requested_claims":              tftypes.String,
 		},
 	}
 
@@ -434,4 +438,39 @@ func TestValidateConfig_UnknownProviderType_SkipsValidation(t *testing.T) {
 	r.ValidateConfig(ctx, req, &resp)
 
 	assert.False(t, resp.Diagnostics.HasError(), "expected no errors for unknown provider_type: %v", resp.Diagnostics.Errors())
+}
+
+// The API accepts a string or an array for requested_claims with HTTP 200 and
+// drops it, so anything but a JSON object must fail validation.
+// Regression test for https://github.com/ory/terraform-provider-ory/issues/430
+func TestValidateConfig_RequestedClaims(t *testing.T) {
+	tests := map[string]struct {
+		value   types.String
+		wantErr bool
+	}{
+		"object":       {value: types.StringValue(`{"id_token":{"email":null}}`)},
+		"empty object": {value: types.StringValue(`{}`)},
+		"unknown":      {value: types.StringUnknown()},
+		"array":        {value: types.StringValue(`[]`), wantErr: true},
+		"string":       {value: types.StringValue(`"x"`), wantErr: true},
+		"json null":    {value: types.StringValue(`null`), wantErr: true},
+		"invalid json": {value: types.StringValue(`{"id_token":`), wantErr: true},
+	}
+	r := &SocialProviderResource{}
+	ctx := context.Background()
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			req := buildTestConfig(t, SocialProviderResourceModel{
+				ProviderID:      types.StringValue("generic"),
+				ProviderType:    types.StringValue("generic"),
+				ClientID:        types.StringValue("my-client-id"),
+				ClientSecret:    types.StringValue("my-secret"),
+				RequestedClaims: tt.value,
+			})
+			var resp resource.ValidateConfigResponse
+			r.ValidateConfig(ctx, req, &resp)
+
+			assert.Equal(t, tt.wantErr, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+		})
+	}
 }

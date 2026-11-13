@@ -1,0 +1,9 @@
+resource "ory_social_provider" "test" {
+  provider_id   = "test-generic-claims"
+  provider_type = "generic"
+  client_id     = "test-client-id"
+  client_secret = "test-client-secret"
+  issuer_url    = "https://accounts.google.com"
+  scope         = ["openid", "email", "profile"]
+  # claims_source and requested_claims intentionally omitted to test removal
+}
