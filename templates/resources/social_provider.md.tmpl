@@ -332,6 +332,29 @@ Ory links an identity to the provider by the subject. If you change `subject_sou
 
 ~> **Upgrading and importing:** If Ory holds a `subject_source` that your configuration does not declare, the first plan after an upgrade or an import shows `subject_source = "<value>" -> null`. Declare the value shown to keep the provider unchanged. A Microsoft provider saved in the Ory Console always holds a value, `userinfo` by default, and applying `"userinfo" -> null` changes nothing at login. Applying `"me" -> null` or `"oid" -> null` stops existing users from matching their identities. A create for a `provider_id` that already exists in Ory shows no such line and still clears the value, so import the provider first or declare its value.
 
+## Claims Source
+
+Set `claims_source` to choose where Ory reads the claims used to map an identity:
+
+- `id_token` (the Ory default): use the claims from the ID token.
+- `userinfo`: call the provider's userinfo endpoint and use the claims from its response.
+
+The generic, Google and Apple providers read `claims_source`. A LinkedIn provider always uses `userinfo`. Other provider types ignore it.
+
+```hcl
+resource "ory_social_provider" "google" {
+  provider_id   = "google"
+  provider_type = "google"
+  client_id     = var.google_client_id
+  client_secret = var.google_client_secret
+  scope         = ["openid", "email", "profile"]
+
+  claims_source = "userinfo"
+}
+```
+
+~> **Upgrading and importing:** If Ory holds a `claims_source` that your configuration does not declare, the first plan after an upgrade or an import shows `claims_source = "<value>" -> null`. Declare the value shown to keep the provider unchanged. Applying `"id_token" -> null` changes nothing at login. Applying `"userinfo" -> null` makes Ory take the claims from the ID token, so a mapper that reads claims found only in the userinfo response stops filling those traits. A create for a `provider_id` that already exists in Ory shows no such line and still clears the value, so import the provider first or declare its value.
+
 ## Important Behaviors
 
 - **`provider_id` and `provider_type` cannot be changed** after creation. Changing either forces a new resource.

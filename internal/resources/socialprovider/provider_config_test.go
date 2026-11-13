@@ -220,3 +220,36 @@ func TestBuildProviderConfig_SubjectSource(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildProviderConfig_ClaimsSource(t *testing.T) {
+	tests := []struct {
+		name        string
+		value       types.String
+		wantPresent bool
+	}{
+		{name: "userinfo", value: types.StringValue("userinfo"), wantPresent: true},
+		{name: "null", value: types.StringNull(), wantPresent: false},
+		{name: "unknown", value: types.StringUnknown(), wantPresent: false},
+	}
+
+	r := &SocialProviderResource{}
+	ctx := context.Background()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plan := baseProviderPlan()
+			plan.ClaimsSource = tt.value
+
+			config := r.buildProviderConfig(ctx, plan,
+				plan.ClientID, types.StringValue("test-client-secret"), types.StringNull())
+
+			got, ok := config["claims_source"]
+			if !tt.wantPresent {
+				assert.False(t, ok, "claims_source must be absent from the payload")
+				return
+			}
+			require.True(t, ok, "claims_source must be sent to the API")
+			assert.Equal(t, tt.value.ValueString(), got)
+		})
+	}
+}

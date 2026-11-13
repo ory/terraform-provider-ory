@@ -632,6 +632,29 @@ Ory links an identity to the provider by the subject. If you change `subject_sou
 
 ~> **Upgrading and importing:** If Ory holds a `subject_source` that your configuration does not declare, the first plan after an upgrade or an import shows `subject_source = "<value>" -> null`. Declare the value shown to keep the provider unchanged. A Microsoft provider saved in the Ory Console always holds a value, `userinfo` by default, and applying `"userinfo" -> null` changes nothing at login. Applying `"me" -> null` or `"oid" -> null` stops existing users from matching their identities. A create for a `provider_id` that already exists in Ory shows no such line and still clears the value, so import the provider first or declare its value.
 
+## Claims Source
+
+Set `claims_source` to choose where Ory reads the claims used to map an identity:
+
+- `id_token` (the Ory default): use the claims from the ID token.
+- `userinfo`: call the provider's userinfo endpoint and use the claims from its response.
+
+The generic, Google and Apple providers read `claims_source`. A LinkedIn provider always uses `userinfo`. Other provider types ignore it.
+
+```hcl
+resource "ory_social_provider" "google" {
+  provider_id   = "google"
+  provider_type = "google"
+  client_id     = var.google_client_id
+  client_secret = var.google_client_secret
+  scope         = ["openid", "email", "profile"]
+
+  claims_source = "userinfo"
+}
+```
+
+~> **Upgrading and importing:** If Ory holds a `claims_source` that your configuration does not declare, the first plan after an upgrade or an import shows `claims_source = "<value>" -> null`. Declare the value shown to keep the provider unchanged. Applying `"id_token" -> null` changes nothing at login. Applying `"userinfo" -> null` makes Ory take the claims from the ID token, so a mapper that reads claims found only in the userinfo response stops filling those traits. A create for a `provider_id` that already exists in Ory shows no such line and still clears the value, so import the provider first or declare its value.
+
 ## Important Behaviors
 
 - **`provider_id` and `provider_type` cannot be changed** after creation. Changing either forces a new resource.
@@ -676,6 +699,7 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 - `apple_team_id` (String) Apple Developer Team ID (e.g., "KP76DQS54M"). Required when provider_type is "apple" and client_secret is not set.
 - `auth_url` (String) Custom authorization URL (for non-standard providers).
 - `auto_link` (Boolean) Enable automatic account linking for this provider. When true, if an identity with the same identifier (e.g., email) already exists, the social sign-in will automatically link to that identity instead of failing. Requires selfservice_methods_oidc_enable_auto_link_policy to be true in the project config (ory_project_config). This attribute is write-only — the API accepts it on create/update but does not return it on read, so Terraform preserves the value from state. On import, the value will not be populated. Removing this attribute from your configuration will automatically disable auto-linking server-side.
+- `claims_source` (String) Source of the claims for a generic, Google or Apple provider. "id_token" (the Ory default) takes the claims from the ID token. "userinfo" calls the userinfo endpoint of the provider and takes the claims from the response. Leave unset to use the Ory default ("id_token").
 - `client_id` (String) OAuth2 client ID from the provider. Exactly one of client_id or client_id_wo must be set.
 - `client_id_wo` (String, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of client_id (Terraform 1.11+ write-only argument): the value is sent to Ory but never stored in Terraform state or plan. Use this to source the client ID from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change client_id_wo_version to force the new value to be sent. Mutually exclusive with client_id.
 - `client_id_wo_version` (String) Version trigger for client_id_wo. Change this value whenever the write-only client_id_wo changes so Terraform sends the new value to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless client_id_wo is set.

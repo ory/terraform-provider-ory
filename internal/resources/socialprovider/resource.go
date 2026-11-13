@@ -92,6 +92,7 @@ type SocialProviderResourceModel struct {
 	UpdateIdentityOnLogin      types.String `tfsdk:"update_identity_on_login"`
 	FrontChannelLogout         types.Bool   `tfsdk:"front_channel_logout"`
 	SubjectSource              types.String `tfsdk:"subject_source"`
+	ClaimsSource               types.String `tfsdk:"claims_source"`
 }
 
 func (r *SocialProviderResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -302,6 +303,11 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				Description: "Source of the subject identifier for a Microsoft provider. \"userinfo\" (the API default) takes the subject from the \"sub\" claim of the ID token. \"me\" takes it from the \"id\" field of https://graph.microsoft.com/v1.0/me. \"oid\" takes the Object ID. Changing this value on a provider that already has identities stops those users from matching their existing identity. Leave unset to use the Ory default (\"userinfo\").",
 				Optional:    true,
 				Validators:  []validator.String{stringvalidator.OneOf("userinfo", "me", "oid")},
+			},
+			"claims_source": schema.StringAttribute{
+				Description: "Source of the claims for a generic, Google or Apple provider. \"id_token\" (the Ory default) takes the claims from the ID token. \"userinfo\" calls the userinfo endpoint of the provider and takes the claims from the response. Leave unset to use the Ory default (\"id_token\").",
+				Optional:    true,
+				Validators:  []validator.String{stringvalidator.OneOf("id_token", "userinfo")},
 			},
 		},
 	}
@@ -564,6 +570,9 @@ func (r *SocialProviderResource) buildProviderConfig(ctx context.Context, plan *
 	}
 	if !plan.SubjectSource.IsNull() && !plan.SubjectSource.IsUnknown() {
 		config["subject_source"] = plan.SubjectSource.ValueString()
+	}
+	if !plan.ClaimsSource.IsNull() && !plan.ClaimsSource.IsUnknown() {
+		config["claims_source"] = plan.ClaimsSource.ValueString()
 	}
 
 	// fedcm_config_url — only send when set to a non-empty value. Omitting it on
@@ -1045,6 +1054,7 @@ func (r *SocialProviderResource) Read(ctx context.Context, req resource.ReadRequ
 		state.FrontChannelLogout = types.BoolNull()
 	}
 	state.SubjectSource = readOptionalString(provider, "subject_source")
+	state.ClaimsSource = readOptionalString(provider, "claims_source")
 
 	// Read fedcm_config_url from the API (returned on read), clearing stale state
 	// when the API omits it.
