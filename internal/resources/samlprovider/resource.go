@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -513,30 +512,12 @@ func (r *SAMLProviderResource) Read(ctx context.Context, req resource.ReadReques
 		state.Label = types.StringNull()
 	}
 
-	// The API transforms base64:// mapper URLs into hosted GCS URLs on read.
-	// When the user supplied base64://..., preserve their original value to avoid
-	// spurious drift — only refresh state when the user originally configured a URL.
-	if !state.MapperURL.IsNull() && !state.MapperURL.IsUnknown() {
-		userValue := state.MapperURL.ValueString()
-		if !strings.HasPrefix(userValue, "base64://") {
-			if mapper, ok := provider["mapper_url"].(string); ok && mapper != "" {
-				state.MapperURL = types.StringValue(mapper)
-			}
-		}
-	}
-
-	// raw_idp_metadata_xml also gets transformed to a GCS URL on read.
-	// When the user supplied base64://..., keep their original value to avoid
-	// spurious diffs. When the state is null/unknown (e.g., during import) or
-	// was originally a URL, refresh from the API so a required attribute is
-	// always populated.
-	userSuppliedBase64 := !state.RawIDPMetadataXML.IsNull() && !state.RawIDPMetadataXML.IsUnknown() &&
-		strings.HasPrefix(state.RawIDPMetadataXML.ValueString(), "base64://")
-	if !userSuppliedBase64 {
-		if xml, ok := provider["raw_idp_metadata_xml"].(string); ok && xml != "" {
-			state.RawIDPMetadataXML = types.StringValue(xml)
-		}
-	}
+	// The API reports base64:// values as hosted storage URLs. See
+	// readMapperURL and readRawIDPMetadataXML for how they map back to state.
+	mapper, _ := provider["mapper_url"].(string)
+	state.MapperURL = readMapperURL(ctx, mapper, state.MapperURL)
+	metadataXML, _ := provider["raw_idp_metadata_xml"].(string)
+	state.RawIDPMetadataXML = readRawIDPMetadataXML(ctx, metadataXML, state.RawIDPMetadataXML)
 
 	if orgID, ok := provider["organization_id"].(string); ok && orgID != "" {
 		state.OrganizationID = types.StringValue(orgID)
