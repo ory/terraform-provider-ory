@@ -25,6 +25,19 @@ resource "ory_project_config" "with_write_only_smtp" {
   smtp_connection_uri_wo_version = "1"
 }
 
+# Identity secrets work the same way. Put the new secret first when rotating.
+ephemeral "vault_kv_secret_v2" "identity_secrets" {
+  mount = "secret"
+  name  = "ory/identity-secrets"
+}
+
+resource "ory_project_config" "with_write_only_identity_secrets" {
+  identity_secrets_cookie_wo         = [ephemeral.vault_kv_secret_v2.identity_secrets.data["cookie"]]
+  identity_secrets_cookie_wo_version = "1"
+  identity_secrets_cipher_wo         = [ephemeral.vault_kv_secret_v2.identity_secrets.data["cipher"]]
+  identity_secrets_cipher_wo_version = "1"
+}
+
 # Full security configuration
 resource "ory_project_config" "secure" {
   # Public CORS (includes the restricted origin below so its pages can read responses)
