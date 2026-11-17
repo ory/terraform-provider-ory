@@ -216,12 +216,14 @@ func TestImportProjectConfig_RejectsUnsafeSelectionBeforeReading(t *testing.T) {
 		"proj-1:courier_http_request_config_body",
 		"proj-1:mfa_enforcement",
 		"proj-1:smtp_connection_uri_wo_version",
+		"proj-1:identity_secrets_cookie_wo",
+		"proj-1:identity_secrets_cookie_wo_version",
 	} {
 		t.Run(id, func(t *testing.T) {
 			// A nil client ensures validation happens before any API access.
 			resp := importConfig(t, &ProjectConfigResource{}, id)
 			require.True(t, resp.Diagnostics.HasError(), "invalid import must fail: %s", id)
-			if id == "proj-1:mfa_enforcement" || id == "proj-1:smtp_connection_uri_wo_version" {
+			if id == "proj-1:mfa_enforcement" || strings.HasSuffix(id, "_wo_version") {
 				require.Len(t, resp.Diagnostics.Errors(), 1)
 				assert.Equal(t, "Unsupported Project Config Import Field", resp.Diagnostics.Errors()[0].Summary())
 				assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), "has no reader")

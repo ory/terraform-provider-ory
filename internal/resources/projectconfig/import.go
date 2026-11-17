@@ -40,7 +40,7 @@ func (r *ProjectConfigResource) importSelectedFields(ctx context.Context, projec
 			resp.Diagnostics.AddError("Unsupported Project Config Import Field", fmt.Sprintf("%q is sensitive or write-only and cannot be imported by field selection.", name))
 			return
 		}
-		if name == "mfa_enforcement" || name == "smtp_connection_uri_wo_version" {
+		if name == "mfa_enforcement" || strings.HasSuffix(name, "_wo_version") {
 			resp.Diagnostics.AddError("Unsupported Project Config Import Field", fmt.Sprintf("%q has no reader and cannot be imported by field selection.", name))
 			return
 		}
