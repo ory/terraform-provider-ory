@@ -235,6 +235,14 @@ type ProjectConfigResourceModel struct {
 	IdentitySecretsDefault    types.List `tfsdk:"identity_secrets_default"`
 	IdentitySecretsPagination types.List `tfsdk:"identity_secrets_pagination"`
 
+	// Write-only identity secrets
+	IdentitySecretsCipherWO         types.List   `tfsdk:"identity_secrets_cipher_wo"`
+	IdentitySecretsCipherWOVersion  types.String `tfsdk:"identity_secrets_cipher_wo_version"`
+	IdentitySecretsCookieWO         types.List   `tfsdk:"identity_secrets_cookie_wo"`
+	IdentitySecretsCookieWOVersion  types.String `tfsdk:"identity_secrets_cookie_wo_version"`
+	IdentitySecretsDefaultWO        types.List   `tfsdk:"identity_secrets_default_wo"`
+	IdentitySecretsDefaultWOVersion types.String `tfsdk:"identity_secrets_default_wo_version"`
+
 	// OAuth2 secrets
 	OAuth2SecretsCookie     types.List `tfsdk:"oauth2_secrets_cookie"`
 	OAuth2SecretsPagination types.List `tfsdk:"oauth2_secrets_pagination"`
@@ -651,6 +659,28 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 		Validators: []validator.String{
 			stringvalidator.AlsoRequires(path.MatchRoot("smtp_connection_uri_wo")),
 		},
+	}
+
+	// Write-only companions for identity_secrets_cipher, _cookie, and _default.
+	for _, s := range writeOnlyIdentitySecrets {
+		attrs[s.name+"_wo"] = schema.ListAttribute{
+			Description: fmt.Sprintf("Write-only equivalent of %[1]s (Terraform 1.11+ write-only argument): the secrets are sent to Ory but never stored in Terraform state or plan. Use this to source them from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own, so change %[1]s_wo_version to rotate them. Mutually exclusive with %[1]s.", s.name),
+			Optional:    true,
+			WriteOnly:   true,
+			Sensitive:   true,
+			ElementType: types.StringType,
+			Validators: []validator.List{
+				listvalidator.SizeAtLeast(1),
+				listvalidator.ConflictsWith(path.MatchRoot(s.name)),
+			},
+		}
+		attrs[s.name+"_wo_version"] = schema.StringAttribute{
+			Description: fmt.Sprintf("Version trigger for %[1]s_wo. Change this value whenever the write-only %[1]s_wo changes so Terraform sends the new value to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless %[1]s_wo is set.", s.name),
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.AlsoRequires(path.MatchRoot(s.name + "_wo")),
+			},
+		}
 	}
 
 	// --- Hand-written attributes (not in mappings.yaml) ---
@@ -1079,6 +1109,33 @@ func (r *ProjectConfigResource) appendWriteOnlySMTPPatch(ctx context.Context, co
 		Path:  "/services/identity/config/courier/smtp/connection_uri",
 		Value: uriWO.ValueString(),
 	})
+}
+
+// writeOnlyIdentitySecrets maps each identity secret list with a _wo companion
+// to its patch path.
+var writeOnlyIdentitySecrets = []struct {
+	name string
+	path string
+}{
+	{name: "identity_secrets_cipher", path: "/services/identity/config/secrets/cipher"},
+	{name: "identity_secrets_cookie", path: "/services/identity/config/secrets/cookie"},
+	{name: "identity_secrets_default", path: "/services/identity/config/secrets/default"},
+}
+
+// appendWriteOnlyIdentitySecretsPatches is appendWriteOnlySMTPPatch for the
+// identity secret _wo attributes.
+func (r *ProjectConfigResource) appendWriteOnlyIdentitySecretsPatches(ctx context.Context, config tfsdk.Config, patches []ory.JsonPatch, diags *diag.Diagnostics) []ory.JsonPatch {
+	for _, s := range writeOnlyIdentitySecrets {
+		var secretsWO types.List
+		diags.Append(config.GetAttribute(ctx, path.Root(s.name+"_wo"), &secretsWO)...)
+		if diags.HasError() || secretsWO.IsNull() || secretsWO.IsUnknown() {
+			continue
+		}
+		var secrets []string
+		diags.Append(secretsWO.ElementsAs(ctx, &secrets, false)...)
+		patches = append(patches, ory.JsonPatch{Op: "replace", Path: s.path, Value: secrets})
+	}
+	return patches
 }
 
 // =============================================================================
@@ -1866,6 +1923,7 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 
 	patches := r.buildPatches(ctx, &plan)
 	patches = r.appendWriteOnlySMTPPatch(ctx, req.Config, patches, &resp.Diagnostics)
+	patches = r.appendWriteOnlyIdentitySecretsPatches(ctx, req.Config, patches, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -2502,6 +2560,7 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 
 	patches := r.buildPatches(ctx, &plan)
 	patches = r.appendWriteOnlySMTPPatch(ctx, req.Config, patches, &resp.Diagnostics)
+	patches = r.appendWriteOnlyIdentitySecretsPatches(ctx, req.Config, patches, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

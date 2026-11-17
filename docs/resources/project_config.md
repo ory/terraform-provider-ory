@@ -58,6 +58,19 @@ resource "ory_project_config" "with_write_only_smtp" {
   smtp_connection_uri_wo_version = "1"
 }
 
+# Identity secrets work the same way. Put the new secret first when rotating.
+ephemeral "vault_kv_secret_v2" "identity_secrets" {
+  mount = "secret"
+  name  = "ory/identity-secrets"
+}
+
+resource "ory_project_config" "with_write_only_identity_secrets" {
+  identity_secrets_cookie_wo         = [ephemeral.vault_kv_secret_v2.identity_secrets.data["cookie"]]
+  identity_secrets_cookie_wo_version = "1"
+  identity_secrets_cipher_wo         = [ephemeral.vault_kv_secret_v2.identity_secrets.data["cipher"]]
+  identity_secrets_cipher_wo_version = "1"
+}
+
 # Full security configuration
 resource "ory_project_config" "secure" {
   # Public CORS (includes the restricted origin below so its pages can read responses)
@@ -598,6 +611,21 @@ resource "ory_project_config" "main" {
 
 ~> **Rotation:** Changing the salt changes every pairwise subject identifier the project has issued, so relying parties that store the `sub` claim lose the link to the user. An empty value does not clear the salt: the API keeps the stored one.
 
+## Write-Only Secrets
+
+These attributes have **write-only** equivalents that are never written to Terraform state or plan (Terraform 1.11+ [write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral/write-only)):
+
+| Write-only attribute | Replaces | Version trigger |
+|----------------------|----------|-----------------|
+| `smtp_connection_uri_wo` | `smtp_connection_uri` | `smtp_connection_uri_wo_version` |
+| `identity_secrets_cipher_wo` | `identity_secrets_cipher` | `identity_secrets_cipher_wo_version` |
+| `identity_secrets_cookie_wo` | `identity_secrets_cookie` | `identity_secrets_cookie_wo_version` |
+| `identity_secrets_default_wo` | `identity_secrets_default` | `identity_secrets_default_wo_version` |
+
+Each write-only attribute is mutually exclusive with its stateful counterpart. Terraform cannot diff a write-only value, so change the matching `*_wo_version` whenever the secret rotates. That change makes Terraform send the new value to Ory.
+
+~> **Rotation:** Ory signs and encrypts with the first secret in each list and still accepts the others. Add the new secret at the front and keep the old ones until existing sessions and encrypted data no longer need them.
+
 ## Verification After Registration / Settings
 
 Five boolean attributes toggle the [`show_verification_ui`](https://www.ory.com/docs/kratos/self-service/flows/user-registration) post-flow hook for each authentication method:
@@ -805,8 +833,14 @@ This resource covers most simple (scalar and list) project configuration propert
 - `feature_flags_use_continue_with_transitions` (Boolean) Enable continue_with transitions for session flows.
 - `feature_flags_webhook_response_directives` (Boolean) Honor flow directives in web hook responses. If true, a login after web hook with response parsing enabled can return a required_aal directive of aal2 to require step-up for that login; identities without a second factor are routed to enrollment. Off by default.
 - `identity_secrets_cipher` (List of String, Sensitive) Encryption secrets for identity data at rest.
+- `identity_secrets_cipher_wo` (List of String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of identity_secrets_cipher (Terraform 1.11+ write-only argument): the secrets are sent to Ory but never stored in Terraform state or plan. Use this to source them from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own, so change identity_secrets_cipher_wo_version to rotate them. Mutually exclusive with identity_secrets_cipher.
+- `identity_secrets_cipher_wo_version` (String) Version trigger for identity_secrets_cipher_wo. Change this value whenever the write-only identity_secrets_cipher_wo changes so Terraform sends the new value to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless identity_secrets_cipher_wo is set.
 - `identity_secrets_cookie` (List of String, Sensitive) Cookie signing secrets for the identity service.
+- `identity_secrets_cookie_wo` (List of String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of identity_secrets_cookie (Terraform 1.11+ write-only argument): the secrets are sent to Ory but never stored in Terraform state or plan. Use this to source them from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own, so change identity_secrets_cookie_wo_version to rotate them. Mutually exclusive with identity_secrets_cookie.
+- `identity_secrets_cookie_wo_version` (String) Version trigger for identity_secrets_cookie_wo. Change this value whenever the write-only identity_secrets_cookie_wo changes so Terraform sends the new value to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless identity_secrets_cookie_wo is set.
 - `identity_secrets_default` (List of String, Sensitive) Default signing secrets for the identity service.
+- `identity_secrets_default_wo` (List of String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of identity_secrets_default (Terraform 1.11+ write-only argument): the secrets are sent to Ory but never stored in Terraform state or plan. Use this to source them from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own, so change identity_secrets_default_wo_version to rotate them. Mutually exclusive with identity_secrets_default.
+- `identity_secrets_default_wo_version` (String) Version trigger for identity_secrets_default_wo. Change this value whenever the write-only identity_secrets_default_wo changes so Terraform sends the new value to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless identity_secrets_default_wo is set.
 - `identity_secrets_pagination` (List of String, Sensitive) Pagination encryption keys for the identity service.
 - `keto_feature_flags_strict_mode` (Boolean) Enable Ory Keto strict mode. In strict mode, relation tuples for permits are not checked directly (only the OPL rewrites apply) and subject sets are only expanded when declared with SubjectSet<...>, which makes permission checks faster. New projects are created with strict mode enabled and locked; on a locked project the API accepts a write but keeps the stored value, so only projects created before the lock can change it. The provider fails the apply with an error instead of sending a value that the lock would discard.
 - `keto_namespace_configuration` (String) URL pointing to an OPL file with the Keto namespace configuration. Ory accepts either an OPL location or an inline namespace list, so this conflicts with keto_namespaces.
