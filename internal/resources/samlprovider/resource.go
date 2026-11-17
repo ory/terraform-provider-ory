@@ -512,12 +512,12 @@ func (r *SAMLProviderResource) Read(ctx context.Context, req resource.ReadReques
 		state.Label = types.StringNull()
 	}
 
-	// The API reports base64:// values as hosted storage URLs. See
-	// readMapperURL and readRawIDPMetadataXML for how they map back to state.
-	mapper, _ := provider["mapper_url"].(string)
-	state.MapperURL = readMapperURL(ctx, mapper, state.MapperURL)
+	// The default mapper stays null so an unset mapper_url plans no change.
+	if mapper, _ := provider["mapper_url"].(string); !state.MapperURL.IsNull() || !isDefaultMapper(mapper) {
+		state.MapperURL = readContentURL(ctx, mapper, state.MapperURL)
+	}
 	metadataXML, _ := provider["raw_idp_metadata_xml"].(string)
-	state.RawIDPMetadataXML = readRawIDPMetadataXML(ctx, metadataXML, state.RawIDPMetadataXML)
+	state.RawIDPMetadataXML = readContentURL(ctx, metadataXML, state.RawIDPMetadataXML)
 
 	if orgID, ok := provider["organization_id"].(string); ok && orgID != "" {
 		state.OrganizationID = types.StringValue(orgID)

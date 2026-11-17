@@ -661,9 +661,10 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 		},
 	}
 
+	// Write-only companions for identity_secrets_cipher, _cookie, and _default.
 	for _, s := range writeOnlyIdentitySecrets {
 		attrs[s.name+"_wo"] = schema.ListAttribute{
-			Description: fmt.Sprintf("Write-only equivalent of %[1]s (Terraform 1.11+ write-only argument): the secrets are sent to Ory but never stored in Terraform state or plan. Use this to source them from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own. Change %[1]s_wo_version to rotate them. Mutually exclusive with %[1]s.", s.name),
+			Description: fmt.Sprintf("Write-only equivalent of %[1]s (Terraform 1.11+ write-only argument): the secrets are sent to Ory but never stored in Terraform state or plan. Change %[1]s_wo_version to rotate them. Mutually exclusive with %[1]s.", s.name),
 			Optional:    true,
 			WriteOnly:   true,
 			Sensitive:   true,
@@ -674,7 +675,7 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 			},
 		}
 		attrs[s.name+"_wo_version"] = schema.StringAttribute{
-			Description: fmt.Sprintf("Version trigger for %[1]s_wo. Change this value whenever the write-only %[1]s_wo changes so Terraform sends the new secrets to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless %[1]s_wo is set.", s.name),
+			Description: fmt.Sprintf("Version trigger for %[1]s_wo. Change it whenever %[1]s_wo changes so Terraform sends the new secrets to Ory. Has no effect unless %[1]s_wo is set.", s.name),
 			Optional:    true,
 			Validators: []validator.String{
 				stringvalidator.AlsoRequires(path.MatchRoot(s.name + "_wo")),
@@ -1110,9 +1111,8 @@ func (r *ProjectConfigResource) appendWriteOnlySMTPPatch(ctx context.Context, co
 	})
 }
 
-// writeOnlyIdentitySecrets lists the identity secret lists that have a
-// write-only (_wo) companion. name is the stored attribute the companion is
-// mutually exclusive with.
+// writeOnlyIdentitySecrets maps each identity secret list with a _wo companion
+// to its patch path.
 var writeOnlyIdentitySecrets = []struct {
 	name string
 	path string
@@ -1122,30 +1122,18 @@ var writeOnlyIdentitySecrets = []struct {
 	{name: "identity_secrets_default", path: "/services/identity/config/secrets/default"},
 }
 
-// appendWriteOnlyIdentitySecretsPatches appends a patch for each identity
-// secret list supplied via its write-only _wo attribute. Like
-// appendWriteOnlySMTPPatch, it reads the values from req.Config because
-// write-only values are nullified in the plan and state.
+// appendWriteOnlyIdentitySecretsPatches is appendWriteOnlySMTPPatch for the
+// identity secret _wo attributes.
 func (r *ProjectConfigResource) appendWriteOnlyIdentitySecretsPatches(ctx context.Context, config tfsdk.Config, patches []ory.JsonPatch, diags *diag.Diagnostics) []ory.JsonPatch {
 	for _, s := range writeOnlyIdentitySecrets {
 		var secretsWO types.List
 		diags.Append(config.GetAttribute(ctx, path.Root(s.name+"_wo"), &secretsWO)...)
-		if diags.HasError() {
-			return patches
-		}
-		if secretsWO.IsNull() || secretsWO.IsUnknown() {
+		if diags.HasError() || secretsWO.IsNull() || secretsWO.IsUnknown() {
 			continue
 		}
 		var secrets []string
 		diags.Append(secretsWO.ElementsAs(ctx, &secrets, false)...)
-		if diags.HasError() {
-			return patches
-		}
-		patches = append(patches, ory.JsonPatch{
-			Op:    "replace",
-			Path:  s.path,
-			Value: secrets,
-		})
+		patches = append(patches, ory.JsonPatch{Op: "replace", Path: s.path, Value: secrets})
 	}
 	return patches
 }
