@@ -1,0 +1,50 @@
+package samlprovider
+
+import (
+	"context"
+	"crypto/sha512"
+	"encoding/base64"
+	"encoding/hex"
+	"errors"
+	"testing"
+
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/stretchr/testify/assert"
+)
+
+func storageURL(content []byte) string {
+	sum := sha512.Sum512(content)
+	return "https://storage.googleapis.com/bucket/" + hex.EncodeToString(sum[:]) + ".xml"
+}
+
+func TestReadContentURL(t *testing.T) {
+	content := []byte("<EntityDescriptor/>")
+	inline := "base64://" + base64.StdEncoding.EncodeToString(content)
+	url := storageURL(content)
+	original := storageContentFetcher
+	t.Cleanup(func() { storageContentFetcher = original })
+	storageContentFetcher = func(_ context.Context, rawURL string) ([]byte, error) {
+		if rawURL != url {
+			return nil, errors.New("not found")
+		}
+		return content, nil
+	}
+	ctx := context.Background()
+
+	assert.Equal(t, types.StringValue(inline), readContentURL(ctx, url, types.StringNull()), "import reads the payload back inline")
+	assert.Equal(t, types.StringValue(inline), readContentURL(ctx, url, types.StringValue(inline)))
+	assert.Equal(t, types.StringValue("https://idp.example.com/new"), readContentURL(ctx, "https://idp.example.com/new", types.StringValue("https://idp.example.com/old")))
+	assert.Equal(t, types.StringNull(), readContentURL(ctx, "", types.StringNull()))
+
+	failing := storageURL([]byte("other"))
+	assert.Equal(t, types.StringValue(failing), readContentURL(ctx, failing, types.StringNull()), "a failed download keeps the URL")
+}
+
+func TestIsDefaultMapper(t *testing.T) {
+	content, _ := base64.StdEncoding.DecodeString(defaultMapperURL[len("base64://"):])
+
+	assert.True(t, isDefaultMapper(defaultMapperURL))
+	assert.True(t, isDefaultMapper(storageURL(content)))
+	assert.False(t, isDefaultMapper(storageURL([]byte("custom"))))
+	assert.False(t, isDefaultMapper(""))
+}
