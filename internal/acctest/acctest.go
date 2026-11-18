@@ -336,6 +336,15 @@ func RequireAutoLinkTests(t *testing.T) {
 	SkipIfFeatureDisabled(t, "ORY_AUTO_LINK_TESTS_ENABLED", "OIDC auto-link policy")
 }
 
+// RequireMemberTests skips the test if ORY_MEMBER_TESTS_ENABLED is not "true".
+// The Console API serves member and invite requests only to a signed-in Console
+// user, so these tests need ORY_WORKSPACE_API_KEY set to the access token from
+// `ory auth`. CI holds only a workspace API key and leaves the flag off.
+func RequireMemberTests(t *testing.T) {
+	t.Helper()
+	SkipIfFeatureDisabled(t, "ORY_MEMBER_TESTS_ENABLED", "workspace and project member")
+}
+
 // RunTest runs an acceptance test.
 // This is a convenience wrapper around resource.Test() that follows
 // provider conventions and can be extended in the future.
