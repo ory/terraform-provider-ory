@@ -29,8 +29,9 @@ The `provider_type` attribute determines which OAuth2/OIDC integration to use:
 | `netid` | NetID (supports FedCM, see below) |
 | `slack` | Slack |
 | `spotify` | Spotify |
-| `twitch` | Twitch |
 | `generic` | Generic OIDC provider (requires `issuer_url`) |
+
+A provider that has no type of its own, such as Twitch, uses `generic`. See [Twitch](#twitch).
 
 ~> **Note:** When using `provider_type = "generic"`, you **must** set `issuer_url` to the OIDC issuer URL. The provider uses OIDC discovery to find authorization and token endpoints automatically.
 
@@ -45,6 +46,30 @@ Apple uses a non-standard authentication flow. Instead of a static `client_secre
 Ory uses these to automatically generate the JWT `client_secret` required by Apple's OAuth2 flow. You do **not** need to set `client_secret` when using Apple-specific fields.
 
 Alternatively, you may provide a pre-generated `client_secret` directly if you prefer to manage the JWT yourself.
+
+## Twitch
+
+Twitch has no provider type of its own. Use `provider_type = "generic"` with the Twitch issuer URL, `https://id.twitch.tv/oauth2`.
+
+Twitch adds the `email` and `email_verified` claims to the ID token only when the authorization request asks for them. Request them with `requested_claims`. Twitch also requires the `user:read:email` scope for these claims. The Ory [Twitch guide](https://www.ory.com/docs/kratos/social-signin/twitch) explains how to register the app at Twitch.
+
+```hcl
+resource "ory_social_provider" "twitch" {
+  provider_id   = "twitch"
+  provider_type = "generic"
+  issuer_url    = "https://id.twitch.tv/oauth2"
+  client_id     = var.twitch_client_id
+  client_secret = var.twitch_client_secret
+  scope         = ["openid", "user:read:email"]
+
+  requested_claims = jsonencode({
+    id_token = {
+      email          = { essential = true }
+      email_verified = { essential = true }
+    }
+  })
+}
+```
 
 ## Ephemeral (Write-Only) Credentials
 
