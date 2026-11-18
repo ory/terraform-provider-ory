@@ -243,6 +243,16 @@ func TestBuildProviderConfig_Claims(t *testing.T) {
 		assert.JSONEq(t, `{"id_token":{"email":null}}`, string(payload), "requested_claims must be sent as an object")
 	})
 
+	t.Run("id_token", func(t *testing.T) {
+		plan := baseProviderPlan()
+		plan.ClaimsSource = types.StringValue("id_token")
+
+		config := r.buildProviderConfig(ctx, plan,
+			plan.ClientID, types.StringValue("test-client-secret"), types.StringNull())
+
+		assert.Equal(t, "id_token", config["claims_source"], "an explicit id_token must be sent, the API keeps it")
+	})
+
 	for name, value := range map[string]types.String{"null": types.StringNull(), "unknown": types.StringUnknown()} {
 		t.Run(name, func(t *testing.T) {
 			plan := baseProviderPlan()
