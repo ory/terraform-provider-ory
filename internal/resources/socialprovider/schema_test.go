@@ -33,7 +33,7 @@ func TestSchema_EnumAttributesRejectInvalidValues(t *testing.T) {
 
 	tests := map[string]struct{ valid, invalid []string }{
 		"subject_source": {valid: []string{"userinfo", "me", "oid"}, invalid: []string{"id_token", "ME", ""}},
-		"claims_source":  {valid: []string{"id_token", "userinfo"}, invalid: []string{"me", "USERINFO", ""}},
+		"claims_source":  {valid: []string{"id_token", "userinfo"}, invalid: []string{"me", "ID_TOKEN", "USERINFO", ""}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {

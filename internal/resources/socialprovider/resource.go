@@ -307,7 +307,7 @@ func (r *SocialProviderResource) Schema(ctx context.Context, req resource.Schema
 				Validators:  []validator.String{stringvalidator.OneOf("userinfo", "me", "oid")},
 			},
 			"claims_source": schema.StringAttribute{
-				Description: "Where Ory reads the user's claims. \"id_token\" (the API default) reads them from the ID token. \"userinfo\" calls the provider's userinfo endpoint. Ory reads this setting for the \"generic\" provider type and for built-in types that use the generic OpenID Connect flow, such as \"google\". Leave unset to use the Ory default (\"id_token\").",
+				Description: "Source of the claims for the \"generic\" provider type and for built-in types that use the generic OpenID Connect flow, such as \"google\" and \"line\". \"id_token\" (the Ory default) takes the claims from the ID token. \"userinfo\" calls the userinfo endpoint of the provider and takes the claims from the response. Do not set \"userinfo\" on an \"apple\" provider, because Apple has no userinfo endpoint and browser sign-in fails. Leave unset to use the Ory default (\"id_token\").",
 				Optional:    true,
 				Validators:  []validator.String{stringvalidator.OneOf("id_token", "userinfo")},
 			},

@@ -343,7 +343,9 @@ Ory links an identity to the provider by the subject. If you change `subject_sou
 | `id_token` (default) | Ory reads the claims from the ID token. |
 | `userinfo` | Ory calls the provider's userinfo endpoint and reads the claims from the response. |
 
-Ory reads `claims_source` for the `generic` provider type and for built-in types that use the generic OpenID Connect flow, such as `google`.
+Ory reads `claims_source` for the `generic` provider type and for built-in types that use the generic OpenID Connect flow, such as `google` and `line`. Do not set `userinfo` on an `apple` provider, because Apple has no userinfo endpoint and browser sign-in fails. A `linkedin_v2` provider always uses `userinfo`. Other provider types, such as `github` and `microsoft`, ignore the value.
+
+With `userinfo`, the mapper receives only the claims of the userinfo response. A claim that the provider puts only in the ID token is no longer available. Ory also reads `acr` and `amr` from the userinfo response, so `aal2_acr_values` and `aal2_amr_values` match only when the provider returns those claims there. Otherwise the session stays at AAL1.
 
 `requested_claims` is a JSON object that Ory sends to the provider as the OpenID Connect [`claims` request parameter](https://openid.net/specs/openid-connect-core-1_0.html#ClaimsParameter). Use it to request individual claims for the ID token or the userinfo response. Set it with `jsonencode()`. Terraform rejects a value that is not a JSON object at plan time, and the API rejects an entry that the parameter does not allow, such as `{ id_token = "email" }`.
 
