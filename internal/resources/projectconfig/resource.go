@@ -434,6 +434,11 @@ type ProjectConfigResourceModel struct {
 	SelfserviceFlowsLoginBruteForceProtectionIPExponentialBackoffMax             types.String `tfsdk:"selfservice_flows_login_brute_force_protection_ip_exponential_backoff_max"`
 	SelfserviceFlowsLoginBruteForceProtectionIPMaxFailures                       types.Int64  `tfsdk:"selfservice_flows_login_brute_force_protection_ip_max_failures"`
 	SelfserviceFlowsLoginBruteForceProtectionIPWindow                            types.String `tfsdk:"selfservice_flows_login_brute_force_protection_ip_window"`
+
+	// Auto-discovered (review naming before release)
+	AccountExperienceIndexRouteMode        types.String `tfsdk:"account_experience_index_route_mode"`
+	AccountExperienceIndexRouteRedirectURL types.String `tfsdk:"account_experience_index_route_redirect_url"`
+	AccountExperienceShowLastUsedMethod    types.Bool   `tfsdk:"account_experience_show_last_used_method"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---

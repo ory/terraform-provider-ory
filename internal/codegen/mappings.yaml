@@ -1696,3 +1696,23 @@ attributes:
     validators:
       regex: "^([0-9]+(ns|us|ms|s|m|h))+$"
       regex_message: "must be a Go duration such as '1s', '5m', or '1h30m'"
+
+  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  - name: account_experience_index_route_mode
+    go_field: AccountExperienceIndexRouteMode
+    type: string
+    openapi_property: account_experience_index_route_mode
+    description: "Controls what the project's domains serve at their index route \"/\""
+
+  - name: account_experience_index_route_redirect_url
+    go_field: AccountExperienceIndexRouteRedirectURL
+    type: string
+    openapi_property: account_experience_index_route_redirect_url
+    description: "The target of the index route redirect. An absolute http(s) URL, or a path on the project's domain such as `/ui/login`. Used when `account_experience_index_route_mode` is \"redirect\"."
+
+  - name: account_experience_show_last_used_method
+    go_field: AccountExperienceShowLastUsedMethod
+    type: bool
+    openapi_property: account_experience_show_last_used_method
+    description: "Whether to show a \"Last used\" badge on the social sign-in or SSO button a user chose last time on this device."
+

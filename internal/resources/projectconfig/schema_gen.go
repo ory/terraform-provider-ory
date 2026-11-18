@@ -1094,5 +1094,17 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 				),
 			},
 		},
+		"account_experience_index_route_mode": schema.StringAttribute{
+			Description: "Controls what the project's domains serve at their index route \"/\"",
+			Optional:    true,
+		},
+		"account_experience_index_route_redirect_url": schema.StringAttribute{
+			Description: "The target of the index route redirect. An absolute http(s) URL, or a path on the project's domain such as `/ui/login`. Used when `account_experience_index_route_mode` is \"redirect\".",
+			Optional:    true,
+		},
+		"account_experience_show_last_used_method": schema.BoolAttribute{
+			Description: "Whether to show a \"Last used\" badge on the social sign-in or SSO button a user chose last time on this device.",
+			Optional:    true,
+		},
 	}
 }
