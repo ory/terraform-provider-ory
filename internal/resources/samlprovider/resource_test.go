@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"math/big"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,9 +26,15 @@ import (
 // containing a fresh self-signed signing certificate, encoded as base64://.
 // Ory validates the metadata structure on PATCH, so a complete KeyDescriptor
 // is required even for tests.
+//
+// Every call uses a new EntityID. Ory rejects an EntityID that another
+// project already registered, and a deleted project keeps its registrations.
+// With a fixed EntityID, one provider left behind by a deleted project fails
+// every later run in every other project.
 func buildTestMetadataXML(t *testing.T) string {
 	t.Helper()
 
+	entityID := "https://idp-" + strings.ToLower(rand.Text()) + ".example.com"
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err, "failed to generate test signing key")
 	tmpl := &x509.Certificate{
@@ -42,7 +49,7 @@ func buildTestMetadataXML(t *testing.T) string {
 	certB64 := base64.StdEncoding.EncodeToString(certDER)
 
 	metadata := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
-<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata" entityID="https://idp.example.com">
+<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata" entityID="%s">
   <IDPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol" WantAuthnRequestsSigned="false">
     <KeyDescriptor use="signing">
       <KeyInfo xmlns="http://www.w3.org/2000/09/xmldsig#">
@@ -55,7 +62,7 @@ func buildTestMetadataXML(t *testing.T) string {
     <SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="https://idp.example.com/sso"/>
     <SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" Location="https://idp.example.com/sso"/>
   </IDPSSODescriptor>
-</EntityDescriptor>`, certB64)
+</EntityDescriptor>`, entityID, certB64)
 
 	// base64-encode the entire XML so the API accepts it as a `base64://` value.
 	return "base64://" + base64.StdEncoding.EncodeToString([]byte(metadata))
