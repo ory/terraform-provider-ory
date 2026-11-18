@@ -38,6 +38,10 @@ func TestReadContentURL(t *testing.T) {
 
 	failing := storageURL([]byte("other"))
 	assert.Equal(t, types.StringValue(failing), readContentURL(ctx, failing, types.StringNull()), "a failed download keeps the URL")
+	assert.Equal(t, types.StringValue(url), readContentURL(ctx, url, types.StringValue(url)), "a storage URL in state from an older import stays as is")
+	// The download returns content whose hash does not match the URL.
+	storageContentFetcher = func(context.Context, string) ([]byte, error) { return []byte("blocked"), nil }
+	assert.Equal(t, types.StringValue(url), readContentURL(ctx, url, types.StringNull()), "content that does not match the hash keeps the URL")
 }
 
 func TestIsDefaultMapper(t *testing.T) {

@@ -39,12 +39,16 @@ var storageContentFetcher = func(ctx context.Context, rawURL string) ([]byte, er
 
 // inlineStorageURL turns a storage URL the API reports for an uploaded
 // base64:// value back into base64://. It returns the URL unchanged when it is
-// not a storage URL or the download fails.
+// not a storage URL, the download fails, or the downloaded content does not
+// match the hash in the URL.
 func inlineStorageURL(ctx context.Context, apiValue string) string {
 	if _, ok := helpers.HashFromURL(apiValue); !ok {
 		return apiValue
 	}
 	content, err := storageContentFetcher(ctx, apiValue)
+	if err == nil && !helpers.URLHashMatchesContent(apiValue, content) {
+		err = errors.New("the downloaded content does not match the hash in the URL")
+	}
 	if err != nil {
 		tflog.Warn(ctx, "Keeping the storage URL in state", map[string]interface{}{"url": apiValue, "error": err.Error()})
 		return apiValue
@@ -54,7 +58,9 @@ func inlineStorageURL(ctx context.Context, apiValue string) string {
 
 // readContentURL maps an API value of mapper_url or raw_idp_metadata_xml to
 // state. A base64:// state value is kept because the API reports it as a
-// storage URL. A null state value (import) is read back inline.
+// storage URL. A null state value is read back inline. State is null after an
+// import, and for mapper_url on every refresh while the configuration leaves
+// it unset.
 func readContentURL(ctx context.Context, apiValue string, prior types.String) types.String {
 	switch {
 	case apiValue == "":

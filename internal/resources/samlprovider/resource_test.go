@@ -61,6 +61,18 @@ func buildTestMetadataXML(t *testing.T) string {
 	return "base64://" + base64.StdEncoding.EncodeToString([]byte(metadata))
 }
 
+// testMapperURL is a custom base64:// Jsonnet mapper. It must differ from the
+// default mapper, because import reads the default mapper back as unset.
+var testMapperURL = "base64://" + base64.StdEncoding.EncodeToString([]byte(`local claims = std.extVar('claims');
+{
+  identity: {
+    traits: {
+      email: claims.email,
+      name: claims.name,
+    },
+  },
+}`))
+
 func TestAccSAMLProviderResource_basic(t *testing.T) {
 	metadata := buildTestMetadataXML(t)
 
@@ -81,9 +93,11 @@ func TestAccSAMLProviderResource_basic(t *testing.T) {
 			{
 				Config: acctest.LoadTestConfig(t, "testdata/updated.tf.tmpl", map[string]string{
 					"MetadataXML": metadata,
+					"MapperURL":   testMapperURL,
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("ory_saml_provider.test", "label", "Test SAML Updated"),
+					resource.TestCheckResourceAttr("ory_saml_provider.test", "mapper_url", testMapperURL),
 					resource.TestCheckResourceAttr("ory_saml_provider.test", "audience_override_base_url", "https://audience.example.com"),
 					resource.TestCheckResourceAttr("ory_saml_provider.test", "proxy_saml_audience_override", "https://audience-override.example.com"),
 				),
@@ -93,11 +107,6 @@ func TestAccSAMLProviderResource_basic(t *testing.T) {
 				ImportState:       true,
 				ImportStateId:     "test-saml",
 				ImportStateVerify: true,
-				// raw_idp_metadata_xml is transformed to a GCS URL on read. When the user
-				// configured a base64:// value, we preserve it in state on refresh, but
-				// import starts from a blank state — the API's transformed URL is what
-				// import sees, and that's a legitimate value (also accepted by PATCH).
-				ImportStateVerifyIgnore: []string{"raw_idp_metadata_xml"},
 			},
 		},
 	})
@@ -135,11 +144,10 @@ func TestAccSAMLProviderResource_idpInitiatedLogin(t *testing.T) {
 				),
 			},
 			{
-				ResourceName:            "ory_saml_provider.test",
-				ImportState:             true,
-				ImportStateId:           "test-saml-idp-initiated",
-				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"raw_idp_metadata_xml"},
+				ResourceName:      "ory_saml_provider.test",
+				ImportState:       true,
+				ImportStateId:     "test-saml-idp-initiated",
+				ImportStateVerify: true,
 			},
 		},
 	})
