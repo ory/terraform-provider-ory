@@ -23,31 +23,37 @@ func TestSchema_HasNoDeprecatedAttributes(t *testing.T) {
 	assert.NotContains(t, resp.Schema.Attributes, "base_redirect_uri")
 }
 
-func TestSchema_SubjectSourceRejectsUnknownValue(t *testing.T) {
+// Each OneOf validator must match the enum the API enforces. The API rejects
+// other values with HTTP 400, and accepts "" with HTTP 200 but drops the key.
+func TestSchema_EnumAttributesRejectInvalidValues(t *testing.T) {
 	ctx := context.Background()
 	var resp resource.SchemaResponse
 	(&SocialProviderResource{}).Schema(ctx, resource.SchemaRequest{}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
-	attr, ok := resp.Schema.Attributes["subject_source"].(schema.StringAttribute)
-	require.True(t, ok)
-	assert.True(t, attr.Optional)
-	assert.False(t, attr.Computed)
-	for _, value := range []string{"userinfo", "me", "oid"} {
-		t.Run(value, func(t *testing.T) {
-			var validation validator.StringResponse
-			for _, v := range attr.Validators {
-				v.ValidateString(ctx, validator.StringRequest{ConfigValue: types.StringValue(value)}, &validation)
-			}
-			assert.False(t, validation.Diagnostics.HasError(), "%v", validation.Diagnostics)
-		})
+
+	tests := map[string]struct{ valid, invalid []string }{
+		"subject_source": {valid: []string{"userinfo", "me", "oid"}, invalid: []string{"id_token", "ME", ""}},
+		"claims_source":  {valid: []string{"id_token", "userinfo"}, invalid: []string{"me", "USERINFO", ""}},
 	}
-	for name, value := range map[string]string{"id_token": "id_token", "upper_case": "ME", "empty": ""} {
+	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			var validation validator.StringResponse
-			for _, v := range attr.Validators {
-				v.ValidateString(ctx, validator.StringRequest{ConfigValue: types.StringValue(value)}, &validation)
+			attr, ok := resp.Schema.Attributes[name].(schema.StringAttribute)
+			require.True(t, ok)
+			assert.True(t, attr.Optional)
+			assert.False(t, attr.Computed)
+			rejects := func(value string) bool {
+				var validation validator.StringResponse
+				for _, v := range attr.Validators {
+					v.ValidateString(ctx, validator.StringRequest{ConfigValue: types.StringValue(value)}, &validation)
+				}
+				return validation.Diagnostics.HasError()
 			}
-			require.True(t, validation.Diagnostics.HasError())
+			for _, value := range tt.valid {
+				assert.False(t, rejects(value), "%q must be accepted", value)
+			}
+			for _, value := range tt.invalid {
+				assert.True(t, rejects(value), "%q must be rejected", value)
+			}
 		})
 	}
 }

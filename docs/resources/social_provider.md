@@ -191,6 +191,25 @@ resource "ory_social_provider" "corporate_front_channel_logout" {
   front_channel_logout = true
 }
 
+# Generic OIDC provider that reads claims from the userinfo endpoint and
+# requests individual claims with the OpenID Connect claims parameter
+resource "ory_social_provider" "corporate_userinfo_claims" {
+  provider_id   = "corporate-claims"
+  provider_type = "generic"
+  client_id     = var.sso_client_id
+  client_secret = var.sso_client_secret
+  issuer_url    = "https://sso.example.com"
+  scope         = ["openid", "email", "profile"]
+
+  claims_source = "userinfo"
+  requested_claims = jsonencode({
+    userinfo = {
+      email          = { essential = true }
+      email_verified = { essential = true }
+    }
+  })
+}
+
 # GitHub
 resource "ory_social_provider" "github" {
   provider_id   = "github"
@@ -615,6 +634,8 @@ Only the Microsoft provider reads `subject_source`. Ory stores the value on othe
 
 The `me` source calls Microsoft Graph, so add the `https://graph.microsoft.com/User.Read` scope.
 
+The `oid` source needs the `profile` scope. Microsoft adds the `oid` claim to the ID token only when `profile` is requested, and without the claim the login fails.
+
 ```hcl
 resource "ory_social_provider" "microsoft" {
   provider_id   = "microsoft"
@@ -631,6 +652,43 @@ resource "ory_social_provider" "microsoft" {
 Ory links an identity to the provider by the subject. If you change `subject_source` on a provider that already has identities, those users no longer match their identity.
 
 ~> **Upgrading and importing:** If Ory holds a `subject_source` that your configuration does not declare, the first plan after an upgrade or an import shows `subject_source = "<value>" -> null`. Declare the value shown to keep the provider unchanged. A Microsoft provider saved in the Ory Console always holds a value, `userinfo` by default, and applying `"userinfo" -> null` changes nothing at login. Applying `"me" -> null` or `"oid" -> null` stops existing users from matching their identities. A create for a `provider_id` that already exists in Ory shows no such line and still clears the value, so import the provider first or declare its value.
+
+## Claims Source and Requested Claims
+
+`claims_source` selects where Ory reads the user's claims:
+
+| Value | Description |
+|-------|-------------|
+| `id_token` (default) | Ory reads the claims from the ID token. |
+| `userinfo` | Ory calls the provider's userinfo endpoint and reads the claims from the response. |
+
+Ory reads `claims_source` for the `generic` provider type and for built-in types that use the generic OpenID Connect flow, such as `google`.
+
+`requested_claims` is a JSON object that Ory sends to the provider as the OpenID Connect [`claims` request parameter](https://openid.net/specs/openid-connect-core-1_0.html#ClaimsParameter). Use it to request individual claims for the ID token or the userinfo response. Set it with `jsonencode()`. Terraform rejects a value that is not a JSON object at plan time, and the API rejects an entry that the parameter does not allow, such as `{ id_token = "email" }`.
+
+```hcl
+resource "ory_social_provider" "corporate_sso" {
+  provider_id   = "corporate"
+  provider_type = "generic"
+  client_id     = var.sso_client_id
+  client_secret = var.sso_client_secret
+  issuer_url    = "https://sso.example.com"
+  scope         = ["openid", "email", "profile"]
+
+  claims_source = "userinfo"
+  requested_claims = jsonencode({
+    userinfo = {
+      email          = { essential = true }
+      email_verified = { essential = true }
+      groups         = null
+    }
+  })
+}
+```
+
+Leave either attribute unset to use the Ory default: claims from the ID token and no `claims` parameter. Removing an attribute from the configuration clears it.
+
+~> **Upgrading and importing:** Earlier provider versions did not manage these attributes, and every update cleared values set outside Terraform. If Ory holds a value that your configuration does not declare, the first plan after an upgrade or an import shows the value changing to `null`. Declare the value to keep it. A create for a `provider_id` that already exists in Ory shows no such line and still clears both values, so import the provider first or declare its values.
 
 ## Important Behaviors
 
@@ -676,6 +734,7 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 - `apple_team_id` (String) Apple Developer Team ID (e.g., "KP76DQS54M"). Required when provider_type is "apple" and client_secret is not set.
 - `auth_url` (String) Custom authorization URL (for non-standard providers).
 - `auto_link` (Boolean) Enable automatic account linking for this provider. When true, if an identity with the same identifier (e.g., email) already exists, the social sign-in will automatically link to that identity instead of failing. Requires selfservice_methods_oidc_enable_auto_link_policy to be true in the project config (ory_project_config). This attribute is write-only — the API accepts it on create/update but does not return it on read, so Terraform preserves the value from state. On import, the value will not be populated. Removing this attribute from your configuration will automatically disable auto-linking server-side.
+- `claims_source` (String) Where Ory reads the user's claims. "id_token" (the API default) reads them from the ID token. "userinfo" calls the provider's userinfo endpoint. Ory reads this setting for the "generic" provider type and for built-in types that use the generic OpenID Connect flow, such as "google". Leave unset to use the Ory default ("id_token").
 - `client_id` (String) OAuth2 client ID from the provider. Exactly one of client_id or client_id_wo must be set.
 - `client_id_wo` (String, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of client_id (Terraform 1.11+ write-only argument): the value is sent to Ory but never stored in Terraform state or plan. Use this to source the client ID from an ephemeral resource such as a Vault secret. Because write-only values are not persisted, Terraform cannot detect when the value changes on its own — change client_id_wo_version to force the new value to be sent. Mutually exclusive with client_id.
 - `client_id_wo_version` (String) Version trigger for client_id_wo. Change this value whenever the write-only client_id_wo changes so Terraform sends the new value to Ory (write-only values are not stored in state and cannot be diffed). Has no effect unless client_id_wo is set.
@@ -691,6 +750,7 @@ The `provider_id` is the unique identifier you chose when creating the provider.
 - `organization_id` (String) Organization ID to associate this OIDC provider with (for B2B SSO). Set it to the ID of an existing `ory_organization`. The provider is then only offered to users of that organization, and the callback URL gains an `/organization/<organization_id>` segment. Leave it unset for a normal social sign-in provider that every user can use. Requires a B2B plan.
 - `pkce` (String) PKCE (Proof Key for Code Exchange) behavior for the OAuth2 authorization code flow. "auto" (default) enables PKCE when the upstream provider advertises support via OIDC discovery; "force" always sends PKCE (use only with providers known to support it); "never" disables PKCE.
 - `project_id` (String) Project ID. If not set, uses provider's project_id.
+- `requested_claims` (String) JSON object that Ory sends to the provider as the OpenID Connect "claims" request parameter, for example jsonencode({ id_token = { email = null } }). It requests individual claims for the ID token or the userinfo response. Leave unset to send no claims parameter.
 - `scope` (List of String) OAuth2 scopes to request.
 - `subject_source` (String) Source of the subject identifier for a Microsoft provider. "userinfo" (the API default) takes the subject from the "sub" claim of the ID token. "me" takes it from the "id" field of https://graph.microsoft.com/v1.0/me. "oid" takes the Object ID. Changing this value on a provider that already has identities stops those users from matching their existing identity. Leave unset to use the Ory default ("userinfo").
 - `tenant` (String) Tenant ID (for Microsoft/Azure providers).

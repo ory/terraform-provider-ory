@@ -315,6 +315,8 @@ Only the Microsoft provider reads `subject_source`. Ory stores the value on othe
 
 The `me` source calls Microsoft Graph, so add the `https://graph.microsoft.com/User.Read` scope.
 
+The `oid` source needs the `profile` scope. Microsoft adds the `oid` claim to the ID token only when `profile` is requested, and without the claim the login fails.
+
 ```hcl
 resource "ory_social_provider" "microsoft" {
   provider_id   = "microsoft"
@@ -331,6 +333,43 @@ resource "ory_social_provider" "microsoft" {
 Ory links an identity to the provider by the subject. If you change `subject_source` on a provider that already has identities, those users no longer match their identity.
 
 ~> **Upgrading and importing:** If Ory holds a `subject_source` that your configuration does not declare, the first plan after an upgrade or an import shows `subject_source = "<value>" -> null`. Declare the value shown to keep the provider unchanged. A Microsoft provider saved in the Ory Console always holds a value, `userinfo` by default, and applying `"userinfo" -> null` changes nothing at login. Applying `"me" -> null` or `"oid" -> null` stops existing users from matching their identities. A create for a `provider_id` that already exists in Ory shows no such line and still clears the value, so import the provider first or declare its value.
+
+## Claims Source and Requested Claims
+
+`claims_source` selects where Ory reads the user's claims:
+
+| Value | Description |
+|-------|-------------|
+| `id_token` (default) | Ory reads the claims from the ID token. |
+| `userinfo` | Ory calls the provider's userinfo endpoint and reads the claims from the response. |
+
+Ory reads `claims_source` for the `generic` provider type and for built-in types that use the generic OpenID Connect flow, such as `google`.
+
+`requested_claims` is a JSON object that Ory sends to the provider as the OpenID Connect [`claims` request parameter](https://openid.net/specs/openid-connect-core-1_0.html#ClaimsParameter). Use it to request individual claims for the ID token or the userinfo response. Set it with `jsonencode()`. Terraform rejects a value that is not a JSON object at plan time, and the API rejects an entry that the parameter does not allow, such as `{ id_token = "email" }`.
+
+```hcl
+resource "ory_social_provider" "corporate_sso" {
+  provider_id   = "corporate"
+  provider_type = "generic"
+  client_id     = var.sso_client_id
+  client_secret = var.sso_client_secret
+  issuer_url    = "https://sso.example.com"
+  scope         = ["openid", "email", "profile"]
+
+  claims_source = "userinfo"
+  requested_claims = jsonencode({
+    userinfo = {
+      email          = { essential = true }
+      email_verified = { essential = true }
+      groups         = null
+    }
+  })
+}
+```
+
+Leave either attribute unset to use the Ory default: claims from the ID token and no `claims` parameter. Removing an attribute from the configuration clears it.
+
+~> **Upgrading and importing:** Earlier provider versions did not manage these attributes, and every update cleared values set outside Terraform. If Ory holds a value that your configuration does not declare, the first plan after an upgrade or an import shows the value changing to `null`. Declare the value to keep it. A create for a `provider_id` that already exists in Ory shows no such line and still clears both values, so import the provider first or declare its values.
 
 ## Important Behaviors
 
