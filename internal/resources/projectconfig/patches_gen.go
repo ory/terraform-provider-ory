@@ -177,6 +177,8 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.SelfserviceFlowsLoginBruteForceProtectionIPExponentialBackoffInitial, "/services/identity/config/selfservice/flows/login/brute_force_protection/ip/exponential_backoff/initial"},
 		{&plan.SelfserviceFlowsLoginBruteForceProtectionIPExponentialBackoffMax, "/services/identity/config/selfservice/flows/login/brute_force_protection/ip/exponential_backoff/max"},
 		{&plan.SelfserviceFlowsLoginBruteForceProtectionIPWindow, "/services/identity/config/selfservice/flows/login/brute_force_protection/ip/window"},
+		{&plan.AccountExperienceIndexRouteMode, "/services/account_experience/config/index_route/mode"},
+		{&plan.AccountExperienceIndexRouteRedirectURL, "/services/account_experience/config/index_route/redirect_url"},
 	}
 }
 
@@ -248,6 +250,7 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 		{&plan.FeatureFlagsEnforceIdentitySchemaGuards, "/services/identity/config/feature_flags/enforce_identity_schema_guards", nil},
 		{&plan.PreviewEnableNativeSAMLEngine, "/services/identity/config/preview/enable_native_saml_engine", nil},
 		{&plan.SelfserviceFlowsLoginBruteForceProtectionEnabled, "/services/identity/config/selfservice/flows/login/brute_force_protection/enabled", nil},
+		{&plan.AccountExperienceShowLastUsedMethod, "/services/account_experience/config/show_last_used_method", nil},
 	}
 }
 

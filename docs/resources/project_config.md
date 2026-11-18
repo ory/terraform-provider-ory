@@ -154,6 +154,12 @@ resource "ory_project_config" "secure" {
   #   button_primary_background_default = "#0066ff"
   # }
 
+  # Account Experience index route and "Last used" sign-in badge.
+  # Without an index route mode, the project domain answers "/" with a 404.
+  account_experience_index_route_mode         = "redirect"
+  account_experience_index_route_redirect_url = "/ui/login"
+  account_experience_show_last_used_method    = true
+
   # OAuth2 Token Lifespans
   oauth2_ttl_access_token          = "1h0m0s"
   oauth2_ttl_refresh_token         = "720h0m0s"
@@ -723,6 +729,22 @@ Valid tokens are the fields of the [`AccountExperienceColors`](https://github.co
 
 Set a theme map to `{}` to reset all colors to the defaults.
 
+## Account Experience Index Route
+
+By default, the project domain answers `/` with a 404 error. To redirect visitors who open `/`, set `account_experience_index_route_mode` to one of these values:
+
+- `default_browser_return_url` redirects to `selfservice_default_browser_return_url`.
+- `redirect` redirects to `account_experience_index_route_redirect_url`. The target must be an absolute `http` or `https` URL, or a path on the project domain such as `/ui/login`.
+
+```hcl
+resource "ory_project_config" "main" {
+  account_experience_index_route_mode         = "redirect"
+  account_experience_index_route_redirect_url = "/ui/login"
+}
+```
+
+The API rejects the `redirect` mode without a redirect URL. To restore the 404 response, set the mode to `""`. A change can take up to one minute to reach the project domain.
+
 ## Clearing Return URLs
 
 To explicitly clear `default_return_url` and `allowed_return_urls` (e.g., for native-only flows with no browser redirects), set them to empty values:
@@ -761,10 +783,13 @@ This resource covers most simple (scalar and list) project configuration propert
 - `account_experience_favicon_light` (String) Favicon for the hosted Account Experience UI (light theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
 - `account_experience_hide_ory_branding` (Boolean) Whether to hide the Ory branding badge on the account experience.
 - `account_experience_hide_registration_link` (Boolean) Whether to hide the registration link on the account experience login card.
+- `account_experience_index_route_mode` (String) What the project's domains serve at the index route `/`. An empty string, the default, answers `/` with a 404 error. `default_browser_return_url` redirects to `selfservice_default_browser_return_url`. `redirect` redirects to `account_experience_index_route_redirect_url`.
+- `account_experience_index_route_redirect_url` (String) The target of the index route redirect: an absolute `http` or `https` URL, or a path on the project's domain such as `/ui/login`. Required when `account_experience_index_route_mode` is `redirect`.
 - `account_experience_locale_behavior` (String) Locale behavior: 'respect_accept_language' or 'force_default'.
 - `account_experience_logo_dark` (String) Logo for the hosted Account Experience UI (dark theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
 - `account_experience_logo_light` (String) Logo for the hosted Account Experience UI (light theme). Must be an inline data URI (e.g. data:image/png;base64,...) or a storage URL previously returned by the API. The API uploads the image and serves it from a content-addressed storage URL; the provider matches that URL against the data URI by content hash to detect drift. Set to an empty string to remove.
 - `account_experience_privacy_policy_url` (String) Holds the URL to the account experience's Privacy Policy page.
+- `account_experience_show_last_used_method` (Boolean) Whether the Account Experience shows a "Last used" badge on the social sign-in or SSO button that a user chose the last time they signed in on the same device. Off by default.
 - `account_experience_terms_of_service_url` (String) Holds the URL to the account experience's Terms of Service page.
 - `account_experience_theme_variables_dark` (Map of String) Theme color variables for the hosted Account Experience UI (dark theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset.
 - `account_experience_theme_variables_light` (Map of String) Theme color variables for the hosted Account Experience UI (light theme). Map of color tokens (e.g. ax_background_default, brand_500, button_primary_background_default) to CSS color values. Keys not recognized by the API are discarded. Set to an empty map to reset.

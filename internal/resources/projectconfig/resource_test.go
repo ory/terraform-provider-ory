@@ -630,6 +630,45 @@ func TestAccProjectConfigResource_accountExperience(t *testing.T) {
 	})
 }
 
+// TestAccProjectConfigResource_accountExperienceIndexRoute covers the index
+// route and the "Last used" badge toggle from spec v1.22.94. Every apply step
+// also proves that a refresh and a new plan show no diff. The last step
+// restores the server defaults: an empty mode and URL, which the API reports
+// back as empty strings, and the badge off. Destroy leaves the config in place,
+// so this keeps the shared project answering "/" with a 404.
+func TestAccProjectConfigResource_accountExperienceIndexRoute(t *testing.T) {
+	apply := func(mode, redirectURL, showLastUsedMethod string) resource.TestStep {
+		return resource.TestStep{
+			Config: acctest.LoadTestConfig(t, "testdata/account_experience_index_route.tf.tmpl", map[string]string{
+				"Mode": mode, "RedirectURL": redirectURL, "ShowLastUsedMethod": showLastUsedMethod,
+			}),
+			Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_index_route_mode", mode),
+				resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_index_route_redirect_url", redirectURL),
+				resource.TestCheckResourceAttr("ory_project_config.test", "account_experience_show_last_used_method", showLastUsedMethod),
+			),
+		}
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			apply("redirect", "/ui/login", "true"),
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: selectedImportID("account_experience_index_route_mode," +
+					"account_experience_index_route_redirect_url,account_experience_show_last_used_method"),
+				ImportStateVerifyIgnore: []string{"cors_enabled", "selfservice_methods_password_config_min_password_length", "smtp_connection_uri"},
+			},
+			apply("default_browser_return_url", "https://www.ory.sh/", "false"),
+			apply("", "", "false"),
+		},
+	})
+}
+
 func TestAccProjectConfigResource_adminCORS(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },

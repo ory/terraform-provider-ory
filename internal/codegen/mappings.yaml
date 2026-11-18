@@ -1696,3 +1696,28 @@ attributes:
     validators:
       regex: "^([0-9]+(ns|us|ms|s|m|h))+$"
       regex_message: "must be a Go duration such as '1s', '5m', or '1h30m'"
+
+  # --- Added from spec v1.22.94 (ory/sdk spec/client), 2026-11-18 ---
+  # Verified against the live API: a fresh project reports index_route as
+  # {"mode": "", "redirect_url": ""}, so empty strings round-trip instead of
+  # being pruned. The API rejects a mode of "redirect" without a redirect_url
+  # (HTTP 400) and validates the URL itself.
+  - name: account_experience_index_route_mode
+    go_field: AccountExperienceIndexRouteMode
+    type: string
+    openapi_property: account_experience_index_route_mode
+    description: "What the project's domains serve at the index route `/`. An empty string, the default, answers `/` with a 404 error. `default_browser_return_url` redirects to `selfservice_default_browser_return_url`. `redirect` redirects to `account_experience_index_route_redirect_url`."
+    validators:
+      one_of: ["", "default_browser_return_url", "redirect"]
+
+  - name: account_experience_index_route_redirect_url
+    go_field: AccountExperienceIndexRouteRedirectURL
+    type: string
+    openapi_property: account_experience_index_route_redirect_url
+    description: "The target of the index route redirect: an absolute `http` or `https` URL, or a path on the project's domain such as `/ui/login`. Required when `account_experience_index_route_mode` is `redirect`."
+
+  - name: account_experience_show_last_used_method
+    go_field: AccountExperienceShowLastUsedMethod
+    type: bool
+    openapi_property: account_experience_show_last_used_method
+    description: "Whether the Account Experience shows a \"Last used\" badge on the social sign-in or SSO button that a user chose the last time they signed in on the same device. Off by default."

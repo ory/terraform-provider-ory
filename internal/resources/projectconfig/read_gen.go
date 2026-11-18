@@ -520,6 +520,8 @@ func account_experienceStringReadEntries(state *ProjectConfigResourceModel) []St
 		{&state.AccountExperienceContactURL, []string{"contact_url"}, false, false, false},
 		{&state.AccountExperiencePrivacyPolicyURL, []string{"privacy_policy_url"}, false, false, false},
 		{&state.AccountExperienceTermsOfServiceURL, []string{"terms_of_service_url"}, false, false, false},
+		{&state.AccountExperienceIndexRouteMode, []string{"index_route", "mode"}, false, false, false},
+		{&state.AccountExperienceIndexRouteRedirectURL, []string{"index_route", "redirect_url"}, false, false, false},
 	}
 }
 
@@ -528,6 +530,7 @@ func account_experienceBoolReadEntries(state *ProjectConfigResourceModel) []Bool
 		{&state.EnableAXV2, []string{"enabled"}, false, nil},
 		{&state.AccountExperienceHideOryBranding, []string{"hide_ory_branding"}, false, nil},
 		{&state.AccountExperienceHideRegistrationLink, []string{"hide_registration_link"}, false, nil},
+		{&state.AccountExperienceShowLastUsedMethod, []string{"show_last_used_method"}, false, nil},
 	}
 }
 

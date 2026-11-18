@@ -1094,5 +1094,20 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 				),
 			},
 		},
+		"account_experience_index_route_mode": schema.StringAttribute{
+			Description: "What the project's domains serve at the index route `/`. An empty string, the default, answers `/` with a 404 error. `default_browser_return_url` redirects to `selfservice_default_browser_return_url`. `redirect` redirects to `account_experience_index_route_redirect_url`.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.OneOf("", "default_browser_return_url", "redirect"),
+			},
+		},
+		"account_experience_index_route_redirect_url": schema.StringAttribute{
+			Description: "The target of the index route redirect: an absolute `http` or `https` URL, or a path on the project's domain such as `/ui/login`. Required when `account_experience_index_route_mode` is `redirect`.",
+			Optional:    true,
+		},
+		"account_experience_show_last_used_method": schema.BoolAttribute{
+			Description: "Whether the Account Experience shows a \"Last used\" badge on the social sign-in or SSO button that a user chose the last time they signed in on the same device. Off by default.",
+			Optional:    true,
+		},
 	}
 }

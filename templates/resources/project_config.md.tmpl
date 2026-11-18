@@ -292,6 +292,22 @@ Valid tokens are the fields of the [`AccountExperienceColors`](https://github.co
 
 Set a theme map to `{}` to reset all colors to the defaults.
 
+## Account Experience Index Route
+
+By default, the project domain answers `/` with a 404 error. To redirect visitors who open `/`, set `account_experience_index_route_mode` to one of these values:
+
+- `default_browser_return_url` redirects to `selfservice_default_browser_return_url`.
+- `redirect` redirects to `account_experience_index_route_redirect_url`. The target must be an absolute `http` or `https` URL, or a path on the project domain such as `/ui/login`.
+
+```hcl
+resource "ory_project_config" "main" {
+  account_experience_index_route_mode         = "redirect"
+  account_experience_index_route_redirect_url = "/ui/login"
+}
+```
+
+The API rejects the `redirect` mode without a redirect URL. To restore the 404 response, set the mode to `""`. A change can take up to one minute to reach the project domain.
+
 ## Clearing Return URLs
 
 To explicitly clear `default_return_url` and `allowed_return_urls` (e.g., for native-only flows with no browser redirects), set them to empty values:
