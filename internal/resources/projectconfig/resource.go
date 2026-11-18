@@ -435,7 +435,7 @@ type ProjectConfigResourceModel struct {
 	SelfserviceFlowsLoginBruteForceProtectionIPMaxFailures                       types.Int64  `tfsdk:"selfservice_flows_login_brute_force_protection_ip_max_failures"`
 	SelfserviceFlowsLoginBruteForceProtectionIPWindow                            types.String `tfsdk:"selfservice_flows_login_brute_force_protection_ip_window"`
 
-	// Auto-discovered (review naming before release)
+	// Added from spec v1.22.94
 	AccountExperienceIndexRouteMode        types.String `tfsdk:"account_experience_index_route_mode"`
 	AccountExperienceIndexRouteRedirectURL types.String `tfsdk:"account_experience_index_route_redirect_url"`
 	AccountExperienceShowLastUsedMethod    types.Bool   `tfsdk:"account_experience_show_last_used_method"`

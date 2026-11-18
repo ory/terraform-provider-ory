@@ -121,6 +121,12 @@ resource "ory_project_config" "secure" {
   #   button_primary_background_default = "#0066ff"
   # }
 
+  # Account Experience index route and "Last used" sign-in badge.
+  # Without an index route mode, the project domain answers "/" with a 404.
+  account_experience_index_route_mode         = "redirect"
+  account_experience_index_route_redirect_url = "/ui/login"
+  account_experience_show_last_used_method    = true
+
   # OAuth2 Token Lifespans
   oauth2_ttl_access_token          = "1h0m0s"
   oauth2_ttl_refresh_token         = "720h0m0s"
