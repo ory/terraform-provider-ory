@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -39,6 +40,14 @@ func TestReadContentURL(t *testing.T) {
 	failing := storageURL([]byte("other"))
 	assert.Equal(t, types.StringValue(failing), readContentURL(ctx, failing, types.StringNull()), "a failed download keeps the URL")
 	assert.Equal(t, types.StringValue(url), readContentURL(ctx, url, types.StringValue(url)), "a storage URL in state from an older import stays as is")
+	unpadded := strings.TrimRight(inline, "=")
+	assert.Equal(t, types.StringValue(unpadded), readContentURL(ctx, url, types.StringValue(unpadded)), "unpadded base64 is kept")
+
+	changed := []byte("<EntityDescriptor changed/>")
+	changedURL := storageURL(changed)
+	storageContentFetcher = func(context.Context, string) ([]byte, error) { return changed, nil }
+	assert.Equal(t, types.StringValue("base64://"+base64.StdEncoding.EncodeToString(changed)), readContentURL(ctx, changedURL, types.StringValue(inline)), "content changed outside Terraform is read back")
+
 	// The download returns content whose hash does not match the URL.
 	storageContentFetcher = func(context.Context, string) ([]byte, error) { return []byte("blocked"), nil }
 	assert.Equal(t, types.StringValue(url), readContentURL(ctx, url, types.StringNull()), "content that does not match the hash keeps the URL")

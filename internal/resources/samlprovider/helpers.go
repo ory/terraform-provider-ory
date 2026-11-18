@@ -57,21 +57,36 @@ func inlineStorageURL(ctx context.Context, apiValue string) string {
 }
 
 // readContentURL maps an API value of mapper_url or raw_idp_metadata_xml to
-// state. A base64:// state value is kept because the API reports it as a
-// storage URL. A null state value is read back inline. State is null after an
-// import, and for mapper_url on every refresh while the configuration leaves
-// it unset.
+// state. A base64:// state value is kept while the hash in the storage URL
+// matches its payload. Otherwise, and when state is null, the API value is read
+// back inline. State is null after an import, and for mapper_url on every
+// refresh while the configuration leaves it unset.
 func readContentURL(ctx context.Context, apiValue string, prior types.String) types.String {
 	switch {
-	case apiValue == "":
+	case apiValue == "" || apiValue == prior.ValueString():
 		return prior
 	case prior.IsNull():
 		return types.StringValue(inlineStorageURL(ctx, apiValue))
 	case strings.HasPrefix(prior.ValueString(), "base64://"):
-		return prior
+		payload, ok := decodeBase64Content(prior.ValueString())
+		if !ok || helpers.URLHashMatchesContent(apiValue, payload) {
+			return prior
+		}
+		return types.StringValue(inlineStorageURL(ctx, apiValue))
 	default:
 		return types.StringValue(apiValue)
 	}
+}
+
+// decodeBase64Content decodes a base64:// value. The Ory API accepts padded
+// and unpadded base64.
+func decodeBase64Content(value string) ([]byte, bool) {
+	encoded := strings.TrimPrefix(value, "base64://")
+	if payload, err := base64.StdEncoding.DecodeString(encoded); err == nil {
+		return payload, true
+	}
+	payload, err := base64.RawStdEncoding.DecodeString(encoded)
+	return payload, err == nil
 }
 
 // isDefaultMapper reports whether the API value is the mapper Create sends
