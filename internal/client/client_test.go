@@ -1358,3 +1358,40 @@ func TestPatchProjectWith_NoOperationsSkipsPatch(t *testing.T) {
 	assert.Equal(t, 1, builds)
 	assert.Equal(t, 0, patches, "no PATCH may be sent when the builder returns no operations")
 }
+
+// A conflict proves the cached project is stale. When the re-read shows there
+// is nothing left to change, no PATCH response refreshes the cache, so the
+// stale copy must be dropped. Otherwise a later create of the same hook starts
+// from it and fails with "Hook Already Exists".
+func TestPatchProjectWith_ConflictDropsStaleCache(t *testing.T) {
+	patches := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodPatch {
+			patches++
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(`{"error":{"code":409,"status":"Conflict","reason":"revision ID mismatch"}}`))
+			return
+		}
+		// Another writer already removed "mine".
+		_, _ = w.Write([]byte(projectWithHooksJSON("rev-b", "other")))
+	}))
+	defer srv.Close()
+
+	client, err := NewOryClient(OryClientConfig{
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   srv.URL,
+	})
+	require.NoError(t, err)
+	var cached ory.Project
+	require.NoError(t, cached.UnmarshalJSON([]byte(projectWithHooksJSON("rev-a", "mine"))))
+	client.cachedProjects.Store("proj-1", &cached)
+
+	builds := 0
+	result, err := client.PatchProjectWith(context.Background(), "proj-1", removeHookBuilder("mine", &builds))
+	require.NoError(t, err)
+	assert.Nil(t, result)
+	assert.Equal(t, 2, builds)
+	assert.Equal(t, 1, patches, "only the attempt built from the stale cache may send a PATCH")
+	assert.Nil(t, client.GetCachedProject("proj-1"), "the rejected snapshot must not stay in the cache")
+}

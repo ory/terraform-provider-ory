@@ -952,7 +952,10 @@ func (c *OryClient) PatchProjectWith(ctx context.Context, projectID string, buil
 			return nil, lastErr
 		}
 		// Another writer created a newer revision after the project was
-		// read. Re-read it and rebuild the operations against it.
+		// read. Drop the cached copy, which is now known to be stale, so a
+		// later operation does not start from it when this one ends without
+		// a PATCH. Then re-read the project and rebuild the operations.
+		c.cachedProjects.Delete(projectID)
 		project = nil
 	}
 	return nil, lastErr

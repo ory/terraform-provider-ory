@@ -336,6 +336,8 @@ resource "ory_action" "welcome_email" {
 }
 ```
 
+Use `create_before_destroy` only when the old and new webhooks differ in `url` or in the hooks array they use. The hooks array depends on `project_id`, `flow`, and `timing`. For `after` hooks on the `login`, `registration`, and `settings` flows, it also depends on `auth_method`. If the URL and the hooks array stay the same, the create finds the old webhook and fails with `Hook Already Exists`. A change to `auth_method` on a `before` hook is an example.
+
 ## Import
 
 Actions are imported with the HTTP method included in the import ID. The
