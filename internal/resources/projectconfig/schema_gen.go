@@ -1110,21 +1110,24 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 		},
 		"oauth2_client_id_metadata_document_allowed_url_patterns": schema.ListAttribute{
-			Description: "Client ID metadata document URLs Ory Hydra accepts, for example \"https://app.example.com/oauth/client.json\"",
+			Description: "Client ID metadata document URLs that Ory Hydra accepts in `allowlist` mode, for example `https://app.example.com/oauth/client.json`. Each entry is an `https` URL with a path and without a query or fragment. The host and the path match exactly, except that the last path segment can be `*` for one segment or `**` for one or more.",
 			Optional:    true,
 			ElementType: types.StringType,
 		},
 		"oauth2_client_id_metadata_document_audience": schema.ListAttribute{
-			Description: "Audiences an OAuth2 client resolved from a client ID metadata document may request, for example the URL of an MCP server.",
+			Description: "Audiences that an OAuth2 client resolved from a client ID metadata document can request, for example the URL of an MCP server.",
 			Optional:    true,
 			ElementType: types.StringType,
 		},
 		"oauth2_client_id_metadata_document_mode": schema.StringAttribute{
-			Description: "Which client ID metadata document URLs Ory Hydra accepts as OAuth2 client IDs",
+			Description: "Which client ID metadata document URLs Ory Hydra accepts as OAuth2 client IDs. `disabled`, the default, accepts none. `allowlist` accepts the URLs that match `oauth2_client_id_metadata_document_allowed_url_patterns` and needs at least one pattern. `open` accepts any valid URL.",
 			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.OneOf("disabled", "allowlist", "open"),
+			},
 		},
 		"oauth2_client_id_metadata_document_scope": schema.ListAttribute{
-			Description: "Scopes an OAuth2 client resolved from a client ID metadata document may request. Leave empty to keep Ory Hydra's default, \"openid\" and \"offline_access\".",
+			Description: "Scopes that an OAuth2 client resolved from a client ID metadata document can request. When the list is empty, Ory Hydra allows `openid` and `offline_access`.",
 			Optional:    true,
 			ElementType: types.StringType,
 		},

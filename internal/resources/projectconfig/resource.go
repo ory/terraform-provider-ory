@@ -440,7 +440,7 @@ type ProjectConfigResourceModel struct {
 	AccountExperienceIndexRouteRedirectURL types.String `tfsdk:"account_experience_index_route_redirect_url"`
 	AccountExperienceShowLastUsedMethod    types.Bool   `tfsdk:"account_experience_show_last_used_method"`
 
-	// Auto-discovered (review naming before release)
+	// Added from spec v1.22.95
 	OAuth2ClientIDMetadataDocumentAllowedURLPatterns types.List   `tfsdk:"oauth2_client_id_metadata_document_allowed_url_patterns"`
 	OAuth2ClientIDMetadataDocumentAudience           types.List   `tfsdk:"oauth2_client_id_metadata_document_audience"`
 	OAuth2ClientIDMetadataDocumentMode               types.String `tfsdk:"oauth2_client_id_metadata_document_mode"`

@@ -1722,28 +1722,34 @@ attributes:
     openapi_property: account_experience_show_last_used_method
     description: "Whether the Account Experience shows a \"Last used\" badge on the social sign-in or SSO button that a user chose the last time they signed in on the same device. Off by default."
 
-  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  # --- Added from spec v1.22.95 (ory/sdk spec/client), 2026-11-19 ---
+  # Verified against the live API: a fresh project has no
+  # oauth2.client_id_metadata_document block, and empty values are pruned.
+  # The API validates every pattern itself and rejects allowlist mode without
+  # a pattern (HTTP 400). Any change that turns the feature on or sets a list
+  # needs the Enterprise hydra_client_id_metadata_document feature.
   - name: oauth2_client_id_metadata_document_allowed_url_patterns
     go_field: OAuth2ClientIDMetadataDocumentAllowedURLPatterns
     type: list_string
     openapi_property: hydra_oauth2_client_id_metadata_document_allowed_url_patterns
-    description: "Client ID metadata document URLs Ory Hydra accepts, for example \"https://app.example.com/oauth/client.json\""
+    description: "Client ID metadata document URLs that Ory Hydra accepts in `allowlist` mode, for example `https://app.example.com/oauth/client.json`. Each entry is an `https` URL with a path and without a query or fragment. The host and the path match exactly, except that the last path segment can be `*` for one segment or `**` for one or more."
 
   - name: oauth2_client_id_metadata_document_audience
     go_field: OAuth2ClientIDMetadataDocumentAudience
     type: list_string
     openapi_property: hydra_oauth2_client_id_metadata_document_audience
-    description: "Audiences an OAuth2 client resolved from a client ID metadata document may request, for example the URL of an MCP server."
+    description: "Audiences that an OAuth2 client resolved from a client ID metadata document can request, for example the URL of an MCP server."
 
   - name: oauth2_client_id_metadata_document_mode
     go_field: OAuth2ClientIDMetadataDocumentMode
     type: string
     openapi_property: hydra_oauth2_client_id_metadata_document_mode
-    description: "Which client ID metadata document URLs Ory Hydra accepts as OAuth2 client IDs"
+    description: "Which client ID metadata document URLs Ory Hydra accepts as OAuth2 client IDs. `disabled`, the default, accepts none. `allowlist` accepts the URLs that match `oauth2_client_id_metadata_document_allowed_url_patterns` and needs at least one pattern. `open` accepts any valid URL."
+    validators:
+      one_of: ["disabled", "allowlist", "open"]
 
   - name: oauth2_client_id_metadata_document_scope
     go_field: OAuth2ClientIDMetadataDocumentScope
     type: list_string
     openapi_property: hydra_oauth2_client_id_metadata_document_scope
-    description: "Scopes an OAuth2 client resolved from a client ID metadata document may request. Leave empty to keep Ory Hydra's default, \"openid\" and \"offline_access\"."
-
+    description: "Scopes that an OAuth2 client resolved from a client ID metadata document can request. When the list is empty, Ory Hydra allows `openid` and `offline_access`."
