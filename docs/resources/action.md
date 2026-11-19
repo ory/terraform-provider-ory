@@ -317,6 +317,25 @@ The `method` attribute specifies the HTTP method used when calling the webhook:
 | `PATCH` | HTTP PATCH request |
 | `DELETE` | HTTP DELETE request |
 
+## Updating an Action
+
+Terraform updates an action in place when you change `body`, `method`, `response_ignore`, `response_parse`, `can_interrupt`, or a `webhook_auth_*` attribute. The webhook keeps its position in the hooks array.
+
+A change to `project_id`, `flow`, `timing`, `auth_method`, or `url` replaces the action. By default, Terraform deletes the old webhook before it creates the new one, so the flow runs without the webhook for a short time. The new webhook goes to the end of the hooks array. To create the new webhook before Terraform deletes the old one, set `create_before_destroy`:
+
+```hcl
+resource "ory_action" "welcome_email" {
+  flow        = "registration"
+  timing      = "after"
+  auth_method = "password"
+  url         = "https://api.example.com/webhooks/welcome"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+```
+
 ## Import
 
 Actions are imported with the HTTP method included in the import ID. The

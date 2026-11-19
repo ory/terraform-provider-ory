@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	ory "github.com/ory/client-go"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ory/terraform-provider-ory/internal/acctest"
 	"github.com/ory/terraform-provider-ory/internal/testutil"
@@ -327,6 +329,132 @@ func TestAccActionResource_basic(t *testing.T) {
 	})
 }
 
+// TestAccActionResource_bodyUpdateAfterOutOfBandChange is the regression test
+// for issue #449. The config leaves project_id to the provider default, so a
+// body change used to plan a destroy and create. The delete then removed the
+// hook at the array index the provider had cached. After another writer added
+// a hook in front of it, that index pointed at a different hook: the delete
+// removed the wrong hook, and the create failed with "Hook Already Exists".
+// The body change must now update the hook in place, and the update and the
+// destroy must change only this action's hook while the provider's cached view
+// of the array is stale.
+func TestAccActionResource_bodyUpdateAfterOutOfBandChange(t *testing.T) {
+	webhookURL := testutil.ExampleWebhookURL + "/body-update"
+	otherURL := testutil.ExampleWebhookURL + "/body-update-out-of-band"
+	hookPath := "/services/identity/config/selfservice/flows/registration/after/password/hooks"
+	config := func(version string) string {
+		return acctest.LoadTestConfig(t, "testdata/body_update.tf.tmpl", map[string]string{
+			"WebhookURL": testutil.ExampleWebhookURL,
+			"Version":    version,
+		})
+	}
+	// baseline lists the hooks at hookPath that this test does not own.
+	var baseline []string
+	others := func() []string {
+		return slices.DeleteFunc(hookNames(t, hookPath), func(n string) bool { return n == webhookURL })
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.AccPreCheck(t)
+			cleanupDanglingWebhook(t, hookPath, webhookURL)
+			cleanupDanglingWebhook(t, hookPath, otherURL)
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		CheckDestroy: resource.ComposeAggregateTestCheckFunc(
+			checkWebhookDestroyed(t, hookPath, webhookURL, nil),
+			func(*terraform.State) error {
+				if got := hookNames(t, hookPath); !slices.Equal(got, baseline) {
+					return fmt.Errorf("the destroy changed other hooks at %s:\nwant: %v\ngot:  %v", hookPath, baseline, got)
+				}
+				return nil
+			},
+		),
+		Steps: []resource.TestStep{
+			{
+				Config: config("1"),
+				Check:  allParallelHooksExist(hookPath, []string{webhookURL}),
+			},
+			{
+				// Another writer, such as the Ory Console, adds a hook in front of
+				// this one. It uses a separate client, so the provider's cached
+				// view of the project does not include the new hook.
+				PreConfig: func() {
+					t.Cleanup(func() { cleanupDanglingWebhook(t, hookPath, otherURL) })
+					baseline = others()
+					prependWebhook(t, hookPath, otherURL)
+				},
+				Config: config("2"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction("ory_action.test", plancheck.ResourceActionUpdate),
+					},
+				},
+				Check: func(*terraform.State) error {
+					names := hookNames(t, hookPath)
+					if n := slices.Index(names, webhookURL); n < 0 || slices.Contains(names[n+1:], webhookURL) {
+						return fmt.Errorf("want the webhook %s exactly once at %s, got %v", webhookURL, hookPath, names)
+					}
+					if want, got := append([]string{otherURL}, baseline...), others(); !slices.Equal(got, want) {
+						return fmt.Errorf("the update changed other hooks at %s:\nwant: %v\ngot:  %v", hookPath, want, got)
+					}
+					return nil
+				},
+			},
+			{
+				// The other writer removes its hook again, so the destroy after
+				// this step starts from a stale view with this hook one index off.
+				PreConfig:         func() { cleanupDanglingWebhook(t, hookPath, otherURL) },
+				ResourceName:      "ory_action.test",
+				ImportState:       true,
+				ImportStateIdFunc: actionImportStateIDFunc,
+				ImportStateVerify: true,
+				// The API stores the body as an object storage URL, so an import
+				// cannot recover the Jsonnet source.
+				ImportStateVerifyIgnore: []string{"body"},
+			},
+		},
+	})
+}
+
+// prependWebhook adds a webhook at the front of the hooks array at hookPath
+// with the test client, the way another writer such as the Ory Console would.
+func prependWebhook(t *testing.T, hookPath, webhookURL string) {
+	t.Helper()
+
+	c, err := acctest.GetOryClient()
+	require.NoError(t, err)
+	_, err = c.PatchProject(context.Background(), acctest.GetTestProject(t).ID, []ory.JsonPatch{{
+		Op:   "add",
+		Path: hookPath + "/0",
+		Value: map[string]interface{}{
+			"hook":   "web_hook",
+			"config": map[string]interface{}{"url": webhookURL, "method": "POST"},
+		},
+	}})
+	require.NoError(t, err)
+}
+
+// hookNames lists the hooks at hookPath in order. A webhook is listed by its
+// URL, any other hook by its name.
+func hookNames(t *testing.T, hookPath string) []string {
+	t.Helper()
+
+	hooks, err := readRemoteHooks(t, hookPath)
+	require.NoError(t, err)
+	names := make([]string, 0, len(hooks))
+	for _, h := range hooks {
+		hm, _ := h.(map[string]interface{})
+		name, _ := hm["hook"].(string)
+		if name == "web_hook" {
+			cfg, _ := hm["config"].(map[string]interface{})
+			name, _ = cfg["url"].(string)
+		}
+		names = append(names, name)
+	}
+	return names
+}
+
 // TestAccActionResource_samlLogin is the regression test for issue #305: the
 // SAML authentication method is offered in the Ory Console UI for after-login
 // hooks but the provider's auth_method validator rejected "saml". This exercises
@@ -373,9 +501,8 @@ func TestAccActionResource_samlLogin(t *testing.T) {
 // update, import, and delete of a webhook bound to the profile method on the
 // settings flow (stored at .../settings/after/profile/hooks, alongside the
 // built-in verify_new_address and organization hooks configured there).
-// project_id is set explicitly so the update step is an in-place Update. When it
-// is left to the provider default it plans as unknown, and because it requires
-// replacement, every change becomes a destroy and create.
+// project_id is set explicitly here. TestAccActionResource_bodyUpdateAfterOutOfBandChange
+// covers an in-place update with the provider default.
 func TestAccActionResource_settingsProfile(t *testing.T) {
 	projectID := os.Getenv("ORY_PROJECT_ID")
 	if projectID == "" {
@@ -504,8 +631,7 @@ func noAuthMethodImportStateIDFunc(includeMethod bool) resource.ImportStateIdFun
 // flat selfservice.flows.login.failure.hooks array with no auth-method level,
 // and leaves the failure key out of the config until it holds a hook. Ory runs
 // failure hooks in the background, so the hook keeps response_parse and
-// can_interrupt at false. project_id is set explicitly so the update step is an
-// in-place Update rather than a replace.
+// can_interrupt at false.
 func TestAccActionResource_loginFailure(t *testing.T) {
 	projectID := os.Getenv("ORY_PROJECT_ID")
 	if projectID == "" {

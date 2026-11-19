@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -49,18 +49,12 @@ var (
 	_ resource.ResourceWithValidateConfig = &ActionResource{}
 )
 
-// projectMutexes serializes Create, Update, and Delete operations per project.
-// The Ory API stores action hooks as arrays nested in the project config. Every
-// mutation is a read-modify-write (read hooks → append/replace/remove → PatchProject).
-// Without serialization, concurrent operations read the same stale hooks array
-// and the last write wins, silently dropping the other hooks.
-// See: https://github.com/ory/terraform-provider-ory/issues/189
-var projectMutexes sync.Map // map[projectID]*sync.Mutex
-
-func projectMutex(projectID string) *sync.Mutex {
-	v, _ := projectMutexes.LoadOrStore(projectID, &sync.Mutex{})
-	return v.(*sync.Mutex)
-}
+// Errors that the PatchProjectWith builders in Create and Update return when
+// the hooks array does not allow the change.
+var (
+	errHookExists   = errors.New("hook already exists")
+	errHookNotFound = errors.New("hook not found")
+)
 
 func NewResource() resource.Resource {
 	return &ActionResource{}
@@ -274,6 +268,9 @@ func (r *ActionResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []planmodifier.String{
+					// Without UseStateForUnknown, an omitted project_id plans as
+					// unknown on every change and forces a replacement (issue #449).
+					stringplanmodifier.UseStateForUnknown(),
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
@@ -722,8 +719,7 @@ func copyHooks(hooks []map[string]interface{}) []map[string]interface{} {
 func (r *ActionResource) getHooks(ctx context.Context, projectID, flow, timing, authMethod string) ([]map[string]interface{}, error) {
 	// Prefer cached project state from a previous PatchProject call in this
 	// Terraform run. This avoids reading stale data from the eventually-consistent
-	// GetProject API, which is critical when the mutex serializes back-to-back
-	// mutations — the second operation must see the first operation's result.
+	// GetProject API, so a Read right after a mutation sees that mutation.
 	if cached := r.client.GetCachedProject(projectID); cached != nil {
 		return copyHooks(r.getHooksFromProject(cached, flow, timing, authMethod)), nil
 	}
@@ -901,24 +897,6 @@ func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest,
 	url := plan.URL.ValueString()
 	httpMethod := plan.HTTPMethod.ValueString()
 
-	// Serialize mutations to prevent concurrent read-modify-write races.
-	mu := projectMutex(projectID)
-	mu.Lock()
-	defer mu.Unlock()
-
-	// Check if hook already exists
-	hooks, err := r.getHooks(ctx, projectID, flow, timing, authMethod)
-	if err != nil {
-		resp.Diagnostics.AddError("Error Getting Hooks", err.Error())
-		return
-	}
-
-	if r.findHookIndex(hooks, url, httpMethod) >= 0 {
-		resp.Diagnostics.AddError("Hook Already Exists",
-			fmt.Sprintf("A webhook already exists for %s/%s/%s with URL %s", flow, timing, authMethod, url))
-		return
-	}
-
 	basicAuthPassword, apiKeyValue := r.resolveAuthSecrets(ctx, req.Config, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -926,28 +904,34 @@ func (r *ActionResource) Create(ctx context.Context, req resource.CreateRequest,
 	hookValue := r.buildHookValue(&plan, basicAuthPassword, apiKeyValue)
 	hookPath := r.hookPath(flow, timing, authMethod)
 
-	// Append the new hook to existing hooks and replace the entire array
-	// This handles the case where the hooks array might not exist
-	newHooks := make([]interface{}, 0, len(hooks))
-	for _, h := range hooks {
-		newHooks = append(newHooks, h)
+	// The hooks array is shared with other actions and with writers outside
+	// Terraform, so it is read and patched as one compare-and-swap step.
+	result, err := r.client.PatchProjectWith(ctx, projectID, func(project *ory.Project) ([]ory.JsonPatch, error) {
+		hooks := r.getHooksFromProject(project, flow, timing, authMethod)
+		if r.findHookIndex(hooks, url, httpMethod) >= 0 {
+			return nil, errHookExists
+		}
+		// Append the new hook and replace the entire array, which also works
+		// when the array does not exist yet.
+		newHooks := make([]interface{}, 0, len(hooks))
+		for _, h := range hooks {
+			newHooks = append(newHooks, h)
+		}
+		newHooks = append(newHooks, hookValue)
+		return []ory.JsonPatch{{Op: "replace", Path: hookPath, Value: newHooks}}, nil
+	})
+	if errors.Is(err, errHookExists) {
+		resp.Diagnostics.AddError("Hook Already Exists",
+			fmt.Sprintf("A webhook already exists for %s/%s/%s with URL %s", flow, timing, authMethod, url))
+		return
 	}
-	newHooks = append(newHooks, hookValue)
-
-	patches := []ory.JsonPatch{{
-		Op:    "replace",
-		Path:  hookPath,
-		Value: newHooks,
-	}}
-
-	result, err := r.client.PatchProject(ctx, projectID, patches)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Creating Action", err.Error())
 		return
 	}
 
 	project := result.GetProject()
-	hooks = r.getHooksFromProject(&project, flow, timing, authMethod)
+	hooks := r.getHooksFromProject(&project, flow, timing, authMethod)
 	if r.findHookIndex(hooks, url, httpMethod) < 0 {
 		resp.Diagnostics.AddError("Error Verifying Action",
 			verifyFailureDetail(flow, timing, authMethod, url))
@@ -1196,24 +1180,6 @@ func (r *ActionResource) Update(ctx context.Context, req resource.UpdateRequest,
 	url := state.URL.ValueString() // Use old URL to find
 	httpMethod := state.HTTPMethod.ValueString()
 
-	// Serialize mutations to prevent concurrent read-modify-write races.
-	mu := projectMutex(projectID)
-	mu.Lock()
-	defer mu.Unlock()
-
-	hooks, err := r.getHooks(ctx, projectID, flow, timing, authMethod)
-	if err != nil {
-		resp.Diagnostics.AddError("Error Getting Hooks", err.Error())
-		return
-	}
-
-	index := r.findHookIndex(hooks, url, httpMethod)
-	if index < 0 {
-		resp.Diagnostics.AddError("Hook Not Found",
-			fmt.Sprintf("Hook not found at %s/%s/%s with URL %s", flow, timing, authMethod, url))
-		return
-	}
-
 	basicAuthPassword, apiKeyValue := r.resolveAuthSecrets(ctx, req.Config, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -1221,13 +1187,20 @@ func (r *ActionResource) Update(ctx context.Context, req resource.UpdateRequest,
 	hookValue := r.buildHookValue(&plan, basicAuthPassword, apiKeyValue)
 	hookPath := r.hookPath(flow, timing, authMethod)
 
-	patches := []ory.JsonPatch{{
-		Op:    "replace",
-		Path:  fmt.Sprintf("%s/%d", hookPath, index),
-		Value: hookValue,
-	}}
-
-	result, err := r.client.PatchProject(ctx, projectID, patches)
+	// The index comes from the revision the patch is applied to. An index
+	// from an older view can point at another hook and overwrite it.
+	result, err := r.client.PatchProjectWith(ctx, projectID, func(project *ory.Project) ([]ory.JsonPatch, error) {
+		index := r.findHookIndex(r.getHooksFromProject(project, flow, timing, authMethod), url, httpMethod)
+		if index < 0 {
+			return nil, errHookNotFound
+		}
+		return []ory.JsonPatch{{Op: "replace", Path: fmt.Sprintf("%s/%d", hookPath, index), Value: hookValue}}, nil
+	})
+	if errors.Is(err, errHookNotFound) {
+		resp.Diagnostics.AddError("Hook Not Found",
+			fmt.Sprintf("Hook not found at %s/%s/%s with URL %s", flow, timing, authMethod, url))
+		return
+	}
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Action", err.Error())
 		return
@@ -1262,33 +1235,20 @@ func (r *ActionResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	authMethod := state.AuthMethod.ValueString()
 	url := state.URL.ValueString()
 	httpMethod := state.HTTPMethod.ValueString()
-
-	// Serialize mutations to prevent concurrent read-modify-write races.
-	mu := projectMutex(projectID)
-	mu.Lock()
-	defer mu.Unlock()
-
-	hooks, err := r.getHooks(ctx, projectID, flow, timing, authMethod)
-	if err != nil {
-		resp.Diagnostics.AddError("Error Getting Hooks", err.Error())
-		return
-	}
-
-	index := r.findHookIndex(hooks, url, httpMethod)
-	if index < 0 {
-		return // Already deleted
-	}
-
 	hookPath := r.hookPath(flow, timing, authMethod)
-	patches := []ory.JsonPatch{{
-		Op:   "remove",
-		Path: fmt.Sprintf("%s/%d", hookPath, index),
-	}}
 
-	_, err = r.client.PatchProject(ctx, projectID, patches)
-	if err != nil {
+	// The index comes from the revision the patch is applied to. An index
+	// from an older view can point at another hook and remove it instead.
+	_, err := r.client.PatchProjectWith(ctx, projectID, func(project *ory.Project) ([]ory.JsonPatch, error) {
+		index := r.findHookIndex(r.getHooksFromProject(project, flow, timing, authMethod), url, httpMethod)
+		if index < 0 {
+			return nil, nil // Already deleted
+		}
+		return []ory.JsonPatch{{Op: "remove", Path: fmt.Sprintf("%s/%d", hookPath, index)}}, nil
+	})
+	// A purged project has no hooks left to delete.
+	if err != nil && !client.IsNotFoundStatus(err) {
 		resp.Diagnostics.AddError("Error Deleting Action", err.Error())
-		return
 	}
 }
 
