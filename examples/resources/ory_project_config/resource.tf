@@ -400,6 +400,16 @@ resource "ory_project_config" "dynamic_client_registration" {
   oidc_dynamic_client_registration_default_audience = ["https://api.example.com"]
 }
 
+# Client ID metadata documents let an application use the HTTPS URL of its
+# metadata document as its OAuth2 client_id, without a registered client.
+# "allowlist" accepts the URLs that match a pattern and needs at least one
+# pattern. Client ID metadata documents require an Enterprise plan.
+resource "ory_project_config" "client_id_metadata_document" {
+  oauth2_client_id_metadata_document_mode                 = "allowlist"
+  oauth2_client_id_metadata_document_allowed_url_patterns = ["https://app.example.com/oauth/*"]
+  oauth2_client_id_metadata_document_audience             = ["https://mcp.example.com"]
+}
+
 # Brute-force protection throttles failed sign-ins with exponential backoff,
 # per submitted identifier and per client IP. Set every attribute of a group,
 # because the API rejects an incomplete group. Turning the throttle on

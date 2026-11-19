@@ -433,6 +433,16 @@ resource "ory_project_config" "dynamic_client_registration" {
   oidc_dynamic_client_registration_default_audience = ["https://api.example.com"]
 }
 
+# Client ID metadata documents let an application use the HTTPS URL of its
+# metadata document as its OAuth2 client_id, without a registered client.
+# "allowlist" accepts the URLs that match a pattern and needs at least one
+# pattern. Client ID metadata documents require an Enterprise plan.
+resource "ory_project_config" "client_id_metadata_document" {
+  oauth2_client_id_metadata_document_mode                 = "allowlist"
+  oauth2_client_id_metadata_document_allowed_url_patterns = ["https://app.example.com/oauth/*"]
+  oauth2_client_id_metadata_document_audience             = ["https://mcp.example.com"]
+}
+
 # Brute-force protection throttles failed sign-ins with exponential backoff,
 # per submitted identifier and per client IP. Set every attribute of a group,
 # because the API rejects an incomplete group. Turning the throttle on
@@ -693,6 +703,26 @@ To remove all rules, set `session_whoami_rules = []`. If you remove the attribut
 
 Session risk rules need the `kratos_session_risk_rules` feature of the Enterprise plan. A project without the feature can still remove its rules.
 
+## OAuth2 Client ID Metadata Documents
+
+Client ID metadata documents let an application use the HTTPS URL of its metadata document as its OAuth2 `client_id`. Ory Hydra fetches the document when it resolves the client, so the application needs no registered client. For details, see [Client ID metadata documents](https://www.ory.com/docs/hydra/guides/oauth2-clients#client-id-metadata-documents) in the Ory documentation.
+
+`oauth2_client_id_metadata_document_mode` controls which document URLs Ory Hydra accepts:
+
+- `disabled`, the default, accepts none.
+- `allowlist` accepts the URLs that match `oauth2_client_id_metadata_document_allowed_url_patterns`. The API rejects this mode without at least one pattern.
+- `open` accepts any valid URL. Use it only if you allow any application on the internet to start an authorization flow with your project.
+
+```hcl
+resource "ory_project_config" "main" {
+  oauth2_client_id_metadata_document_mode                 = "allowlist"
+  oauth2_client_id_metadata_document_allowed_url_patterns = ["https://app.example.com/oauth/*"]
+  oauth2_client_id_metadata_document_audience             = ["https://mcp.example.com"]
+}
+```
+
+Client ID metadata documents need the `hydra_client_id_metadata_document` feature of the Enterprise plan. A project without the feature can still set the mode to `disabled` and clear the lists.
+
 ## Account Experience Branding
 
 The hosted Account Experience pages (login, registration, recovery, ...) can be branded with a logo, favicon, and theme colors.
@@ -840,6 +870,10 @@ This resource covers most simple (scalar and list) project configuration propert
 - `mfa_enforcement` (String) MFA enforcement level: 'none', 'optional', or 'required'.
 - `oauth2_allowed_top_level_claims` (List of String) OAuth2 claims allowed as top-level fields in access tokens.
 - `oauth2_client_credentials_default_grant_allowed_scope` (Boolean) Automatically grant the full authorized scope in OAuth2 client credentials flow.
+- `oauth2_client_id_metadata_document_allowed_url_patterns` (List of String) Client ID metadata document URLs that Ory Hydra accepts in `allowlist` mode, for example `https://app.example.com/oauth/client.json`. Each entry is an `https` URL with a path and without a query or fragment. The host and the path match exactly, except that the last path segment can be `*` for one segment or `**` for one or more.
+- `oauth2_client_id_metadata_document_audience` (List of String) Audiences that an OAuth2 client resolved from a client ID metadata document can request, for example the URL of an MCP server.
+- `oauth2_client_id_metadata_document_mode` (String) Which client ID metadata document URLs Ory Hydra accepts as OAuth2 client IDs. `disabled`, the default, accepts none. `allowlist` accepts the URLs that match `oauth2_client_id_metadata_document_allowed_url_patterns` and needs at least one pattern. `open` accepts any valid URL.
+- `oauth2_client_id_metadata_document_scope` (List of String) Scopes that an OAuth2 client resolved from a client ID metadata document can request. When the list is empty, Ory Hydra allows `openid` and `offline_access`.
 - `oauth2_device_authorization_token_polling_interval` (String) How often a non-interactive device should poll the OAuth 2.0 Device Authorization Grant token endpoint
 - `oauth2_device_authorization_user_code_entropy_preset` (String) Picks a preset for the OAuth 2.0 Device Authorization Grant user_code length and character set
 - `oauth2_exclude_not_before_claim` (Boolean) Exclude the `nbf` (not before) claim from access tokens.

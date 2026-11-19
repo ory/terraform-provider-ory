@@ -669,6 +669,67 @@ func TestAccProjectConfigResource_accountExperienceIndexRoute(t *testing.T) {
 	})
 }
 
+// TestAccProjectConfigResource_oauth2ClientIDMetadataDocument covers the client
+// ID metadata document settings from spec v1.22.95. It creates an allowlist
+// with two patterns, imports the four settings, switches to open mode with the
+// patterns cleared, and resets to disabled with empty lists. Every apply step
+// also proves that a refresh and a new plan show no diff, including for the
+// empty lists that the API prunes. Destroy leaves the config in place, so the
+// last step keeps the shared project on the disabled default. The settings need
+// the Enterprise hydra_client_id_metadata_document feature, which the staging
+// test workspace has.
+func TestAccProjectConfigResource_oauth2ClientIDMetadataDocument(t *testing.T) {
+	const name = "ory_project_config.test"
+	apply := func(data map[string]string, checks ...resource.TestCheckFunc) resource.TestStep {
+		checks = append(checks, resource.TestCheckResourceAttr(name, "oauth2_client_id_metadata_document_mode", data["Mode"]))
+		return resource.TestStep{
+			Config: acctest.LoadTestConfig(t, "testdata/oauth2_client_id_metadata_document.tf.tmpl", data),
+			Check:  resource.ComposeAggregateTestCheckFunc(checks...),
+		}
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			apply(map[string]string{
+				"Mode":               "allowlist",
+				"AllowedURLPatterns": `["https://app.example.com/oauth/*", "https://tools.example.com/clients/**"]`,
+				"Audience":           `["https://mcp.example.com"]`,
+				"Scope":              `["openid", "offline_access", "mcp:tools"]`,
+			},
+				resource.TestCheckResourceAttr(name, "oauth2_client_id_metadata_document_allowed_url_patterns.#", "2"),
+				resource.TestCheckResourceAttr(name, "oauth2_client_id_metadata_document_allowed_url_patterns.1", "https://tools.example.com/clients/**"),
+				resource.TestCheckResourceAttr(name, "oauth2_client_id_metadata_document_audience.0", "https://mcp.example.com"),
+				resource.TestCheckResourceAttr(name, "oauth2_client_id_metadata_document_scope.#", "3"),
+				resource.TestCheckResourceAttr(name, "oauth2_client_id_metadata_document_scope.2", "mcp:tools"),
+			),
+			{
+				ResourceName:      name,
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: selectedImportID("oauth2_client_id_metadata_document_mode,oauth2_client_id_metadata_document_allowed_url_patterns," +
+					"oauth2_client_id_metadata_document_audience,oauth2_client_id_metadata_document_scope"),
+				ImportStateVerifyIgnore: []string{"cors_enabled", "selfservice_methods_password_config_min_password_length", "smtp_connection_uri"},
+			},
+			apply(map[string]string{
+				"Mode":               "open",
+				"AllowedURLPatterns": `[]`,
+				"Audience":           `["https://mcp.example.com", "https://api.example.com"]`,
+				"Scope":              `["openid"]`,
+			},
+				resource.TestCheckResourceAttr(name, "oauth2_client_id_metadata_document_allowed_url_patterns.#", "0"),
+				resource.TestCheckResourceAttr(name, "oauth2_client_id_metadata_document_audience.#", "2"),
+				resource.TestCheckResourceAttr(name, "oauth2_client_id_metadata_document_scope.#", "1"),
+			),
+			apply(map[string]string{"Mode": "disabled", "AllowedURLPatterns": `[]`, "Audience": `[]`, "Scope": `[]`},
+				resource.TestCheckResourceAttr(name, "oauth2_client_id_metadata_document_audience.#", "0"),
+				resource.TestCheckResourceAttr(name, "oauth2_client_id_metadata_document_scope.#", "0"),
+			),
+		},
+	})
+}
+
 func TestAccProjectConfigResource_adminCORS(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },

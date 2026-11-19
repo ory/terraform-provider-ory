@@ -179,6 +179,7 @@ func simpleStringPatchEntries(plan *ProjectConfigResourceModel) []StringPatchEnt
 		{&plan.SelfserviceFlowsLoginBruteForceProtectionIPWindow, "/services/identity/config/selfservice/flows/login/brute_force_protection/ip/window"},
 		{&plan.AccountExperienceIndexRouteMode, "/services/account_experience/config/index_route/mode"},
 		{&plan.AccountExperienceIndexRouteRedirectURL, "/services/account_experience/config/index_route/redirect_url"},
+		{&plan.OAuth2ClientIDMetadataDocumentMode, "/services/oauth2/config/oauth2/client_id_metadata_document/mode"},
 	}
 }
 
@@ -306,6 +307,9 @@ func simpleListStringPatchEntries(plan *ProjectConfigResourceModel) []ListString
 		{&plan.SelfserviceMethodsDeviceauthnConfigIosAppIds, "/services/identity/config/selfservice/methods/deviceauthn/config/ios_app_ids"},
 		{&plan.SecurityRestrictedOrigins, "/services/identity/config/security/restricted_origins"},
 		{&plan.OIDCDynamicClientRegistrationDefaultAudience, "/services/oauth2/config/oidc/dynamic_client_registration/default_audience"},
+		{&plan.OAuth2ClientIDMetadataDocumentAllowedURLPatterns, "/services/oauth2/config/oauth2/client_id_metadata_document/allowed_url_patterns"},
+		{&plan.OAuth2ClientIDMetadataDocumentAudience, "/services/oauth2/config/oauth2/client_id_metadata_document/audience"},
+		{&plan.OAuth2ClientIDMetadataDocumentScope, "/services/oauth2/config/oauth2/client_id_metadata_document/scope"},
 	}
 }
 

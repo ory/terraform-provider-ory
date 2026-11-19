@@ -761,6 +761,7 @@ func oauth2StringReadEntries(state *ProjectConfigResourceModel) []StringReadEntr
 		{&state.OAuth2UrlsDeviceSuccess, []string{"urls", "device", "success"}, false, false, false},
 		{&state.OAuth2UrlsDeviceVerification, []string{"urls", "device", "verification"}, false, false, false},
 		{&state.OAuth2WebfingerOIDCDiscoveryDeviceAuthorizationURL, []string{"webfinger", "oidc_discovery", "device_authorization_url"}, false, false, false},
+		{&state.OAuth2ClientIDMetadataDocumentMode, []string{"oauth2", "client_id_metadata_document", "mode"}, false, false, false},
 	}
 }
 
@@ -798,6 +799,9 @@ func oauth2ListStringReadEntries(state *ProjectConfigResourceModel) []ListString
 		{&state.OAuth2WebfingerOIDCDiscoverySupportedScope, []string{"webfinger", "oidc_discovery", "supported_scope"}, false},
 		{&state.OAuth2AllowedTopLevelClaims, []string{"oauth2", "allowed_top_level_claims"}, false},
 		{&state.OIDCDynamicClientRegistrationDefaultAudience, []string{"oidc", "dynamic_client_registration", "default_audience"}, false},
+		{&state.OAuth2ClientIDMetadataDocumentAllowedURLPatterns, []string{"oauth2", "client_id_metadata_document", "allowed_url_patterns"}, false},
+		{&state.OAuth2ClientIDMetadataDocumentAudience, []string{"oauth2", "client_id_metadata_document", "audience"}, false},
+		{&state.OAuth2ClientIDMetadataDocumentScope, []string{"oauth2", "client_id_metadata_document", "scope"}, false},
 	}
 }
 

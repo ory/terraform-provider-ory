@@ -1,0 +1,6 @@
+resource "ory_project_config" "test" {
+  oauth2_client_id_metadata_document_mode                 = "[[ .Mode ]]"
+  oauth2_client_id_metadata_document_allowed_url_patterns = [[ .AllowedURLPatterns ]]
+  oauth2_client_id_metadata_document_audience             = [[ .Audience ]]
+  oauth2_client_id_metadata_document_scope                = [[ .Scope ]]
+}

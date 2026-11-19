@@ -256,6 +256,26 @@ To remove all rules, set `session_whoami_rules = []`. If you remove the attribut
 
 Session risk rules need the `kratos_session_risk_rules` feature of the Enterprise plan. A project without the feature can still remove its rules.
 
+## OAuth2 Client ID Metadata Documents
+
+Client ID metadata documents let an application use the HTTPS URL of its metadata document as its OAuth2 `client_id`. Ory Hydra fetches the document when it resolves the client, so the application needs no registered client. For details, see [Client ID metadata documents](https://www.ory.com/docs/hydra/guides/oauth2-clients#client-id-metadata-documents) in the Ory documentation.
+
+`oauth2_client_id_metadata_document_mode` controls which document URLs Ory Hydra accepts:
+
+- `disabled`, the default, accepts none.
+- `allowlist` accepts the URLs that match `oauth2_client_id_metadata_document_allowed_url_patterns`. The API rejects this mode without at least one pattern.
+- `open` accepts any valid URL. Use it only if you allow any application on the internet to start an authorization flow with your project.
+
+```hcl
+resource "ory_project_config" "main" {
+  oauth2_client_id_metadata_document_mode                 = "allowlist"
+  oauth2_client_id_metadata_document_allowed_url_patterns = ["https://app.example.com/oauth/*"]
+  oauth2_client_id_metadata_document_audience             = ["https://mcp.example.com"]
+}
+```
+
+Client ID metadata documents need the `hydra_client_id_metadata_document` feature of the Enterprise plan. A project without the feature can still set the mode to `disabled` and clear the lists.
+
 ## Account Experience Branding
 
 The hosted Account Experience pages (login, registration, recovery, ...) can be branded with a logo, favicon, and theme colors.
