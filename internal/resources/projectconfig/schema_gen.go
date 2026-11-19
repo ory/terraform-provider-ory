@@ -1109,5 +1109,24 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Whether the Account Experience shows a \"Last used\" badge on the social sign-in or SSO button that a user chose the last time they signed in on the same device. Off by default.",
 			Optional:    true,
 		},
+		"oauth2_client_id_metadata_document_allowed_url_patterns": schema.ListAttribute{
+			Description: "Client ID metadata document URLs Ory Hydra accepts, for example \"https://app.example.com/oauth/client.json\"",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"oauth2_client_id_metadata_document_audience": schema.ListAttribute{
+			Description: "Audiences an OAuth2 client resolved from a client ID metadata document may request, for example the URL of an MCP server.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"oauth2_client_id_metadata_document_mode": schema.StringAttribute{
+			Description: "Which client ID metadata document URLs Ory Hydra accepts as OAuth2 client IDs",
+			Optional:    true,
+		},
+		"oauth2_client_id_metadata_document_scope": schema.ListAttribute{
+			Description: "Scopes an OAuth2 client resolved from a client ID metadata document may request. Leave empty to keep Ory Hydra's default, \"openid\" and \"offline_access\".",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
 	}
 }

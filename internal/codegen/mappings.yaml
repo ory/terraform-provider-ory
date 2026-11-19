@@ -1721,3 +1721,29 @@ attributes:
     type: bool
     openapi_property: account_experience_show_last_used_method
     description: "Whether the Account Experience shows a \"Last used\" badge on the social sign-in or SSO button that a user chose the last time they signed in on the same device. Off by default."
+
+  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  - name: oauth2_client_id_metadata_document_allowed_url_patterns
+    go_field: OAuth2ClientIDMetadataDocumentAllowedURLPatterns
+    type: list_string
+    openapi_property: hydra_oauth2_client_id_metadata_document_allowed_url_patterns
+    description: "Client ID metadata document URLs Ory Hydra accepts, for example \"https://app.example.com/oauth/client.json\""
+
+  - name: oauth2_client_id_metadata_document_audience
+    go_field: OAuth2ClientIDMetadataDocumentAudience
+    type: list_string
+    openapi_property: hydra_oauth2_client_id_metadata_document_audience
+    description: "Audiences an OAuth2 client resolved from a client ID metadata document may request, for example the URL of an MCP server."
+
+  - name: oauth2_client_id_metadata_document_mode
+    go_field: OAuth2ClientIDMetadataDocumentMode
+    type: string
+    openapi_property: hydra_oauth2_client_id_metadata_document_mode
+    description: "Which client ID metadata document URLs Ory Hydra accepts as OAuth2 client IDs"
+
+  - name: oauth2_client_id_metadata_document_scope
+    go_field: OAuth2ClientIDMetadataDocumentScope
+    type: list_string
+    openapi_property: hydra_oauth2_client_id_metadata_document_scope
+    description: "Scopes an OAuth2 client resolved from a client ID metadata document may request. Leave empty to keep Ory Hydra's default, \"openid\" and \"offline_access\"."
+

@@ -840,6 +840,10 @@ This resource covers most simple (scalar and list) project configuration propert
 - `mfa_enforcement` (String) MFA enforcement level: 'none', 'optional', or 'required'.
 - `oauth2_allowed_top_level_claims` (List of String) OAuth2 claims allowed as top-level fields in access tokens.
 - `oauth2_client_credentials_default_grant_allowed_scope` (Boolean) Automatically grant the full authorized scope in OAuth2 client credentials flow.
+- `oauth2_client_id_metadata_document_allowed_url_patterns` (List of String) Client ID metadata document URLs Ory Hydra accepts, for example "https://app.example.com/oauth/client.json"
+- `oauth2_client_id_metadata_document_audience` (List of String) Audiences an OAuth2 client resolved from a client ID metadata document may request, for example the URL of an MCP server.
+- `oauth2_client_id_metadata_document_mode` (String) Which client ID metadata document URLs Ory Hydra accepts as OAuth2 client IDs
+- `oauth2_client_id_metadata_document_scope` (List of String) Scopes an OAuth2 client resolved from a client ID metadata document may request. Leave empty to keep Ory Hydra's default, "openid" and "offline_access".
 - `oauth2_device_authorization_token_polling_interval` (String) How often a non-interactive device should poll the OAuth 2.0 Device Authorization Grant token endpoint
 - `oauth2_device_authorization_user_code_entropy_preset` (String) Picks a preset for the OAuth 2.0 Device Authorization Grant user_code length and character set
 - `oauth2_exclude_not_before_claim` (Boolean) Exclude the `nbf` (not before) claim from access tokens.
