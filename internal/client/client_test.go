@@ -1250,3 +1250,148 @@ func TestCustomDomains_EscapePathSegments(t *testing.T) {
 	}
 	assert.Len(t, paths, 2, "an invalid segment must not reach the server")
 }
+
+// projectWithHooksJSON renders a project document at the given revision whose
+// identity config holds one webhook per URL in a top-level hooks array.
+func projectWithHooksJSON(revisionID string, urls ...string) string {
+	hooks := make([]string, 0, len(urls))
+	for _, u := range urls {
+		hooks = append(hooks, fmt.Sprintf(`{"hook":"web_hook","config":{"url":%q}}`, u))
+	}
+	return fmt.Sprintf(`{"id":"proj-1","name":"n","slug":"s","environment":"prod","home_region":"eu-central",`+
+		`"organizations":[],"state":"running","revision_id":%q,"services":{"identity":{"config":{"hooks":[%s]}}}}`,
+		revisionID, strings.Join(hooks, ","))
+}
+
+// removeHookBuilder removes the webhook with the given URL by its index in the
+// project it is handed, the read-modify-write ory_action performs.
+func removeHookBuilder(url string, builds *int) ProjectPatchBuilder {
+	return func(project *ory.Project) ([]ory.JsonPatch, error) {
+		*builds++
+		hooks, _ := project.Services.Identity.Config["hooks"].([]interface{})
+		for i, h := range hooks {
+			cfg, _ := h.(map[string]interface{})["config"].(map[string]interface{})
+			if cfg["url"] == url {
+				return []ory.JsonPatch{{Op: "remove", Path: fmt.Sprintf("/services/identity/config/hooks/%d", i)}}, nil
+			}
+		}
+		return nil, nil
+	}
+}
+
+// PatchProjectWith must start from the cached project and send its revision.
+// When another writer has moved the hook since then (issue #449), the API
+// answers 409, and the retry must re-read the project and address the hook at
+// its new index instead of removing whatever now sits at the old one.
+func TestPatchProjectWith_RebuildsPatchesAfterConflict(t *testing.T) {
+	var patchPaths, patchBodies []string
+	gets := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			gets++
+			// Another writer put "other" in front of "mine".
+			_, _ = w.Write([]byte(projectWithHooksJSON("rev-b", "other", "mine")))
+		case http.MethodPatch:
+			body, _ := io.ReadAll(r.Body)
+			patchPaths = append(patchPaths, r.URL.Path)
+			patchBodies = append(patchBodies, string(body))
+			if strings.HasSuffix(r.URL.Path, "/revision/rev-a") {
+				w.WriteHeader(http.StatusConflict)
+				_, _ = w.Write([]byte(`{"error":{"code":409,"status":"Conflict","reason":"revision ID mismatch"}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"warnings":[],"project":` + projectWithHooksJSON("rev-c", "other") + `}`))
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer srv.Close()
+
+	client, err := NewOryClient(OryClientConfig{
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   srv.URL,
+	})
+	require.NoError(t, err)
+	var cached ory.Project
+	require.NoError(t, cached.UnmarshalJSON([]byte(projectWithHooksJSON("rev-a", "mine"))))
+	client.cachedProjects.Store("proj-1", &cached)
+
+	builds := 0
+	result, err := client.PatchProjectWith(context.Background(), "proj-1", removeHookBuilder("mine", &builds))
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, gets, "the first attempt must use the cached project, and only the conflict may re-read")
+	assert.Equal(t, 2, builds, "the builder must run once per attempt")
+	assert.Equal(t, []string{"/projects/proj-1/revision/rev-a", "/projects/proj-1/revision/rev-b"}, patchPaths)
+	require.Len(t, patchBodies, 2)
+	assert.Contains(t, patchBodies[0], `"/services/identity/config/hooks/0"`)
+	assert.Contains(t, patchBodies[1], `"/services/identity/config/hooks/1"`, "the retry must address the hook at its index in the re-read project")
+	assert.Equal(t, "rev-c", result.Project.RevisionId)
+	assert.Equal(t, "rev-c", client.GetCachedProject("proj-1").RevisionId, "the PATCH response must refresh the cache")
+}
+
+// A builder that finds nothing to change sends no PATCH, so deleting a hook
+// that is already gone is a clean no-op.
+func TestPatchProjectWith_NoOperationsSkipsPatch(t *testing.T) {
+	patches := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodPatch {
+			patches++
+		}
+		_, _ = w.Write([]byte(projectWithHooksJSON("rev-a", "other")))
+	}))
+	defer srv.Close()
+
+	client, err := NewOryClient(OryClientConfig{
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   srv.URL,
+	})
+	require.NoError(t, err)
+
+	builds := 0
+	result, err := client.PatchProjectWith(context.Background(), "proj-1", removeHookBuilder("mine", &builds))
+	require.NoError(t, err)
+	assert.Nil(t, result)
+	assert.Equal(t, 1, builds)
+	assert.Equal(t, 0, patches, "no PATCH may be sent when the builder returns no operations")
+}
+
+// A conflict proves the cached project is stale. When the re-read shows there
+// is nothing left to change, no PATCH response refreshes the cache, so the
+// stale copy must be dropped. Otherwise a later create of the same hook starts
+// from it and fails with "Hook Already Exists".
+func TestPatchProjectWith_ConflictDropsStaleCache(t *testing.T) {
+	patches := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodPatch {
+			patches++
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(`{"error":{"code":409,"status":"Conflict","reason":"revision ID mismatch"}}`))
+			return
+		}
+		// Another writer already removed "mine".
+		_, _ = w.Write([]byte(projectWithHooksJSON("rev-b", "other")))
+	}))
+	defer srv.Close()
+
+	client, err := NewOryClient(OryClientConfig{
+		WorkspaceAPIKey: testutil.TestWorkspaceAPIKey,
+		ConsoleAPIURL:   srv.URL,
+	})
+	require.NoError(t, err)
+	var cached ory.Project
+	require.NoError(t, cached.UnmarshalJSON([]byte(projectWithHooksJSON("rev-a", "mine"))))
+	client.cachedProjects.Store("proj-1", &cached)
+
+	builds := 0
+	result, err := client.PatchProjectWith(context.Background(), "proj-1", removeHookBuilder("mine", &builds))
+	require.NoError(t, err)
+	assert.Nil(t, result)
+	assert.Equal(t, 2, builds)
+	assert.Equal(t, 1, patches, "only the attempt built from the stale cache may send a PATCH")
+	assert.Nil(t, client.GetCachedProject("proj-1"), "the rejected snapshot must not stay in the cache")
+}

@@ -889,6 +889,78 @@ func (c *OryClient) GetCachedProject(projectID string) *ory.Project {
 	return nil
 }
 
+// ProjectPatchBuilder computes the JSON Patch operations for one attempt of
+// PatchProjectWith from the project that attempt patches. An operation that
+// addresses an array element by index, for example .../hooks/2, is therefore
+// computed from the same revision it is applied to. Returning no operations
+// skips the PATCH.
+type ProjectPatchBuilder func(project *ory.Project) ([]ory.JsonPatch, error)
+
+// PatchProjectWith is PatchProject for a read-modify-write of the project
+// document. Each attempt sends the operations with the revision ID of the
+// project they were built from, through PATCH /projects/{id}/revision/{rev}.
+// The API answers HTTP 409 when another write has created a newer revision.
+// A conflict re-reads the project and rebuilds the operations, so an index
+// from a stale view is never applied to an array that has changed.
+//
+// The first attempt starts from the cached PatchProject response if there is
+// one, because GetProject can lag behind a write this client just made. The
+// read and the patch run under the per-project patch mutex, so no other patch
+// from this provider lands between them. Only a writer outside this provider
+// causes a conflict.
+//
+// It returns nil when build returns no operations.
+func (c *OryClient) PatchProjectWith(ctx context.Context, projectID string, build ProjectPatchBuilder) (*ory.SuccessfulProjectUpdate, error) {
+	const operation = "patching project"
+	if err := c.requireConsoleClient(operation); err != nil {
+		return nil, err
+	}
+	if err := c.checkProjectAllowed(projectID); err != nil {
+		return nil, err
+	}
+	mu := c.patchProjectMutex(projectID)
+	mu.Lock()
+	defer mu.Unlock()
+
+	const maxAttempts = 3
+	project := c.GetCachedProject(projectID)
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if project == nil {
+			var err error
+			if project, err = c.GetProject(ctx, projectID); err != nil {
+				return nil, err
+			}
+		}
+		patches, err := build(project)
+		if err != nil || len(patches) == 0 {
+			return nil, err
+		}
+		result, httpResp, err := c.consoleClient.ProjectAPI.PatchProjectWithRevision(ctx, projectID, project.GetRevisionId()).
+			JsonPatch(patches).
+			Execute()
+		if httpResp != nil {
+			_ = httpResp.Body.Close()
+		}
+		if err == nil {
+			updated := result.GetProject()
+			c.cachedProjects.Store(projectID, &updated)
+			return result, nil
+		}
+		lastErr = wrapAPIError(err, operation)
+		if httpResp == nil || httpResp.StatusCode != http.StatusConflict {
+			return nil, lastErr
+		}
+		// Another writer created a newer revision after the project was
+		// read. Drop the cached copy, which is now known to be stale, so a
+		// later operation does not start from it when this one ends without
+		// a PATCH. Then re-read the project and rebuild the operations.
+		c.cachedProjects.Delete(projectID)
+		project = nil
+	}
+	return nil, lastErr
+}
+
 // doConsoleRawRequest issues a request against a console API endpoint that is
 // missing from the generated client-go SDK, with the standard auth headers. A
 // non-nil payload is sent as JSON. The caller owns the response body.
