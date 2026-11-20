@@ -1,0 +1,22 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  Lists the members of an Ory Network project.
+---
+
+# {{.Name}} ({{.Type}})
+
+Lists the members of an Ory Network project.
+
+The list includes the members of the workspace that the project belongs to. Ory reports one role per person, the strongest one, and `source` names the scope that gives it: `project` or `workspace`. On a tie, the workspace role wins. Pending invites are not members. If `project_id` is not set, the provider's `project_id` is used.
+
+-> **Plan:** Available on all Ory Network plans.
+
+~> **Authentication:** The Ory Console API accepts member requests only from a signed-in Console user, and answers a workspace API key with HTTP 401. Run `ory auth` and set `workspace_api_key` to the access token, as [Managing a project without a workspace API key](https://registry.terraform.io/providers/ory/ory/latest/docs#managing-a-project-without-a-workspace-api-key) describes. The user must be an owner or a developer of the project.
+
+## Example Usage
+
+{{ tffile "examples/data-sources/ory_project_members/data-source.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}

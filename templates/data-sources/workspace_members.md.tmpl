@@ -1,0 +1,20 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  Lists the members of an Ory Network workspace.
+---
+
+# {{.Name}} ({{.Type}})
+
+Lists the members of an Ory Network workspace. Pending invites are not members. If `workspace_id` is not set, the provider's `workspace_id` is used.
+
+-> **Plan:** Available on all Ory Network plans.
+
+~> **Authentication:** The Ory Console API accepts member requests only from a signed-in Console user, and answers a workspace API key with HTTP 401. Run `ory auth` and set `workspace_api_key` to the access token, as [Managing a project without a workspace API key](https://registry.terraform.io/providers/ory/ory/latest/docs#managing-a-project-without-a-workspace-api-key) describes.
+
+## Example Usage
+
+{{ tffile "examples/data-sources/ory_workspace_members/data-source.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}

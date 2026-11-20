@@ -132,6 +132,7 @@ terraform plan
 | `ory_identity_schema`, `ory_project_api_key` | `workspace_api_key`, `project_id` |
 | `ory_identity`, `ory_oauth2_client`, `ory_relationship` | `project_api_key`, `project_slug` |
 | `ory_json_web_key_set` | `project_api_key`, `project_slug` |
+| `ory_project_member`, `ory_workspace_member`, `ory_project_members`, `ory_workspace_members` | A Console user token from `ory auth` as `workspace_api_key`, plus `project_id` or `workspace_id` |
 
 ## Why project configuration cannot use a project API key
 
@@ -153,6 +154,8 @@ terraform apply
 ```
 
 The token expires after about an hour and is refreshed by any `ory` CLI command, so this suits local runs. CI pipelines should keep using a workspace API key stored as a secret, bounded with `allowed_project_ids`.
+
+The member resources and data sources, `ory_project_member`, `ory_workspace_member`, `ory_project_members`, and `ory_workspace_members`, need this token. The Console API answers a workspace API key with HTTP 401 on its member and invite routes. Inviting and removing people needs the owner role on the project or on the workspace.
 
 ## Limiting blast radius with `allowed_project_ids`
 
