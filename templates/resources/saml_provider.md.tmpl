@@ -113,6 +113,8 @@ Import using the provider ID:
 terraform import ory_saml_provider.corporate corporate
 ```
 
-The `provider_id` is the unique identifier you chose when creating the provider. After import, the `raw_idp_metadata_xml` attribute will be populated with the hosted URL form (the API's transformed value). If you originally configured metadata inline with `base64://...`, update your configuration to use the new hosted URL, or re-apply with your original `base64://` value to re-upload the inline XML.
+The `provider_id` is the unique identifier you chose when creating the provider. Import downloads the stored `raw_idp_metadata_xml` and `mapper_url` payloads and writes them to state as `base64://` values. A configuration that encodes the same content with `base64encode()` plans no change. If Ory holds the default mapper, `mapper_url` stays unset. If a download fails, state keeps the storage URL, and the first apply uploads the configured value again.
+
+~> **Upgrading and importing:** Earlier provider versions did not read `mapper_url` when the configuration left it unset. If Ory holds a mapper other than the default and your configuration does not set `mapper_url`, the first plan shows `mapper_url` changing to `null`. The current value is a `base64://` payload or a URL. Applying that plan replaces the mapper with the default mapper. Set `mapper_url` to the current value from the plan to keep the mapper.
 
 {{ .SchemaMarkdown | trimspace }}

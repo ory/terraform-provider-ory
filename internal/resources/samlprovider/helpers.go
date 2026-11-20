@@ -1,10 +1,18 @@
 package samlprovider
 
 import (
+	"context"
+	"encoding/base64"
 	"errors"
 	"regexp"
+	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	ory "github.com/ory/client-go"
+
+	"github.com/ory/terraform-provider-ory/internal/client"
+	"github.com/ory/terraform-provider-ory/internal/helpers"
 )
 
 // mapperURLRegex matches the URL prefixes Ory accepts for SAML mapper and IDP
@@ -22,4 +30,68 @@ func apiErrorDetail(err error) string {
 		}
 	}
 	return err.Error()
+}
+
+// storageContentFetcher is a variable so unit tests can replace it.
+var storageContentFetcher = func(ctx context.Context, rawURL string) ([]byte, error) {
+	return client.FetchSafeHTTPS(ctx, "SAML provider content", rawURL)
+}
+
+// inlineStorageURL turns a storage URL the API reports for an uploaded
+// base64:// value back into base64://. It returns the URL unchanged when it is
+// not a storage URL, the download fails, or the downloaded content does not
+// match the hash in the URL.
+func inlineStorageURL(ctx context.Context, apiValue string) string {
+	if _, ok := helpers.HashFromURL(apiValue); !ok {
+		return apiValue
+	}
+	content, err := storageContentFetcher(ctx, apiValue)
+	if err == nil && !helpers.URLHashMatchesContent(apiValue, content) {
+		err = errors.New("the downloaded content does not match the hash in the URL")
+	}
+	if err != nil {
+		tflog.Warn(ctx, "Keeping the storage URL in state", map[string]interface{}{"url": apiValue, "error": err.Error()})
+		return apiValue
+	}
+	return "base64://" + base64.StdEncoding.EncodeToString(content)
+}
+
+// readContentURL maps an API value of mapper_url or raw_idp_metadata_xml to
+// state. A base64:// state value is kept while the hash in the storage URL
+// matches its payload. Otherwise, and when state is null, the API value is read
+// back inline. State is null after an import, and for mapper_url on every
+// refresh while the configuration leaves it unset.
+func readContentURL(ctx context.Context, apiValue string, prior types.String) types.String {
+	switch {
+	case apiValue == "" || apiValue == prior.ValueString():
+		return prior
+	case prior.IsNull():
+		return types.StringValue(inlineStorageURL(ctx, apiValue))
+	case strings.HasPrefix(prior.ValueString(), "base64://"):
+		payload, ok := decodeBase64Content(prior.ValueString())
+		if !ok || helpers.URLHashMatchesContent(apiValue, payload) {
+			return prior
+		}
+		return types.StringValue(inlineStorageURL(ctx, apiValue))
+	default:
+		return types.StringValue(apiValue)
+	}
+}
+
+// decodeBase64Content decodes a base64:// value. The Ory API accepts padded
+// and unpadded base64.
+func decodeBase64Content(value string) ([]byte, bool) {
+	encoded := strings.TrimPrefix(value, "base64://")
+	if payload, err := base64.StdEncoding.DecodeString(encoded); err == nil {
+		return payload, true
+	}
+	payload, err := base64.RawStdEncoding.DecodeString(encoded)
+	return payload, err == nil
+}
+
+// isDefaultMapper reports whether the API value is the mapper Create sends
+// when mapper_url is not set.
+func isDefaultMapper(apiValue string) bool {
+	content, _ := base64.StdEncoding.DecodeString(strings.TrimPrefix(defaultMapperURL, "base64://"))
+	return apiValue == defaultMapperURL || helpers.URLHashMatchesContent(apiValue, content)
 }
