@@ -49,6 +49,7 @@ resource "ory_project_config" "secure" {
   selfservice_methods_password_config_min_password_length                 = 12
   selfservice_methods_password_config_identifier_similarity_check_enabled = true
   selfservice_methods_password_config_haveibeenpwned_enabled              = true
+  selfservice_methods_password_config_haveibeenpwned_on_login             = true
   selfservice_methods_password_config_max_breaches                        = 0
 
   # Authentication Methods

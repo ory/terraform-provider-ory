@@ -730,6 +730,40 @@ func TestAccProjectConfigResource_oauth2ClientIDMetadataDocument(t *testing.T) {
 	})
 }
 
+// TestAccProjectConfigResource_passwordBreachCheckAtLogin covers the Have I
+// Been Pwned lookup at login from spec v1.22.97. It turns the lookup on,
+// imports both settings, and turns the lookup off again. Every apply step also
+// proves that a refresh and a new plan show no diff. The lookup is off by
+// default, so the last step leaves the shared project on the default.
+func TestAccProjectConfigResource_passwordBreachCheckAtLogin(t *testing.T) {
+	apply := func(onLogin string) resource.TestStep {
+		return resource.TestStep{
+			Config: acctest.LoadTestConfig(t, "testdata/password_breach_check_at_login.tf.tmpl", map[string]string{"OnLogin": onLogin}),
+			Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_password_config_haveibeenpwned_enabled", "true"),
+				resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_password_config_haveibeenpwned_on_login", onLogin),
+			),
+		}
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acctest.AccPreCheck(t) },
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			apply("true"),
+			{
+				ResourceName:      "ory_project_config.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: selectedImportID("selfservice_methods_password_config_haveibeenpwned_enabled," +
+					"selfservice_methods_password_config_haveibeenpwned_on_login"),
+				ImportStateVerifyIgnore: []string{"cors_enabled", "selfservice_methods_password_config_min_password_length", "smtp_connection_uri"},
+			},
+			apply("false"),
+		},
+	})
+}
+
 func TestAccProjectConfigResource_adminCORS(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },

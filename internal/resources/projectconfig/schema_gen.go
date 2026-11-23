@@ -1132,7 +1132,7 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			ElementType: types.StringType,
 		},
 		"selfservice_methods_password_config_haveibeenpwned_on_login": schema.BoolAttribute{
-			Description: "Looks up passwords in Have I Been Pwned at login.",
+			Description: "Whether Ory Kratos looks up the password of every login attempt in Have I Been Pwned. Off by default. The lookup runs only when `selfservice_methods_password_config_haveibeenpwned_enabled` is true, and it never makes a login fail. Ory reports breached passwords in live event streams and in login web hooks.",
 			Optional:    true,
 		},
 	}

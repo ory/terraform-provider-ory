@@ -82,6 +82,7 @@ resource "ory_project_config" "secure" {
   selfservice_methods_password_config_min_password_length                 = 12
   selfservice_methods_password_config_identifier_similarity_check_enabled = true
   selfservice_methods_password_config_haveibeenpwned_enabled              = true
+  selfservice_methods_password_config_haveibeenpwned_on_login             = true
   selfservice_methods_password_config_max_breaches                        = 0
 
   # Authentication Methods
@@ -1048,7 +1049,7 @@ This resource covers most simple (scalar and list) project configuration propert
 - `selfservice_methods_passkey_config_timeouts_registration` (String) Timeout for the passkey registration ceremony as a Go duration such as '60s', '5m', or '1h30m'. The API rejects zero-valued segments such as '1h0m0s'. When unset, the library default applies: 5m with user verification, 2m without.
 - `selfservice_methods_passkey_enabled` (Boolean) Enable Passkey authentication.
 - `selfservice_methods_password_config_haveibeenpwned_enabled` (Boolean) Check passwords against HaveIBeenPwned.
-- `selfservice_methods_password_config_haveibeenpwned_on_login` (Boolean) Looks up passwords in Have I Been Pwned at login.
+- `selfservice_methods_password_config_haveibeenpwned_on_login` (Boolean) Whether Ory Kratos looks up the password of every login attempt in Have I Been Pwned. Off by default. The lookup runs only when `selfservice_methods_password_config_haveibeenpwned_enabled` is true, and it never makes a login fail. Ory reports breached passwords in live event streams and in login web hooks.
 - `selfservice_methods_password_config_identifier_similarity_check_enabled` (Boolean) Check password similarity to identifier.
 - `selfservice_methods_password_config_ignore_network_errors` (Boolean) Ignore HaveIBeenPwned network errors during password validation.
 - `selfservice_methods_password_config_max_breaches` (Number) Maximum allowed breaches in HaveIBeenPwned.

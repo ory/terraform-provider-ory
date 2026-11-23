@@ -252,7 +252,7 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 		{&plan.PreviewEnableNativeSAMLEngine, "/services/identity/config/preview/enable_native_saml_engine", nil},
 		{&plan.SelfserviceFlowsLoginBruteForceProtectionEnabled, "/services/identity/config/selfservice/flows/login/brute_force_protection/enabled", nil},
 		{&plan.AccountExperienceShowLastUsedMethod, "/services/account_experience/config/show_last_used_method", nil},
-		{&plan.SelfserviceMethodsPasswordConfigHaveibeenpwnedOnLogin, "/services/identity/config/selfservice/methods/password/config/haveibeenpwned_on_login", nil},
+		{&plan.SelfserviceMethodsPasswordConfigHaveIBeenPwnedOnLogin, "/services/identity/config/selfservice/methods/password/config/haveibeenpwned_on_login", nil},
 	}
 }
 

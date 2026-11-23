@@ -1754,10 +1754,12 @@ attributes:
     openapi_property: hydra_oauth2_client_id_metadata_document_scope
     description: "Scopes that an OAuth2 client resolved from a client ID metadata document can request. When the list is empty, Ory Hydra allows `openid` and `offline_access`."
 
-  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  # --- Added from spec v1.22.97 (ory/sdk spec/client), 2026-11-23 ---
+  # Verified against the live API: true and false round-trip, and the API
+  # accepts true while haveibeenpwned_enabled is false. Ory Kratos then skips
+  # the lookup, so the description names the dependency.
   - name: selfservice_methods_password_config_haveibeenpwned_on_login
-    go_field: SelfserviceMethodsPasswordConfigHaveibeenpwnedOnLogin
+    go_field: SelfserviceMethodsPasswordConfigHaveIBeenPwnedOnLogin
     type: bool
     openapi_property: kratos_selfservice_methods_password_config_haveibeenpwned_on_login
-    description: "Looks up passwords in Have I Been Pwned at login."
-
+    description: "Whether Ory Kratos looks up the password of every login attempt in Have I Been Pwned. Off by default. The lookup runs only when `selfservice_methods_password_config_haveibeenpwned_enabled` is true, and it never makes a login fail. Ory reports breached passwords in live event streams and in login web hooks."

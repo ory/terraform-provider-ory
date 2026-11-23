@@ -690,7 +690,7 @@ func identityBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry 
 		{&state.FeatureFlagsEnforceIdentitySchemaGuards, []string{"feature_flags", "enforce_identity_schema_guards"}, false, nil},
 		{&state.PreviewEnableNativeSAMLEngine, []string{"preview", "enable_native_saml_engine"}, false, nil},
 		{&state.SelfserviceFlowsLoginBruteForceProtectionEnabled, []string{"selfservice", "flows", "login", "brute_force_protection", "enabled"}, false, nil},
-		{&state.SelfserviceMethodsPasswordConfigHaveibeenpwnedOnLogin, []string{"selfservice", "methods", "password", "config", "haveibeenpwned_on_login"}, false, nil},
+		{&state.SelfserviceMethodsPasswordConfigHaveIBeenPwnedOnLogin, []string{"selfservice", "methods", "password", "config", "haveibeenpwned_on_login"}, false, nil},
 	}
 }
 
