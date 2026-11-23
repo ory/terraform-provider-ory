@@ -260,7 +260,6 @@ type ProjectConfigResourceModel struct {
 	PreviewDefaultReadConsistencyLevel types.String `tfsdk:"preview_default_read_consistency_level"`
 
 	// Feature flags
-	FeatureFlagsPasswordProfileRegistrationNodeGroup types.Bool `tfsdk:"feature_flags_password_profile_registration_node_group"`
 
 	// OAuth2 TTLs
 	OAuth2TTLAccessToken         types.String `tfsdk:"oauth2_ttl_access_token"`

@@ -856,7 +856,6 @@ This resource covers most simple (scalar and list) project configuration propert
 - `feature_flags_legacy_continue_with_verification_ui` (Boolean) Deprecated. Restore legacy behavior of always including show_verification_ui in continue_with.
 - `feature_flags_legacy_oidc_registration_node_group` (Boolean) Use legacy 'oidc' node group for OIDC registration when required fields are missing.
 - `feature_flags_legacy_require_verified_login_error` (Boolean) Deprecated. Return a form error instead of continue_with when the login identifier is not verified.
-- `feature_flags_password_profile_registration_node_group` (Boolean) Use password method group for profile registration node group.
 - `feature_flags_refresh_login_choose_address` (Boolean) Render an address picker on the code refresh login screen
 - `feature_flags_use_continue_with_transitions` (Boolean) Enable continue_with transitions for session flows.
 - `feature_flags_webhook_response_directives` (Boolean) Honor flow directives in web hook responses. If true, a login after web hook with response parsing enabled can return a required_aal directive of aal2 to require step-up for that login; identities without a second factor are routed to enrollment. Off by default.

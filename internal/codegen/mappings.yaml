@@ -1170,20 +1170,6 @@ attributes:
   # ============================================================================
   # Identity/Kratos additional
   # ============================================================================
-  - name: feature_flags_password_profile_registration_node_group
-    go_field: FeatureFlagsPasswordProfileRegistrationNodeGroup
-    type: bool
-    openapi_property: kratos_feature_flags_password_profile_registration_node_group
-    # The spec types this as boolean, but the config key stores the string enum
-    # "password"/"default" (verified 2026-08-04 on staging: PATCH true returns
-    # HTTP 200 and the GET-back reports "default", because the backend
-    # normalizes the key by comparing its string form with "password"). The
-    # bool_enum mapping sends the enum on write and maps it back on read.
-    bool_enum:
-      true_value: password
-      false_value: default
-    description: "Use password method group for profile registration node group."
-
   - name: oauth2_provider_headers
     go_field: OAuth2ProviderHeaders
     type: map_string

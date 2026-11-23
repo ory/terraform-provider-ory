@@ -2002,21 +2002,19 @@ func TestAccProjectConfigResource_loginBruteForceProtection(t *testing.T) {
 	})
 }
 
-func TestAccProjectConfigResource_emptyValuesAndEnumFlags(t *testing.T) {
+func TestAccProjectConfigResource_emptyValues(t *testing.T) {
 	// Issue #321: the API accepts empty lists/maps/strings and integer zero
 	// with HTTP 200 and prunes them from the stored config, so the keys never
 	// appear in any read. Nulling state on the missing keys produced a diff on
 	// every plan that no apply could settle. The PlanOnly steps are the
 	// regression proof.
 	//
-	// The two bools cover the other perpetual-diff classes:
-	// feature_flags_password_profile_registration_node_group is stored as the
-	// string enum "password"/"default" (a raw bool write silently lands as
-	// "default"), and enable_ax_v2 is reported under the config key "enabled".
-	createData := map[string]string{"PasswordProfileNodeGroup": "false", "EnableAXV2": "true"}
-	// End at the server defaults (flag true = "password", AX v2 off) so the
-	// shared acceptance project is left in its default state.
-	updateData := map[string]string{"PasswordProfileNodeGroup": "true", "EnableAXV2": "false"}
+	// The bool covers another perpetual-diff class: enable_ax_v2 is reported
+	// under the config key "enabled".
+	createData := map[string]string{"EnableAXV2": "true"}
+	// End at the server default, AX v2 off, so the shared acceptance project is
+	// left in its default state.
+	updateData := map[string]string{"EnableAXV2": "false"}
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { acctest.AccPreCheck(t) },
@@ -2035,7 +2033,6 @@ func TestAccProjectConfigResource_emptyValuesAndEnumFlags(t *testing.T) {
 					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_provider_headers.%", "0"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "oauth2_token_prefix", ""),
 					resource.TestCheckResourceAttr("ory_project_config.test", "selfservice_methods_password_config_max_breaches", "0"),
-					resource.TestCheckResourceAttr("ory_project_config.test", "feature_flags_password_profile_registration_node_group", "false"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "enable_ax_v2", "true"),
 				),
 			},
@@ -2045,11 +2042,10 @@ func TestAccProjectConfigResource_emptyValuesAndEnumFlags(t *testing.T) {
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
-			// Update flips both bools; the empty values stay put.
+			// Update flips the bool; the empty values stay put.
 			{
 				Config: acctest.LoadTestConfig(t, "testdata/empty_values.tf.tmpl", updateData),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("ory_project_config.test", "feature_flags_password_profile_registration_node_group", "true"),
 					resource.TestCheckResourceAttr("ory_project_config.test", "enable_ax_v2", "false"),
 				),
 			},
@@ -2075,7 +2071,6 @@ func TestAccProjectConfigResource_emptyValuesAndEnumFlags(t *testing.T) {
 					"oauth2_provider_headers",
 					"oauth2_token_prefix",
 					"selfservice_methods_password_config_max_breaches",
-					"feature_flags_password_profile_registration_node_group",
 					"enable_ax_v2",
 					"cors_enabled",
 					"selfservice_methods_password_config_min_password_length",

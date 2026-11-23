@@ -731,10 +731,6 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			ElementType: types.StringType,
 			Sensitive:   true,
 		},
-		"feature_flags_password_profile_registration_node_group": schema.BoolAttribute{
-			Description: "Use password method group for profile registration node group.",
-			Optional:    true,
-		},
 		"oauth2_provider_headers": schema.MapAttribute{
 			Description: "Custom HTTP headers for the OAuth2 provider integration.",
 			Optional:    true,

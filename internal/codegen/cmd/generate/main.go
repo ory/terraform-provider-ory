@@ -1006,6 +1006,10 @@ func excludedProperties() map[string]bool {
 		"project_revision_hooks":                 true,
 		"scim_clients":                           true,
 		"account_experience_custom_translations": true, // → ory_account_experience_translation
+		// Removed: Ory dropped this flag, which never had an effect because
+		// Kratos never read it from feature_flags. Specs up to v1.22.97 still
+		// list it, so the exclusion keeps discovery from adding it back.
+		"kratos_feature_flags_password_profile_registration_node_group": true,
 		// Handled by custom code in resource.go under different terraform names
 		"serve_public_cors_enabled":                             true, // → cors_enabled
 		"serve_public_cors_allowed_origins":                     true, // → cors_origins
