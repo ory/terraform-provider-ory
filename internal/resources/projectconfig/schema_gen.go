@@ -1131,5 +1131,9 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Optional:    true,
 			ElementType: types.StringType,
 		},
+		"selfservice_methods_password_config_haveibeenpwned_on_login": schema.BoolAttribute{
+			Description: "Looks up passwords in Have I Been Pwned at login.",
+			Optional:    true,
+		},
 	}
 }

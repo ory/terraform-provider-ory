@@ -1753,3 +1753,11 @@ attributes:
     type: list_string
     openapi_property: hydra_oauth2_client_id_metadata_document_scope
     description: "Scopes that an OAuth2 client resolved from a client ID metadata document can request. When the list is empty, Ory Hydra allows `openid` and `offline_access`."
+
+  # --- Auto-discovered entries (review names/descriptions before merging) ---
+  - name: selfservice_methods_password_config_haveibeenpwned_on_login
+    go_field: SelfserviceMethodsPasswordConfigHaveibeenpwnedOnLogin
+    type: bool
+    openapi_property: kratos_selfservice_methods_password_config_haveibeenpwned_on_login
+    description: "Looks up passwords in Have I Been Pwned at login."
+

@@ -445,6 +445,9 @@ type ProjectConfigResourceModel struct {
 	OAuth2ClientIDMetadataDocumentAudience           types.List   `tfsdk:"oauth2_client_id_metadata_document_audience"`
 	OAuth2ClientIDMetadataDocumentMode               types.String `tfsdk:"oauth2_client_id_metadata_document_mode"`
 	OAuth2ClientIDMetadataDocumentScope              types.List   `tfsdk:"oauth2_client_id_metadata_document_scope"`
+
+	// Auto-discovered (review naming before release)
+	SelfserviceMethodsPasswordConfigHaveibeenpwnedOnLogin types.Bool `tfsdk:"selfservice_methods_password_config_haveibeenpwned_on_login"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---
