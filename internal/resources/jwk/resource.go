@@ -3,9 +3,12 @@ package jwk
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -23,10 +26,11 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                   = &JWKResource{}
-	_ resource.ResourceWithConfigure      = &JWKResource{}
-	_ resource.ResourceWithImportState    = &JWKResource{}
-	_ resource.ResourceWithValidateConfig = &JWKResource{}
+	_ resource.Resource                     = &JWKResource{}
+	_ resource.ResourceWithConfigure        = &JWKResource{}
+	_ resource.ResourceWithImportState      = &JWKResource{}
+	_ resource.ResourceWithValidateConfig   = &JWKResource{}
+	_ resource.ResourceWithConfigValidators = &JWKResource{}
 )
 
 // NewResource returns a new JWK resource.
@@ -49,6 +53,7 @@ type JWKResourceModel struct {
 	KeyID         types.String `tfsdk:"key_id"`
 	Algorithm     types.String `tfsdk:"algorithm"`
 	Use           types.String `tfsdk:"use"`
+	Jwks          types.String `tfsdk:"jwks"`
 	Keys          types.String `tfsdk:"keys"`
 }
 
@@ -59,8 +64,9 @@ func (r *JWKResource) Metadata(ctx context.Context, req resource.MetadataRequest
 const jwkMarkdownDescription = `
 Manages an Ory Network JSON Web Key Set (JWKS).
 
-JSON Web Keys are used for signing and encrypting tokens. This resource allows you to
-generate and manage custom key sets for your Ory project.
+JSON Web Keys are used for signing and encrypting tokens. This resource can have Ory
+generate a key (` + "`key_id`" + `, ` + "`algorithm`" + `, and ` + "`use`" + `), or upload keys you already
+have (` + "`jwks`" + `), including public-only keys.
 
 ## Example Usage
 
@@ -84,6 +90,15 @@ resource "ory_json_web_key_set" "encryption" {
   key_id    = "enc-key-1"
   algorithm = "ES256"
   use       = "enc"
+}
+` + "```" + `
+
+### Upload Existing Keys
+
+` + "```hcl" + `
+resource "ory_json_web_key_set" "session_token" {
+  set_id = "custom.session-token"
+  jwks   = file("${path.module}/session-token.public.jwks.json")
 }
 ` + "```" + `
 
@@ -160,34 +175,42 @@ func (r *JWKResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				},
 			},
 			"key_id": schema.StringAttribute{
-				Description: "The Key ID (kid) for the generated key.",
-				Required:    true,
+				Description: "The Key ID (kid) for the generated key. Set key_id, algorithm, and use together to have Ory generate the key. Conflicts with jwks.",
+				Optional:    true,
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
+					replaceWhenSet,
 				},
 			},
 			"algorithm": schema.StringAttribute{
-				Description: "The algorithm for the key: RS256, ES256, ES512, HS256, HS512.",
-				Required:    true,
+				Description: "The algorithm for the generated key: RS256, ES256, ES512, HS256, HS512. Conflicts with jwks.",
+				Optional:    true,
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
+					replaceWhenSet,
 				},
 				Validators: []validator.String{
 					stringvalidator.OneOf("RS256", "ES256", "ES512", "HS256", "HS512"),
 				},
 			},
 			"use": schema.StringAttribute{
-				Description: "The intended use: sig (signature) or enc (encryption).",
-				Required:    true,
+				Description: "The intended use of the generated key: sig (signature) or enc (encryption). Conflicts with jwks.",
+				Optional:    true,
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
+					replaceWhenSet,
 				},
 				Validators: []validator.String{
 					stringvalidator.OneOf("sig", "enc"),
 				},
 			},
+			"jwks": schema.StringAttribute{
+				Description: "A JSON Web Key Set document to upload instead of generating a key, for example file(\"keys.jwks.json\"). Every key needs kid, kty, alg, and use, and every kid must be unique. Public-only keys are supported, and the set can hold several keys for rotation. A change uploads the new set in place and replaces every key in it. Conflicts with key_id, algorithm, and use.",
+				Optional:    true,
+				Sensitive:   true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("key_id"), path.MatchRoot("algorithm"), path.MatchRoot("use")),
+				},
+			},
 			"keys": schema.StringAttribute{
-				Description: "The JSON Web Key Set as a JSON string, including private key material. This is a sensitive value.",
+				Description: "The JSON Web Key Set as Ory stores it, as a JSON string with the keys sorted by kid. It includes private key material for a generated key and for any private key in jwks. This is a sensitive value.",
 				Computed:    true,
 				Sensitive:   true,
 			},
@@ -212,6 +235,24 @@ func (r *JWKResource) Configure(ctx context.Context, req resource.ConfigureReque
 	r.client = oryClient
 }
 
+// replaceWhenSet replaces the key set when a generated-key attribute gets a new
+// value, because Ory must generate a new key for it. A change to null means the
+// configuration moved to jwks, and Update uploads that set in place.
+var replaceWhenSet = stringplanmodifier.RequiresReplaceIf(
+	func(_ context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+		resp.RequiresReplace = !req.PlanValue.IsNull()
+	},
+	"A new value replaces the key set. Removing the value to use jwks updates the key set in place.",
+	"A new value replaces the key set. Removing the value to use `jwks` updates the key set in place.",
+)
+
+func (r *JWKResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
+	return []resource.ConfigValidator{
+		resourcevalidator.AtLeastOneOf(path.MatchRoot("key_id"), path.MatchRoot("jwks")),
+		resourcevalidator.RequiredTogether(path.MatchRoot("key_id"), path.MatchRoot("algorithm"), path.MatchRoot("use")),
+	}
+}
+
 func (r *JWKResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var config JWKResourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
@@ -219,6 +260,72 @@ func (r *JWKResource) ValidateConfig(ctx context.Context, req resource.ValidateC
 		return
 	}
 	resp.Diagnostics.Append(helpers.ValidateProjectCredentialPair(config.ProjectSlug, config.ProjectAPIKey)...)
+	if !config.Jwks.IsNull() && !config.Jwks.IsUnknown() {
+		if _, err := parseJWKS(config.Jwks.ValueString()); err != nil {
+			resp.Diagnostics.AddAttributeError(path.Root("jwks"), "Invalid JSON Web Key Set", err.Error())
+		}
+	}
+}
+
+// parseJWKS decodes a jwks document and rejects what Ory or the provider cannot
+// round-trip. Ory accepts a key without kid, alg, or use, but it then omits the
+// member on read and the SDK cannot decode the key. An empty keys array deletes
+// the set, and two keys with the same kid fail with a conflict.
+func parseJWKS(raw string) (ory.JsonWebKeySet, error) {
+	var set ory.JsonWebKeySet
+	if err := json.Unmarshal([]byte(raw), &set); err != nil {
+		return set, fmt.Errorf("jwks is not a valid JSON Web Key Set: %w", err)
+	}
+	if len(set.Keys) == 0 {
+		return set, errors.New(`jwks must be a JSON Web Key Set with at least one key in its "keys" array`)
+	}
+	kids := make(map[string]bool, len(set.Keys))
+	for i, key := range set.Keys {
+		for _, member := range []struct{ name, value string }{
+			{"kid", key.Kid}, {"kty", key.Kty}, {"alg", key.Alg}, {"use", key.Use},
+		} {
+			if member.value == "" {
+				return set, fmt.Errorf("key %d in jwks has an empty %q member: every key needs kid, kty, alg, and use", i, member.name)
+			}
+		}
+		if kids[key.Kid] {
+			return set, fmt.Errorf("jwks has more than one key with kid %q: every key needs its own kid", key.Kid)
+		}
+		kids[key.Kid] = true
+	}
+	return set, nil
+}
+
+// encodeKeySet encodes a key set for the keys attribute, with the keys sorted
+// by kid. Ory does not return the keys of a set in upload order, so the sort
+// makes the value the same for any order.
+func encodeKeySet(set *ory.JsonWebKeySet) (string, error) {
+	sorted := *set
+	sorted.Keys = slices.Clone(set.Keys)
+	slices.SortFunc(sorted.Keys, func(a, b ory.JsonWebKey) int { return strings.Compare(a.Kid, b.Kid) })
+	encoded, err := json.Marshal(sorted)
+	return string(encoded), err
+}
+
+// uploadKeySet replaces the keys in a set with the keys in a jwks document and
+// returns the stored set, encoded for the keys attribute.
+func uploadKeySet(ctx context.Context, c *client.OryClient, setID, raw string) (string, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	set, err := parseJWKS(raw)
+	if err != nil {
+		diags.AddAttributeError(path.Root("jwks"), "Invalid JSON Web Key Set", err.Error())
+		return "", diags
+	}
+	stored, err := c.SetJsonWebKeySet(ctx, setID, set)
+	if err != nil {
+		diags.AddError("Error Uploading JSON Web Key Set", "Could not upload jwks to JWK set "+setID+": "+err.Error())
+		return "", diags
+	}
+	keys, err := encodeKeySet(stored)
+	if err != nil {
+		diags.AddError("Error Encoding JSON Web Key Set", "Could not encode JWK set "+setID+": "+err.Error())
+	}
+	return keys, diags
 }
 
 func (r *JWKResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -246,19 +353,34 @@ func (r *JWKResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
-	body := ory.CreateJsonWebKeySet{
-		Alg: plan.Algorithm.ValueString(),
-		Kid: plan.KeyID.ValueString(),
-		Use: plan.Use.ValueString(),
-	}
+	if !plan.Jwks.IsNull() {
+		keys, diags := uploadKeySet(ctx, projectClient, plan.SetID.ValueString(), plan.Jwks.ValueString())
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		plan.Keys = types.StringValue(keys)
+	} else {
+		body := ory.CreateJsonWebKeySet{
+			Alg: plan.Algorithm.ValueString(),
+			Kid: plan.KeyID.ValueString(),
+			Use: plan.Use.ValueString(),
+		}
 
-	jwks, err := projectClient.CreateJsonWebKeySet(ctx, plan.SetID.ValueString(), body)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Error Creating JSON Web Key Set",
-			"Could not create JWK set: "+err.Error(),
-		)
-		return
+		jwks, err := projectClient.CreateJsonWebKeySet(ctx, plan.SetID.ValueString(), body)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Creating JSON Web Key Set",
+				"Could not create JWK set: "+err.Error(),
+			)
+			return
+		}
+		keys, err := encodeKeySet(jwks)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Encoding JSON Web Key Set", "Could not encode JWK set: "+err.Error())
+			return
+		}
+		plan.Keys = types.StringValue(keys)
 	}
 
 	plan.ID = types.StringValue(plan.SetID.ValueString())
@@ -268,14 +390,6 @@ func (r *JWKResource) Create(ctx context.Context, req resource.CreateRequest, re
 		// When using resource-level credentials without project_id,
 		// explicitly set to null so Terraform doesn't complain about unknown values after apply.
 		plan.ProjectID = types.StringNull()
-	}
-
-	// Serialize the keys to JSON
-	if len(jwks.Keys) > 0 {
-		keysJSON, err := json.Marshal(jwks)
-		if err == nil {
-			plan.Keys = types.StringValue(string(keysJSON))
-		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
@@ -290,9 +404,9 @@ func (r *JWKResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 	}
 
 	// Derive a request-scoped client, using resource-level credentials if provided
-	client := helpers.ResolveProjectClient(r.client, state.ProjectSlug, state.ProjectAPIKey)
+	c := helpers.ResolveProjectClient(r.client, state.ProjectSlug, state.ProjectAPIKey)
 
-	projectClient, projectID, diags := r.projectClient(ctx, client, state.ProjectID)
+	projectClient, projectID, diags := r.projectClient(ctx, c, state.ProjectID)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -300,6 +414,12 @@ func (r *JWKResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 
 	jwks, err := projectClient.GetJsonWebKeySet(ctx, state.SetID.ValueString())
 	if err != nil {
+		if client.IsNotFoundStatus(err) {
+			// The set was deleted outside Terraform. Drop it from state so the
+			// next plan creates it again, instead of failing every plan.
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Error Reading JSON Web Key Set",
 			"Could not read JWK set "+state.SetID.ValueString()+": "+err.Error(),
@@ -316,30 +436,56 @@ func (r *JWKResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		state.ProjectID = types.StringValue(projectID)
 	}
 
-	// Serialize the keys to JSON
-	keysJSON, err := json.Marshal(jwks)
-	if err == nil {
-		state.Keys = types.StringValue(string(keysJSON))
+	keys, err := encodeKeySet(jwks)
+	if err != nil {
+		resp.Diagnostics.AddError("Error Encoding JSON Web Key Set", "Could not encode JWK set "+state.SetID.ValueString()+": "+err.Error())
+		return
 	}
 
-	// Try to extract algorithm and use from the first key
-	if len(jwks.Keys) > 0 {
+	if state.Jwks.IsNull() {
+		// Ory generated the key, or this is the first read after an import: track
+		// the first key.
 		firstKey := jwks.Keys[0]
 		state.Algorithm = types.StringValue(firstKey.Alg)
 		state.Use = types.StringValue(firstKey.Use)
 		state.KeyID = types.StringValue(firstKey.Kid)
+	} else if keys != state.Keys.ValueString() {
+		// The keys changed outside Terraform. Store the keys Ory serves in jwks,
+		// so the next plan shows the difference and the apply uploads jwks again.
+		state.Jwks = types.StringValue(keys)
 	}
+	state.Keys = types.StringValue(keys)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
+// Update uploads a changed jwks in place. replaceWhenSet turns a new generated
+// key into a replacement, so otherwise only the resource-level credentials change.
 func (r *JWKResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	// JWK sets are immutable - all changes require replacement
-	// This is handled by RequiresReplace on all fields
-	resp.Diagnostics.AddError(
-		"Update Not Supported",
-		"JSON Web Key Sets cannot be updated. Changes require resource replacement.",
-	)
+	var plan, state JWKResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	plan.Keys = state.Keys
+	if !plan.Jwks.IsNull() && !plan.Jwks.Equal(state.Jwks) {
+		client := helpers.ResolveProjectClient(r.client, plan.ProjectSlug, plan.ProjectAPIKey)
+		projectClient, _, diags := r.projectClient(ctx, client, plan.ProjectID)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		keys, diags := uploadKeySet(ctx, projectClient, plan.SetID.ValueString(), plan.Jwks.ValueString())
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		plan.Keys = types.StringValue(keys)
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
 func (r *JWKResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

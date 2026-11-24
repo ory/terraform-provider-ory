@@ -9,11 +9,11 @@ description: |-
 
 Manages an Ory Network JSON Web Key Set (JWKS).
 
-JSON Web Keys are used for signing and encrypting tokens. This resource generates and manages custom key sets for your Ory project's OAuth2/OIDC service (Hydra).
+JSON Web Keys are used for signing and encrypting tokens. This resource generates and manages custom key sets for your Ory project's OAuth2/OIDC service (Hydra). It can also upload keys that you already have, including public-only keys. See [Upload Existing Keys](#upload-existing-keys).
 
 -> **Plan:** Available on all Ory Network plans.
 
-~> **Note:** This resource is **immutable**. Any change to `project_id`, `set_id`, `key_id`, `algorithm`, or `use` will destroy the existing key set and create a new one. Private keys in the old set will be permanently lost.
+~> **Note:** A change to `project_id`, `set_id`, `key_id`, `algorithm`, or `use` destroys the existing key set and creates a new one. Private keys in the old set are permanently lost. A change to `jwks` uploads the new keys to the same set in place.
 
 ## Algorithms
 
@@ -71,6 +71,13 @@ resource "ory_json_web_key_set" "encryption" {
   use       = "enc"
 }
 
+# Upload an existing key set instead of generating one, for example a
+# public-only key whose private key stays in a secret store
+resource "ory_json_web_key_set" "session_token" {
+  set_id = "custom.session-token"
+  jwks   = file("${path.module}/session-token.public.jwks.json")
+}
+
 output "signing_key_set_id" {
   value = ory_json_web_key_set.signing.id
 }
@@ -94,9 +101,58 @@ resource "ory_json_web_key_set" "same_apply" {
 }
 ```
 
+## Upload Existing Keys
+
+Set `jwks` to upload a JSON Web Key Set that you manage outside Ory, instead of having Ory generate a key. For example, keep the private key in a secret store and upload only the public key, so that Ory can publish it. `jwks` conflicts with `key_id`, `algorithm`, and `use`.
+
+```hcl
+resource "ory_json_web_key_set" "session_token" {
+  set_id = "custom.session-token"
+  jwks   = file("${path.module}/session-token.public.jwks.json")
+}
+```
+
+The file holds a standard JWKS document:
+
+```json
+{
+  "keys": [
+    {
+      "kty": "EC",
+      "kid": "session-token-1",
+      "use": "sig",
+      "alg": "ES256",
+      "crv": "P-256",
+      "x": "...",
+      "y": "..."
+    }
+  ]
+}
+```
+
+The provider applies these rules to `jwks`:
+
+- Every key needs `kid`, `kty`, `alg`, and `use`, and every `kid` must be unique in the set. Ory accepts a key without `kid`, `alg`, or `use`, but the provider cannot read that key back.
+- A key can be public only. Ory and the Terraform state then hold no private key material for it.
+- The set can hold several keys. To rotate a key, add the new key to the document and apply. Remove the old key in a later apply.
+- Each change uploads the whole document in place and replaces every key in the set. If a set with this `set_id` already exists in Ory, the first apply replaces its keys too.
+- If the keys in Ory change outside Terraform, the next plan shows a change to `jwks`. The apply uploads the configured keys again.
+
+Moving from a generated key to `jwks` uploads the keys in place. Moving from `jwks` to a generated key replaces the set, because Ory must generate the new key.
+
+To publish the public keys in the project's `/.well-known/jwks.json`, add the set to `oauth2_webfinger_jwks_broadcast_keys` on `ory_project_config`. Ory keeps publishing its own token signing keys next to them.
+
+```hcl
+resource "ory_project_config" "main" {
+  oauth2_webfinger_jwks_broadcast_keys = [
+    ory_json_web_key_set.session_token.set_id,
+  ]
+}
+```
+
 ## Keys Output
 
-The `keys` attribute contains the full JSON Web Key Set as a JSON string, **including private key material**. This attribute is marked as sensitive, so Terraform redacts it from plan and apply output. However, it is still persisted in state and can be retrieved via `terraform output` or remote state access. The output follows the standard JWKS format:
+The `keys` attribute contains the JSON Web Key Set as Ory stores it, as a JSON string with the keys sorted by `kid`. For a generated key, it includes **private key material**. For `jwks`, it includes the private key material of any private key in the document. This attribute is marked as sensitive, so Terraform redacts it from plan and apply output. However, it is still persisted in state and can be retrieved via `terraform output` or remote state access. The output follows the standard JWKS format:
 
 ### RSA key (`RS256`)
 
@@ -158,7 +214,7 @@ The `keys` attribute contains the full JSON Web Key Set as a JSON string, **incl
 
 ~> **Security:** The `keys` attribute contains private key material and is marked as sensitive. Terraform will not display it in plan output, but it is stored in state. Use [remote state encryption](https://developer.hashicorp.com/terraform/language/state/sensitive-data) in production.
 
-On read, the provider extracts `algorithm`, `use`, and `key_id` from the **first key** in the set.
+For a generated key, the provider reads `algorithm`, `use`, and `key_id` from the **first key** in the set on every refresh.
 
 ## Resource-Level Credentials (Same-Apply with Project Creation)
 
@@ -215,23 +271,26 @@ terraform import ory_json_web_key_set.signing token-signing-keys
 
 After import, `key_id` is populated from the first key in the set. If the set contains multiple keys, only the first key's metadata is tracked.
 
+Ory cannot tell an uploaded set from a generated one, so an import always fills `key_id`, `algorithm`, and `use`. If the configuration uses `jwks`, the first apply after the import uploads `jwks` in place and clears these attributes. The key set is not replaced.
+
 <!-- schema generated by tfplugindocs -->
 ## Schema
 
 ### Required
 
-- `algorithm` (String) The algorithm for the key: RS256, ES256, ES512, HS256, HS512.
-- `key_id` (String) The Key ID (kid) for the generated key.
 - `set_id` (String) The ID of the JSON Web Key Set.
-- `use` (String) The intended use: sig (signature) or enc (encryption).
 
 ### Optional
 
+- `algorithm` (String) The algorithm for the generated key: RS256, ES256, ES512, HS256, HS512. Conflicts with jwks.
+- `jwks` (String, Sensitive) A JSON Web Key Set document to upload instead of generating a key, for example file("keys.jwks.json"). Every key needs kid, kty, alg, and use, and every kid must be unique. Public-only keys are supported, and the set can hold several keys for rotation. A change uploads the new set in place and replaces every key in it. Conflicts with key_id, algorithm, and use.
+- `key_id` (String) The Key ID (kid) for the generated key. Set key_id, algorithm, and use together to have Ory generate the key. Conflicts with jwks.
 - `project_api_key` (String, Sensitive) Project API key for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and JWK set in the same apply). Overrides the provider-level project_api_key.
 - `project_id` (String) The project ID. If not set, uses the provider's project_id or project_slug.
 - `project_slug` (String) Project slug for API access. Use this to pass credentials at the resource level when the provider is configured before the project exists (e.g., creating a project and JWK set in the same apply). Overrides the provider-level project_slug.
+- `use` (String) The intended use of the generated key: sig (signature) or enc (encryption). Conflicts with jwks.
 
 ### Read-Only
 
 - `id` (String) Internal Terraform ID (same as set_id).
-- `keys` (String, Sensitive) The JSON Web Key Set as a JSON string, including private key material. This is a sensitive value.
+- `keys` (String, Sensitive) The JSON Web Key Set as Ory stores it, as a JSON string with the keys sorted by kid. It includes private key material for a generated key and for any private key in jwks. This is a sensitive value.

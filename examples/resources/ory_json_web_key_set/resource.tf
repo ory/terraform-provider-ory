@@ -23,6 +23,13 @@ resource "ory_json_web_key_set" "encryption" {
   use       = "enc"
 }
 
+# Upload an existing key set instead of generating one, for example a
+# public-only key whose private key stays in a secret store
+resource "ory_json_web_key_set" "session_token" {
+  set_id = "custom.session-token"
+  jwks   = file("${path.module}/session-token.public.jwks.json")
+}
+
 output "signing_key_set_id" {
   value = ory_json_web_key_set.signing.id
 }
