@@ -14,6 +14,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
@@ -807,6 +808,104 @@ func TestAccProjectConfigResource_tokenizerTemplates(t *testing.T) {
 			},
 		},
 	})
+}
+
+// TestAccProjectConfigResource_tokenizerJWKSURLWriteOnly covers jwks_url_wo on
+// a session tokenizer template. The key reaches the API but never Terraform
+// state. A template moves from jwks_url to jwks_url_wo in place, and a new
+// jwks_url_wo_version sends a new key. Write-only arguments need Terraform 1.11+.
+func TestAccProjectConfigResource_tokenizerJWKSURLWriteOnly(t *testing.T) {
+	keyA, keyB, keyC := tokenizerJWKS("tf-acc-a"), tokenizerJWKS("tf-acc-b"), tokenizerJWKS("tf-acc-c")
+	config := func(jwksURL, jwksURLWO, version string) string {
+		return acctest.LoadTestConfig(t, "testdata/tokenizer_jwks_url_wo.tf.tmpl", map[string]string{
+			"JWKSURL": jwksURL, "JWKSURLWO": jwksURLWO, "Version": version,
+		})
+	}
+	template := tfjsonpath.New("session_tokenizer_templates").AtMapKey("api")
+	keyNotInState := []statecheck.StateCheck{
+		statecheck.ExpectKnownValue("ory_project_config.test", template.AtMapKey("jwks_url"), knownvalue.Null()),
+		statecheck.ExpectKnownValue("ory_project_config.test", template.AtMapKey("jwks_url_wo"), knownvalue.Null()),
+	}
+	updateInPlace := resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+		plancheck.ExpectResourceAction("ory_project_config.test", plancheck.ResourceActionUpdate),
+	}}
+
+	acctest.RunTest(t, resource.TestCase{
+		PreCheck: func() { acctest.AccPreCheck(t) },
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+			tfversion.SkipBelow(tfversion.Version1_11_0),
+		},
+		ProtoV6ProviderFactories: acctest.TestAccProtoV6ProviderFactories(),
+		Steps: []resource.TestStep{
+			// Each template takes exactly one of jwks_url and jwks_url_wo.
+			{Config: config("", "", ""), PlanOnly: true, ExpectError: regexp.MustCompile(`No\s+attribute\s+specified\s+when\s+one\s+\(and\s+only\s+one\)`)},
+			{Config: config(keyA, keyB, ""), PlanOnly: true, ExpectError: regexp.MustCompile(`2\s+attributes\s+specified\s+when\s+one\s+\(and\s+only\s+one\)`)},
+			{Config: config(keyA, "", "1"), PlanOnly: true, ExpectError: regexp.MustCompile(`must\s+be\s+specified\s+when`)},
+			// A configuration that already uses jwks_url.
+			{
+				Config: config(keyA, "", ""),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_tokenizer_templates.api.jwks_url", keyA),
+					checkStoredTokenizerJWKS(t, "api", keyA),
+				),
+			},
+			// Move the key to jwks_url_wo. The update drops it from state.
+			{
+				Config:            config("", keyB, "1"),
+				ConfigPlanChecks:  updateInPlace,
+				ConfigStateChecks: keyNotInState,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_tokenizer_templates.api.jwks_url_wo_version", "1"),
+					checkStoredTokenizerJWKS(t, "api", keyB),
+				),
+			},
+			{Config: config("", keyB, "1"), PlanOnly: true},
+			// Rotate the key with the version trigger.
+			{
+				Config:            config("", keyC, "2"),
+				ConfigPlanChecks:  updateInPlace,
+				ConfigStateChecks: keyNotInState,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ory_project_config.test", "session_tokenizer_templates.api.jwks_url_wo_version", "2"),
+					checkStoredTokenizerJWKS(t, "api", keyC),
+				),
+			},
+			{Config: config("", keyC, "2"), PlanOnly: true},
+			{
+				ResourceName:            "ory_project_config.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"session_tokenizer_templates", "cors_enabled"},
+			},
+		},
+	})
+}
+
+// tokenizerJWKS returns a base64:// JWKS URL with one public EC key. The kid
+// makes each value distinct.
+func tokenizerJWKS(kid string) string {
+	jwks := fmt.Sprintf(`{"keys":[{"kty":"EC","crv":"P-256","alg":"ES256","use":"sig","kid":%q,`+
+		`"x":"GSKg5gs8XdLhk_Qq-bARzqW5cgCZ4MxrRHtZ0XYvSSU","y":"ga0NZJBWLAjnOOGLV3XUiCvYm7b5aN8iIpv3Hcz5Y78"}]}`, kid)
+	return "base64://" + base64.StdEncoding.EncodeToString([]byte(jwks))
+}
+
+// checkStoredTokenizerJWKS asserts that the API stores want as the template's
+// jwks_url, which proves that the provider sent the key.
+func checkStoredTokenizerJWKS(t *testing.T, template, want string) resource.TestCheckFunc {
+	t.Helper()
+	return func(*terraform.State) error {
+		return acctest.Eventually(func() error {
+			got, _, err := acctest.ProjectConfigValue(t, acctest.GetTestProjectID(t),
+				"/services/identity/config/session/whoami/tokenizer/templates/"+template+"/jwks_url")
+			if err != nil {
+				return err
+			}
+			if got != want {
+				return fmt.Errorf("template %q stores a different jwks_url than the configured key", template)
+			}
+			return nil
+		})
+	}
 }
 
 // clearTokenizerTemplatesOutOfBand returns a PreConfig function that removes

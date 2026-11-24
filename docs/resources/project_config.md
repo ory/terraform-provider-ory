@@ -258,6 +258,7 @@ resource "ory_project_config" "native_only" {
 }
 
 # Session tokenizer templates (JWT tokenization for /sessions/whoami)
+# jwks_url is stored in Terraform state. Use jwks_url_wo to keep the signing key out of state.
 resource "ory_project_config" "with_tokenizer" {
   session_tokenizer_templates = {
     my_jwt = {
@@ -675,6 +676,38 @@ Leave the attribute out and the provider writes no scope at all, so Ory applies 
 -> **`feature_flags_legacy_require_verified_login_error` is not an enable switch.** It controls how a failed verified-address check is reported, a form error instead of a `continue_with` step. It has no effect unless a `require_verified_address` toggle is `true`. While the flag is `true`, Ory runs the check for password logins only and skips it for social, passkey and WebAuthn logins, so keep it at `false`, its default, when you enable the hook on those flows.
 
 The Ory Console additionally turns on `selfservice_flows_registration_after_password_hook_show_verification_ui` when you enable "Require verified address for login" on a project that signs users in after registration. The provider does not infer that for you. Set the attribute yourself if you want that behavior.
+
+## Session Tokenizer Templates
+
+`session_tokenizer_templates` configures how Ory converts a session to a JWT for `/sessions/whoami?tokenize_as=<template>`. Each template signs its tokens with the private key in its JWKS. Anyone who can read that JWKS can mint session tokens for any identity in the project.
+
+Set the JWKS with exactly one of these attributes on each template:
+
+- `jwks_url`: Terraform stores the JWKS in state and in saved plan files.
+- `jwks_url_wo`: a write-only argument that requires Terraform 1.11 or later. The provider sends the JWKS to Ory, and Terraform never stores it in state or plan files.
+
+```hcl
+variable "tokenizer_jwks" {
+  type      = string
+  ephemeral = true
+}
+
+resource "ory_project_config" "main" {
+  session_tokenizer_templates = {
+    api = {
+      ttl                 = "5m"
+      jwks_url_wo         = "base64://${base64encode(var.tokenizer_jwks)}"
+      jwks_url_wo_version = "1"
+    }
+  }
+}
+```
+
+Terraform cannot detect a change to a write-only value. To rotate the key, change the JWKS and `jwks_url_wo_version` in the same apply. The provider replaces the whole templates map on every apply that updates this resource, so such an apply also sends the current `jwks_url_wo` value.
+
+To move a template from `jwks_url` to `jwks_url_wo`, replace the attribute and set `jwks_url_wo_version`. The next apply updates the project in place and removes the key from state. State snapshots and plan files from before the change still contain the key, so rotate the key if those files are not secured.
+
+The provider does not read the JWKS back from Ory, so a key changed outside Terraform is not reported as drift.
 
 ## Session Risk Rules
 
@@ -1167,13 +1200,12 @@ Required:
 <a id="nestedatt--session_tokenizer_templates"></a>
 ### Nested Schema for `session_tokenizer_templates`
 
-Required:
-
-- `jwks_url` (String, Sensitive) JWKS URL for signing tokens. Must use base64:// scheme (e.g., 'base64://eyJrZXlzIjpbXX0=').
-
 Optional:
 
 - `claims_mapper_url` (String) Jsonnet claims mapper URL. Supports base64:// and https:// schemes.
+- `jwks_url` (String, Sensitive) JWKS URL for signing tokens. Must use base64:// scheme (e.g., 'base64://eyJrZXlzIjpbXX0='). The JWKS holds the private signing key, and Terraform stores this value in state and plan files. Set exactly one of jwks_url or jwks_url_wo.
+- `jwks_url_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of jwks_url. Requires Terraform 1.11 or later. The provider sends the JWKS to Ory, and Terraform never stores it in state or plan files. Must use base64:// scheme. Terraform cannot detect changes to a write-only value, so change jwks_url_wo_version to send a new key. Set exactly one of jwks_url or jwks_url_wo.
+- `jwks_url_wo_version` (String) Version trigger for jwks_url_wo. Change this value when jwks_url_wo changes, so Terraform sends the new key to Ory. Requires jwks_url_wo.
 - `subject_source` (String) Subject source for the JWT: 'id' (default) or 'external_id'.
 - `ttl` (String) Token time-to-live duration (e.g., '1h', '30m'). Default: '1m'.
 

@@ -450,10 +450,12 @@ type ProjectConfigResourceModel struct {
 // --- Nested model types for session tokenizer templates and courier HTTP ---
 
 type SessionTokenizerTemplateModel struct {
-	TTL             types.String `tfsdk:"ttl"`
-	JWKSURL         types.String `tfsdk:"jwks_url"`
-	ClaimsMapperURL types.String `tfsdk:"claims_mapper_url"`
-	SubjectSource   types.String `tfsdk:"subject_source"`
+	TTL              types.String `tfsdk:"ttl"`
+	JWKSURL          types.String `tfsdk:"jwks_url"`
+	JWKSURLWO        types.String `tfsdk:"jwks_url_wo"`
+	JWKSURLWOVersion types.String `tfsdk:"jwks_url_wo_version"`
+	ClaimsMapperURL  types.String `tfsdk:"claims_mapper_url"`
+	SubjectSource    types.String `tfsdk:"subject_source"`
 }
 
 type SessionWhoamiRuleModel struct {
@@ -494,10 +496,12 @@ type OAuth2TokenHookAuthModel struct {
 // Shared attr.Type maps for constructing types.Object / types.Map / types.List values.
 var (
 	tokenizerTemplateAttrTypes = map[string]attr.Type{
-		"ttl":               types.StringType,
-		"jwks_url":          types.StringType,
-		"claims_mapper_url": types.StringType,
-		"subject_source":    types.StringType,
+		"ttl":                 types.StringType,
+		"jwks_url":            types.StringType,
+		"jwks_url_wo":         types.StringType,
+		"jwks_url_wo_version": types.StringType,
+		"claims_mapper_url":   types.StringType,
+		"subject_source":      types.StringType,
 	}
 
 	sessionWhoamiRuleAttrTypes = map[string]attr.Type{
@@ -740,14 +744,34 @@ func (r *ProjectConfigResource) Schema(ctx context.Context, req resource.SchemaR
 					},
 				},
 				"jwks_url": schema.StringAttribute{
-					Description: "JWKS URL for signing tokens. Must use base64:// scheme (e.g., 'base64://eyJrZXlzIjpbXX0=').",
-					Required:    true,
-					Sensitive:   true,
+					Description: "JWKS URL for signing tokens. Must use base64:// scheme (e.g., 'base64://eyJrZXlzIjpbXX0='). " +
+						"The JWKS holds the private signing key, and Terraform stores this value in state and plan files. " +
+						"Set exactly one of jwks_url or jwks_url_wo.",
+					Optional:  true,
+					Sensitive: true,
 					Validators: []validator.String{
-						stringvalidator.RegexMatches(
-							regexp.MustCompile(`^base64://`),
-							"must start with 'base64://'",
-						),
+						base64JWKSValidator{},
+						stringvalidator.ExactlyOneOf(path.MatchRelative().AtParent().AtName("jwks_url"), path.MatchRelative().AtParent().AtName("jwks_url_wo")),
+					},
+				},
+				// Write-only companions for jwks_url. They need Terraform 1.11 or
+				// later. Create and Update read jwks_url_wo from req.Config in
+				// addWriteOnlyTokenizerKeys.
+				"jwks_url_wo": schema.StringAttribute{
+					Description: "Write-only equivalent of jwks_url. Requires Terraform 1.11 or later. " +
+						"The provider sends the JWKS to Ory, and Terraform never stores it in state or plan files. Must use base64:// scheme. " +
+						"Terraform cannot detect changes to a write-only value, so change jwks_url_wo_version to send a new key. " +
+						"Set exactly one of jwks_url or jwks_url_wo.",
+					Optional:   true,
+					WriteOnly:  true,
+					Sensitive:  true,
+					Validators: []validator.String{base64JWKSValidator{}},
+				},
+				"jwks_url_wo_version": schema.StringAttribute{
+					Description: "Version trigger for jwks_url_wo. Change this value when jwks_url_wo changes, so Terraform sends the new key to Ory. Requires jwks_url_wo.",
+					Optional:    true,
+					Validators: []validator.String{
+						stringvalidator.AlsoRequires(path.MatchRelative().AtParent().AtName("jwks_url_wo")),
 					},
 				},
 				"claims_mapper_url": schema.StringAttribute{
@@ -1092,6 +1116,59 @@ func (r *ProjectConfigResource) appendWriteOnlySMTPPatch(ctx context.Context, co
 	})
 }
 
+const tokenizerTemplatesPath = "/services/identity/config/session/whoami/tokenizer/templates"
+
+// base64JWKSValidator requires the base64:// scheme on a tokenizer JWKS.
+// stringvalidator.RegexMatches repeats the value in its error, and this value
+// holds a private signing key, so the error names only the attribute.
+type base64JWKSValidator struct{}
+
+func (base64JWKSValidator) Description(context.Context) string {
+	return "must start with 'base64://'"
+}
+
+func (v base64JWKSValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (v base64JWKSValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() || strings.HasPrefix(req.ConfigValue.ValueString(), "base64://") {
+		return
+	}
+	resp.Diagnostics.AddAttributeError(req.Path, "Invalid Attribute Value",
+		fmt.Sprintf("Attribute %s %s. The value is not shown because it holds a private key.", req.Path, v.Description(ctx)))
+}
+
+// addWriteOnlyTokenizerKeys copies each template's jwks_url_wo from the
+// configuration into the tokenizer templates patch. buildPatches builds that
+// patch from the plan, where write-only values are null. The patch replaces the
+// whole templates map, and the API rejects a template without a jwks_url, so
+// the key goes out on every apply. It never reaches state.
+func addWriteOnlyTokenizerKeys(ctx context.Context, config tfsdk.Config, patches []ory.JsonPatch, diags *diag.Diagnostics) {
+	var configured types.Map
+	diags.Append(config.GetAttribute(ctx, path.Root("session_tokenizer_templates"), &configured)...)
+	if diags.HasError() || configured.IsNull() || configured.IsUnknown() {
+		return
+	}
+	var templates map[string]SessionTokenizerTemplateModel
+	diags.Append(configured.ElementsAs(ctx, &templates, false)...)
+	if diags.HasError() {
+		return
+	}
+	for _, p := range patches {
+		entries, ok := p.Value.(map[string]interface{})
+		if p.Path != tokenizerTemplatesPath || !ok {
+			continue
+		}
+		for name, tmpl := range templates {
+			entry, ok := entries[name].(map[string]interface{})
+			if ok && !tmpl.JWKSURLWO.IsNull() && !tmpl.JWKSURLWO.IsUnknown() {
+				entry["jwks_url"] = tmpl.JWKSURLWO.ValueString()
+			}
+		}
+	}
+}
+
 // =============================================================================
 // buildPatches — uses generated tables for simple attrs + custom logic
 // =============================================================================
@@ -1299,7 +1376,7 @@ func (r *ProjectConfigResource) buildPatches(ctx context.Context, plan *ProjectC
 		}
 		patches = append(patches, ory.JsonPatch{
 			Op:    "add",
-			Path:  "/services/identity/config/session/whoami/tokenizer/templates",
+			Path:  tokenizerTemplatesPath,
 			Value: templatesMap,
 		})
 	}
@@ -1877,6 +1954,7 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 
 	patches := r.buildPatches(ctx, &plan)
 	patches = r.appendWriteOnlySMTPPatch(ctx, req.Config, patches, &resp.Diagnostics)
+	addWriteOnlyTokenizerKeys(ctx, req.Config, patches, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -2104,10 +2182,12 @@ func (r *ProjectConfigResource) readProjectConfig(ctx context.Context, project *
 						continue
 					}
 					attrs := map[string]attr.Value{
-						"ttl":               types.StringNull(),
-						"jwks_url":          types.StringNull(),
-						"claims_mapper_url": types.StringNull(),
-						"subject_source":    types.StringNull(),
+						"ttl":                 types.StringNull(),
+						"jwks_url":            types.StringNull(),
+						"jwks_url_wo":         types.StringNull(),
+						"jwks_url_wo_version": preserveTokenizerField(state, name, "jwks_url_wo_version", ""),
+						"claims_mapper_url":   types.StringNull(),
+						"subject_source":      types.StringNull(),
 					}
 					if s, ok := tmplMap["ttl"].(string); ok && s != "" {
 						attrs["ttl"] = preserveTokenizerField(state, name, "ttl", s)
@@ -2513,6 +2593,7 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 
 	patches := r.buildPatches(ctx, &plan)
 	patches = r.appendWriteOnlySMTPPatch(ctx, req.Config, patches, &resp.Diagnostics)
+	addWriteOnlyTokenizerKeys(ctx, req.Config, patches, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
