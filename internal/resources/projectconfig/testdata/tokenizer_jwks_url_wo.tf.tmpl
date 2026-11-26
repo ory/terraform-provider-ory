@@ -1,0 +1,16 @@
+resource "ory_project_config" "test" {
+  session_tokenizer_templates = {
+    api = {
+      ttl = "5m"
+      [[- if .JWKSURL ]]
+      jwks_url = "[[ .JWKSURL ]]"
+      [[- end ]]
+      [[- if .JWKSURLWO ]]
+      jwks_url_wo = "[[ .JWKSURLWO ]]"
+      [[- end ]]
+      [[- if .Version ]]
+      jwks_url_wo_version = "[[ .Version ]]"
+      [[- end ]]
+    }
+  }
+}

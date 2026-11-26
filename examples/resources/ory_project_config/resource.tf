@@ -226,6 +226,7 @@ resource "ory_project_config" "native_only" {
 }
 
 # Session tokenizer templates (JWT tokenization for /sessions/whoami)
+# jwks_url is stored in Terraform state. Use jwks_url_wo to keep the signing key out of state.
 resource "ory_project_config" "with_tokenizer" {
   session_tokenizer_templates = {
     my_jwt = {

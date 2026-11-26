@@ -229,6 +229,38 @@ Leave the attribute out and the provider writes no scope at all, so Ory applies 
 
 The Ory Console additionally turns on `selfservice_flows_registration_after_password_hook_show_verification_ui` when you enable "Require verified address for login" on a project that signs users in after registration. The provider does not infer that for you. Set the attribute yourself if you want that behavior.
 
+## Session Tokenizer Templates
+
+`session_tokenizer_templates` configures how Ory converts a session to a JWT for `/sessions/whoami?tokenize_as=<template>`. Each template signs its tokens with the private key in its JWKS. Anyone who can read that JWKS can mint session tokens for any identity in the project.
+
+Set the JWKS with exactly one of these attributes on each template:
+
+- `jwks_url`: Terraform stores the JWKS in state and in saved plan files.
+- `jwks_url_wo`: a write-only argument that requires Terraform 1.11 or later. The provider sends the JWKS to Ory, and Terraform never stores it in state or plan files.
+
+```hcl
+variable "tokenizer_jwks" {
+  type      = string
+  ephemeral = true
+}
+
+resource "ory_project_config" "main" {
+  session_tokenizer_templates = {
+    api = {
+      ttl                 = "5m"
+      jwks_url_wo         = "base64://${base64encode(var.tokenizer_jwks)}"
+      jwks_url_wo_version = "1"
+    }
+  }
+}
+```
+
+Terraform cannot detect a change to a write-only value. To rotate the key, change the JWKS and `jwks_url_wo_version` in the same apply. The provider replaces the whole templates map on every apply that updates this resource, so such an apply also sends the current `jwks_url_wo` value.
+
+To move a template from `jwks_url` to `jwks_url_wo`, replace the attribute and set `jwks_url_wo_version`. The next apply updates the project in place and removes the key from state. State snapshots and plan files from before the change still contain the key, so rotate the key if those files are not secured.
+
+The provider does not read the JWKS back from Ory, so a key changed outside Terraform is not reported as drift.
+
 ## Session Risk Rules
 
 `session_whoami_rules` holds up to 5 session risk rules. Ory evaluates every rule when it checks a session, for example on `/sessions/whoami`. Each rule has a CEL `condition` over `session` and `request`. If the condition matches, Ory takes the rule's `action`:
