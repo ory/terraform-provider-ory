@@ -1,0 +1,9 @@
+resource "ory_json_web_key_set" "test" {
+  project_id = "[[ .ProjectID ]]"
+  set_id     = "[[ .SetID ]]"
+
+  # A heredoc keeps the document pretty-printed, as file() would read it.
+  jwks = <<EOT
+[[ .JWKS ]]
+EOT
+}

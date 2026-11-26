@@ -294,7 +294,13 @@ prefer the explicit `{project_id}/...` form in generated files.
   unmanaged.
 - **Default `hydra.*` JWKS sets** (`hydra.openid.id-token`,
   `hydra.jwt.access-token`) are system-managed — do not import them. Importing
-  any JWKS puts private key material into state.
+  a JWKS that holds private keys puts private key material into state.
+- **An uploaded JWKS set generates with `key_id`, `algorithm`, and `use`.**
+  Ory cannot tell a set uploaded with `ory import jwk` from a generated one, so
+  the import reads these attributes from the first key. To keep managing the
+  uploaded keys, replace the three attributes with `jwks = file("...")` that
+  holds the same JWKS document. The first apply uploads the document in place
+  and does not replace the set.
 - **Identities and relationship tuples are data, not configuration.** Import
   only the handful that are genuinely config-like (service accounts, seed
   tuples).

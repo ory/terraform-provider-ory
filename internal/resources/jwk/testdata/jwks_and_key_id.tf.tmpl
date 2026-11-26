@@ -1,0 +1,9 @@
+resource "ory_json_web_key_set" "test" {
+  set_id    = "tf-test-jwks-invalid"
+  key_id    = "tf-test-key"
+  algorithm = "ES256"
+  use       = "sig"
+  jwks = jsonencode({
+    keys = [{ kty = "EC", crv = "P-256", kid = "tf-test-key", use = "sig", alg = "ES256", x = "x", y = "y" }]
+  })
+}

@@ -1696,12 +1696,29 @@ func (c *OryClient) CreateJsonWebKeySet(ctx context.Context, setID string, body 
 	return jwks, err
 }
 
+// SetJsonWebKeySet replaces every key in a JWK set with the given keys,
+// creating the set when it does not exist.
+func (c *OryClient) SetJsonWebKeySet(ctx context.Context, setID string, body ory.JsonWebKeySet) (*ory.JsonWebKeySet, error) {
+	if err := c.ensureProjectClient(); err != nil {
+		return nil, fmt.Errorf("setting JWK set: %w", err)
+	}
+	jwks, httpResp, err := c.projectClient.JwkAPI.SetJsonWebKeySet(ctx, setID).JsonWebKeySet(body).Execute()
+	if httpResp != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, wrapAPIError(err, "setting JWK set")
+	}
+	return jwks, nil
+}
+
 // GetJsonWebKeySet retrieves a JWK set by ID.
 func (c *OryClient) GetJsonWebKeySet(ctx context.Context, setID string) (*ory.JsonWebKeySet, error) {
 	if err := c.ensureProjectClient(); err != nil {
 		return nil, fmt.Errorf("reading JWK set: %w", err)
 	}
 	jwks, httpResp, err := c.projectClient.JwkAPI.GetJsonWebKeySet(ctx, setID).Execute()
+	err = notFoundIfStatus(httpResp, err)
 	if httpResp != nil {
 		_ = httpResp.Body.Close()
 	}
