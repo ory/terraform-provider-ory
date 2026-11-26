@@ -674,7 +674,6 @@ func identityBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry 
 		{&state.SelfserviceMethodsLinkEnabled, []string{"selfservice", "methods", "link", "enabled"}, false, nil},
 		{&state.SelfserviceMethodsPasswordConfigIgnoreNetworkErrors, []string{"selfservice", "methods", "password", "config", "ignore_network_errors"}, false, nil},
 		{&state.SelfserviceMethodsSAMLEnabled, []string{"selfservice", "methods", "saml", "enabled"}, false, nil},
-		{&state.FeatureFlagsPasswordProfileRegistrationNodeGroup, []string{"feature_flags", "password_profile_registration_node_group"}, false, &BoolEnumValues{"password", "default"}},
 		{&state.OAuth2ProviderOverrideReturnTo, []string{"oauth2_provider", "override_return_to"}, false, nil},
 		{&state.SecurityAccountEnumerationMitigate, []string{"security", "account_enumeration", "mitigate"}, false, nil},
 		{&state.SelfserviceMethodsCaptchaConfigBYO, []string{"selfservice", "methods", "captcha", "config", "byo"}, true, nil},
@@ -690,6 +689,7 @@ func identityBoolReadEntries(state *ProjectConfigResourceModel) []BoolReadEntry 
 		{&state.FeatureFlagsEnforceIdentitySchemaGuards, []string{"feature_flags", "enforce_identity_schema_guards"}, false, nil},
 		{&state.PreviewEnableNativeSAMLEngine, []string{"preview", "enable_native_saml_engine"}, false, nil},
 		{&state.SelfserviceFlowsLoginBruteForceProtectionEnabled, []string{"selfservice", "flows", "login", "brute_force_protection", "enabled"}, false, nil},
+		{&state.SelfserviceMethodsPasswordConfigHaveIBeenPwnedOnLogin, []string{"selfservice", "methods", "password", "config", "haveibeenpwned_on_login"}, false, nil},
 	}
 }
 

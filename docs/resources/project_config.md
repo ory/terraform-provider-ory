@@ -82,6 +82,7 @@ resource "ory_project_config" "secure" {
   selfservice_methods_password_config_min_password_length                 = 12
   selfservice_methods_password_config_identifier_similarity_check_enabled = true
   selfservice_methods_password_config_haveibeenpwned_enabled              = true
+  selfservice_methods_password_config_haveibeenpwned_on_login             = true
   selfservice_methods_password_config_max_breaches                        = 0
 
   # Authentication Methods
@@ -855,7 +856,6 @@ This resource covers most simple (scalar and list) project configuration propert
 - `feature_flags_legacy_continue_with_verification_ui` (Boolean) Deprecated. Restore legacy behavior of always including show_verification_ui in continue_with.
 - `feature_flags_legacy_oidc_registration_node_group` (Boolean) Use legacy 'oidc' node group for OIDC registration when required fields are missing.
 - `feature_flags_legacy_require_verified_login_error` (Boolean) Deprecated. Return a form error instead of continue_with when the login identifier is not verified.
-- `feature_flags_password_profile_registration_node_group` (Boolean) Use password method group for profile registration node group.
 - `feature_flags_refresh_login_choose_address` (Boolean) Render an address picker on the code refresh login screen
 - `feature_flags_use_continue_with_transitions` (Boolean) Enable continue_with transitions for session flows.
 - `feature_flags_webhook_response_directives` (Boolean) Honor flow directives in web hook responses. If true, a login after web hook with response parsing enabled can return a required_aal directive of aal2 to require step-up for that login; identities without a second factor are routed to enrollment. Off by default.
@@ -1048,6 +1048,7 @@ This resource covers most simple (scalar and list) project configuration propert
 - `selfservice_methods_passkey_config_timeouts_registration` (String) Timeout for the passkey registration ceremony as a Go duration such as '60s', '5m', or '1h30m'. The API rejects zero-valued segments such as '1h0m0s'. When unset, the library default applies: 5m with user verification, 2m without.
 - `selfservice_methods_passkey_enabled` (Boolean) Enable Passkey authentication.
 - `selfservice_methods_password_config_haveibeenpwned_enabled` (Boolean) Check passwords against HaveIBeenPwned.
+- `selfservice_methods_password_config_haveibeenpwned_on_login` (Boolean) Whether Ory Kratos looks up the password of every login attempt in Have I Been Pwned. Off by default. The lookup runs only when `selfservice_methods_password_config_haveibeenpwned_enabled` is true, and it never makes a login fail. Ory reports breached passwords in live event streams and in login web hooks.
 - `selfservice_methods_password_config_identifier_similarity_check_enabled` (Boolean) Check password similarity to identifier.
 - `selfservice_methods_password_config_ignore_network_errors` (Boolean) Ignore HaveIBeenPwned network errors during password validation.
 - `selfservice_methods_password_config_max_breaches` (Number) Maximum allowed breaches in HaveIBeenPwned.

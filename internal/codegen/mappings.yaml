@@ -1170,20 +1170,6 @@ attributes:
   # ============================================================================
   # Identity/Kratos additional
   # ============================================================================
-  - name: feature_flags_password_profile_registration_node_group
-    go_field: FeatureFlagsPasswordProfileRegistrationNodeGroup
-    type: bool
-    openapi_property: kratos_feature_flags_password_profile_registration_node_group
-    # The spec types this as boolean, but the config key stores the string enum
-    # "password"/"default" (verified 2026-08-04 on staging: PATCH true returns
-    # HTTP 200 and the GET-back reports "default", because the backend
-    # normalizes the key by comparing its string form with "password"). The
-    # bool_enum mapping sends the enum on write and maps it back on read.
-    bool_enum:
-      true_value: password
-      false_value: default
-    description: "Use password method group for profile registration node group."
-
   - name: oauth2_provider_headers
     go_field: OAuth2ProviderHeaders
     type: map_string
@@ -1753,3 +1739,13 @@ attributes:
     type: list_string
     openapi_property: hydra_oauth2_client_id_metadata_document_scope
     description: "Scopes that an OAuth2 client resolved from a client ID metadata document can request. When the list is empty, Ory Hydra allows `openid` and `offline_access`."
+
+  # --- Added from spec v1.22.97 (ory/sdk spec/client), 2026-11-23 ---
+  # Verified against the live API: true and false round-trip, and the API
+  # accepts true while haveibeenpwned_enabled is false. Ory Kratos then skips
+  # the lookup, so the description names the dependency.
+  - name: selfservice_methods_password_config_haveibeenpwned_on_login
+    go_field: SelfserviceMethodsPasswordConfigHaveIBeenPwnedOnLogin
+    type: bool
+    openapi_property: kratos_selfservice_methods_password_config_haveibeenpwned_on_login
+    description: "Whether Ory Kratos looks up the password of every login attempt in Have I Been Pwned. Off by default. The lookup runs only when `selfservice_methods_password_config_haveibeenpwned_enabled` is true, and it never makes a login fail. Ory reports breached passwords in live event streams and in login web hooks."

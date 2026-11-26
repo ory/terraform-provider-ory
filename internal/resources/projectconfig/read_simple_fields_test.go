@@ -410,52 +410,6 @@ func TestReadSimpleFields_NullsNonEmptyInt64AndMapWhenAPIOmitsKey(t *testing.T) 
 	}
 }
 
-// feature_flags.password_profile_registration_node_group stores the string
-// enum "password"/"default" even though the spec types the revision property
-// as boolean. The read must map the enum back to the bool the schema exposes;
-// reading it as a bool fails the type assertion and nulled state on every
-// refresh (issue #321).
-func TestReadSimpleFields_MapsPasswordProfileNodeGroupEnumToBool(t *testing.T) {
-	for _, tc := range []struct {
-		reported string
-		want     bool
-	}{
-		{"password", true},
-		{"default", false},
-	} {
-		state := &ProjectConfigResourceModel{
-			FeatureFlagsPasswordProfileRegistrationNodeGroup: types.BoolValue(!tc.want),
-		}
-
-		readSimpleFields(context.Background(), identityProject(map[string]interface{}{
-			"feature_flags": map[string]interface{}{
-				"password_profile_registration_node_group": tc.reported,
-			},
-		}), state)
-
-		if state.FeatureFlagsPasswordProfileRegistrationNodeGroup.IsNull() ||
-			state.FeatureFlagsPasswordProfileRegistrationNodeGroup.ValueBool() != tc.want {
-			t.Errorf("password_profile_registration_node_group = %v for reported %q, want %v",
-				state.FeatureFlagsPasswordProfileRegistrationNodeGroup, tc.reported, tc.want)
-		}
-	}
-}
-
-// A bool_enum key the API omits entirely still nulls state: the flag is always
-// rendered by the API, so absence is genuine drift, not empty-value pruning.
-func TestReadSimpleFields_NullsPasswordProfileNodeGroupWhenAPIOmitsKey(t *testing.T) {
-	state := &ProjectConfigResourceModel{
-		FeatureFlagsPasswordProfileRegistrationNodeGroup: types.BoolValue(true),
-	}
-
-	readSimpleFields(context.Background(), identityProject(map[string]interface{}{}), state)
-
-	if !state.FeatureFlagsPasswordProfileRegistrationNodeGroup.IsNull() {
-		t.Errorf("password_profile_registration_node_group = %v, want null",
-			state.FeatureFlagsPasswordProfileRegistrationNodeGroup)
-	}
-}
-
 // enable_ax_v2 is reported under the account experience config key "enabled";
 // the spec-derived "enable_ax_v2" key does not exist. The read table must use
 // the real key or state nulls on every refresh.

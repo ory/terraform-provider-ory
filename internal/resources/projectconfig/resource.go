@@ -260,7 +260,6 @@ type ProjectConfigResourceModel struct {
 	PreviewDefaultReadConsistencyLevel types.String `tfsdk:"preview_default_read_consistency_level"`
 
 	// Feature flags
-	FeatureFlagsPasswordProfileRegistrationNodeGroup types.Bool `tfsdk:"feature_flags_password_profile_registration_node_group"`
 
 	// OAuth2 TTLs
 	OAuth2TTLAccessToken         types.String `tfsdk:"oauth2_ttl_access_token"`
@@ -445,6 +444,9 @@ type ProjectConfigResourceModel struct {
 	OAuth2ClientIDMetadataDocumentAudience           types.List   `tfsdk:"oauth2_client_id_metadata_document_audience"`
 	OAuth2ClientIDMetadataDocumentMode               types.String `tfsdk:"oauth2_client_id_metadata_document_mode"`
 	OAuth2ClientIDMetadataDocumentScope              types.List   `tfsdk:"oauth2_client_id_metadata_document_scope"`
+
+	// Added from spec v1.22.97
+	SelfserviceMethodsPasswordConfigHaveIBeenPwnedOnLogin types.Bool `tfsdk:"selfservice_methods_password_config_haveibeenpwned_on_login"`
 }
 
 // --- Nested model types for session tokenizer templates and courier HTTP ---

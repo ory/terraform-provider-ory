@@ -230,7 +230,6 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 		{&plan.SelfserviceMethodsPasswordConfigIgnoreNetworkErrors, "/services/identity/config/selfservice/methods/password/config/ignore_network_errors", nil},
 		{&plan.SelfserviceMethodsSAMLEnabled, "/services/identity/config/selfservice/methods/saml/enabled", nil},
 		{&plan.EnableAXV2, "/services/account_experience/config/enabled", nil},
-		{&plan.FeatureFlagsPasswordProfileRegistrationNodeGroup, "/services/identity/config/feature_flags/password_profile_registration_node_group", &BoolEnumValues{"password", "default"}},
 		{&plan.OAuth2ProviderOverrideReturnTo, "/services/identity/config/oauth2_provider/override_return_to", nil},
 		{&plan.SecurityAccountEnumerationMitigate, "/services/identity/config/security/account_enumeration/mitigate", nil},
 		{&plan.SelfserviceMethodsCaptchaConfigBYO, "/services/identity/config/selfservice/methods/captcha/config/byo", nil},
@@ -252,6 +251,7 @@ func simpleBoolPatchEntries(plan *ProjectConfigResourceModel) []BoolPatchEntry {
 		{&plan.PreviewEnableNativeSAMLEngine, "/services/identity/config/preview/enable_native_saml_engine", nil},
 		{&plan.SelfserviceFlowsLoginBruteForceProtectionEnabled, "/services/identity/config/selfservice/flows/login/brute_force_protection/enabled", nil},
 		{&plan.AccountExperienceShowLastUsedMethod, "/services/account_experience/config/show_last_used_method", nil},
+		{&plan.SelfserviceMethodsPasswordConfigHaveIBeenPwnedOnLogin, "/services/identity/config/selfservice/methods/password/config/haveibeenpwned_on_login", nil},
 	}
 }
 

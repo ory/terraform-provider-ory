@@ -16,10 +16,9 @@ func cfg(nested map[string]interface{}) map[string]interface{} {
 }
 
 // classifyProbe must recognize every read-back class the live audits found:
-// echoed values, string enums behind bool-typed spec properties (the
-// password_profile_registration_node_group class), values reported under a
-// different key (the pairwise-salt class), and writes the API accepts and
-// discards (the enable_ax_v2 class).
+// echoed values, string enums behind bool-typed spec properties, values
+// reported under a different key (the pairwise-salt class), and writes the
+// API accepts and discards (the enable_ax_v2 class).
 func TestClassifyProbe(t *testing.T) {
 	keys := []string{"selfservice", "methods", "flag"}
 

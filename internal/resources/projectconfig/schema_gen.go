@@ -731,10 +731,6 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			ElementType: types.StringType,
 			Sensitive:   true,
 		},
-		"feature_flags_password_profile_registration_node_group": schema.BoolAttribute{
-			Description: "Use password method group for profile registration node group.",
-			Optional:    true,
-		},
 		"oauth2_provider_headers": schema.MapAttribute{
 			Description: "Custom HTTP headers for the OAuth2 provider integration.",
 			Optional:    true,
@@ -1130,6 +1126,10 @@ func simpleSchemaAttributes() map[string]schema.Attribute {
 			Description: "Scopes that an OAuth2 client resolved from a client ID metadata document can request. When the list is empty, Ory Hydra allows `openid` and `offline_access`.",
 			Optional:    true,
 			ElementType: types.StringType,
+		},
+		"selfservice_methods_password_config_haveibeenpwned_on_login": schema.BoolAttribute{
+			Description: "Whether Ory Kratos looks up the password of every login attempt in Have I Been Pwned. Off by default. The lookup runs only when `selfservice_methods_password_config_haveibeenpwned_enabled` is true, and it never makes a login fail. Ory reports breached passwords in live event streams and in login web hooks.",
+			Optional:    true,
 		},
 	}
 }
