@@ -363,6 +363,48 @@ if [ "$(echo "$KEYS" | jq 'length')" -gt 0 ]; then
 fi
 log "project API keys: $(echo "$KEYS" | jq 'length') (commented out)"
 
+# --- Project and workspace members ---------------------------------------------
+# The member and invite routes accept only a signed-in Console user, so a
+# workspace API key gets HTTP 401 and these sections are skipped. A person is
+# importable with a role that the resource grants, or with an open invite.
+# Workspace members are commented out, like ory_workspace itself.
+
+# member_emails MEMBERS INVITES FILTER prints each importable email once: the
+# members that FILTER selects, and the people with a pending or accepted invite.
+member_emails() {
+  jq -n -r --argjson m "$1" --argjson i "$2" "
+    [(\$m[]? | select($3) | .email),
+     (\$i[]? | select(.status == \"pending\" or .status == \"accepted\") | .invitee_email)]
+    | map(select(. != null and . != \"\")) | unique | .[]"
+}
+
+PROJECT_MEMBERS=""
+if MEMBERS=$(console_get_optional "/projects/$ORY_PROJECT_ID/members") &&
+  INVITES=$(console_get_optional "/projects/$ORY_PROJECT_ID/invites"); then
+  PROJECT_MEMBERS=$(member_emails "$MEMBERS" "$INVITES" \
+    '.source == "project" and (.role == "developer" or .role == "viewer")')
+fi
+while read -r email; do
+  [ -n "$email" ] || continue
+  emit "ory_project_member.$(unique_label "$(sanitize "${email%%@*}")")" "$ORY_PROJECT_ID/$email"
+done <<<"$PROJECT_MEMBERS"
+log "project members: $(grep -c . <<<"$PROJECT_MEMBERS" || true)"
+
+WORKSPACE_MEMBERS=""
+if [ -n "$WORKSPACE_ID" ] && MEMBERS=$(console_get_optional "/workspaces/$WORKSPACE_ID/members") &&
+  INVITES=$(console_get_optional "/workspaces/$WORKSPACE_ID/invites"); then
+  WORKSPACE_MEMBERS=$(member_emails "$MEMBERS" "$INVITES" 'true')
+fi
+if [ -n "$WORKSPACE_MEMBERS" ]; then
+  echo "# Workspace members. Uncomment to also manage them:"
+  while read -r email; do
+    printf '# import {\n#   to = ory_workspace_member.%s\n#   id = "%s"\n# }\n' \
+      "$(unique_label "$(sanitize "${email%%@*}")")" "$WORKSPACE_ID/$email"
+  done <<<"$WORKSPACE_MEMBERS"
+  echo
+fi
+log "workspace members: $(grep -c . <<<"$WORKSPACE_MEMBERS" || true) (commented out)"
+
 # --- Social sign-in providers (from the project revision) ----------------------
 SOCIAL=$(echo "$PROJECT_JSON" | jq -c '
   [.services.identity.config.selfservice.methods.oidc.config.providers[]?

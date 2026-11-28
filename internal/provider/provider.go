@@ -21,6 +21,7 @@ import (
 	identityds "github.com/ory/terraform-provider-ory/internal/datasources/identity"
 	identityschemads "github.com/ory/terraform-provider-ory/internal/datasources/identityschema"
 	identityschemasds "github.com/ory/terraform-provider-ory/internal/datasources/identityschemas"
+	"github.com/ory/terraform-provider-ory/internal/datasources/members"
 	oauth2clientds "github.com/ory/terraform-provider-ory/internal/datasources/oauth2client"
 	organizationds "github.com/ory/terraform-provider-ory/internal/datasources/organization"
 	projectds "github.com/ory/terraform-provider-ory/internal/datasources/project"
@@ -33,6 +34,7 @@ import (
 	"github.com/ory/terraform-provider-ory/internal/resources/identity"
 	"github.com/ory/terraform-provider-ory/internal/resources/identityschema"
 	"github.com/ory/terraform-provider-ory/internal/resources/jwk"
+	"github.com/ory/terraform-provider-ory/internal/resources/member"
 	"github.com/ory/terraform-provider-ory/internal/resources/oauth2client"
 	"github.com/ory/terraform-provider-ory/internal/resources/oidcdynamicclient"
 	"github.com/ory/terraform-provider-ory/internal/resources/organization"
@@ -346,6 +348,8 @@ func (p *OryProvider) Resources(ctx context.Context) []func() resource.Resource 
 		trustedjwtissuer.NewResource,
 		oidcdynamicclient.NewResource,
 		customdomain.NewResource,
+		member.NewProjectMemberResource,
+		member.NewWorkspaceMemberResource,
 	}
 }
 
@@ -358,6 +362,8 @@ func (p *OryProvider) DataSources(ctx context.Context) []func() datasource.DataS
 		organizationds.NewDataSource,
 		identityschemads.NewDataSource,
 		identityschemasds.NewDataSource,
+		members.NewProjectMembersDataSource,
+		members.NewWorkspaceMembersDataSource,
 	}
 }
 

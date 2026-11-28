@@ -235,6 +235,8 @@ Project API = `https://{slug}.projects.oryapis.com` with the project API key.
 | `ory_event_stream` | `GET /projects/{id}/eventstreams` (console) | `{project_id}/{stream_id}` |
 | `ory_organization` | `GET /projects/{id}/organizations` (console) | `{project_id}/{org_id}` |
 | `ory_project_api_key` | `GET /projects/{id}/tokens` (console) | `{project_id}/{key_id}` — value unrecoverable |
+| `ory_project_member` | `GET /projects/{id}/members` (console, Console user token only): `source == "project"` with role `developer` or `viewer`, plus pending and accepted invites from `GET /projects/{id}/invites` | `{project_id}/{email}` |
+| `ory_workspace_member` | `GET /workspaces/{ws}/members` plus pending invites from `GET /workspaces/{ws}/invites` (console, Console user token only; the script emits these commented out) | `{workspace_id}/{email}` |
 | `ory_social_provider` | revision: `.services.identity.config.selfservice.methods.oidc.config.providers[]` | `{provider_id}` (e.g. `google`) |
 | `ory_saml_provider` | revision: `...methods.saml.config.providers[]` | `{provider_id}` |
 | `ory_scim_client` | `GET /normalized/projects/{id}` (console): `.current_revision.scim_clients[]` | `{project_id}/{client_id}`, secret unrecoverable |
@@ -281,6 +283,12 @@ prefer the explicit `{project_id}/...` form in generated files.
   `ory_organization` and reference it as
   `organization_id = ory_organization.<name>.id`, because deleting an
   organization deletes its SCIM clients server-side.
+- **Members need a Console user token.** The member and invite routes answer a
+  workspace API key with HTTP 401, so the script skips members unless
+  `ORY_WORKSPACE_API_KEY` holds the access token from `ory auth`. A project
+  owner, and a person whose only project role comes from the workspace, cannot
+  be imported as `ory_project_member`. Remove the import block of the person
+  whose token runs Terraform: the API refuses to remove the signed-in user.
 - **`ory_project_api_key` values** exist only at creation time. Importing one
   yields a resource whose `value` is null; rotating it through Terraform means
   destroy + create (a brand-new key).
